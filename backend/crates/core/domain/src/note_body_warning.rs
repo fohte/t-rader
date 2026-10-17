@@ -381,6 +381,9 @@ mod tests {
         "価格候補の数値「86420」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
         "相対表現「+3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
     ])]
+    #[case::unmatched_closing_bracket_is_not_a_link("値上がりは5.0% ](内容)", vec![
+        "相対表現「5.0%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+    ])]
     #[case::relative_range("日中2〜3%が通常", vec![
         "相対表現「2〜3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
     ])]
@@ -404,8 +407,27 @@ mod tests {
             "価格候補の数値「123456円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
         ],
     )]
+    #[case::relative_inline_link_url_is_not_scanned("[記事](/articles/2030/12345678)", vec![])]
     #[case::autolink_url_is_not_scanned("<https://news.example.com/change/6.0%25>", vec![])]
-    #[case::bare_url_is_not_scanned("https://news.example.com/73本/12345678.", vec![])]
+    #[case::bare_url_is_not_scanned("https://example.com/12345678.", vec![])]
+    #[case::japanese_punctuation_ends_bare_url(
+        "https://example.com/a。次は5000円",
+        vec![
+            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        ],
+    )]
+    #[case::japanese_comma_ends_bare_url(
+        "https://example.com/a、次は5000円",
+        vec![
+            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        ],
+    )]
+    #[case::japanese_text_ends_bare_url(
+        "https://example.com/a次は5000円",
+        vec![
+            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        ],
+    )]
     #[case::www_url_is_not_scanned("www.news.example.com/12345678", vec![])]
     #[case::links_are_not_scanned(
         "[[price:fictional-code@2030-01-02:close]] [[change:fictional-code@2030-01-02..2030-01-03:close]]",

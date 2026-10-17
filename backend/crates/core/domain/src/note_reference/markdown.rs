@@ -179,6 +179,117 @@ fn range_containing(ranges: &[Range<usize>], position: usize) -> Option<&Range<u
         .find(|range| position >= range.start && position < range.end)
 }
 
+fn markdown_link_destination_ranges(body: &str, code_ranges: &[Range<usize>]) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut open_brackets = Vec::new();
+    let mut search_from = 0;
+
+    while search_from < body.len() {
+        if let Some(range) = range_containing(code_ranges, search_from) {
+            search_from = range.end;
+            continue;
+        }
+
+        let Some(character) = body[search_from..].chars().next() else {
+            break;
+        };
+        if !is_markdown_escaped(body, search_from) {
+            match character {
+                '[' => open_brackets.push(search_from),
+                ']' if open_brackets.pop().is_some() => {
+                    let open_paren = search_from + character.len_utf8();
+                    if body[open_paren..].starts_with('(')
+                        && range_containing(code_ranges, open_paren).is_none()
+                        && let Some(range) =
+                            markdown_link_destination_range(body, open_paren, code_ranges)
+                    {
+                        ranges.push(range.clone());
+                        search_from = range.end;
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+        }
+        search_from += character.len_utf8();
+    }
+
+    ranges
+}
+
+fn is_markdown_escaped(body: &str, position: usize) -> bool {
+    body[..position]
+        .bytes()
+        .rev()
+        .take_while(|byte| *byte == b'\\')
+        .count()
+        % 2
+        == 1
+}
+
+fn markdown_link_destination_range(
+    body: &str,
+    open_paren: usize,
+    code_ranges: &[Range<usize>],
+) -> Option<Range<usize>> {
+    let mut start = open_paren + 1;
+    while let Some(character) = body[start..].chars().next() {
+        if range_containing(code_ranges, start).is_some() || !character.is_whitespace() {
+            break;
+        }
+        start += character.len_utf8();
+    }
+    if range_containing(code_ranges, start).is_some() {
+        return None;
+    }
+
+    if body[start..].starts_with('<') {
+        let destination_start = start + 1;
+        for (offset, character) in body[destination_start..].char_indices() {
+            let position = destination_start + offset;
+            if range_containing(code_ranges, position).is_some() || character.is_whitespace() {
+                return None;
+            }
+            if character == '>' {
+                return (destination_start < position).then_some(destination_start..position);
+            }
+        }
+        return None;
+    }
+
+    let mut end = start;
+    let mut parenthesis_depth = 0;
+    let mut escaped = false;
+    for (offset, character) in body[start..].char_indices() {
+        let position = start + offset;
+        if range_containing(code_ranges, position).is_some() {
+            return None;
+        }
+        if escaped {
+            escaped = false;
+            end = position + character.len_utf8();
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            end = position + character.len_utf8();
+            continue;
+        }
+        if character.is_whitespace() && parenthesis_depth == 0 {
+            break;
+        }
+        match character {
+            '(' => parenthesis_depth += 1,
+            ')' if parenthesis_depth == 0 => break,
+            ')' => parenthesis_depth -= 1,
+            _ => {}
+        }
+        end = position + character.len_utf8();
+    }
+
+    (end > start).then_some(start..end)
+}
+
 fn url_ranges(body: &str) -> Vec<Range<usize>> {
     let mut ranges = Vec::new();
     let mut search_from = 0;
@@ -221,7 +332,10 @@ fn url_end(body: &str, start: usize) -> usize {
     let mut parenthesis_depth = 0;
 
     for (offset, character) in body[start..].char_indices() {
-        if character.is_whitespace() || matches!(character, '<' | '>' | '`' | '"' | '\'') {
+        if !character.is_ascii()
+            || character.is_whitespace()
+            || matches!(character, '<' | '>' | '`' | '"' | '\'')
+        {
             break;
         }
         match character {
@@ -262,7 +376,9 @@ pub(crate) fn tokens_outside_code(body: &str) -> Vec<NoteToken<'_>> {
 }
 
 pub(crate) fn prose_segments(body: &str) -> Vec<&str> {
-    let mut excluded_ranges = markdown_code_ranges(body);
+    let code_ranges = markdown_code_ranges(body);
+    let mut excluded_ranges = code_ranges.clone();
+    excluded_ranges.extend(markdown_link_destination_ranges(body, &code_ranges));
     excluded_ranges.extend(url_ranges(body));
     excluded_ranges.extend(
         extract_tokens(body)
