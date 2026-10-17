@@ -28,6 +28,7 @@ function renderNode(
     layout: 'flow',
     maxNodeValue: 100,
     citeNumbers: new Map(),
+    highlightedNodeIds: null,
     ...context,
   }
   return render(

@@ -80,6 +80,7 @@ export function buildScatterLayout(
   const background: ScatterBackgroundFlowNode = {
     id: SCATTER_BACKGROUND_ID,
     type: 'graphScatterBackground',
+    className: 'pointer-events-none',
     position: { x: 0, y: 0 },
     style: { width: SCATTER_SIZE, height: SCATTER_SIZE },
     zIndex: -1,

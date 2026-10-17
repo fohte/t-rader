@@ -10,8 +10,8 @@ const CHAIN_BAR_MAX_HEIGHT = 64
 const CHAIN_BAR_MIN_HEIGHT = 4
 
 /** nodeTypes.graphNode として登録する共通カスタムノード。layout の種類によらずこれ 1 つで描画を賄う */
-export function GraphNodeView({ data }: NodeProps<GraphFlowNode>) {
-  const { layout, maxNodeValue, citeNumbers, onOpenRef } =
+export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
+  const { layout, maxNodeValue, citeNumbers, highlightedNodeIds, onOpenRef } =
     useGraphRenderContext()
 
   const handlePosition = handlePositions(layout)
@@ -20,11 +20,15 @@ export function GraphNodeView({ data }: NodeProps<GraphFlowNode>) {
 
   const showBar =
     layout === 'chain' && typeof data.value === 'number' && maxNodeValue > 0
+  const highlightClass =
+    highlightedNodeIds == null || highlightedNodeIds.has(id)
+      ? 'opacity-100'
+      : 'opacity-30 transition-opacity'
 
   return (
     <div
       data-slot="graph-node"
-      className="border-border bg-card text-card-foreground relative flex flex-col gap-1.5 rounded-md border px-3 py-2 text-sm"
+      className={`border-border bg-card text-card-foreground relative flex flex-col gap-1.5 rounded-md border px-3 py-2 text-sm ${highlightClass}`}
       style={{ width: nodeWidth(data) }}
     >
       <Handle

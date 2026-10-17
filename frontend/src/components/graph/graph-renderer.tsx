@@ -112,24 +112,6 @@ function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
     return ids
   }, [hoveredId, def.edges])
 
-  const nodes = useMemo(
-    () =>
-      rawNodes.map((node) =>
-        // 装飾用の背景ノードは hover 判定に参加させない。wrapper 自体を
-        // pointer-events-none にしないと、内側の div だけを無効化しても
-        // wrapper (.react-flow__node) がそのままヒットしてしまう
-        node.type === 'graphScatterBackground'
-          ? { ...node, className: 'pointer-events-none' }
-          : {
-              ...node,
-              className:
-                neighborIds == null || neighborIds.has(node.id)
-                  ? HIGHLIGHT_CLASS
-                  : DIMMED_CLASS,
-            },
-      ),
-    [rawNodes, neighborIds],
-  )
   const edges = useMemo(
     () =>
       rawEdges.map((edge) => ({
@@ -165,10 +147,16 @@ function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
 
   return (
     <GraphRenderContextProvider
-      value={{ layout: def.layout, maxNodeValue, citeNumbers, onOpenRef }}
+      value={{
+        layout: def.layout,
+        maxNodeValue,
+        citeNumbers,
+        highlightedNodeIds: neighborIds,
+        onOpenRef,
+      }}
     >
       <ReactFlow
-        nodes={nodes}
+        nodes={rawNodes}
         edges={edges}
         nodeTypes={nodeTypes}
         nodesDraggable={false}

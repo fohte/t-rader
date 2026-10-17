@@ -10,6 +10,7 @@ export interface GraphRenderContextValue {
   layout: Layout
   maxNodeValue: number
   citeNumbers: Map<string, number>
+  highlightedNodeIds: ReadonlySet<string> | null
   onOpenRef?: (token: string, resolved: ResolvedRef) => void
 }
 
