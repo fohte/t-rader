@@ -175,7 +175,7 @@ export function DashboardPageView({ state }: { state: DashboardPageState }) {
       <PageHeading title={state.title} />
       <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
         <p className="font-mono text-xs text-muted-foreground">
-          基準日を選択してください。
+          初期表示はウィジェットごとの設定日を使い、選択した基準日は全ウィジェットに適用します。
         </p>
         <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground-strong">
           基準日

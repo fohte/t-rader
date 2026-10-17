@@ -91,6 +91,31 @@ describe('parseDashboardConfig', () => {
     })
   })
 
+  it.each([
+    {
+      name: '未対応の指標',
+      yaml: dashboardYaml.replace('metric: change', 'metric: close'),
+    },
+    {
+      name: '未対応の期間',
+      yaml: dashboardYaml.replace(
+        "      as_of: '2099-01-05'",
+        "      as_of: '2099-01-05'\n      range: 1d",
+      ),
+    },
+  ])('$name を検証エラーとして返す', ({ yaml }) => {
+    expect(parseDashboardConfig(yaml)).toEqual({
+      ok: false,
+      issues: [
+        {
+          path: 'widgets[0]',
+          message:
+            'queries と treemap または toplist の viz を含むウィジェット定義が必要です。',
+        },
+      ],
+    })
+  })
+
   it('プレビュー URL の URL-safe Base64 から設定を読み取る', () => {
     expect(
       parseDashboardPreviewHash(`#${encodeBase64Url(dashboardYaml)}`),
@@ -109,11 +134,35 @@ describe('parseDashboardConfig', () => {
     })
   })
 
-  it('基準日には最初のウィジェットの日付を使う', () => {
+  it('同じ基準日のウィジェットにはその日付を使う', () => {
     const parsed = parseDashboardConfig(dashboardYaml)
     expect(
       parsed.ok ? getInitialDashboardDate(parsed.value, '2099-02-01') : null,
     ).toEqual('2099-01-05')
+  })
+
+  it('異なる基準日のウィジェットには一括基準日を表示しない', () => {
+    const parsed = parseDashboardConfig(
+      `${dashboardYaml}  - title: 時価総額
+    width: half
+    queries:
+      capitalization:
+        metric: mkt_cap
+        by: stock
+        universe:
+          stocks: [DEMO-B]
+    viz:
+      type: toplist
+      value: capitalization
+      order: desc
+      limit: 5
+    time:
+      as_of: '2098-12-01'
+`,
+    )
+    expect(
+      parsed.ok ? getInitialDashboardDate(parsed.value, '2099-02-01') : null,
+    ).toEqual(null)
   })
 
   it('基準日を持つウィジェットがなければ fallback を返す', () => {

@@ -1,32 +1,21 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { createFileRoute, useLocation } from '@tanstack/react-router'
+import { useMemo } from 'react'
 
 import { getTokyoDate } from '#components/calendar/calendar-date'
-import {
-  getInitialDashboardDate,
-  parseDashboardPreviewHash,
-} from '#components/dashboard-pages/dashboard-config'
+import { parseDashboardPreviewHash } from '#components/dashboard-pages/dashboard-config'
 import { DashboardPageView } from '#components/dashboard-pages/dashboard-page-view'
-import { useDashboardWidgetQueries } from '#components/dashboard-pages/use-dashboard-widget-queries'
+import { useDashboardPageData } from '#components/dashboard-pages/use-dashboard-page-data'
 
 export const Route = createFileRoute('/dashboards/preview')({
   component: DashboardPreviewRoute,
 })
 
 function DashboardPreviewRoute() {
-  const parsedConfig = useMemo(
-    () => parseDashboardPreviewHash(window.location.hash),
-    [],
-  )
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const hash = useLocation({ select: (location) => location.hash })
+  const parsedConfig = useMemo(() => parseDashboardPreviewHash(hash), [hash])
   const defaultDate = useMemo(() => getTokyoDate(), [])
   const config = parsedConfig.ok ? parsedConfig.value : null
-  const asOf =
-    selectedDate ??
-    (config == null
-      ? defaultDate
-      : getInitialDashboardDate(config, defaultDate))
-  const widgets = useDashboardWidgetQueries(config, asOf)
+  const dashboardData = useDashboardPageData(config, hash, defaultDate)
 
   if (!parsedConfig.ok) {
     return (
@@ -45,11 +34,7 @@ function DashboardPreviewRoute() {
       state={{
         status: 'ready',
         title: parsedConfig.value.title,
-        asOf,
-        onAsOfChange: (date) => {
-          if (date !== '') setSelectedDate(date)
-        },
-        widgets,
+        ...dashboardData,
       }}
     />
   )

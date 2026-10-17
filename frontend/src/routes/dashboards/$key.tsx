@@ -1,16 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import { getTokyoDate } from '#components/calendar/calendar-date'
-import {
-  getDashboardApiErrorMessage,
-  getDashboardApiErrorStatus,
-  getInitialDashboardDate,
-  parseDashboardConfig,
-} from '#components/dashboard-pages/dashboard-config'
+import { parseDashboardConfig } from '#components/dashboard-pages/dashboard-config'
 import { DashboardPageView } from '#components/dashboard-pages/dashboard-page-view'
-import { useDashboardWidgetQueries } from '#components/dashboard-pages/use-dashboard-widget-queries'
+import { useDashboardPageData } from '#components/dashboard-pages/use-dashboard-page-data'
 import { $api } from '#lib/api/client'
+import { getApiErrorMessage, getApiErrorStatus } from '#lib/api/error'
 
 export const Route = createFileRoute('/dashboards/$key')({
   component: DashboardDetailRoute,
@@ -28,25 +24,15 @@ function DashboardDetailRoute() {
         : parseDashboardConfig(dashboardQuery.data.config),
     [dashboardQuery.data?.config],
   )
-  const [dateOverride, setDateOverride] = useState<{
-    key: string
-    date: string
-  } | null>(null)
   const defaultDate = useMemo(() => getTokyoDate(), [])
   const config = parsedConfig?.ok === true ? parsedConfig.value : null
-  const asOf =
-    dateOverride?.key === key
-      ? dateOverride.date
-      : config == null
-        ? defaultDate
-        : getInitialDashboardDate(config, defaultDate)
-  const widgets = useDashboardWidgetQueries(config, asOf)
+  const dashboardData = useDashboardPageData(config, key, defaultDate)
 
   if (dashboardQuery.isPending) {
     return <DashboardPageView state={{ status: 'loading', title: key }} />
   }
   if (dashboardQuery.isError) {
-    if (getDashboardApiErrorStatus(dashboardQuery.error) === 404) {
+    if (getApiErrorStatus(dashboardQuery.error) === 404) {
       return <DashboardPageView state={{ status: 'not-found', title: key }} />
     }
     return (
@@ -54,7 +40,7 @@ function DashboardDetailRoute() {
         state={{
           status: 'error',
           title: key,
-          message: getDashboardApiErrorMessage(
+          message: getApiErrorMessage(
             dashboardQuery.error,
             'ダッシュボードを取得できませんでした。',
           ),
@@ -84,11 +70,7 @@ function DashboardDetailRoute() {
       state={{
         status: 'ready',
         title: parsedConfig.value.title,
-        asOf,
-        onAsOfChange: (date) => {
-          if (date !== '') setDateOverride({ key, date })
-        },
-        widgets,
+        ...dashboardData,
       }}
     />
   )

@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import {
-  getDashboardApiErrorMessage,
-  parseDashboardConfig,
-} from '#components/dashboard-pages/dashboard-config'
+import { parseDashboardConfig } from '#components/dashboard-pages/dashboard-config'
 import {
   type DashboardListPageState,
   DashboardListPageView,
 } from '#components/dashboard-pages/dashboard-list-page-view'
 import { $api } from '#lib/api/client'
+import { getApiErrorMessage } from '#lib/api/error'
 
 export const Route = createFileRoute('/dashboards/')({
   component: DashboardListRoute,
@@ -23,7 +21,7 @@ function DashboardListRoute() {
   } else if (dashboardsQuery.isError) {
     state = {
       status: 'error',
-      message: getDashboardApiErrorMessage(
+      message: getApiErrorMessage(
         dashboardsQuery.error,
         'ダッシュボードの一覧を取得できませんでした。',
       ),

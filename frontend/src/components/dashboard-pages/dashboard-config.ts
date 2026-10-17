@@ -5,6 +5,10 @@ import type { components } from '#lib/api/schema.gen'
 
 type WidgetQueryRequest = components['schemas']['WidgetQueryRequest']
 type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
+type SupportedWidgetMetric = Extract<
+  components['schemas']['WidgetMetricRequest'],
+  'change' | 'mkt_cap'
+>
 
 type SupportedWidgetVisualization = Extract<
   WidgetVisualization,
@@ -35,23 +39,30 @@ export type DashboardConfigResult =
   | { ok: true; value: DashboardConfig }
   | { ok: false; issues: DashboardConfigIssue[] }
 
-const supportedMetrics = new Set([
-  'change',
-  'close',
-  'turnover',
-  'mkt_cap',
-  'per',
-  'pbr',
-  'indicator',
-])
-const supportedPeriods = new Set(['1d', '5d', '20d', '60d'])
-const supportedDimensions = new Set(['none', 'stock', 'group'])
-const supportedAggregations = new Set([
-  'mkt_cap_weighted',
-  'mean',
-  'sum',
-  'count',
-])
+const supportedMetrics = new Set<SupportedWidgetMetric>(['change', 'mkt_cap'])
+const supportedPeriods = new Set(
+  Object.keys({
+    '1d': true,
+    '5d': true,
+    '20d': true,
+    '60d': true,
+  } satisfies Record<components['schemas']['WidgetPeriodRequest'], true>),
+)
+const supportedDimensions = new Set(
+  Object.keys({
+    none: true,
+    stock: true,
+    group: true,
+  } satisfies Record<components['schemas']['WidgetByRequest'], true>),
+)
+const supportedAggregations = new Set(
+  Object.keys({
+    mkt_cap_weighted: true,
+    mean: true,
+    sum: true,
+    count: true,
+  } satisfies Record<components['schemas']['WidgetAggregationRequest'], true>),
+)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -59,6 +70,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isOneOf(value: unknown, values: Set<string>): value is string {
   return typeof value === 'string' && values.has(value)
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key))
 }
 
 function isDate(value: unknown): value is string {
@@ -75,6 +90,19 @@ function isDate(value: unknown): value is string {
 
 function isWidgetQuery(value: unknown): boolean {
   if (!isRecord(value)) return false
+  if (
+    !hasOnlyKeys(value, [
+      'metric',
+      'period',
+      'by',
+      'axis',
+      'indicator',
+      'universe',
+      'agg',
+    ])
+  ) {
+    return false
+  }
   if (
     !isOneOf(value['metric'], supportedMetrics) ||
     !isOneOf(value['by'], supportedDimensions)
@@ -115,6 +143,7 @@ function isWidgetDefinition(
   value: unknown,
 ): value is DashboardWidgetDefinition {
   if (!isRecord(value) || !isRecord(value['queries'])) return false
+  if (!hasOnlyKeys(value, ['queries', 'formulas', 'viz', 'time'])) return false
   if (
     Object.keys(value['queries']).length === 0 ||
     !Object.values(value['queries']).every(isWidgetQuery)
@@ -135,9 +164,11 @@ function isWidgetDefinition(
   if (!isRecord(viz)) return false
   const isSupportedViz =
     (viz['type'] === 'treemap' &&
+      hasOnlyKeys(viz, ['type', 'size', 'color']) &&
       typeof viz['size'] === 'string' &&
       typeof viz['color'] === 'string') ||
     (viz['type'] === 'toplist' &&
+      hasOnlyKeys(viz, ['type', 'value', 'order', 'limit']) &&
       typeof viz['value'] === 'string' &&
       (viz['order'] === 'asc' || viz['order'] === 'desc') &&
       typeof viz['limit'] === 'number' &&
@@ -146,9 +177,9 @@ function isWidgetDefinition(
 
   if ('time' in value) {
     const time = value['time']
-    if (!isRecord(time)) return false
+    if (!isRecord(time) || !hasOnlyKeys(time, ['as_of', 'range'])) return false
     if (time['as_of'] != null && !isDate(time['as_of'])) return false
-    if (time['range'] != null && typeof time['range'] !== 'string') return false
+    if (time['range'] != null) return false
   }
 
   return true
@@ -334,37 +365,14 @@ export function parseDashboardPreviewHash(hash: string): DashboardConfigResult {
 export function getInitialDashboardDate(
   config: DashboardConfig,
   fallbackDate: string,
-): string {
-  return (
-    config.widgets.find((widget) => isDate(widget.definition.time?.as_of))
-      ?.definition.time?.as_of ?? fallbackDate
+): string | null {
+  const dates = config.widgets.map((widget) =>
+    isDate(widget.definition.time?.as_of) ? widget.definition.time.as_of : null,
   )
-}
-
-export function getDashboardApiErrorMessage(
-  error: unknown,
-  fallback: string,
-): string {
-  if (error != null && typeof error === 'object') {
-    if ('error' in error && typeof error.error === 'string') return error.error
-    if (
-      'data' in error &&
-      error.data != null &&
-      typeof error.data === 'object' &&
-      'error' in error.data &&
-      typeof error.data.error === 'string'
-    ) {
-      return error.data.error
-    }
+  if (dates.length === 0 || dates.every((date) => date == null)) {
+    return fallbackDate
   }
-  return error instanceof Error && error.message !== ''
-    ? error.message
-    : fallback
-}
 
-export function getDashboardApiErrorStatus(error: unknown): number | null {
-  if (error == null || typeof error !== 'object' || !('status' in error)) {
-    return null
-  }
-  return typeof error.status === 'number' ? error.status : null
+  const firstDate = dates[0] ?? null
+  return dates.every((date) => date === firstDate) ? firstDate : null
 }

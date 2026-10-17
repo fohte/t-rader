@@ -1,12 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 
-function getHttpStatus(error: unknown): number | null {
-  if (typeof error !== 'object' || error === null || !('status' in error)) {
-    return null
-  }
-
-  return typeof error.status === 'number' ? error.status : null
-}
+import { getApiErrorStatus } from '#lib/api/error'
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -14,7 +8,7 @@ export function createQueryClient(): QueryClient {
       queries: {
         staleTime: 1000 * 60,
         retry: (failureCount, error) => {
-          const status = getHttpStatus(error)
+          const status = getApiErrorStatus(error)
           if (status !== null && status >= 400 && status < 500) return false
           return failureCount < 3
         },
