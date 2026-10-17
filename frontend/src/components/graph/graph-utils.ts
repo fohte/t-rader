@@ -11,6 +11,7 @@ import type {
 
 const NODE_WIDTH_BASE = 160
 export const NODE_HEIGHT = 56
+// nodeHeight は graph-node.tsx の px-3 / py-2 / text-sm / gap-1.5 と RefChip の高さを基準にする
 const NODE_HORIZONTAL_PADDING = 26
 const NODE_VERTICAL_PADDING = 18
 const NODE_LABEL_FONT_SIZE = 14

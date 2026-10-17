@@ -90,7 +90,7 @@ describe('buildDagreLayout', () => {
     expect(result.isOk()).toBe(true)
     if (!result.isOk()) return
 
-    expect(result.value.edges.map(({ data }) => data?.dagre)).toEqual([
+    expect(result.value.edges.map(({ data }) => data.dagre)).toEqual([
       {
         points: [
           { x: 160, y: 30.49425287356322 },

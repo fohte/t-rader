@@ -29,6 +29,7 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
   const dagreHeight =
     layout === 'flow' || layout === 'tree' ? nodeHeight(data) : undefined
 
+  // graph-utils.ts の nodeHeight は、この要素の padding / gap / font size を見積もる
   return (
     <div
       data-slot="graph-node"

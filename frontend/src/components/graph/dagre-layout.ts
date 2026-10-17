@@ -117,7 +117,7 @@ export function buildDagreLayout(
     return {
       ...edge,
       data: {
-        ...def.edges[index],
+        ...edge.data,
         dagre: {
           points: dagreEdge.points ?? [],
           ...(dagreEdge.x == null || dagreEdge.y == null

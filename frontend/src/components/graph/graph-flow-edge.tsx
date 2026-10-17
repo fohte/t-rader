@@ -25,7 +25,7 @@ export function GraphFlowEdgeView({
     targetY,
     targetPosition,
   })
-  const route = data?.dagre?.points
+  const route = data.dagre?.points
   const path =
     route != null && route.length > 1
       ? route
@@ -35,7 +35,7 @@ export function GraphFlowEdgeView({
           })
           .join(' ')
       : fallbackPath
-  const labelPosition = data?.dagre?.labelPosition
+  const labelPosition = data.dagre?.labelPosition
 
   return (
     <BaseEdge
