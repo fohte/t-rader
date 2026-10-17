@@ -18,6 +18,8 @@ function createHeaderRouter(initialPath: string, menuOpen = false) {
       '/paper-trading',
       '/paper-trading/$accountId',
       '/notes',
+      '/dashboards',
+      '/dashboards/$key',
       '/annotations',
       '/annotations/$annoId',
       '/runs',
@@ -102,5 +104,12 @@ export const MenuOpen: Story = {
   name: 'shows the menu open on a global settings page.',
   render: () => (
     <RouterProvider router={createHeaderRouter('/settings/rss-feeds', true)} />
+  ),
+}
+
+export const DashboardPage: Story = {
+  name: 'shows the dashboard navigation active on a saved dashboard page.',
+  render: () => (
+    <RouterProvider router={createHeaderRouter('/dashboards/sample-market')} />
   ),
 }

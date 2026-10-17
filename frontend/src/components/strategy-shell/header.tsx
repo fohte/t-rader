@@ -20,6 +20,7 @@ const MENU_LINK_ACTIVE =
 
 const MENU_ITEMS = [
   { to: '/notes', label: 'ノート', matches: ['/notes', '/annotations'] },
+  { to: '/dashboards', label: 'ダッシュボード', matches: ['/dashboards'] },
   { to: '/strategies', label: '戦略', matches: ['/strategies'] },
   {
     to: '/paper-trading',

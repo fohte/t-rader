@@ -31,6 +31,8 @@ function renderHeader(
       '/strategies/$id/settings',
       '/review',
       '/notes',
+      '/dashboards',
+      '/dashboards/$key',
       '/annotations/$annoId',
       '/paper-trading',
       '/screener',
@@ -87,6 +89,11 @@ function getExpectedMenuOutput(
     menuActive: true,
     links: [
       { label: 'ノート', href: '/notes', active: activeLabel === 'ノート' },
+      {
+        label: 'ダッシュボード',
+        href: '/dashboards',
+        active: activeLabel === 'ダッシュボード',
+      },
       { label: '戦略', href: '/strategies', active: activeLabel === '戦略' },
       {
         label: 'ペーパートレード',
@@ -268,6 +275,7 @@ describe('Header', () => {
 
     expect(getNavigationOutput(navigation)).toEqual([
       { label: 'ノート', href: '/notes', active: false },
+      { label: 'ダッシュボード', href: '/dashboards', active: false },
       { label: '戦略', href: '/strategies', active: false },
       { label: 'ペーパートレード', href: '/paper-trading', active: false },
       { label: 'スクリーナー', href: '/screener', active: false },
@@ -311,6 +319,11 @@ describe('Header', () => {
   })
 
   it.each([
+    {
+      pageName: 'ダッシュボード',
+      path: '/dashboards/sample-market',
+      activeLabel: 'ダッシュボード',
+    },
     { pageName: '戦略一覧', path: '/strategies', activeLabel: '戦略' },
     {
       pageName: '戦略ページ',
