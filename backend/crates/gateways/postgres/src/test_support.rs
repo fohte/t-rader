@@ -27,8 +27,11 @@ pub async fn create_test_pool_with_max_connections(max_connections: u32) -> sqlx
 /// テストごとに独立した rollback transaction を作る。
 pub async fn create_test_transaction() -> DatabaseHandle {
     let pool = create_test_pool().await;
-    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
-    let transaction = DatabaseHandle::from(db.begin().await.expect("begin test transaction"));
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+    let transaction = DatabaseHandle::from_transaction_with_postgres_pool(
+        db.begin().await.expect("begin test transaction"),
+        pool,
+    );
     transaction
         .execute_unprepared(
             "SELECT pg_advisory_xact_lock(hashtext('t-rader-test-database'), hashtext('test-execution'))",

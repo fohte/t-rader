@@ -10,18 +10,12 @@ use sqlx::{Connection as _, Either, PgPool};
 const LOCK_KEY: i64 = 0x7452_6164_6572_4261;
 
 pub struct PostgresUsStockBarsWriteLock {
-    pool: Option<PgPool>,
+    pool: PgPool,
 }
 
 impl PostgresUsStockBarsWriteLock {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool: Some(pool) }
-    }
-
-    pub fn from_database_handle(database: &crate::DatabaseHandle) -> Self {
-        Self {
-            pool: database.postgres_connection_pool(),
-        }
+        Self { pool }
     }
 }
 
@@ -31,13 +25,8 @@ impl UsStockBarsWriteLock for PostgresUsStockBarsWriteLock {
         &self,
         wait_timeout: Duration,
     ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
-        let Some(pool) = self.pool.as_ref() else {
-            return Err(PersistenceError::Database(
-                "Postgres bars write lock requires a PostgreSQL connection pool".to_owned(),
-            ));
-        };
-        let options = pool.connect_options();
-        let mut connection = PgConnection::connect_with(options.as_ref())
+        let options = self.pool.connect_options();
+        let connection = PgConnection::connect_with(options.as_ref())
             .await
             .map_err(database_error)?;
 
@@ -45,22 +34,10 @@ impl UsStockBarsWriteLock for PostgresUsStockBarsWriteLock {
             return self.try_acquire(connection).await;
         }
 
-        let lock_timeout = format!("{}ms", wait_timeout.as_millis().max(1));
-        if let Err(error) = sqlx::query("SELECT set_config('lock_timeout', $1, false)")
-            .bind(&lock_timeout)
-            .fetch_one(&mut connection)
-            .await
-        {
-            let message = error.to_string();
-            let _ = connection.close().await;
-            return Err(PersistenceError::Database(message));
-        }
-
         match session_lock().acquire(connection).await {
             Ok(guard) => Ok(Some(Box::new(PostgresUsStockBarsWriteLockGuard {
                 _guard: guard,
             }))),
-            Err(error) if is_lock_timeout(&error) => Ok(None),
             Err(error) => Err(database_error(error)),
         }
     }
@@ -87,17 +64,6 @@ struct PostgresUsStockBarsWriteLockGuard {
 
 impl UsStockBarsWriteLockGuard for PostgresUsStockBarsWriteLockGuard {}
 
-fn is_lock_timeout(error: &sqlx::Error) -> bool {
-    error
-        .as_database_error()
-        .and_then(sqlx::error::DatabaseError::code)
-        .is_some_and(|code| is_lock_timeout_code(&code))
-}
-
-fn is_lock_timeout_code(code: &str) -> bool {
-    code == "55P03"
-}
-
 fn session_lock() -> PgAdvisoryLock {
     PgAdvisoryLock::with_key(PgAdvisoryLockKey::BigInt(LOCK_KEY))
 }
@@ -115,14 +81,6 @@ mod tests {
     use sqlx::PgPool;
 
     use super::{LOCK_KEY, PostgresUsStockBarsWriteLock};
-
-    #[test]
-    fn recognizes_only_postgres_lock_timeout_errors() {
-        assert_eq!(
-            ["55P03", "22000", ""].map(super::is_lock_timeout_code),
-            [true, false, false],
-        );
-    }
 
     async fn wait_for_lock_waiter(pool: &PgPool) -> bool {
         for _ in 0..512 {
@@ -180,10 +138,6 @@ mod tests {
         let waiter =
             tokio::spawn(async move { waiting_lock.acquire(Duration::from_secs(30)).await });
         let queued = wait_for_lock_waiter(&pool).await;
-        assert!(
-            queued,
-            "second session should wait in PostgreSQL lock queue"
-        );
 
         drop(first);
         let second = waiter
@@ -195,7 +149,7 @@ mod tests {
         drop(second);
         let reacquired = matches!(lock.acquire(Duration::ZERO).await, Ok(Some(_)));
 
-        assert_eq!((third_blocked, reacquired), (true, true));
+        assert_eq!((queued, third_blocked, reacquired), (true, true, true));
     }
 
     #[backend_test_macros::database_test]
@@ -211,10 +165,6 @@ mod tests {
         let waiter =
             tokio::spawn(async move { waiting_lock.acquire(Duration::from_secs(30)).await });
         let queued = wait_for_lock_waiter(&pool).await;
-        assert!(
-            queued,
-            "second session should wait in PostgreSQL lock queue"
-        );
 
         waiter.abort();
         let cancelled = match waiter.await {
@@ -226,8 +176,8 @@ mod tests {
         let reacquired = matches!(lock.acquire(Duration::ZERO).await, Ok(Some(_)));
 
         assert_eq!(
-            (cancelled, first_still_holds_lock, reacquired),
-            (true, true, true)
+            (queued, cancelled, first_still_holds_lock, reacquired),
+            (true, true, true, true)
         );
     }
 }

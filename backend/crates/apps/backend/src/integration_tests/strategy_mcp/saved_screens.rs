@@ -7,11 +7,10 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::tests_common::build_server;
-use crate::services::use_cases::build_use_cases_without_agent_task_client;
 
 #[backend_test_macros::database_test]
 async fn list_saved_screens_returns_names_filters_and_sort(db: gateway_postgres::DatabaseHandle) {
-    let use_cases = build_use_cases_without_agent_task_client(db.clone());
+    let use_cases = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
     let _saved = use_cases
         .saved_screens()
         .create(SavedScreenData {

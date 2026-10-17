@@ -69,8 +69,7 @@ pub(super) async fn create_task_with_subagent_limits(
     crate::testing::agent_config::create(db, purpose.clone())
         .await
         .expect("create test agent config");
-    let use_cases =
-        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+    let use_cases = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
     use_cases
         .subagent_definitions()
         .create(
@@ -168,7 +167,7 @@ pub(super) fn build_server_with_source(
     db: impl Into<gateway_postgres::DatabaseHandle>,
     daily_bar_source: Option<SharedDailyBarSource>,
 ) -> StrategyServer {
-    let use_cases = crate::services::use_cases::build_use_cases_without_agent_task_client(db);
+    let use_cases = crate::testing::build_use_cases_without_agent_task_client_for_test(db);
     StrategyServer::new(crate::mcp::StrategyServer::new(
         crate::mcp::strategy_server_dependencies(&use_cases, daily_bar_source, None, None, None),
     ))

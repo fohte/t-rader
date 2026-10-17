@@ -15,7 +15,7 @@ mod tests {
         db: &DatabaseHandle,
     ) -> Result<GradingStats, PredictionUseCaseError> {
         let use_cases =
-            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
         use_cases.predictions().grade_due_today().await
     }
 

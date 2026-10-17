@@ -68,8 +68,7 @@ async fn stock_ref_includes_notes_for_every_member_group_without_duplicates(
     insert_note_kind(&db, "sample-review-kind", true).await;
     insert_stock(&db, "demo-code").await;
 
-    let use_cases =
-        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+    let use_cases = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
     let group_axes = use_cases.group_axes();
     let stock_groups = use_cases.stock_groups();
     for (axis_key, group_key) in [

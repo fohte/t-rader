@@ -182,6 +182,23 @@ mod tests {
 
     use super::latest_fetchable_date;
 
+    struct TestBarsWriteLockGuard;
+
+    impl crate::bars::UsStockBarsWriteLockGuard for TestBarsWriteLockGuard {}
+
+    struct TestBarsWriteLock;
+
+    #[async_trait]
+    impl crate::bars::UsStockBarsWriteLock for TestBarsWriteLock {
+        async fn acquire(
+            &self,
+            _wait_timeout: std::time::Duration,
+        ) -> Result<Option<Box<dyn crate::bars::UsStockBarsWriteLockGuard>>, PersistenceError>
+        {
+            Ok(Some(Box::new(TestBarsWriteLockGuard)))
+        }
+    }
+
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap_or_default()
     }
@@ -288,7 +305,7 @@ mod tests {
         let use_cases = BarsUseCases::new(
             shared_unit_of_work,
             repository.clone(),
-            crate::bars::test_write_lock(),
+            Arc::new(TestBarsWriteLock),
         );
         BarsFixture {
             use_cases,
@@ -602,7 +619,7 @@ mod tests {
         let use_cases = BarsUseCases::new(
             Arc::new(FakeUnitOfWork::new()),
             Arc::new(FailingBarsRepository),
-            crate::bars::test_write_lock(),
+            Arc::new(TestBarsWriteLock),
         );
         let result = use_cases
             .find_latest_prices(&["SAMPLE-ALPHA".to_string()])

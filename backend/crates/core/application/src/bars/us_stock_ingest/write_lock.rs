@@ -100,7 +100,10 @@ impl BarsUseCases {
             .await
         {
             Ok(stats) => (stats, None),
-            Err(error) => (UsStockBarsIngestStats::default(), Some(error)),
+            Err(failure) => {
+                let (stats, error) = *failure;
+                (stats, Some(error))
+            }
         };
         stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
 

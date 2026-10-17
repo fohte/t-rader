@@ -8,7 +8,6 @@ mod tests {
     use sea_orm::EntityTrait;
     use uuid::Uuid;
 
-    use crate::services::use_cases::build_use_cases_without_agent_task_client;
     use crate::testing::agent_config;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
     use core_application::agent_task_client::{
@@ -75,7 +74,8 @@ mod tests {
         )
         .await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let use_cases = build_use_cases_without_agent_task_client(db.clone());
+        let use_cases =
+            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
         let triggers = use_cases.triggers();
 
         let attempts = triggers
@@ -123,8 +123,10 @@ mod tests {
         .await;
 
         let agent_client = FakeAgentTaskClient::new();
-        let first = build_use_cases_without_agent_task_client(db.clone()).triggers();
-        let second = build_use_cases_without_agent_task_client(db.clone()).triggers();
+        let first = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+            .triggers();
+        let second = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+            .triggers();
         let _ = tokio::join!(
             first.run_cron_tick(&agent_client, DEFAULT_INTERVAL),
             second.run_cron_tick(&agent_client, DEFAULT_INTERVAL),
@@ -159,7 +161,9 @@ mod tests {
         agent_client
             .set_submit_error(AgentTaskError::Network("temporary failure".to_string()))
             .await;
-        let triggers = build_use_cases_without_agent_task_client(db.clone()).triggers();
+        let triggers =
+            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+                .triggers();
         let first_attempts = triggers
             .run_cron_tick(&agent_client, DEFAULT_INTERVAL)
             .await;
@@ -202,7 +206,9 @@ mod tests {
         .await;
 
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let triggers = build_use_cases_without_agent_task_client(db.clone()).triggers();
+        let triggers =
+            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+                .triggers();
         let attempts = triggers
             .run_cron_tick(agent_client.as_ref(), DEFAULT_INTERVAL)
             .await;
@@ -235,7 +241,8 @@ mod tests {
         let past = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
         insert_test_cron_trigger(&db, strategy_id, "* * * * *", false, Some(past), "x", None).await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let use_cases = build_use_cases_without_agent_task_client(db.clone());
+        let use_cases =
+            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
         let triggers = use_cases.triggers();
 
         let attempts = triggers
@@ -267,7 +274,8 @@ mod tests {
         )
         .await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let use_cases = build_use_cases_without_agent_task_client(db.clone());
+        let use_cases =
+            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
         let triggers = use_cases.triggers();
 
         let attempts = triggers
@@ -289,7 +297,8 @@ mod tests {
         let strategy_id = seed_strategy(&db).await;
         insert_test_hook_trigger(&db, strategy_id, "sample-hook", "x", None, true).await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let use_cases = build_use_cases_without_agent_task_client(db.clone());
+        let use_cases =
+            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
         let triggers = use_cases.triggers();
 
         let attempts = triggers

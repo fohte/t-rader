@@ -11,9 +11,6 @@ mod use_cases;
 mod write_lock;
 mod write_throttle;
 
-#[cfg(test)]
-pub(crate) use write_lock::test_write_lock;
-
 #[cfg(feature = "test-support")]
 mod fake;
 

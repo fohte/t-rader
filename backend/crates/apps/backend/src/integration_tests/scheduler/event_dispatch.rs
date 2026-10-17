@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 use tokio::sync::Notify;
 use uuid::Uuid;
 
-use crate::{services::use_cases::build_use_cases_without_agent_task_client, testing};
+use crate::testing;
 use core_application::event_dispatch::MAX_EVENT_CHAIN_DEPTH;
 
 async fn create_event(
@@ -296,7 +296,7 @@ async fn dispatches_matching_triggers_and_expands_payload(db: DatabaseHandle) {
 
     let fake = Arc::new(FakeAgentTaskClient::new());
     let dispatch =
-        crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
+        crate::testing::build_use_cases_for_test(db.clone(), fake.clone()).event_dispatch_job();
     let outcome = dispatch.enqueue_dispatch().await;
     let completed_dispatch = tokio::time::timeout(StdDuration::from_secs(2), async {
         loop {
@@ -352,7 +352,7 @@ async fn enqueue_dispatch_returns_while_agent_submission_is_blocked(db: Database
     .await;
     let fake = Arc::new(BlockingSubmitAgentTaskClient::new());
     let dispatch =
-        crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
+        crate::testing::build_use_cases_for_test(db.clone(), fake.clone()).event_dispatch_job();
 
     let enqueue_result =
         tokio::time::timeout(StdDuration::from_millis(100), dispatch.enqueue_dispatch()).await;
@@ -406,7 +406,7 @@ async fn concurrent_enqueues_share_a_single_background_dispatch(db: DatabaseHand
     .await;
 
     let fake = Arc::new(BlockingSubmitAgentTaskClient::new());
-    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), fake.clone());
+    let use_cases = crate::testing::build_use_cases_for_test(db.clone(), fake.clone());
     let first_dispatch = use_cases.event_dispatch_job();
     let first_enqueue = first_dispatch.enqueue_dispatch().await;
     let first_submission_started =
@@ -497,7 +497,7 @@ async fn dispatch_runner_accepts_new_work_after_a_dispatch_panics(db: DatabaseHa
     .await;
 
     let fake = Arc::new(PanicOnceSubmitAgentTaskClient::new());
-    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), fake.clone());
+    let use_cases = crate::testing::build_use_cases_for_test(db.clone(), fake.clone());
     let first_enqueue = use_cases.event_dispatch_job().enqueue_dispatch().await;
     let panic_started =
         tokio::time::timeout(StdDuration::from_secs(2), fake.panic_started.notified())
@@ -567,7 +567,8 @@ async fn repeated_dispatch_submits_each_event_trigger_once(db: DatabaseHandle) {
     )
     .await;
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
+    let dispatch = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+        .event_dispatch();
 
     let first = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
     let second = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
@@ -608,7 +609,7 @@ async fn dispatch_preserves_failure_events_for_event_triggered_tasks(db: Databas
     let fake = Arc::new(FakeAgentTaskClient::new());
     fake.set_submit_error(AgentTaskError::NotConfigured).await;
     let dispatch =
-        crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
+        crate::testing::build_use_cases_for_test(db.clone(), fake.clone()).event_dispatch_job();
 
     let outcome = dispatch.enqueue_dispatch().await;
     let completed_dispatch = tokio::time::timeout(StdDuration::from_secs(2), async {
@@ -698,7 +699,8 @@ async fn invalid_trigger_configuration_does_not_block_later_events(db: DatabaseH
     )
     .await;
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
+    let dispatch = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+        .event_dispatch();
 
     let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
 
@@ -764,7 +766,8 @@ async fn dispatches_at_the_limit_and_skips_events_above_it(db: DatabaseHandle) {
     )
     .await;
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
+    let dispatch = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+        .event_dispatch();
 
     let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
 
@@ -806,7 +809,8 @@ async fn deletes_events_older_than_the_retention_period(db: DatabaseHandle) {
         .await
         .expect("set old event time");
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
+    let dispatch = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+        .event_dispatch();
 
     let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
     let event_exists = event_entity::Entity::find_by_id(event_id)

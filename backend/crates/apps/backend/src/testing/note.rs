@@ -84,7 +84,7 @@ pub async fn set_test_note_version_execution_id(
 }
 
 async fn insert_test_note_with_options(db: &DatabaseHandle, options: TestNoteOptions<'_>) -> Uuid {
-    let result = crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+    let result = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
         .notes()
         .write(NoteWriteCommand {
             execution_id: options.execution_id,

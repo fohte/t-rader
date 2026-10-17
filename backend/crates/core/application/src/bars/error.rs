@@ -48,8 +48,8 @@ impl UsStockBarsIngestError {
         }
     }
 
-    pub fn into_parts(self) -> (super::types::UsStockBarsIngestResult, String) {
-        (*self.stats, self.error.to_string())
+    pub fn into_parts(self) -> (super::types::UsStockBarsIngestResult, BarsUseCaseError) {
+        (*self.stats, self.error)
     }
 }
 

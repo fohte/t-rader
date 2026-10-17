@@ -301,7 +301,7 @@ async fn notification_reconciles_again_after_an_existing_run_finishes(
     let agent_client: SharedAgentTaskClient = fake.clone();
     let lock = BlockingReconcileLock::new();
     let lock_use_cases = StrategyTaskReconcileLockUseCases::new(Arc::new(lock.clone()));
-    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
+    let use_cases = crate::testing::build_use_cases_for_test(db.clone(), agent_client.clone());
     let reconcile = use_cases.strategy_task_reconcile(lock_use_cases.clone());
     let first_reconcile = tokio::spawn(async move { reconcile.reconcile().await });
     tokio::time::timeout(Duration::from_secs(2), fake.first_get_started.notified())
@@ -374,7 +374,7 @@ async fn waiting_reconcile_releases_its_gate_after_lock_acquisition_panics(
 ) {
     let lock = Arc::new(PanicOnceReconcileLock(AtomicUsize::new(0)));
     let lock_use_cases = StrategyTaskReconcileLockUseCases::new(lock.clone());
-    let use_cases = crate::services::use_cases::build_use_cases(
+    let use_cases = crate::testing::build_use_cases_for_test(
         db,
         Arc::new(ReconcileAfterNotificationAgentTaskClient::new()),
     );

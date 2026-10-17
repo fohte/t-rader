@@ -46,15 +46,34 @@ impl BarsUseCases {
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use std::sync::Arc;
 
     use chrono::{DateTime, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
 
+    use crate::persistence::PersistenceError;
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
     use super::super::{BarsUseCases, FakeBarsRepository};
+
+    struct TestBarsWriteLockGuard;
+
+    impl crate::bars::UsStockBarsWriteLockGuard for TestBarsWriteLockGuard {}
+
+    struct TestBarsWriteLock;
+
+    #[async_trait]
+    impl crate::bars::UsStockBarsWriteLock for TestBarsWriteLock {
+        async fn acquire(
+            &self,
+            _wait_timeout: std::time::Duration,
+        ) -> Result<Option<Box<dyn crate::bars::UsStockBarsWriteLockGuard>>, PersistenceError>
+        {
+            Ok(Some(Box::new(TestBarsWriteLockGuard)))
+        }
+    }
 
     fn date(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -92,7 +111,7 @@ mod tests {
         let use_cases = BarsUseCases::new(
             shared_unit_of_work,
             repository.clone(),
-            crate::bars::test_write_lock(),
+            Arc::new(TestBarsWriteLock),
         );
 
         let result = use_cases

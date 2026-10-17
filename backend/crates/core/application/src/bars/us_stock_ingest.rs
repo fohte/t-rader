@@ -135,14 +135,18 @@ impl BarsUseCases {
         now: DateTime<Utc>,
         timeframe: UsStockBarTimeframe,
         budget: RequestBudget,
-    ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
+    ) -> Result<UsStockBarsIngestStats, Box<(UsStockBarsIngestStats, BarsUseCaseError)>> {
         let targets = match timeframe {
-            UsStockBarTimeframe::Daily | UsStockBarTimeframe::Hourly => {
-                self.repository.find_us_stock_daily_bar_targets().await?
-            }
-            UsStockBarTimeframe::Minute => {
-                self.repository.find_us_stock_minute_bar_targets().await?
-            }
+            UsStockBarTimeframe::Daily | UsStockBarTimeframe::Hourly => self
+                .repository
+                .find_us_stock_daily_bar_targets()
+                .await
+                .map_err(|error| Box::new((UsStockBarsIngestStats::default(), error.into())))?,
+            UsStockBarTimeframe::Minute => self
+                .repository
+                .find_us_stock_minute_bar_targets()
+                .await
+                .map_err(|error| Box::new((UsStockBarsIngestStats::default(), error.into())))?,
         };
         let mut context = IngestContext {
             budget,
@@ -163,7 +167,8 @@ impl BarsUseCases {
                 },
                 &mut context,
             )
-            .await?;
+            .await
+            .map_err(|error| Box::new((context.stats.clone(), error)))?;
 
         let completed = if completed && timeframe == UsStockBarTimeframe::Daily {
             self.ingest_split_history(
@@ -178,7 +183,8 @@ impl BarsUseCases {
                 },
                 &mut context,
             )
-            .await?
+            .await
+            .map_err(|error| Box::new((context.stats.clone(), error)))?
         } else {
             completed
         };
@@ -417,10 +423,10 @@ mod tests {
 
     use crate::bars::clock::BarsIngestClock;
     use crate::bars::{
-        BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock, SkippedUsStockInstrument,
-        UsStockBarPage, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
-        UsStockBarsIngestStats, UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockSplit,
-        UsStockSplitBatch, UsStockSplitQuery,
+        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock,
+        SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
+        UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsWriteLock,
+        UsStockBarsWriteLockGuard, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
     };
     use crate::ingest_run_log::{IngestRunLog, SharedIngestRunLog};
     use crate::persistence::PersistenceError;
@@ -775,6 +781,7 @@ mod tests {
         skipped_instruments: Vec<String>,
         rejected_split_instruments: Vec<String>,
         fetch_error: Option<String>,
+        fetch_error_at_call: Option<usize>,
         deadline_exceeded_at_call: Option<usize>,
         split_deadline_exceeded: bool,
         split_deadline_error: bool,
@@ -814,7 +821,11 @@ mod tests {
             if self.deadline_exceeded_at_call == Some(call_count) {
                 return Err(UsStockBarSourceError::RunDeadlineExceeded);
             }
-            if let Some(message) = &self.fetch_error {
+            if let Some(message) = &self.fetch_error
+                && self
+                    .fetch_error_at_call
+                    .is_none_or(|failed_call| failed_call == call_count)
+            {
                 return Err(UsStockBarSourceError::Failed(message.clone()));
             }
             if query
@@ -1638,16 +1649,30 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn preserves_lock_wait_stats_and_holds_the_guard_when_ingestion_fails(
+    async fn preserves_partial_stats_and_holds_the_guard_when_ingestion_fails(
         mut harness: Harness,
     ) {
         let wait = Duration::from_millis(1_500);
+        let instrument_id = "US:DEMO-INGEST-FAILURE";
+        let first_bar = bar(
+            instrument_id,
+            Timeframe::Daily,
+            date("2040-01-02T11:58:00Z"),
+        );
+        let second_bar = bar(
+            instrument_id,
+            Timeframe::Daily,
+            date("2040-01-02T11:59:00Z"),
+        );
         harness
             .repository
-            .seed_us_stock_targets(vec!["US:DEMO-INGEST-FAILURE".to_owned()])
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
             .await;
         harness.write_lock.wait_before_acquire(wait);
+        *harness.source.bars.lock().await = vec![first_bar.clone(), second_bar];
+        harness.source.page_size = Some(1);
         harness.source.fetch_error = Some("synthetic source failure".to_owned());
+        harness.source.fetch_error_at_call = Some(2);
 
         let failure = harness
             .use_cases
@@ -1655,11 +1680,17 @@ mod tests {
             .await
             .expect_err("source error is returned with failure stats");
         let (result, error) = failure.into_parts();
+        let source_failure = matches!(
+            error,
+            BarsUseCaseError::UsStockBarSource(UsStockBarSourceError::Failed(message))
+                if message == "synthetic source failure"
+        );
         let actual_before_release = (
             result.stats.clone(),
-            error,
+            source_failure,
             harness.write_lock.guard_released(),
             harness.clock.sleeps(),
+            harness.repository.bars.lock().await.clone(),
         );
         drop(result);
         let released_after_stats_drop = harness.write_lock.guard_released();
@@ -1669,12 +1700,16 @@ mod tests {
             (
                 (
                     UsStockBarsIngestStats {
+                        symbols_attempted: 1,
+                        requests_attempted: 2,
+                        daily_bars_upserted: 1,
                         write_lock_wait_ms: 1_500,
                         ..UsStockBarsIngestStats::default()
                     },
-                    "US stock bar source error: synthetic source failure".to_owned(),
+                    true,
                     false,
                     vec![wait],
+                    vec![first_bar],
                 ),
                 true,
             ),

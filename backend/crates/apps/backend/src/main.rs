@@ -259,7 +259,10 @@ async fn main() -> Result<(), StartupError> {
             StartupError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
     let use_cases =
-        backend::services::use_cases::build_use_cases(db.clone(), agent_task_client.clone());
+        backend::services::use_cases::build_use_cases(db.clone(), agent_task_client.clone())
+            .map_err(|error| {
+                StartupError::Config(format!("failed to initialize use cases: {error}"))
+            })?;
     let strategy_task_reconcile =
         use_cases.strategy_task_reconcile(StrategyTaskReconcileLockUseCases::new(Arc::new(
             PostgresStrategyTaskReconcileLock::new(db.get_postgres_connection_pool().clone()),
