@@ -4432,9 +4432,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-macros"
-version = "2.0.4"
+version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91fa8c81c20fc8cfe78d22d9a2721ca5ef151dc4a8a7b372de218aaba33733fa"
+checksum = "e24c82fc1e76c014dffe5ecdac8f654da73161d703a16ea13414581e07459c83"
 dependencies = [
  "heck 0.5.0",
  "itertools",
