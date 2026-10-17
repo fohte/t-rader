@@ -288,9 +288,21 @@ impl BarsRepository for PostgresBarsRepository {
             .map_err(repository_error)
     }
 
+    async fn find_us_stock_minute_bar_instruments(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError> {
+        us_stock_minute_bars_downsample::find_minute_bar_instruments(&self.db, from, until, cutoff)
+            .await
+            .map_err(repository_error)
+    }
+
     async fn downsample_us_stock_minute_bar_range(
         &self,
         transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
         from: DateTime<Utc>,
         until: DateTime<Utc>,
         cutoff: DateTime<Utc>,
@@ -298,6 +310,7 @@ impl BarsRepository for PostgresBarsRepository {
         let transaction = transaction_ref(transaction)?;
         us_stock_minute_bars_downsample::downsample_minute_bar_range(
             transaction,
+            instrument_id,
             from,
             until,
             cutoff,
@@ -488,10 +501,10 @@ mod tests {
         DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc,
     };
     use core_application::bars::{
-        BarsQuery, BarsRepository, DailyBarAdjustmentFactor, UsStockBarTarget,
-        UsStockMinuteBarsDownsampleStats,
+        BarsQuery, BarsRepository, BarsUseCases, DailyBarAdjustmentFactor, UsStockBarTarget,
+        UsStockMinuteBarsDownsampleStats, us_stock_hourly_history_cutoff,
     };
-    use core_application::unit_of_work::UnitOfWork;
+    use core_application::unit_of_work::{SharedUnitOfWork, UnitOfWork};
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
     use sea_orm::ActiveValue::{NotSet, Set};
@@ -1150,10 +1163,15 @@ mod tests {
             .find_earliest_us_stock_minute_bar_before(cutoff)
             .await
             .expect("find earliest old US minute bar");
+        let instrument_ids = repository
+            .find_us_stock_minute_bar_instruments(timestamp(6, 30), timestamp(10, 0), cutoff)
+            .await
+            .expect("find old US minute bar instruments");
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         let stats = repository
             .downsample_us_stock_minute_bar_range(
                 &transaction,
+                &us_instrument_id,
                 timestamp(6, 30),
                 timestamp(10, 0),
                 cutoff,
@@ -1200,9 +1218,17 @@ mod tests {
         .collect::<Vec<Bar>>();
 
         assert_eq!(
-            (earliest, stats, hourly_bars, us_minutes, foreign_minutes),
+            (
+                earliest,
+                instrument_ids,
+                stats,
+                hourly_bars,
+                us_minutes,
+                foreign_minutes,
+            ),
             (
                 Some(timestamp(6, 30)),
+                vec![us_instrument_id.clone()],
                 UsStockMinuteBarsDownsampleStats {
                     hourly_bars_inserted: 1,
                     minute_bars_deleted: 6,
@@ -1215,6 +1241,104 @@ mod tests {
                 ],
                 vec![expected_latest_minute],
                 vec![foreign_minute],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn downsampling_compressed_chunks_stays_under_the_per_transaction_limit(
+        db: DatabaseHandle,
+    ) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let instrument_ids = [
+            format!("US:DEMO-LIMIT-ALPHA-{suffix}"),
+            format!("US:DEMO-LIMIT-BETA-{suffix}"),
+        ];
+        for instrument_id in &instrument_ids {
+            instruments::Entity::insert(instruments::ActiveModel {
+                id: Set(instrument_id.clone()),
+                name: Set(instrument_id.clone()),
+                market: Set("US".to_owned()),
+                sector: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert instrument");
+        }
+
+        let now = Utc::now();
+        let cutoff = us_stock_hourly_history_cutoff(now);
+        let minute_timestamp = cutoff - ChronoDuration::days(14);
+        let repository = PostgresBarsRepository::new(db.clone());
+        bar_queries::upsert_bars(
+            &db,
+            instrument_ids
+                .iter()
+                .map(|instrument_id| test_bar(instrument_id, Timeframe::Minute, minute_timestamp))
+                .collect(),
+        )
+        .await
+        .expect("insert old minute bars");
+        repository
+            .compress_bars_older_than_policy(now)
+            .await
+            .expect("compress old bars");
+
+        let chunk_status = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT is_compressed
+                FROM timescaledb_information.chunks
+                WHERE hypertable_schema = current_schema()
+                  AND hypertable_name = 'bars'
+                  AND range_start <= $1
+                  AND range_end > $1"#,
+                [minute_timestamp.fixed_offset().into()],
+            ))
+            .await
+            .expect("read chunk compression status")
+            .expect("compressed chunk status row");
+        let chunk_status = CompressedChunkStatus::from_query_result(&chunk_status, "")
+            .expect("decode chunk compression status");
+        db.execute_unprepared(
+            "SET LOCAL timescaledb.max_tuples_decompressed_per_dml_transaction = 1",
+        )
+        .await
+        .expect("limit tuples decompressed per transaction");
+
+        let unit_of_work: SharedUnitOfWork =
+            std::sync::Arc::new(PostgresUnitOfWork::new(db.clone()));
+        let repository: core_application::bars::SharedBarsRepository =
+            std::sync::Arc::new(repository);
+        let result = BarsUseCases::new(unit_of_work, repository.clone())
+            .downsample_old_us_stock_minute_bars(now)
+            .await
+            .map_err(|_| ());
+        let mut remaining_minutes = Vec::new();
+        for instrument_id in &instrument_ids {
+            remaining_minutes.push(
+                repository
+                    .find_bars(BarsQuery {
+                        instrument_id: instrument_id.clone(),
+                        timeframe: "1m".to_owned(),
+                        from: None,
+                        to: None,
+                    })
+                    .await
+                    .expect("read remaining minute bars")
+                    .len(),
+            );
+        }
+
+        assert_eq!(
+            (chunk_status.is_compressed, result, remaining_minutes),
+            (
+                true,
+                Ok(UsStockMinuteBarsDownsampleStats {
+                    hourly_bars_inserted: 2,
+                    minute_bars_deleted: 2,
+                }),
+                vec![0, 0],
             ),
         );
     }
@@ -1263,6 +1387,7 @@ mod tests {
         let stats = repository
             .downsample_us_stock_minute_bar_range(
                 &transaction,
+                &instrument_id,
                 timestamp(10, 0),
                 timestamp(11, 0),
                 cutoff,

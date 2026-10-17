@@ -28,6 +28,7 @@ pub struct FakeBarsRepository {
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
+    pub minute_bar_downsample_instruments: Mutex<Vec<String>>,
     pub minute_bar_downsample_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub minute_bar_downsample_cutoffs: Mutex<Vec<DateTime<Utc>>>,
     hourly_upsert_error: Mutex<Option<String>>,
@@ -210,14 +211,44 @@ impl BarsRepository for FakeBarsRepository {
             .min())
     }
 
+    async fn find_us_stock_minute_bar_instruments(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError> {
+        let mut instrument_ids = self
+            .bars
+            .lock()
+            .await
+            .iter()
+            .filter(|bar| {
+                bar.instrument_id.starts_with("US:")
+                    && bar.timeframe == Timeframe::Minute
+                    && bar.timestamp >= from
+                    && bar.timestamp < until
+                    && bar.timestamp < cutoff
+            })
+            .map(|bar| bar.instrument_id.clone())
+            .collect::<Vec<_>>();
+        instrument_ids.sort();
+        instrument_ids.dedup();
+        Ok(instrument_ids)
+    }
+
     async fn downsample_us_stock_minute_bar_range(
         &self,
         transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
         from: DateTime<Utc>,
         until: DateTime<Utc>,
         cutoff: DateTime<Utc>,
     ) -> Result<UsStockMinuteBarsDownsampleStats, BarsRepositoryError> {
         self.record_transaction(transaction).await?;
+        self.minute_bar_downsample_instruments
+            .lock()
+            .await
+            .push(instrument_id.to_owned());
         self.minute_bar_downsample_ranges
             .lock()
             .await

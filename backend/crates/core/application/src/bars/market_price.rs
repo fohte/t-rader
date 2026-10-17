@@ -315,9 +315,19 @@ mod tests {
             Err(database_error())
         }
 
+        async fn find_us_stock_minute_bar_instruments(
+            &self,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+        ) -> Result<Vec<String>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
         async fn downsample_us_stock_minute_bar_range(
             &self,
             _: &UnitOfWorkTransaction,
+            _: &str,
             _: DateTime<Utc>,
             _: DateTime<Utc>,
             _: DateTime<Utc>,

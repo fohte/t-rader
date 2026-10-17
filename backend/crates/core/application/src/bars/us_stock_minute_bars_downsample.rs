@@ -28,15 +28,27 @@ impl BarsUseCases {
             let batch_until = batch_from
                 .checked_add_signed(Duration::days(DOWNSAMPLE_BATCH_DAYS))
                 .unwrap_or(cutoff);
-            let transaction = self.unit_of_work.begin().await?;
-            let batch_stats = self
+            let instrument_ids = self
                 .repository
-                .downsample_us_stock_minute_bar_range(&transaction, batch_from, batch_until, cutoff)
+                .find_us_stock_minute_bar_instruments(batch_from, batch_until, cutoff)
                 .await?;
-            self.unit_of_work.commit(transaction).await?;
+            for instrument_id in instrument_ids {
+                let transaction = self.unit_of_work.begin().await?;
+                let batch_stats = self
+                    .repository
+                    .downsample_us_stock_minute_bar_range(
+                        &transaction,
+                        &instrument_id,
+                        batch_from,
+                        batch_until,
+                        cutoff,
+                    )
+                    .await?;
+                self.unit_of_work.commit(transaction).await?;
 
-            stats.hourly_bars_inserted += batch_stats.hourly_bars_inserted;
-            stats.minute_bars_deleted += batch_stats.minute_bars_deleted;
+                stats.hourly_bars_inserted += batch_stats.hourly_bars_inserted;
+                stats.minute_bars_deleted += batch_stats.minute_bars_deleted;
+            }
             batch_from = batch_until;
         }
 
@@ -83,6 +95,7 @@ mod tests {
         repository
             .seed_bars(vec![
                 minute_bar("US:DEMO-ALPHA", date("2038-12-20T03:05:00Z")),
+                minute_bar("US:DEMO-BETA", date("2038-12-21T03:05:00Z")),
                 minute_bar("US:DEMO-ALPHA", date("2038-12-29T10:05:00Z")),
                 minute_bar("US:DEMO-ALPHA", date("2039-01-01T12:05:00Z")),
                 minute_bar("JP-DEMO", date("2038-12-20T03:05:00Z")),
@@ -94,26 +107,51 @@ mod tests {
         let result = use_cases
             .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"))
             .await;
+        let downsample_instruments = repository
+            .minute_bar_downsample_instruments
+            .lock()
+            .await
+            .clone();
+        let downsample_ranges = repository.minute_bar_downsample_ranges.lock().await.clone();
+        let cutoffs = repository
+            .minute_bar_downsample_cutoffs
+            .lock()
+            .await
+            .clone();
+        let write_transaction_ids = repository.write_transaction_ids.lock().await.clone();
+        let begun = unit_of_work.begun.lock().await.clone();
+        let committed = unit_of_work.committed.lock().await.clone();
 
         assert_eq!(
             (
                 result.map_err(|_| ()),
-                repository.minute_bar_downsample_ranges.lock().await.clone(),
-                repository
-                    .minute_bar_downsample_cutoffs
-                    .lock()
-                    .await
-                    .clone(),
-                unit_of_work.committed.lock().await.len(),
+                downsample_instruments,
+                downsample_ranges,
+                cutoffs,
+                begun.len(),
+                write_transaction_ids == begun,
+                committed == begun,
             ),
             (
                 Ok(Default::default()),
                 vec![
+                    "US:DEMO-ALPHA".to_owned(),
+                    "US:DEMO-BETA".to_owned(),
+                    "US:DEMO-ALPHA".to_owned(),
+                ],
+                vec![
+                    (date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z"),),
                     (date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z"),),
                     (date("2038-12-27T03:00:00Z"), date("2039-01-03T03:00:00Z"),),
                 ],
-                vec![date("2039-01-01T12:00:00Z"), date("2039-01-01T12:00:00Z"),],
-                2,
+                vec![
+                    date("2039-01-01T12:00:00Z"),
+                    date("2039-01-01T12:00:00Z"),
+                    date("2039-01-01T12:00:00Z"),
+                ],
+                3,
+                true,
+                true,
             ),
         );
     }
