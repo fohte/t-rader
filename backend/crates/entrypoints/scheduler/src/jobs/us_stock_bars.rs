@@ -42,7 +42,7 @@ impl super::SchedulerJob for UsStockBarsIngest {
                 |state, run_id| async move {
                     let bars = state
                         .dependencies
-                        .bars
+                        .us_stock_bars_ingest
                         .for_ingest_run(run_id, state.dependencies.ingest_run_log.clone());
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
@@ -82,7 +82,7 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
                 |state, run_id| async move {
                     let bars = state
                         .dependencies
-                        .bars
+                        .us_stock_bars_ingest
                         .for_ingest_run(run_id, state.dependencies.ingest_run_log.clone());
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
@@ -122,7 +122,7 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
                 |state, run_id| async move {
                     let bars = state
                         .dependencies
-                        .bars
+                        .us_stock_bars_ingest
                         .for_ingest_run(run_id, state.dependencies.ingest_run_log.clone());
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,

@@ -34,6 +34,7 @@ impl UsStockBarsWriteLock for PostgresUsStockBarsWriteLock {
             return self.try_acquire(connection).await;
         }
 
+        // セッション advisory lock は専用接続が閉じると PostgreSQL が解放する。
         match session_lock().acquire(connection).await {
             Ok(guard) => Ok(Some(Box::new(PostgresUsStockBarsWriteLockGuard {
                 _guard: guard,
@@ -104,6 +105,27 @@ mod tests {
         false
     }
 
+    async fn wait_for_lock_release(pool: &PgPool) -> bool {
+        for _ in 0..512 {
+            let held = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS (SELECT 1 FROM pg_locks \
+                 WHERE locktype = 'advisory' \
+                   AND database = (SELECT oid FROM pg_database WHERE datname = current_database()) \
+                   AND objsubid = 1 \
+                   AND ((classid::bigint << 32) | objid::bigint) = $1)",
+            )
+            .bind(LOCK_KEY)
+            .fetch_one(pool)
+            .await
+            .expect("query advisory lock state");
+            if !held {
+                return true;
+            }
+            tokio::task::yield_now().await;
+        }
+        false
+    }
+
     #[backend_test_macros::database_test]
     async fn session_advisory_lock_excludes_other_sessions_and_disconnect_releases_it(
         _db: crate::DatabaseHandle,
@@ -114,12 +136,13 @@ mod tests {
         let first_acquired = matches!(&first, Ok(Some(_)));
         let second_blocked = matches!(lock.acquire(Duration::ZERO).await, Ok(None));
         drop(first);
+        let released = wait_for_lock_release(&lock.pool).await;
         let third = lock.acquire(Duration::from_secs(5)).await;
         let third_acquired = matches!(&third, Ok(Some(_)));
 
         assert_eq!(
-            (first_acquired, second_blocked, third_acquired),
-            (true, true, true),
+            (first_acquired, second_blocked, released, third_acquired),
+            (true, true, true, true),
         );
     }
 
@@ -147,9 +170,13 @@ mod tests {
             .expect("waiting session gets the released lock");
         let third_blocked = matches!(lock.acquire(Duration::ZERO).await, Ok(None));
         drop(second);
+        let released = wait_for_lock_release(&pool).await;
         let reacquired = matches!(lock.acquire(Duration::ZERO).await, Ok(Some(_)));
 
-        assert_eq!((queued, third_blocked, reacquired), (true, true, true));
+        assert_eq!(
+            (queued, third_blocked, released, reacquired),
+            (true, true, true, true)
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -173,11 +200,18 @@ mod tests {
         };
         let first_still_holds_lock = matches!(lock.acquire(Duration::ZERO).await, Ok(None));
         drop(first);
+        let released = wait_for_lock_release(&pool).await;
         let reacquired = matches!(lock.acquire(Duration::ZERO).await, Ok(Some(_)));
 
         assert_eq!(
-            (queued, cancelled, first_still_holds_lock, reacquired),
-            (true, true, true, true)
+            (
+                queued,
+                cancelled,
+                first_still_holds_lock,
+                released,
+                reacquired
+            ),
+            (true, true, true, true, true)
         );
     }
 }

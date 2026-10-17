@@ -38,8 +38,7 @@ pub(super) async fn backfill(
         Arc::new(TwseClient::new(redis_url).map_err(|error| {
             StartupError::Config(format!("failed to initialize TWSE client: {error}"))
         })?);
-    let use_cases = backend::services::use_cases::build_use_cases_without_agent_task_client(db)
-        .map_err(StartupError::Config)?;
+    let use_cases = backend::services::use_cases::build_use_cases_without_agent_task_client(db);
     let result = use_cases
         .indicator_observations()
         .ingest_batch(source.as_ref(), TWSE_SERIES, Some(start), today)

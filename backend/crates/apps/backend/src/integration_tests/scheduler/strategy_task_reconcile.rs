@@ -8,7 +8,7 @@ pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
 where
     C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
 {
-    let use_cases = crate::testing::build_use_cases_for_test(db.clone(), agent_client.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
     let reconcile =
         use_cases.strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
     match reconcile.reconcile().await {
@@ -526,7 +526,7 @@ mod tests {
         )
         .await;
         let agent_client: SharedAgentTaskClient = fake;
-        let use_cases = crate::testing::build_use_cases_for_test(db.clone(), agent_client);
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client);
         let reconcile = use_cases.strategy_task_reconcile(
             crate::testing::test_strategy_task_reconcile_lock_unavailable(),
         );
@@ -572,7 +572,7 @@ mod tests {
             fake,
             failing_task_id: "synthetic failing task".to_string(),
         });
-        let reconcile = crate::testing::build_use_cases_for_test(db.clone(), agent_client)
+        let reconcile = crate::services::use_cases::build_use_cases(db.clone(), agent_client)
             .strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
 
         let result = reconcile.reconcile().await;
@@ -599,16 +599,17 @@ mod tests {
         let fake = FakeAgentTaskClient::new();
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
 
-        let result = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
-            .strategy_tasks()
-            .submit_task(
-                &fake,
-                strategy_id,
-                "sample prompt",
-                TaskSource::Review,
-                Some("demo-purpose".to_string()),
-            )
-            .await;
+        let result =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .submit_task(
+                    &fake,
+                    strategy_id,
+                    "sample prompt",
+                    TaskSource::Review,
+                    Some("demo-purpose".to_string()),
+                )
+                .await;
         let row = strategy_task::Entity::find()
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
             .one(&db)
@@ -662,10 +663,11 @@ mod tests {
         let fake = FakeAgentTaskClient::new();
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
 
-        let result = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
-            .strategy_tasks()
-            .resume(&fake, task_id)
-            .await;
+        let result =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .resume(&fake, task_id)
+                .await;
         let row = fetch_task(&db, task_id).await;
         let events = fetch_events(&db, &["strategy_task.failed"]).await;
 
@@ -1398,7 +1400,7 @@ mod tests {
         )
         .await;
         let updated =
-            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
                 .strategy_tasks()
                 .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
                 .await
@@ -1505,7 +1507,7 @@ mod tests {
         )
         .await;
         let updated =
-            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
                 .strategy_tasks()
                 .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
                 .await
@@ -1922,7 +1924,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let strategy_tasks =
-            crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
                 .strategy_tasks();
         let client = Arc::new(BarrierAgentTaskClient {
             barrier: tokio::sync::Barrier::new(2),

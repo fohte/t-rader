@@ -25,7 +25,7 @@ pub use us_stock_source::{
     SharedUsStockBarSource, SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery,
     UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
 };
-pub use use_cases::BarsUseCases;
+pub use use_cases::{BarsUseCases, UsStockBarsIngestUseCases};
 pub use write_lock::{SharedUsStockBarsWriteLock, UsStockBarsWriteLock, UsStockBarsWriteLockGuard};
 
 use chrono::{DateTime, Months, Timelike, Utc};

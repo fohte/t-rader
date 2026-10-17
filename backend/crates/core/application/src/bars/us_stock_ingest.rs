@@ -9,7 +9,7 @@ use super::us_stock_hourly_history_cutoff;
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
-use super::use_cases::BarsUseCases;
+use super::use_cases::UsStockBarsIngestUseCases;
 use super::write_throttle::WriteThrottle;
 use request_budget::RequestBudget;
 
@@ -128,7 +128,7 @@ impl UsStockBarTimeframe {
     }
 }
 
-impl BarsUseCases {
+impl UsStockBarsIngestUseCases {
     async fn ingest_us_stock_bars_for_timeframe(
         &self,
         source: &dyn UsStockBarSource,
@@ -425,8 +425,9 @@ mod tests {
     use crate::bars::{
         BarsUseCaseError, BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock,
         SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
-        UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsWriteLock,
-        UsStockBarsWriteLockGuard, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
+        UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsIngestUseCases,
+        UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockSplit, UsStockSplitBatch,
+        UsStockSplitQuery,
     };
     use crate::ingest_run_log::{IngestRunLog, SharedIngestRunLog};
     use crate::persistence::PersistenceError;
@@ -731,7 +732,7 @@ mod tests {
     }
 
     struct Harness {
-        use_cases: BarsUseCases,
+        use_cases: UsStockBarsIngestUseCases,
         repository: Arc<FakeBarsRepository>,
         source: FakeSource,
         clock: Arc<TestClock>,
@@ -752,11 +753,13 @@ mod tests {
         let unit_of_work = Arc::new(TestUnitOfWork::new(clock.clone(), events.clone()));
         let unit_of_work_shared: SharedUnitOfWork = unit_of_work.clone();
         Harness {
-            use_cases: BarsUseCases::with_clock(
-                unit_of_work_shared,
-                repository_shared_trait,
+            use_cases: UsStockBarsIngestUseCases::new(
+                BarsUseCases::with_clock(
+                    unit_of_work_shared,
+                    repository_shared_trait,
+                    clock.clone(),
+                ),
                 write_lock_shared,
-                clock.clone(),
             ),
             repository,
             source: FakeSource::default(),

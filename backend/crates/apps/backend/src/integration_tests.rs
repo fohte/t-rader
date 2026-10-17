@@ -48,7 +48,7 @@ async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
         .await
         .expect("insert test agent_config");
 
-    let use_cases = crate::testing::build_use_cases_for_test(db.clone(), agent_client.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
     let mgmt = MgmtServer::new(crate::mcp::mgmt_dependencies(
         &use_cases,
         agent_client.clone(),
@@ -83,7 +83,7 @@ async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
         None,
     )
     .await;
-    let use_cases = crate::testing::build_use_cases_for_test(db.clone(), agent_client.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
     let attempts = use_cases
         .triggers()
         .run_cron_tick(agent_client.as_ref(), Duration::from_secs(60))
@@ -226,7 +226,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_scheduler_recon
     )
     .await;
 
-    let reconcile = crate::testing::build_use_cases_for_test(db.clone(), agent_client.clone())
+    let reconcile = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone())
         .strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
     let updated = reconcile.reconcile().await;
     assert_eq!(updated, Ok(1));

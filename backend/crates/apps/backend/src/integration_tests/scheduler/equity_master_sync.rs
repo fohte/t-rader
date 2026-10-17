@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::services::use_cases::build_use_cases_without_agent_task_client;
     use chrono::Utc;
     use core_application::equity_master::EquityMasterSyncStats as SyncStats;
     use gateway_jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
@@ -44,7 +45,7 @@ mod tests {
             .ok()
             .await;
 
-        let stats = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+        let stats = build_use_cases_without_agent_task_client(db.clone())
             .equity_master()
             .sync(&client)
             .await
@@ -107,7 +108,7 @@ mod tests {
             .ok()
             .await;
 
-        crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+        build_use_cases_without_agent_task_client(db.clone())
             .equity_master()
             .sync(&client)
             .await
@@ -151,7 +152,7 @@ mod tests {
 
         mock.equities_master().entries(vec![]).ok().await;
 
-        let stats = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone())
+        let stats = build_use_cases_without_agent_task_client(db.clone())
             .equity_master()
             .sync(&client)
             .await

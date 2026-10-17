@@ -9,6 +9,8 @@ use gateway_postgres::entities::{group_axis, instruments, stock};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
+use crate::services::use_cases::build_use_cases_without_agent_task_client;
+
 struct FixedUsStockMasterSource(Vec<UsStockMasterEntry>);
 
 #[async_trait]
@@ -32,7 +34,7 @@ fn stock_entry(code: &str, name: &str, exchange: &str) -> UsStockMasterEntry {
 async fn upserts_registered_stocks_and_preserves_stocks_removed_from_the_list(
     db: gateway_postgres::DatabaseHandle,
 ) {
-    let use_cases = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
+    let use_cases = build_use_cases_without_agent_task_client(db.clone());
     for (code, name) in [("QZ7", "登録時の名前"), ("QZ8", "一覧から消えた名前")] {
         use_cases
             .stock_registration()
@@ -125,7 +127,7 @@ async fn upserts_registered_stocks_and_preserves_stocks_removed_from_the_list(
 async fn synced_stocks_can_be_referenced_and_added_to_a_group_without_registration(
     db: gateway_postgres::DatabaseHandle,
 ) {
-    let use_cases = crate::testing::build_use_cases_without_agent_task_client_for_test(db.clone());
+    let use_cases = build_use_cases_without_agent_task_client(db.clone());
     let source = FixedUsStockMasterSource(vec![stock_entry(
         "QZ9",
         "未登録の架空銘柄",

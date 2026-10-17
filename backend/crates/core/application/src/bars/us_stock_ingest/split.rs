@@ -8,14 +8,14 @@ use super::super::types::{BarsQuery, UsStockBarTarget, UsStockBarsIngestStats};
 use super::super::us_stock_source::{
     UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitQuery,
 };
-use super::super::use_cases::BarsUseCases;
+use super::super::use_cases::UsStockBarsIngestUseCases;
 use super::{
     BatchIngestContext, IngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST,
     UsStockBarRange, UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument,
     split_rejected_batch,
 };
 
-impl BarsUseCases {
+impl UsStockBarsIngestUseCases {
     pub(super) async fn fetch_batch_pages(
         &self,
         source: &dyn UsStockBarSource,

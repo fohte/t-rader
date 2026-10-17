@@ -46,34 +46,15 @@ impl BarsUseCases {
 
 #[cfg(test)]
 mod tests {
-    use async_trait::async_trait;
     use std::sync::Arc;
 
     use chrono::{DateTime, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
 
-    use crate::persistence::PersistenceError;
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
     use super::super::{BarsUseCases, FakeBarsRepository};
-
-    struct TestBarsWriteLockGuard;
-
-    impl crate::bars::UsStockBarsWriteLockGuard for TestBarsWriteLockGuard {}
-
-    struct TestBarsWriteLock;
-
-    #[async_trait]
-    impl crate::bars::UsStockBarsWriteLock for TestBarsWriteLock {
-        async fn acquire(
-            &self,
-            _wait_timeout: std::time::Duration,
-        ) -> Result<Option<Box<dyn crate::bars::UsStockBarsWriteLockGuard>>, PersistenceError>
-        {
-            Ok(Some(Box::new(TestBarsWriteLockGuard)))
-        }
-    }
 
     fn date(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -108,11 +89,7 @@ mod tests {
             ])
             .await;
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
-        let use_cases = BarsUseCases::new(
-            shared_unit_of_work,
-            repository.clone(),
-            Arc::new(TestBarsWriteLock),
-        );
+        let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
 
         let result = use_cases
             .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"))

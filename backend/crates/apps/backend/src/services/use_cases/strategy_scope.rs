@@ -15,6 +15,7 @@ impl UseCases {
 
 #[cfg(test)]
 mod tests {
+    use crate::services::use_cases::build_use_cases_without_agent_task_client;
     use crate::testing::insert_test_strategy;
 
     #[backend_test_macros::database_test]
@@ -22,7 +23,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let existing_id = insert_test_strategy(&db, "scope test").await;
-        let use_cases = crate::testing::build_use_cases_without_agent_task_client_for_test(db);
+        let use_cases = build_use_cases_without_agent_task_client(db);
 
         let result = use_cases
             .strategy_scope()

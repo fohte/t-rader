@@ -5,11 +5,11 @@ use super::{MAX_REQUESTS_PER_RUN, UsStockBarTimeframe};
 use crate::bars::error::{BarsUseCaseError, UsStockBarsIngestError};
 use crate::bars::types::{UsStockBarsIngestResult, UsStockBarsIngestStats};
 use crate::bars::us_stock_source::UsStockBarSource;
-use crate::bars::use_cases::BarsUseCases;
+use crate::bars::use_cases::UsStockBarsIngestUseCases;
 use crate::bars::write_lock::UsStockBarsWriteLockGuard;
 use crate::bars::{US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION};
 
-impl BarsUseCases {
+impl UsStockBarsIngestUseCases {
     pub async fn ingest_us_stock_daily_bars(
         &self,
         source: &dyn UsStockBarSource,

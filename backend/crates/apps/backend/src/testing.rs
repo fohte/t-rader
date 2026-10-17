@@ -40,21 +40,6 @@ pub use note::{
 /// テスト全体で共通の webhook トークン。agent webhook の認証テストで使う。
 pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 
-pub fn build_use_cases_for_test(
-    db: impl Into<DatabaseHandle>,
-    agent_task_client: SharedAgentTaskClient,
-) -> crate::services::use_cases::UseCases {
-    crate::services::use_cases::build_use_cases(db, agent_task_client)
-        .expect("build test use cases with a PostgreSQL pool")
-}
-
-pub fn build_use_cases_without_agent_task_client_for_test(
-    db: impl Into<DatabaseHandle>,
-) -> crate::services::use_cases::UseCases {
-    crate::services::use_cases::build_use_cases_without_agent_task_client(db)
-        .expect("build test use cases with a PostgreSQL pool")
-}
-
 /// テスト用 router state を組み立てる。
 struct TestRouterState {
     use_cases: crate::services::use_cases::UseCases,
@@ -72,7 +57,7 @@ fn base_state_with_reconcile_lock(
     agent_task_client: SharedAgentTaskClient,
     reconcile_lock: StrategyTaskReconcileLockUseCases,
 ) -> TestRouterState {
-    let use_cases = build_use_cases_for_test(db, agent_task_client.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db, agent_task_client.clone());
     let app_state = build_http_state(&use_cases, agent_task_client.clone(), None, None);
     let strategy_task_reconcile_use_cases = use_cases.strategy_task_reconcile(reconcile_lock);
     TestRouterState {
@@ -156,7 +141,7 @@ pub mod agent_config {
         db: &DatabaseHandle,
         purpose: String,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
-        super::build_use_cases_without_agent_task_client_for_test(db.clone())
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
             .agent_configs()
             .create(purpose)
             .await

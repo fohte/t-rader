@@ -2,13 +2,13 @@ use core_domain::bar::Bar;
 
 use crate::bars::error::BarsUseCaseError;
 use crate::bars::types::UsStockBarsIngestStats;
-use crate::bars::use_cases::BarsUseCases;
+use crate::bars::use_cases::UsStockBarsIngestUseCases;
 use crate::bars::write_throttle::WriteThrottle;
 
 use super::UsStockBarTimeframe;
 use super::request_budget::RequestBudget;
 
-impl BarsUseCases {
+impl UsStockBarsIngestUseCases {
     pub(super) async fn persist_bars(
         &self,
         bars: Vec<Bar>,

@@ -143,16 +143,12 @@ enum DatabaseHandleInner {
 #[derive(Clone)]
 pub struct DatabaseHandle {
     inner: DatabaseHandleInner,
-    postgres_connection_pool: Option<sqlx::PgPool>,
 }
 
 impl From<DatabaseConnection> for DatabaseHandle {
     fn from(connection: DatabaseConnection) -> Self {
-        let postgres_connection_pool = (!connection.is_mock_connection())
-            .then(|| connection.get_postgres_connection_pool().clone());
         Self {
             inner: DatabaseHandleInner::Connection(connection),
-            postgres_connection_pool,
         }
     }
 }
@@ -161,7 +157,6 @@ impl From<DatabaseTransaction> for DatabaseHandle {
     fn from(transaction: DatabaseTransaction) -> Self {
         Self {
             inner: DatabaseHandleInner::Transaction(Arc::new(transaction)),
-            postgres_connection_pool: None,
         }
     }
 }
@@ -174,23 +169,6 @@ impl std::fmt::Debug for DatabaseHandle {
                 formatter.write_str("DatabaseHandle(Transaction)")
             }
         }
-    }
-}
-
-impl DatabaseHandle {
-    #[cfg(feature = "test-support")]
-    pub fn from_transaction_with_postgres_pool(
-        transaction: DatabaseTransaction,
-        postgres_connection_pool: sqlx::PgPool,
-    ) -> Self {
-        Self {
-            inner: DatabaseHandleInner::Transaction(Arc::new(transaction)),
-            postgres_connection_pool: Some(postgres_connection_pool),
-        }
-    }
-
-    pub fn postgres_connection_pool(&self) -> Option<sqlx::PgPool> {
-        self.postgres_connection_pool.clone()
     }
 }
 

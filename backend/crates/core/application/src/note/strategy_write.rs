@@ -340,7 +340,6 @@ mod tests {
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
         NoteVersionUpdate, UpdateNoteCommand,
     };
-    use crate::persistence::PersistenceError;
     use crate::unit_of_work::FakeUnitOfWork;
     use crate::valuation::{FakeValuationRepository, ValuationUseCases};
 
@@ -351,23 +350,6 @@ mod tests {
     const EXECUTION_STEP_ID: Uuid = Uuid::from_u128(5);
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
     const EVALUATION_ID: Uuid = Uuid::from_u128(0x101);
-
-    struct TestBarsWriteLockGuard;
-
-    impl crate::bars::UsStockBarsWriteLockGuard for TestBarsWriteLockGuard {}
-
-    struct TestBarsWriteLock;
-
-    #[async_trait]
-    impl crate::bars::UsStockBarsWriteLock for TestBarsWriteLock {
-        async fn acquire(
-            &self,
-            _wait_timeout: std::time::Duration,
-        ) -> Result<Option<Box<dyn crate::bars::UsStockBarsWriteLockGuard>>, PersistenceError>
-        {
-            Ok(Some(Box::new(TestBarsWriteLockGuard)))
-        }
-    }
 
     fn custom_indicator_evaluation_use_cases(
         evaluations: impl IntoIterator<Item = CustomIndicatorEvaluation>,
@@ -757,7 +739,7 @@ mod tests {
             unit_of_work.clone(),
             repository.clone(),
             Arc::new(FakeChangeHistory::new()),
-            BarsUseCases::new(unit_of_work, bars_repository, Arc::new(TestBarsWriteLock)),
+            BarsUseCases::new(unit_of_work, bars_repository),
             valuations,
             indicator_observations,
             custom_indicator_evaluations,

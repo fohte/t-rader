@@ -1,7 +1,7 @@
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::{
-    bars::BarsUseCases,
     bars::SharedUsStockBarSource,
+    bars::{BarsUseCases, UsStockBarsIngestUseCases},
     calendar::{source::SharedCalendarEventSource, use_cases::CalendarEventUseCases},
     daily_bar_source::SharedDailyBarSource,
     earnings_schedule::EarningsScheduleUseCases,
@@ -39,6 +39,7 @@ use core_application::{
 #[derive(Clone)]
 pub struct SchedulerDependencies {
     pub bars: BarsUseCases,
+    pub us_stock_bars_ingest: UsStockBarsIngestUseCases,
     pub calendar_events: CalendarEventUseCases,
     pub boj_calendar_source: Option<SharedCalendarEventSource>,
     pub ecb_calendar_source: Option<SharedCalendarEventSource>,
