@@ -3,6 +3,7 @@ import { type AnyAgentMiddleware, createMiddleware } from 'langchain'
 import { isRecord } from '#errors'
 import { logger } from '#logger'
 import { AbortedModelCallError } from '#strategy-agent/aborting-model-call-middleware'
+import { MalformedToolCallResponseError } from '#strategy-agent/malformed-tool-call-response-middleware'
 import { NonAssistantModelResponseError } from '#strategy-agent/non-assistant-model-response-middleware'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -107,7 +108,11 @@ const isRetryableModelCallError = (error: Error): boolean => {
     return false
   }
   if (
-    errorChain.some((cause) => cause instanceof NonAssistantModelResponseError)
+    errorChain.some(
+      (cause) =>
+        cause instanceof NonAssistantModelResponseError ||
+        cause instanceof MalformedToolCallResponseError,
+    )
   ) {
     return true
   }

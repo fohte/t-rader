@@ -1,16 +1,23 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { AIMessage, HumanMessage } from '@langchain/core/messages'
+import {
+  AIMessage,
+  AIMessageChunk,
+  HumanMessage,
+} from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { createAgent } from 'langchain'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AbortedModelCallError } from '#strategy-agent/aborting-model-call-middleware'
+import { malformedToolCallResponseMiddleware } from '#strategy-agent/malformed-tool-call-response-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 
 class ScriptedChatModel extends BaseChatModel {
   attempts = 0
 
-  constructor(private readonly failures: readonly Error[]) {
+  constructor(
+    private readonly responses: readonly (Error | AIMessage | AIMessageChunk)[],
+  ) {
     super({})
   }
 
@@ -26,21 +33,31 @@ class ScriptedChatModel extends BaseChatModel {
   }
 
   override _generate(): Promise<ChatResult> {
-    const failure = this.failures[this.attempts]
+    const response = this.responses[this.attempts]
     this.attempts += 1
-    if (failure !== undefined) return Promise.reject(failure)
+    if (response instanceof Error) return Promise.reject(response)
 
     return Promise.resolve({
-      generations: [{ text: 'done', message: new AIMessage('done') }],
+      generations: [
+        { text: 'done', message: response ?? new AIMessage('done') },
+      ],
     })
   }
 }
 
-const buildAgent = (model: ScriptedChatModel) =>
+const buildAgent = (
+  model: ScriptedChatModel,
+  validateMalformedToolCalls = false,
+) =>
   createAgent({
     model,
     tools: [],
-    middleware: [createModelCallRetryMiddleware()],
+    middleware: [
+      createModelCallRetryMiddleware(),
+      ...(validateMalformedToolCalls
+        ? [malformedToolCallResponseMiddleware]
+        : []),
+    ],
   })
 
 const invokeOutcome = (agent: ReturnType<typeof buildAgent>) =>
@@ -49,8 +66,12 @@ const invokeOutcome = (agent: ReturnType<typeof buildAgent>) =>
     () => 'rejected' as const,
   )
 
-const runAgent = async (model: ScriptedChatModel, invocations = 1) => {
-  const agent = buildAgent(model)
+const runAgent = async (
+  model: ScriptedChatModel,
+  invocations = 1,
+  validateMalformedToolCalls = false,
+) => {
+  const agent = buildAgent(model, validateMalformedToolCalls)
   const outcomes: ('resolved' | 'rejected')[] = []
 
   for (let invocation = 0; invocation < invocations; invocation += 1) {
@@ -63,10 +84,11 @@ const runAgent = async (model: ScriptedChatModel, invocations = 1) => {
 const runAgentWithFakeTimers = async (
   model: ScriptedChatModel,
   invocations = 1,
+  validateMalformedToolCalls = false,
 ) => {
   vi.useFakeTimers()
   try {
-    const result = runAgent(model, invocations)
+    const result = runAgent(model, invocations, validateMalformedToolCalls)
     await vi.runAllTimersAsync()
     return await result
   } finally {
@@ -75,6 +97,87 @@ const runAgentWithFakeTimers = async (
 }
 
 describe('createModelCallRetryMiddleware', () => {
+  it.each([
+    {
+      name: 'raw tool arguments that are not JSON',
+      malformedResponse: new AIMessageChunk({
+        content: '',
+        tool_call_chunks: [
+          {
+            id: 'call_demo',
+            name: 'demo_tool',
+            args: '{"field": ',
+            index: 0,
+          },
+        ],
+      }),
+    },
+    {
+      name: 'invalid tool calls',
+      malformedResponse: new AIMessage({
+        content: '',
+        invalid_tool_calls: [
+          {
+            id: 'call_demo',
+            name: 'demo_tool',
+            args: 'not-json',
+            error: 'Malformed args.',
+          },
+        ],
+      }),
+    },
+    {
+      name: 'tool call markup in message content',
+      malformedResponse: new AIMessage('<tool_call><function=demo_tool>'),
+    },
+  ])(
+    'retries $name before accepting a valid response',
+    async ({ malformedResponse }) => {
+      const model = new ScriptedChatModel([
+        malformedResponse,
+        new AIMessage('done'),
+      ])
+
+      expect(await runAgentWithFakeTimers(model, 1, true)).toEqual({
+        outcomes: ['resolved'],
+        attempts: 2,
+      })
+    },
+  )
+
+  it('fails after three malformed tool call responses', async () => {
+    const malformedResponse = new AIMessageChunk({
+      content: '',
+      tool_call_chunks: [
+        {
+          id: 'call_demo',
+          name: 'demo_tool',
+          args: '{"field": ',
+          index: 0,
+        },
+      ],
+    })
+    const model = new ScriptedChatModel([
+      malformedResponse,
+      malformedResponse,
+      malformedResponse,
+    ])
+
+    expect(await runAgentWithFakeTimers(model, 1, true)).toEqual({
+      outcomes: ['rejected'],
+      attempts: 3,
+    })
+  })
+
+  it('passes a valid response without retrying', async () => {
+    const model = new ScriptedChatModel([new AIMessage('done')])
+
+    expect(await runAgentWithFakeTimers(model, 1, true)).toEqual({
+      outcomes: ['resolved'],
+      attempts: 1,
+    })
+  })
+
   it('retries a call-duration abort once for each model call', async () => {
     const model = new ScriptedChatModel(
       Array.from(
