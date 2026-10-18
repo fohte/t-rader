@@ -17,13 +17,17 @@
 
 ## Constraints
 
-| Name                                 | Type        | Definition                                                                       |
-| ------------------------------------ | ----------- | -------------------------------------------------------------------------------- |
-| news_item_content_failed_error_check | CHECK       | CHECK (((status = 'failed'::text) = (error IS NOT NULL)))                        |
-| news_item_content_fetched_body_check | CHECK       | CHECK (((status = 'fetched'::text) = (body IS NOT NULL)))                        |
-| news_item_content_status_check       | CHECK       | CHECK ((status = ANY (ARRAY['pending'::text, 'fetched'::text, 'failed'::text]))) |
-| news_item_content_news_item_id_fkey  | FOREIGN KEY | FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE            |
-| news_item_content_pkey               | PRIMARY KEY | PRIMARY KEY (news_item_id)                                                       |
+| Name                                    | Type        | Definition                                                                       |
+| --------------------------------------- | ----------- | -------------------------------------------------------------------------------- |
+| news_item_content_created_at_not_null   | n           | NOT NULL created_at                                                              |
+| news_item_content_failed_error_check    | CHECK       | CHECK (((status = 'failed'::text) = (error IS NOT NULL)))                        |
+| news_item_content_fetched_body_check    | CHECK       | CHECK (((status = 'fetched'::text) = (body IS NOT NULL)))                        |
+| news_item_content_news_item_id_not_null | n           | NOT NULL news_item_id                                                            |
+| news_item_content_status_check          | CHECK       | CHECK ((status = ANY (ARRAY['pending'::text, 'fetched'::text, 'failed'::text]))) |
+| news_item_content_status_not_null       | n           | NOT NULL status                                                                  |
+| news_item_content_updated_at_not_null   | n           | NOT NULL updated_at                                                              |
+| news_item_content_news_item_id_fkey     | FOREIGN KEY | FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE            |
+| news_item_content_pkey                  | PRIMARY KEY | PRIMARY KEY (news_item_id)                                                       |
 
 ## Indexes
 

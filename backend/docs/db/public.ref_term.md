@@ -16,11 +16,16 @@
 
 ## Constraints
 
-| Name                    | Type        | Definition                                                                                                                                 |
-| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| ref_term_origin_check   | CHECK       | CHECK (((origin)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                                     |
-| ref_term_ref_kind_check | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'group'::character varying])::text[]))) |
-| ref_term_pkey           | PRIMARY KEY | PRIMARY KEY (ref_kind, ref_id, term)                                                                                                       |
+| Name                         | Type        | Definition                                                                                                                                 |
+| ---------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| ref_term_created_at_not_null | n           | NOT NULL created_at                                                                                                                        |
+| ref_term_origin_check        | CHECK       | CHECK (((origin)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                                     |
+| ref_term_origin_not_null     | n           | NOT NULL origin                                                                                                                            |
+| ref_term_ref_id_not_null     | n           | NOT NULL ref_id                                                                                                                            |
+| ref_term_ref_kind_check      | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'group'::character varying])::text[]))) |
+| ref_term_ref_kind_not_null   | n           | NOT NULL ref_kind                                                                                                                          |
+| ref_term_term_not_null       | n           | NOT NULL term                                                                                                                              |
+| ref_term_pkey                | PRIMARY KEY | PRIMARY KEY (ref_kind, ref_id, term)                                                                                                       |
 
 ## Indexes
 

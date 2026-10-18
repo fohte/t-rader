@@ -20,7 +20,12 @@
 | Name                          | Type        | Definition                                                                  |
 | ----------------------------- | ----------- | --------------------------------------------------------------------------- |
 | event_chain_depth_check       | CHECK       | CHECK ((chain_depth >= 0))                                                  |
+| event_chain_depth_not_null    | n           | NOT NULL chain_depth                                                        |
+| event_event_id_not_null       | n           | NOT NULL event_id                                                           |
 | event_event_type_format_check | CHECK       | CHECK ((event_type ~ '^[a-z][a-z0-9_]{0,}([.][a-z][a-z0-9_]{0,})+$'::text)) |
+| event_event_type_not_null     | n           | NOT NULL event_type                                                         |
+| event_occurred_at_not_null    | n           | NOT NULL occurred_at                                                        |
+| event_payload_not_null        | n           | NOT NULL payload                                                            |
 | event_payload_object_check    | CHECK       | CHECK ((jsonb_typeof(payload) = 'object'::text))                            |
 | event_pkey                    | PRIMARY KEY | PRIMARY KEY (event_id)                                                      |
 

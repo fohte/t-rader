@@ -16,10 +16,14 @@
 
 ## Constraints
 
-| Name                         | Type        | Definition                           |
-| ---------------------------- | ----------- | ------------------------------------ |
-| note_kind_key_nonblank_check | CHECK       | CHECK ((key ~ '[^[:space:]]'::text)) |
-| note_kind_pkey               | PRIMARY KEY | PRIMARY KEY (key)                    |
+| Name                                 | Type        | Definition                           |
+| ------------------------------------ | ----------- | ------------------------------------ |
+| note_kind_display_name_not_null      | n           | NOT NULL display_name                |
+| note_kind_key_nonblank_check         | CHECK       | CHECK ((key ~ '[^[:space:]]'::text)) |
+| note_kind_key_not_null               | n           | NOT NULL key                         |
+| note_kind_requires_approval_not_null | n           | NOT NULL requires_approval           |
+| note_kind_sort_order_not_null        | n           | NOT NULL sort_order                  |
+| note_kind_pkey                       | PRIMARY KEY | PRIMARY KEY (key)                    |
 
 ## Indexes
 

@@ -26,10 +26,19 @@
 
 ## Constraints
 
-| Name                           | Type        | Definition                                |
-| ------------------------------ | ----------- | ----------------------------------------- |
-| margin_interest_iss_type_check | CHECK       | CHECK ((iss_type = ANY (ARRAY[1, 2, 3]))) |
-| margin_interest_pkey           | PRIMARY KEY | PRIMARY KEY (date, code, iss_type)        |
+| Name                                  | Type        | Definition                                |
+| ------------------------------------- | ----------- | ----------------------------------------- |
+| margin_interest_code_not_null         | n           | NOT NULL code                             |
+| margin_interest_date_not_null         | n           | NOT NULL date                             |
+| margin_interest_iss_type_check        | CHECK       | CHECK ((iss_type = ANY (ARRAY[1, 2, 3]))) |
+| margin_interest_iss_type_not_null     | n           | NOT NULL iss_type                         |
+| margin_interest_long_neg_vol_not_null | n           | NOT NULL long_neg_vol                     |
+| margin_interest_long_std_vol_not_null | n           | NOT NULL long_std_vol                     |
+| margin_interest_long_vol_not_null     | n           | NOT NULL long_vol                         |
+| margin_interest_shrt_neg_vol_not_null | n           | NOT NULL shrt_neg_vol                     |
+| margin_interest_shrt_std_vol_not_null | n           | NOT NULL shrt_std_vol                     |
+| margin_interest_shrt_vol_not_null     | n           | NOT NULL shrt_vol                         |
+| margin_interest_pkey                  | PRIMARY KEY | PRIMARY KEY (date, code, iss_type)        |
 
 ## Indexes
 

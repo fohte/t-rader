@@ -23,8 +23,16 @@
 
 | Name                                     | Type        | Definition                                                                                                                   |
 | ---------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| custom_indicator_code_not_null           | n           | NOT NULL code                                                                                                                |
+| custom_indicator_created_at_not_null     | n           | NOT NULL created_at                                                                                                          |
+| custom_indicator_indicator_id_not_null   | n           | NOT NULL indicator_id                                                                                                        |
+| custom_indicator_input_schema_not_null   | n           | NOT NULL input_schema                                                                                                        |
+| custom_indicator_name_not_null           | n           | NOT NULL name                                                                                                                |
+| custom_indicator_output_schema_not_null  | n           | NOT NULL output_schema                                                                                                       |
 | custom_indicator_scope_check             | CHECK       | CHECK ((scope = ANY (ARRAY['global'::text, 'strategy'::text])))                                                              |
+| custom_indicator_scope_not_null          | n           | NOT NULL scope                                                                                                               |
 | custom_indicator_scope_strategy_id_check | CHECK       | CHECK ((((scope = 'global'::text) AND (strategy_id IS NULL)) OR ((scope = 'strategy'::text) AND (strategy_id IS NOT NULL)))) |
+| custom_indicator_updated_at_not_null     | n           | NOT NULL updated_at                                                                                                          |
 | custom_indicator_strategy_id_fkey        | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE                                                          |
 | custom_indicator_pkey                    | PRIMARY KEY | PRIMARY KEY (indicator_id)                                                                                                   |
 

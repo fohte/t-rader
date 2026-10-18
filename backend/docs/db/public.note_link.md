@@ -14,12 +14,14 @@
 
 ## Constraints
 
-| Name                           | Type        | Definition                                                                  |
-| ------------------------------ | ----------- | --------------------------------------------------------------------------- |
-| note_link_to_note_id_fkey      | FOREIGN KEY | FOREIGN KEY (to_note_id) REFERENCES note(id) ON DELETE CASCADE              |
-| note_link_from_version_id_fkey | FOREIGN KEY | FOREIGN KEY (from_version_id) REFERENCES note_version(id) ON DELETE CASCADE |
-| note_link_to_version_id_fkey   | FOREIGN KEY | FOREIGN KEY (to_version_id) REFERENCES note_version(id) ON DELETE SET NULL  |
-| note_link_pkey                 | PRIMARY KEY | PRIMARY KEY (from_version_id, to_note_id)                                   |
+| Name                               | Type        | Definition                                                                  |
+| ---------------------------------- | ----------- | --------------------------------------------------------------------------- |
+| note_link_from_version_id_not_null | n           | NOT NULL from_version_id                                                    |
+| note_link_to_note_id_not_null      | n           | NOT NULL to_note_id                                                         |
+| note_link_to_note_id_fkey          | FOREIGN KEY | FOREIGN KEY (to_note_id) REFERENCES note(id) ON DELETE CASCADE              |
+| note_link_from_version_id_fkey     | FOREIGN KEY | FOREIGN KEY (from_version_id) REFERENCES note_version(id) ON DELETE CASCADE |
+| note_link_to_version_id_fkey       | FOREIGN KEY | FOREIGN KEY (to_version_id) REFERENCES note_version(id) ON DELETE SET NULL  |
+| note_link_pkey                     | PRIMARY KEY | PRIMARY KEY (from_version_id, to_note_id)                                   |
 
 ## Indexes
 

@@ -17,10 +17,16 @@
 
 ## Constraints
 
-| Name                  | Type        | Definition       |
-| --------------------- | ----------- | ---------------- |
-| saved_screen_pkey     | PRIMARY KEY | PRIMARY KEY (id) |
-| saved_screen_name_key | UNIQUE      | UNIQUE (name)    |
+| Name                             | Type        | Definition          |
+| -------------------------------- | ----------- | ------------------- |
+| saved_screen_created_at_not_null | n           | NOT NULL created_at |
+| saved_screen_filters_not_null    | n           | NOT NULL filters    |
+| saved_screen_id_not_null         | n           | NOT NULL id         |
+| saved_screen_name_not_null       | n           | NOT NULL name       |
+| saved_screen_sort_not_null       | n           | NOT NULL sort       |
+| saved_screen_updated_at_not_null | n           | NOT NULL updated_at |
+| saved_screen_pkey                | PRIMARY KEY | PRIMARY KEY (id)    |
+| saved_screen_name_key            | UNIQUE      | UNIQUE (name)       |
 
 ## Indexes
 

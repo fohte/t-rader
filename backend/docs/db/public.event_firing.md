@@ -14,13 +14,16 @@ event と trigger の発火、および投入した task の対応を保持す�
 
 ## Constraints
 
-| Name                         | Type        | Definition                                                                |
-| ---------------------------- | ----------- | ------------------------------------------------------------------------- |
-| event_firing_task_id_fkey    | FOREIGN KEY | FOREIGN KEY (task_id) REFERENCES strategy_task(task_id)                   |
-| event_firing_trigger_id_fkey | FOREIGN KEY | FOREIGN KEY (trigger_id) REFERENCES trigger(trigger_id) ON DELETE CASCADE |
-| event_firing_event_id_fkey   | FOREIGN KEY | FOREIGN KEY (event_id) REFERENCES event(event_id) ON DELETE CASCADE       |
-| event_firing_pkey            | PRIMARY KEY | PRIMARY KEY (event_id, trigger_id)                                        |
-| event_firing_task_id_key     | UNIQUE      | UNIQUE (task_id)                                                          |
+| Name                             | Type        | Definition                                                                |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------- |
+| event_firing_event_id_not_null   | n           | NOT NULL event_id                                                         |
+| event_firing_task_id_not_null    | n           | NOT NULL task_id                                                          |
+| event_firing_trigger_id_not_null | n           | NOT NULL trigger_id                                                       |
+| event_firing_task_id_fkey        | FOREIGN KEY | FOREIGN KEY (task_id) REFERENCES strategy_task(task_id)                   |
+| event_firing_trigger_id_fkey     | FOREIGN KEY | FOREIGN KEY (trigger_id) REFERENCES trigger(trigger_id) ON DELETE CASCADE |
+| event_firing_event_id_fkey       | FOREIGN KEY | FOREIGN KEY (event_id) REFERENCES event(event_id) ON DELETE CASCADE       |
+| event_firing_pkey                | PRIMARY KEY | PRIMARY KEY (event_id, trigger_id)                                        |
+| event_firing_task_id_key         | UNIQUE      | UNIQUE (task_id)                                                          |
 
 ## Indexes
 

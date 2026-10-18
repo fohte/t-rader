@@ -12,9 +12,10 @@
 
 ## Constraints
 
-| Name                                  | Type        | Definition         |
-| ------------------------------------- | ----------- | ------------------ |
-| jquants_daily_bars_ingested_date_pkey | PRIMARY KEY | PRIMARY KEY (date) |
+| Name                                           | Type        | Definition         |
+| ---------------------------------------------- | ----------- | ------------------ |
+| jquants_daily_bars_ingested_date_date_not_null | n           | NOT NULL date      |
+| jquants_daily_bars_ingested_date_pkey          | PRIMARY KEY | PRIMARY KEY (date) |
 
 ## Indexes
 

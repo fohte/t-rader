@@ -18,9 +18,15 @@ EDINET の政策保有株式に関する提出書類と明細を保持する。
 
 ## Constraints
 
-| Name                              | Type        | Definition                |
-| --------------------------------- | ----------- | ------------------------- |
-| cross_shareholding_documents_pkey | PRIMARY KEY | PRIMARY KEY (document_id) |
+| Name                                               | Type        | Definition                |
+| -------------------------------------------------- | ----------- | ------------------------- |
+| cross_shareholding_documents_created_at_not_null   | n           | NOT NULL created_at       |
+| cross_shareholding_documents_details_not_null      | n           | NOT NULL details          |
+| cross_shareholding_documents_document_id_not_null  | n           | NOT NULL document_id      |
+| cross_shareholding_documents_filer_code_not_null   | n           | NOT NULL filer_code       |
+| cross_shareholding_documents_submitted_on_not_null | n           | NOT NULL submitted_on     |
+| cross_shareholding_documents_updated_at_not_null   | n           | NOT NULL updated_at       |
+| cross_shareholding_documents_pkey                  | PRIMARY KEY | PRIMARY KEY (document_id) |
 
 ## Indexes
 

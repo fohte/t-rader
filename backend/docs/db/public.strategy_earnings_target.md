@@ -15,11 +15,15 @@
 
 ## Constraints
 
-| Name                                    | Type        | Definition                                                          |
-| --------------------------------------- | ----------- | ------------------------------------------------------------------- |
-| strategy_earnings_target_ref_kind_check | CHECK       | CHECK ((ref_kind = ANY (ARRAY['stock'::text, 'group'::text])))      |
-| fk_strategy_earnings_target_strategy    | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE |
-| strategy_earnings_target_pkey           | PRIMARY KEY | PRIMARY KEY (strategy_id, ref_kind, ref_id)                         |
+| Name                                          | Type        | Definition                                                          |
+| --------------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| strategy_earnings_target_created_at_not_null  | n           | NOT NULL created_at                                                 |
+| strategy_earnings_target_ref_id_not_null      | n           | NOT NULL ref_id                                                     |
+| strategy_earnings_target_ref_kind_check       | CHECK       | CHECK ((ref_kind = ANY (ARRAY['stock'::text, 'group'::text])))      |
+| strategy_earnings_target_ref_kind_not_null    | n           | NOT NULL ref_kind                                                   |
+| strategy_earnings_target_strategy_id_not_null | n           | NOT NULL strategy_id                                                |
+| fk_strategy_earnings_target_strategy          | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE |
+| strategy_earnings_target_pkey                 | PRIMARY KEY | PRIMARY KEY (strategy_id, ref_kind, ref_id)                         |
 
 ## Indexes
 

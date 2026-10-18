@@ -27,9 +27,20 @@
 
 ## Constraints
 
-| Name              | Type        | Definition                   |
-| ----------------- | ----------- | ---------------------------- |
-| margin_alert_pkey | PRIMARY KEY | PRIMARY KEY (pub_date, code) |
+| Name                                   | Type        | Definition                   |
+| -------------------------------------- | ----------- | ---------------------------- |
+| margin_alert_app_date_not_null         | n           | NOT NULL app_date            |
+| margin_alert_code_not_null             | n           | NOT NULL code                |
+| margin_alert_long_neg_out_not_null     | n           | NOT NULL long_neg_out        |
+| margin_alert_long_out_not_null         | n           | NOT NULL long_out            |
+| margin_alert_long_std_out_not_null     | n           | NOT NULL long_std_out        |
+| margin_alert_pub_date_not_null         | n           | NOT NULL pub_date            |
+| margin_alert_pub_reason_not_null       | n           | NOT NULL pub_reason          |
+| margin_alert_shrt_neg_out_not_null     | n           | NOT NULL shrt_neg_out        |
+| margin_alert_shrt_out_not_null         | n           | NOT NULL shrt_out            |
+| margin_alert_shrt_std_out_not_null     | n           | NOT NULL shrt_std_out        |
+| margin_alert_tse_mrgn_reg_cls_not_null | n           | NOT NULL tse_mrgn_reg_cls    |
+| margin_alert_pkey                      | PRIMARY KEY | PRIMARY KEY (pub_date, code) |
 
 ## Indexes
 

@@ -29,6 +29,14 @@
 
 | Name                                     | Type        | Definition                                                          |
 | ---------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| strategy_task_created_at_not_null        | n           | NOT NULL created_at                                                 |
+| strategy_task_deadline_at_not_null       | n           | NOT NULL deadline_at                                                |
+| strategy_task_phase_not_null             | n           | NOT NULL phase                                                      |
+| strategy_task_prompt_not_null            | n           | NOT NULL prompt                                                     |
+| strategy_task_source_not_null            | n           | NOT NULL source                                                     |
+| strategy_task_strategy_id_not_null       | n           | NOT NULL strategy_id                                                |
+| strategy_task_task_id_not_null           | n           | NOT NULL task_id                                                    |
+| strategy_task_updated_at_not_null        | n           | NOT NULL updated_at                                                 |
 | strategy_task_strategy_id_fkey           | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE |
 | strategy_task_pkey                       | PRIMARY KEY | PRIMARY KEY (task_id)                                               |
 | strategy_task_kubeopencode_task_name_key | UNIQUE      | UNIQUE (a2a_task_id)                                                |

@@ -18,9 +18,15 @@ EDINET の主要株主書類と順位付き株主情報を保持する。
 
 ## Constraints
 
-| Name                             | Type        | Definition                |
-| -------------------------------- | ----------- | ------------------------- |
-| major_shareholder_documents_pkey | PRIMARY KEY | PRIMARY KEY (document_id) |
+| Name                                              | Type        | Definition                |
+| ------------------------------------------------- | ----------- | ------------------------- |
+| major_shareholder_documents_created_at_not_null   | n           | NOT NULL created_at       |
+| major_shareholder_documents_details_not_null      | n           | NOT NULL details          |
+| major_shareholder_documents_document_id_not_null  | n           | NOT NULL document_id      |
+| major_shareholder_documents_filer_code_not_null   | n           | NOT NULL filer_code       |
+| major_shareholder_documents_submitted_on_not_null | n           | NOT NULL submitted_on     |
+| major_shareholder_documents_updated_at_not_null   | n           | NOT NULL updated_at       |
+| major_shareholder_documents_pkey                  | PRIMARY KEY | PRIMARY KEY (document_id) |
 
 ## Indexes
 

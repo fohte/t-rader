@@ -18,9 +18,16 @@ A2A タスク本体と、状態検索や実行停滞の判定に使う項目を�
 
 ## Constraints
 
-| Name           | Type        | Definition            |
-| -------------- | ----------- | --------------------- |
-| a2a_tasks_pkey | PRIMARY KEY | PRIMARY KEY (task_id) |
+| Name                                | Type        | Definition                |
+| ----------------------------------- | ----------- | ------------------------- |
+| a2a_tasks_context_id_not_null       | n           | NOT NULL context_id       |
+| a2a_tasks_created_at_not_null       | n           | NOT NULL created_at       |
+| a2a_tasks_protocol_version_not_null | n           | NOT NULL protocol_version |
+| a2a_tasks_state_not_null            | n           | NOT NULL state            |
+| a2a_tasks_status_timestamp_not_null | n           | NOT NULL status_timestamp |
+| a2a_tasks_task_id_not_null          | n           | NOT NULL task_id          |
+| a2a_tasks_task_not_null             | n           | NOT NULL task             |
+| a2a_tasks_pkey                      | PRIMARY KEY | PRIMARY KEY (task_id)     |
 
 ## Indexes
 

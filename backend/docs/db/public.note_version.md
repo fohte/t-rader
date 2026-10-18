@@ -26,12 +26,24 @@
 
 ## Constraints
 
-| Name                               | Type        | Definition                                                                                             |
-| ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
-| note_version_created_by_kind_check | CHECK       | CHECK ((created_by_kind = ANY (ARRAY['human'::text, 'llm'::text])))                                    |
-| note_version_status_check          | CHECK       | CHECK ((status = ANY (ARRAY['approved'::text, 'unread'::text, 'rejected'::text, 'superseded'::text]))) |
-| note_version_note_id_fkey          | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                                            |
-| note_version_pkey                  | PRIMARY KEY | PRIMARY KEY (id)                                                                                       |
+| Name                                                 | Type        | Definition                                                                                             |
+| ---------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| note_version_body_md_not_null                        | n           | NOT NULL body_md                                                                                       |
+| note_version_created_at_not_null                     | n           | NOT NULL created_at                                                                                    |
+| note_version_created_by_kind_check                   | CHECK       | CHECK ((created_by_kind = ANY (ARRAY['human'::text, 'llm'::text])))                                    |
+| note_version_created_by_kind_not_null                | n           | NOT NULL created_by_kind                                                                               |
+| note_version_frontmatter_json_not_null               | n           | NOT NULL frontmatter_json                                                                              |
+| note_version_graphs_json_not_null                    | n           | NOT NULL graphs_json                                                                                   |
+| note_version_id_not_null                             | n           | NOT NULL id                                                                                            |
+| note_version_is_current_not_null                     | n           | NOT NULL is_current                                                                                    |
+| note_version_note_id_not_null                        | n           | NOT NULL note_id                                                                                       |
+| note_version_resolved_price_references_json_not_null | n           | NOT NULL resolved_price_references_json                                                                |
+| note_version_status_check                            | CHECK       | CHECK ((status = ANY (ARRAY['approved'::text, 'unread'::text, 'rejected'::text, 'superseded'::text]))) |
+| note_version_status_not_null                         | n           | NOT NULL status                                                                                        |
+| note_version_title_not_null                          | n           | NOT NULL title                                                                                         |
+| note_version_version_no_not_null                     | n           | NOT NULL version_no                                                                                    |
+| note_version_note_id_fkey                            | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                                            |
+| note_version_pkey                                    | PRIMARY KEY | PRIMARY KEY (id)                                                                                       |
 
 ## Indexes
 

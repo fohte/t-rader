@@ -20,10 +20,19 @@
 
 ## Constraints
 
-| Name                                | Type        | Definition                                                                         |
-| ----------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| prediction_grade_prediction_id_fkey | FOREIGN KEY | FOREIGN KEY (prediction_id) REFERENCES prediction(prediction_id) ON DELETE CASCADE |
-| prediction_grade_pkey               | PRIMARY KEY | PRIMARY KEY (prediction_id)                                                        |
+| Name                                           | Type        | Definition                                                                         |
+| ---------------------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
+| prediction_grade_benchmark_base_close_not_null | n           | NOT NULL benchmark_base_close                                                      |
+| prediction_grade_benchmark_due_close_not_null  | n           | NOT NULL benchmark_due_close                                                       |
+| prediction_grade_benchmark_return_not_null     | n           | NOT NULL benchmark_return                                                          |
+| prediction_grade_correct_not_null              | n           | NOT NULL correct                                                                   |
+| prediction_grade_graded_at_not_null            | n           | NOT NULL graded_at                                                                 |
+| prediction_grade_prediction_id_not_null        | n           | NOT NULL prediction_id                                                             |
+| prediction_grade_target_base_close_not_null    | n           | NOT NULL target_base_close                                                         |
+| prediction_grade_target_due_close_not_null     | n           | NOT NULL target_due_close                                                          |
+| prediction_grade_target_return_not_null        | n           | NOT NULL target_return                                                             |
+| prediction_grade_prediction_id_fkey            | FOREIGN KEY | FOREIGN KEY (prediction_id) REFERENCES prediction(prediction_id) ON DELETE CASCADE |
+| prediction_grade_pkey                          | PRIMARY KEY | PRIMARY KEY (prediction_id)                                                        |
 
 ## Indexes
 

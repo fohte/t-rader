@@ -24,12 +24,20 @@
 
 ## Constraints
 
-| Name                      | Type        | Definition                                                                                                                                           |
-| ------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| comment_author_kind_check | CHECK       | CHECK (((author_kind)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                                          |
-| comment_target_kind_check | CHECK       | CHECK (((target_kind)::text = ANY ((ARRAY['note'::character varying, 'note_version'::character varying, 'annotation'::character varying])::text[]))) |
-| comment_parent_id_fkey    | FOREIGN KEY | FOREIGN KEY (parent_id) REFERENCES comment(id) ON DELETE CASCADE                                                                                     |
-| comment_pkey              | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                     |
+| Name                          | Type        | Definition                                                                                                                                           |
+| ----------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| comment_author_kind_check     | CHECK       | CHECK (((author_kind)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                                          |
+| comment_author_kind_not_null  | n           | NOT NULL author_kind                                                                                                                                 |
+| comment_author_label_not_null | n           | NOT NULL author_label                                                                                                                                |
+| comment_body_not_null         | n           | NOT NULL body                                                                                                                                        |
+| comment_created_at_not_null   | n           | NOT NULL created_at                                                                                                                                  |
+| comment_id_not_null           | n           | NOT NULL id                                                                                                                                          |
+| comment_resolved_not_null     | n           | NOT NULL resolved                                                                                                                                    |
+| comment_target_id_not_null    | n           | NOT NULL target_id                                                                                                                                   |
+| comment_target_kind_check     | CHECK       | CHECK (((target_kind)::text = ANY ((ARRAY['note'::character varying, 'note_version'::character varying, 'annotation'::character varying])::text[]))) |
+| comment_target_kind_not_null  | n           | NOT NULL target_kind                                                                                                                                 |
+| comment_parent_id_fkey        | FOREIGN KEY | FOREIGN KEY (parent_id) REFERENCES comment(id) ON DELETE CASCADE                                                                                     |
+| comment_pkey                  | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                     |
 
 ## Indexes
 

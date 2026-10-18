@@ -14,11 +14,14 @@
 
 ## Constraints
 
-| Name                             | Type        | Definition                                                          |
-| -------------------------------- | ----------- | ------------------------------------------------------------------- |
-| stock_group_member_stock_id_fkey | FOREIGN KEY | FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE       |
-| stock_group_member_group_id_fkey | FOREIGN KEY | FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE |
-| stock_group_member_pkey          | PRIMARY KEY | PRIMARY KEY (stock_id, group_id)                                    |
+| Name                                   | Type        | Definition                                                          |
+| -------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| stock_group_member_created_at_not_null | n           | NOT NULL created_at                                                 |
+| stock_group_member_group_id_not_null   | n           | NOT NULL group_id                                                   |
+| stock_group_member_stock_id_not_null   | n           | NOT NULL stock_id                                                   |
+| stock_group_member_stock_id_fkey       | FOREIGN KEY | FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE       |
+| stock_group_member_group_id_fkey       | FOREIGN KEY | FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE |
+| stock_group_member_pkey                | PRIMARY KEY | PRIMARY KEY (stock_id, group_id)                                    |
 
 ## Indexes
 

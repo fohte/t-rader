@@ -13,10 +13,12 @@
 
 ## Constraints
 
-| Name                                                   | Type        | Definition                                                               |
-| ------------------------------------------------------ | ----------- | ------------------------------------------------------------------------ |
-| us_stock_hourly_bar_ingest_progress_instrument_id_fkey | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE |
-| us_stock_hourly_bar_ingest_progress_pkey               | PRIMARY KEY | PRIMARY KEY (instrument_id)                                              |
+| Name                                                           | Type        | Definition                                                               |
+| -------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------ |
+| us_stock_hourly_bar_ingest_progress_completed_through_not_null | n           | NOT NULL completed_through                                               |
+| us_stock_hourly_bar_ingest_progress_instrument_id_not_null     | n           | NOT NULL instrument_id                                                   |
+| us_stock_hourly_bar_ingest_progress_instrument_id_fkey         | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE |
+| us_stock_hourly_bar_ingest_progress_pkey                       | PRIMARY KEY | PRIMARY KEY (instrument_id)                                              |
 
 ## Indexes
 

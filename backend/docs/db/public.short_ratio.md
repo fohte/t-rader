@@ -16,9 +16,11 @@
 
 ## Constraints
 
-| Name             | Type        | Definition                        |
-| ---------------- | ----------- | --------------------------------- |
-| short_ratio_pkey | PRIMARY KEY | PRIMARY KEY (date, sector33_code) |
+| Name                               | Type        | Definition                        |
+| ---------------------------------- | ----------- | --------------------------------- |
+| short_ratio_date_not_null          | n           | NOT NULL date                     |
+| short_ratio_sector33_code_not_null | n           | NOT NULL sector33_code            |
+| short_ratio_pkey                   | PRIMARY KEY | PRIMARY KEY (date, sector33_code) |
 
 ## Indexes
 

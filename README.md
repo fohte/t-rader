@@ -9,7 +9,7 @@ fohte が自分の投資分析のために作っている日本株の分析ツ�
 | Frontend               | React 19, Vite 7, TanStack Router, shadcn/ui, Tailwind CSS v4 |
 | Backend                | Rust (Axum)                                                   |
 | Agent                  | Node.js/TypeScript (Hono, A2A server)                         |
-| DB                     | TimescaleDB (PostgreSQL 17)                                   |
+| DB                     | TimescaleDB 2.26.4 (PostgreSQL 18)                            |
 | パッケージマネージャー | pnpm                                                          |
 | ツール管理             | mise                                                          |
 
@@ -57,7 +57,7 @@ docker compose -f docker-compose.app.yml port agent 8080
 
 ## データベース
 
-- PostgreSQL 17 + TimescaleDB と Redis は `mise run db:up` で起動する
+- PostgreSQL 18 + TimescaleDB 2.26.4 と Redis は `mise run db:up` で起動する
 - backend と agent にそれぞれ dev / test DB が作成され、各 package の `.mise.toml` が `DATABASE_URL` と `TEST_DATABASE_URL` を解決する
 - DB schema docs は使い捨て DB に migration を適用して生成する
 - backend の migration は SeaORM を使用する
@@ -66,20 +66,15 @@ docker compose -f docker-compose.app.yml port agent 8080
 mise run db:doc
 ```
 
-### 既存の共有 DB を使っている場合
+### PostgreSQL 17 から移行する場合
 
-既存の DB volume はそのまま再利用します。現行構成の role と開発 database 名を、新構成の名前に一度だけ変更してください。アプリを停止し、DB コンテナを起動した状態で次を実行します。
+PostgreSQL 17 で作成した共有 DB volume は PostgreSQL 18 では再利用できません。全 worktree が同じ volume を使うため、全 worktree の DB を利用するアプリを止めてから、次の手順を 1 回だけ実行してください。DB と Redis を停止し、ローカル DB のデータを削除してから PostgreSQL 18 で作り直します。
 
 ```bash
-docker compose exec -T db psql -U "t-rader" -d postgres <<'SQL'
-ALTER ROLE "t-rader" RENAME TO t_rader;
-ALTER ROLE t_rader PASSWORD 't_rader';
-ALTER DATABASE "t-rader_backend_dev" RENAME TO t_rader_backend_dev;
-ALTER DATABASE "t-rader_agent_dev" RENAME TO t_rader_agent_dev;
-SQL
+docker compose down
+docker volume rm t-rader-infra_db_data
+mise run db:up
 ```
-
-切り替え後に `mise run db:up` を実行すると test DB が作成されます。volume の削除は不要です。
 
 ### マイグレーションの追加
 

@@ -18,10 +18,16 @@ RSS フィードなどから取得したニュース記事情報を保持する�
 
 ## Constraints
 
-| Name              | Type        | Definition       |
-| ----------------- | ----------- | ---------------- |
-| news_item_pkey    | PRIMARY KEY | PRIMARY KEY (id) |
-| news_item_url_key | UNIQUE      | UNIQUE (url)     |
+| Name                            | Type        | Definition            |
+| ------------------------------- | ----------- | --------------------- |
+| news_item_fetched_at_not_null   | n           | NOT NULL fetched_at   |
+| news_item_id_not_null           | n           | NOT NULL id           |
+| news_item_published_at_not_null | n           | NOT NULL published_at |
+| news_item_source_not_null       | n           | NOT NULL source       |
+| news_item_title_not_null        | n           | NOT NULL title        |
+| news_item_url_not_null          | n           | NOT NULL url          |
+| news_item_pkey                  | PRIMARY KEY | PRIMARY KEY (id)      |
+| news_item_url_key               | UNIQUE      | UNIQUE (url)          |
 
 ## Indexes
 

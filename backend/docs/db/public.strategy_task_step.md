@@ -26,10 +26,20 @@
 
 ## Constraints
 
-| Name                            | Type        | Definition                                                                |
-| ------------------------------- | ----------- | ------------------------------------------------------------------------- |
-| strategy_task_step_task_id_fkey | FOREIGN KEY | FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE |
-| strategy_task_step_pkey         | PRIMARY KEY | PRIMARY KEY (execution_step_id)                                           |
+| Name                                          | Type        | Definition                                                                |
+| --------------------------------------------- | ----------- | ------------------------------------------------------------------------- |
+| strategy_task_step_execution_step_id_not_null | n           | NOT NULL execution_step_id                                                |
+| strategy_task_step_label_not_null             | n           | NOT NULL label                                                            |
+| strategy_task_step_model_not_null             | n           | NOT NULL model                                                            |
+| strategy_task_step_phase_key_not_null         | n           | NOT NULL phase_key                                                        |
+| strategy_task_step_seq_not_null               | n           | NOT NULL seq                                                              |
+| strategy_task_step_span_id_not_null           | n           | NOT NULL span_id                                                          |
+| strategy_task_step_started_at_not_null        | n           | NOT NULL started_at                                                       |
+| strategy_task_step_status_not_null            | n           | NOT NULL status                                                           |
+| strategy_task_step_task_id_not_null           | n           | NOT NULL task_id                                                          |
+| strategy_task_step_trace_id_not_null          | n           | NOT NULL trace_id                                                         |
+| strategy_task_step_task_id_fkey               | FOREIGN KEY | FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE |
+| strategy_task_step_pkey                       | PRIMARY KEY | PRIMARY KEY (execution_step_id)                                           |
 
 ## Indexes
 

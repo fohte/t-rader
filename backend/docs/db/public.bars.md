@@ -20,11 +20,20 @@
 
 ## Constraints
 
-| Name                    | Type        | Definition                                                                                                                     |
-| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| bars_timeframe_check    | CHECK       | CHECK (((timeframe)::text = ANY ((ARRAY['1m'::character varying, '1h'::character varying, '1d'::character varying])::text[]))) |
-| bars_instrument_id_fkey | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE                                                       |
-| bars_pkey               | PRIMARY KEY | PRIMARY KEY (instrument_id, timeframe, "timestamp")                                                                            |
+| Name                            | Type        | Definition                                                                                                                     |
+| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| bars_adjustment_factor_not_null | n           | NOT NULL adjustment_factor                                                                                                     |
+| bars_close_not_null             | n           | NOT NULL close                                                                                                                 |
+| bars_high_not_null              | n           | NOT NULL high                                                                                                                  |
+| bars_instrument_id_not_null     | n           | NOT NULL instrument_id                                                                                                         |
+| bars_low_not_null               | n           | NOT NULL low                                                                                                                   |
+| bars_open_not_null              | n           | NOT NULL open                                                                                                                  |
+| bars_timeframe_check            | CHECK       | CHECK (((timeframe)::text = ANY ((ARRAY['1m'::character varying, '1h'::character varying, '1d'::character varying])::text[]))) |
+| bars_timeframe_not_null         | n           | NOT NULL timeframe                                                                                                             |
+| bars_timestamp_not_null         | n           | NOT NULL "timestamp"                                                                                                           |
+| bars_volume_not_null            | n           | NOT NULL volume                                                                                                                |
+| bars_instrument_id_fkey         | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE                                                       |
+| bars_pkey                       | PRIMARY KEY | PRIMARY KEY (instrument_id, timeframe, "timestamp")                                                                            |
 
 ## Indexes
 

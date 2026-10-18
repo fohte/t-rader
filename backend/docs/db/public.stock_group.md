@@ -17,10 +17,14 @@
 
 ## Constraints
 
-| Name                     | Type        | Definition                                                         |
-| ------------------------ | ----------- | ------------------------------------------------------------------ |
-| stock_group_axis_id_fkey | FOREIGN KEY | FOREIGN KEY (axis_id) REFERENCES group_axis(id) ON DELETE RESTRICT |
-| stock_group_pkey         | PRIMARY KEY | PRIMARY KEY (id)                                                   |
+| Name                         | Type        | Definition                                                         |
+| ---------------------------- | ----------- | ------------------------------------------------------------------ |
+| stock_group_axis_id_not_null | n           | NOT NULL axis_id                                                   |
+| stock_group_id_not_null      | n           | NOT NULL id                                                        |
+| stock_group_key_not_null     | n           | NOT NULL key                                                       |
+| stock_group_name_not_null    | n           | NOT NULL name                                                      |
+| stock_group_axis_id_fkey     | FOREIGN KEY | FOREIGN KEY (axis_id) REFERENCES group_axis(id) ON DELETE RESTRICT |
+| stock_group_pkey             | PRIMARY KEY | PRIMARY KEY (id)                                                   |
 
 ## Indexes
 

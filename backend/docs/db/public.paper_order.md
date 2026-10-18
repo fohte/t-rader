@@ -18,14 +18,21 @@
 
 ## Constraints
 
-| Name                             | Type        | Definition                                                              |
-| -------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| paper_order_qty_check            | CHECK       | CHECK (((qty > 0) AND ((qty % (100)::bigint) = 0)))                     |
-| paper_order_side_check           | CHECK       | CHECK ((side = ANY (ARRAY['buy'::text, 'sell'::text])))                 |
-| paper_order_stock_id_fkey        | FOREIGN KEY | FOREIGN KEY (stock_id) REFERENCES stock(id)                             |
-| paper_order_note_version_id_fkey | FOREIGN KEY | FOREIGN KEY (note_version_id) REFERENCES note_version(id)               |
-| paper_order_account_id_fkey      | FOREIGN KEY | FOREIGN KEY (account_id) REFERENCES paper_account(id) ON DELETE CASCADE |
-| paper_order_pkey                 | PRIMARY KEY | PRIMARY KEY (id)                                                        |
+| Name                                 | Type        | Definition                                                              |
+| ------------------------------------ | ----------- | ----------------------------------------------------------------------- |
+| paper_order_account_id_not_null      | n           | NOT NULL account_id                                                     |
+| paper_order_id_not_null              | n           | NOT NULL id                                                             |
+| paper_order_note_version_id_not_null | n           | NOT NULL note_version_id                                                |
+| paper_order_ordered_at_not_null      | n           | NOT NULL ordered_at                                                     |
+| paper_order_qty_check                | CHECK       | CHECK (((qty > 0) AND ((qty % (100)::bigint) = 0)))                     |
+| paper_order_qty_not_null             | n           | NOT NULL qty                                                            |
+| paper_order_side_check               | CHECK       | CHECK ((side = ANY (ARRAY['buy'::text, 'sell'::text])))                 |
+| paper_order_side_not_null            | n           | NOT NULL side                                                           |
+| paper_order_stock_id_not_null        | n           | NOT NULL stock_id                                                       |
+| paper_order_stock_id_fkey            | FOREIGN KEY | FOREIGN KEY (stock_id) REFERENCES stock(id)                             |
+| paper_order_note_version_id_fkey     | FOREIGN KEY | FOREIGN KEY (note_version_id) REFERENCES note_version(id)               |
+| paper_order_account_id_fkey          | FOREIGN KEY | FOREIGN KEY (account_id) REFERENCES paper_account(id) ON DELETE CASCADE |
+| paper_order_pkey                     | PRIMARY KEY | PRIMARY KEY (id)                                                        |
 
 ## Indexes
 
