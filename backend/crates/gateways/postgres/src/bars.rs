@@ -24,6 +24,7 @@ use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQu
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
 mod us_stock_minute_bars_downsample;
+mod us_stock_sip_bar_refetch;
 
 fn current_hourly_history_cutoff_for(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
     matches!(timeframe, Timeframe::Hourly | Timeframe::FourHours)
@@ -256,6 +257,45 @@ impl BarsRepository for PostgresBarsRepository {
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
         self.find_us_stock_bar_targets().await
+    }
+
+    async fn find_pending_us_stock_sip_bar_refetch_targets(
+        &self,
+        max_symbols: Option<usize>,
+    ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
+        PostgresBarsRepository::find_pending_us_stock_sip_bar_refetch_targets(self, max_symbols)
+            .await
+    }
+
+    async fn mark_us_stock_sip_bar_refetch_completed(
+        &self,
+        instrument_id: &str,
+    ) -> Result<(), BarsRepositoryError> {
+        PostgresBarsRepository::mark_us_stock_sip_bar_refetch_completed(self, instrument_id).await
+    }
+
+    async fn mark_us_stock_sip_bar_refetch_skipped(
+        &self,
+        instrument_id: &str,
+        reason: &str,
+    ) -> Result<(), BarsRepositoryError> {
+        PostgresBarsRepository::mark_us_stock_sip_bar_refetch_skipped(self, instrument_id, reason)
+            .await
+    }
+
+    async fn reserve_us_stock_sip_refetch_rows(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        rows: u64,
+        max_rows_per_hour: u64,
+    ) -> Result<bool, BarsRepositoryError> {
+        PostgresBarsRepository::reserve_us_stock_sip_refetch_rows(
+            self,
+            transaction,
+            rows,
+            max_rows_per_hour,
+        )
+        .await
     }
 
     async fn find_earliest_us_stock_minute_bar_before(

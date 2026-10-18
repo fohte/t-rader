@@ -62,5 +62,7 @@ pub mod trade;
 pub mod trade_note;
 pub mod trigger;
 pub mod us_stock_hourly_bar_ingest_progress;
+pub mod us_stock_sip_bar_refetch_progress;
+pub mod us_stock_sip_bar_refetch_write_budget;
 pub mod valuation;
 pub mod valuation_ingested_date;

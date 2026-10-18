@@ -24,6 +24,9 @@ pub struct FakeBarsRepository {
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_daily_targets: Mutex<HashSet<String>>,
     pub us_stock_minute_targets: Mutex<HashSet<String>>,
+    pub us_stock_sip_refetch_completed: Mutex<HashSet<String>>,
+    pub us_stock_sip_refetch_skipped: Mutex<HashMap<String, String>>,
+    pub us_stock_sip_refetch_rows_reserved: Mutex<u64>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub bar_compression_times: Mutex<Vec<DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
@@ -329,6 +332,69 @@ impl BarsRepository for FakeBarsRepository {
         let mut target_ids = self.us_stock_targets.lock().await.clone();
         target_ids.extend(self.us_stock_daily_targets.lock().await.iter().cloned());
         self.find_targets(target_ids).await
+    }
+
+    async fn find_pending_us_stock_sip_bar_refetch_targets(
+        &self,
+        max_symbols: Option<usize>,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+        let mut target_ids = self.us_stock_targets.lock().await.clone();
+        target_ids.extend(self.us_stock_daily_targets.lock().await.iter().cloned());
+        target_ids.extend(self.us_stock_minute_targets.lock().await.iter().cloned());
+        let completed = self.us_stock_sip_refetch_completed.lock().await;
+        let skipped = self.us_stock_sip_refetch_skipped.lock().await;
+        target_ids.retain(|instrument_id| {
+            !completed.contains(instrument_id) && !skipped.contains_key(instrument_id)
+        });
+        drop(completed);
+        drop(skipped);
+        let mut targets = self.find_targets(target_ids).await?;
+        if let Some(max_symbols) = max_symbols {
+            targets.truncate(max_symbols);
+        }
+        Ok(targets)
+    }
+
+    async fn mark_us_stock_sip_bar_refetch_completed(
+        &self,
+        instrument_id: &str,
+    ) -> Result<(), BarsRepositoryError> {
+        self.us_stock_sip_refetch_completed
+            .lock()
+            .await
+            .insert(instrument_id.to_owned());
+        self.us_stock_sip_refetch_skipped
+            .lock()
+            .await
+            .remove(instrument_id);
+        Ok(())
+    }
+
+    async fn mark_us_stock_sip_bar_refetch_skipped(
+        &self,
+        instrument_id: &str,
+        reason: &str,
+    ) -> Result<(), BarsRepositoryError> {
+        self.us_stock_sip_refetch_skipped
+            .lock()
+            .await
+            .insert(instrument_id.to_owned(), reason.to_owned());
+        Ok(())
+    }
+
+    async fn reserve_us_stock_sip_refetch_rows(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        rows: u64,
+        max_rows_per_hour: u64,
+    ) -> Result<bool, BarsRepositoryError> {
+        self.record_transaction(transaction).await?;
+        let mut reserved = self.us_stock_sip_refetch_rows_reserved.lock().await;
+        if reserved.saturating_add(rows) > max_rows_per_hour {
+            return Ok(false);
+        }
+        *reserved += rows;
+        Ok(true)
     }
 
     async fn mark_us_stock_hourly_bar_history_completed(

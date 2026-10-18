@@ -45,6 +45,12 @@ pub struct UsStockBarTarget {
     pub earliest_hourly_bar: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsStockSipBarRefetchConfig {
+    pub max_symbols: Option<usize>,
+    pub max_rows_per_hour: u64,
+}
+
 impl UsStockBarTarget {
     /// 履歴 API は銘柄ごとに初回だけ呼ぶため、完了時刻の有無で判定する。
     pub(crate) fn has_hourly_history_backfill(&self) -> bool {

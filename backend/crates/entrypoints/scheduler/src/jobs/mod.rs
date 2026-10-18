@@ -37,6 +37,7 @@ pub mod strategy_task_reconcile;
 pub mod twse;
 pub mod us_stock_bars;
 pub mod us_stock_master;
+pub mod us_stock_sip_bar_refetch;
 pub mod valuation;
 
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);

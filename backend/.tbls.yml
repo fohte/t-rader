@@ -340,6 +340,17 @@ comments:
     columnComments:
       instrument_id: '取得対象の銘柄。'
       completed_through: 'この時刻まで 1 時間足 API の取得が完了した。'
+  - table: us_stock_sip_bar_refetch_progress
+    tableComment: '米国株の SIP 足を再取得した銘柄と、再取得できない理由を保持する。'
+    columnComments:
+      instrument_id: 'SIP 足を再取得する銘柄。'
+      completed_at: '指定期間の足を SIP で再取得した時刻。'
+      skipped_reason: 'SIP で再取得できず、対象から除外した理由。'
+  - table: us_stock_sip_bar_refetch_write_budget
+    tableComment: '米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。'
+    columnComments:
+      hour_started_at: '行数を集計する UTC 時間の開始時刻。'
+      rows_written: 'この時間に SIP 再取得で upsert した行数。'
   - table: cross_shareholding_documents
     tableComment: 'EDINET の政策保有株式に関する提出書類と明細を保持する。'
     columnComments:

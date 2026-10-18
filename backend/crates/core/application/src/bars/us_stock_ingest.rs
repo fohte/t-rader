@@ -17,6 +17,7 @@ mod adjustment;
 mod hourly;
 mod page_write;
 mod request_budget;
+mod sip_refetch;
 mod split;
 mod write_lock;
 
@@ -27,21 +28,25 @@ struct IngestContext {
     budget: RequestBudget,
     stats: UsStockBarsIngestStats,
     write_throttle: WriteThrottle,
+    max_rows_per_hour: Option<u64>,
 }
 
 struct BatchIngestContext<'a> {
     budget: &'a mut RequestBudget,
     stats: &'a mut UsStockBarsIngestStats,
     write_throttle: &'a mut WriteThrottle,
+    max_rows_per_hour: Option<u64>,
     skipped_instrument_ids: HashSet<String>,
 }
 
 impl<'a> BatchIngestContext<'a> {
     fn new(context: &'a mut IngestContext) -> Self {
+        let max_rows_per_hour = context.max_rows_per_hour;
         Self {
             budget: &mut context.budget,
             stats: &mut context.stats,
             write_throttle: &mut context.write_throttle,
+            max_rows_per_hour,
             skipped_instrument_ids: HashSet::new(),
         }
     }
@@ -158,6 +163,7 @@ impl UsStockBarsIngestUseCases {
                 ..UsStockBarsIngestStats::default()
             },
             write_throttle: WriteThrottle::default(),
+            max_rows_per_hour: None,
         };
         let completed = self
             .ingest_timeframe(
@@ -349,6 +355,7 @@ impl UsStockBarsIngestUseCases {
                     context.write_throttle,
                     context.budget,
                     context.stats,
+                    context.max_rows_per_hour,
                 )
                 .await?
             {

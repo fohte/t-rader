@@ -19,7 +19,7 @@ pub use repository::{BarsRepository, BarsRepositoryError, SharedBarsRepository};
 pub use types::{
     BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, IngestStats, LatestPrices,
     UsStockBarTarget, UsStockBarsIngestResult, UsStockBarsIngestStats,
-    UsStockMinuteBarsDownsampleStats,
+    UsStockMinuteBarsDownsampleStats, UsStockSipBarRefetchConfig,
 };
 pub use us_stock_source::{
     SharedUsStockBarSource, SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery,
@@ -39,6 +39,8 @@ pub const US_STOCK_DAILY_BARS_MAX_RUN_DURATION: std::time::Duration =
 /// 分足・時間足の取り込み後に圧縮と stats 記録の時間を残すための上限。
 pub const US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION: std::time::Duration =
     std::time::Duration::from_secs(45 * 60);
+
+pub const DEFAULT_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR: u64 = 1_000_000;
 
 pub fn us_stock_hourly_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
     now.checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))

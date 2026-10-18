@@ -140,7 +140,7 @@ impl super::SchedulerJob for UsStockMinuteBarsDownsample {
     }
 }
 
-fn log_ingest_stats(
+pub(super) fn log_ingest_stats(
     bar_timeframe: &'static str,
     result: Result<UsStockBarsIngestResult, UsStockBarsIngestError>,
 ) -> Result<UsStockBarsIngestResult, (Box<UsStockBarsIngestResult>, String)> {

@@ -63,6 +63,29 @@ pub trait BarsRepository: Send + Sync {
         &self,
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
 
+    async fn find_pending_us_stock_sip_bar_refetch_targets(
+        &self,
+        max_symbols: Option<usize>,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+
+    async fn mark_us_stock_sip_bar_refetch_completed(
+        &self,
+        instrument_id: &str,
+    ) -> Result<(), BarsRepositoryError>;
+
+    async fn mark_us_stock_sip_bar_refetch_skipped(
+        &self,
+        instrument_id: &str,
+        reason: &str,
+    ) -> Result<(), BarsRepositoryError>;
+
+    async fn reserve_us_stock_sip_refetch_rows(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        rows: u64,
+        max_rows_per_hour: u64,
+    ) -> Result<bool, BarsRepositoryError>;
+
     async fn mark_us_stock_hourly_bar_history_completed(
         &self,
         instrument_ids: &[String],

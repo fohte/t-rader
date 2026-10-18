@@ -16,6 +16,7 @@ impl UsStockBarsIngestUseCases {
         write_throttle: &mut WriteThrottle,
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
+        max_rows_per_hour: Option<u64>,
     ) -> Result<bool, BarsUseCaseError> {
         if bars.is_empty() {
             return Ok(true);
@@ -29,6 +30,18 @@ impl UsStockBarsIngestUseCases {
         }
         let count = bars.len();
         let transaction = self.bars.unit_of_work.begin().await?;
+        if let Some(max_rows_per_hour) = max_rows_per_hour {
+            let rows = u64::try_from(count).unwrap_or(u64::MAX);
+            if !self
+                .bars
+                .repository
+                .reserve_us_stock_sip_refetch_rows(&transaction, rows, max_rows_per_hour)
+                .await?
+            {
+                stats.interrupted_reason = Some("hourly_row_limit_reached".to_owned());
+                return Ok(false);
+            }
+        }
         let write_started_at = self.clock.instant();
         self.bars.repository.upsert_bars(&transaction, bars).await?;
         let commit_started_at = self.clock.instant();
