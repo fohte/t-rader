@@ -32,6 +32,7 @@ pub struct FakeBarsRepository {
     pub minute_bar_downsample_instruments: Mutex<Vec<String>>,
     pub minute_bar_downsample_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub minute_bar_downsample_cutoffs: Mutex<Vec<DateTime<Utc>>>,
+    minute_bar_downsample_stats: Mutex<UsStockMinuteBarsDownsampleStats>,
     minute_bar_downsample_failure: Mutex<Option<(String, String)>>,
     hourly_upsert_error: Mutex<Option<String>>,
     bar_compression_error: Mutex<Option<String>>,
@@ -99,6 +100,10 @@ impl FakeBarsRepository {
     ) {
         *self.minute_bar_downsample_failure.lock().await =
             Some((instrument_id.into(), message.into()));
+    }
+
+    pub async fn set_minute_bar_downsample_stats(&self, stats: UsStockMinuteBarsDownsampleStats) {
+        *self.minute_bar_downsample_stats.lock().await = stats;
     }
 
     pub async fn fail_bar_compression_with(&self, message: impl Into<String>) {
@@ -271,7 +276,7 @@ impl BarsRepository for FakeBarsRepository {
                 message,
             )));
         }
-        Ok(UsStockMinuteBarsDownsampleStats::default())
+        Ok(*self.minute_bar_downsample_stats.lock().await)
     }
 
     async fn find_latest_bar(

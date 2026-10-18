@@ -14,10 +14,10 @@ const WRITE_LOCK_WAIT_TIMEOUT: StdDuration = StdDuration::from_secs(30);
 async fn acquire_us_stock_bars_write_lock(
     write_lock: &dyn UsStockBarsWriteLock,
     wait_timeout: StdDuration,
-) -> Result<Box<dyn UsStockBarsWriteLockGuard>, BarsUseCaseError> {
+) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, BarsUseCaseError> {
     match tokio::time::timeout(wait_timeout, write_lock.acquire(wait_timeout)).await {
-        Ok(Ok(Some(guard))) => Ok(guard),
-        Ok(Ok(None)) | Err(_) => Err(BarsUseCaseError::UsStockBarsWriteLockBusy),
+        Ok(Ok(guard)) => Ok(guard),
+        Err(_) => Ok(None),
         Ok(Err(error)) => Err(error.into()),
     }
 }
@@ -41,11 +41,14 @@ impl UsStockBarsIngestUseCases {
         let mut stats = UsStockMinuteBarsDownsampleStats::default();
         let instrument_ids = self.bars.repository.find_us_stock_instrument_ids().await?;
         while batch_from < cutoff {
-            let write_lock_guard = acquire_us_stock_bars_write_lock(
+            let Some(write_lock_guard) = acquire_us_stock_bars_write_lock(
                 self.us_stock_bars_write_lock.as_ref(),
                 WRITE_LOCK_WAIT_TIMEOUT,
             )
-            .await?;
+            .await?
+            else {
+                return Ok(stats);
+            };
 
             let batch_until = batch_from
                 .checked_add_signed(Duration::days(DOWNSAMPLE_BATCH_DAYS))
@@ -99,12 +102,12 @@ mod tests {
     use core_domain::bar::{Bar, Timeframe};
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration as StdDuration;
 
     use crate::bars::{
-        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock,
-        UsStockBarsIngestUseCases, UsStockBarsWriteLock, UsStockBarsWriteLockGuard,
+        BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock, UsStockBarsIngestUseCases,
+        UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockMinuteBarsDownsampleStats,
     };
     use crate::persistence::PersistenceError;
 
@@ -152,20 +155,25 @@ mod tests {
     }
 
     struct TestDownsampleWriteLock {
-        available: AtomicBool,
+        busy_on_attempt: AtomicUsize,
         attempts: AtomicUsize,
     }
 
     impl TestDownsampleWriteLock {
         fn new() -> Self {
             Self {
-                available: AtomicBool::new(true),
+                busy_on_attempt: AtomicUsize::new(0),
                 attempts: AtomicUsize::new(0),
             }
         }
 
         fn set_available(&self, available: bool) {
-            self.available.store(available, Ordering::SeqCst);
+            self.busy_on_attempt
+                .store(if available { 0 } else { 1 }, Ordering::SeqCst);
+        }
+
+        fn set_busy_on_attempt(&self, attempt: usize) {
+            self.busy_on_attempt.store(attempt, Ordering::SeqCst);
         }
 
         fn attempts(&self) -> usize {
@@ -183,8 +191,8 @@ mod tests {
             &self,
             wait_timeout: StdDuration,
         ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
-            self.attempts.fetch_add(1, Ordering::SeqCst);
-            if wait_timeout.is_zero() || !self.available.load(Ordering::SeqCst) {
+            let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+            if wait_timeout.is_zero() || self.busy_on_attempt.load(Ordering::SeqCst) == attempt {
                 return Ok(None);
             }
 
@@ -388,7 +396,66 @@ mod tests {
                 begun,
                 downsample_ranges,
             ),
-            (Err(()), 1, Vec::new(), Vec::new()),
+            (Ok(Default::default()), 1, Vec::new(), Vec::new()),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_returns_completed_batch_stats_when_write_lock_becomes_busy(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        repository
+            .seed_bars(vec![minute_bar(
+                "US:DEMO-ALPHA",
+                date("2038-12-20T03:05:00Z"),
+            )])
+            .await;
+        repository
+            .set_minute_bar_downsample_stats(UsStockMinuteBarsDownsampleStats {
+                hourly_bars_inserted: 1,
+                minute_bars_deleted: 3,
+            })
+            .await;
+        downsample_fixture.write_lock.set_busy_on_attempt(2);
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"))
+            .await
+            .map_err(|_| ());
+        let begun = downsample_fixture.unit_of_work.begun.lock().await.clone();
+        let committed = downsample_fixture
+            .unit_of_work
+            .committed
+            .lock()
+            .await
+            .clone();
+        let downsample_ranges = repository.minute_bar_downsample_ranges.lock().await.clone();
+
+        assert_eq!(
+            (
+                result,
+                downsample_fixture.write_lock.attempts(),
+                begun.len(),
+                committed == begun,
+                downsample_ranges,
+            ),
+            (
+                Ok(UsStockMinuteBarsDownsampleStats {
+                    hourly_bars_inserted: 2,
+                    minute_bars_deleted: 6,
+                }),
+                2,
+                2,
+                true,
+                vec![
+                    (date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z"),),
+                    (date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z"),),
+                ],
+            ),
         );
     }
 
@@ -397,12 +464,9 @@ mod tests {
         let result =
             acquire_us_stock_bars_write_lock(&BlockingWriteLock, StdDuration::from_millis(1))
                 .await
-                .map(|_| ())
-                .map_err(|error| match error {
-                    BarsUseCaseError::UsStockBarsWriteLockBusy => "busy",
-                    _ => "other",
-                });
+                .map(|guard| guard.is_some())
+                .map_err(|_| "other");
 
-        assert_eq!(result, Err("busy"));
+        assert_eq!(result, Ok(false));
     }
 }
