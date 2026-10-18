@@ -20,24 +20,20 @@ pub(super) const GROUP_MEMBERSHIP_CTES: &str = r#"
     )
 "#;
 
+/// `stock_change_windows(stock_id, start_at, end_before)` を先行して定義する。
 pub(super) const STOCK_CHANGE_CTES: &str = r#"
-    period_bars AS (
-        SELECT bars.instrument_id, bars.timestamp, bars.close, bars.volume
-        FROM stock_change_windows
-        JOIN bars ON bars.instrument_id = stock_change_windows.stock_id
-        WHERE bars.timeframe = '1d'
-          AND bars.timestamp >= stock_change_windows.start_at
-          AND bars.timestamp < stock_change_windows.end_before
-    ),
     stock_changes AS (
         SELECT stock_change_windows.stock_id,
                end_prices.close / NULLIF(start_prices.close, 0) - 1 AS change_rate
         FROM stock_change_windows
         CROSS JOIN LATERAL (
-            SELECT period_bars.close
-            FROM period_bars
-            WHERE period_bars.instrument_id = stock_change_windows.stock_id
-            ORDER BY period_bars.timestamp DESC
+            SELECT bars.close
+            FROM bars
+            WHERE bars.instrument_id = stock_change_windows.stock_id
+              AND bars.timeframe = '1d'
+              AND bars.timestamp >= stock_change_windows.start_at
+              AND bars.timestamp < stock_change_windows.end_before
+            ORDER BY bars.timestamp DESC
             LIMIT 1
         ) AS end_prices
         CROSS JOIN LATERAL (
@@ -53,14 +49,14 @@ pub(super) const STOCK_CHANGE_CTES: &str = r#"
     )
 "#;
 
-/// `stock_change_window_rows` は `stock_id`, `start_at`, `end_before` を返す。
+/// CTE を依存順に連結し、後続の断片から `stock_changes(stock_id, change_rate)` を参照できるようにする。
 pub(super) fn with_shared_market_ctes(
     requested_axes: &str,
-    before_stock_change_windows: &str,
-    stock_change_window_rows: &str,
-    after_stock_changes: &str,
+    before_stock_change_ctes: &str,
+    stock_change_ctes: &str,
+    after_stock_change_ctes: &str,
 ) -> String {
     format!(
-        "WITH requested_axes AS ({requested_axes}), {GROUP_MEMBERSHIP_CTES}, {before_stock_change_windows}, stock_change_windows AS ({stock_change_window_rows}), {STOCK_CHANGE_CTES}, {after_stock_changes}"
+        "WITH requested_axes AS ({requested_axes}), {GROUP_MEMBERSHIP_CTES}, {before_stock_change_ctes}, {stock_change_ctes}, {after_stock_change_ctes}"
     )
 }

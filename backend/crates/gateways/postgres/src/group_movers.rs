@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 
 use crate::DatabaseHandle;
-use crate::group_query_sql::with_shared_market_ctes;
+use crate::group_query_sql::{STOCK_CHANGE_CTES, with_shared_market_ctes};
 use crate::persistence::persistence_error;
 
 const TOP_STOCKS_PER_GROUP: i64 = 5;
@@ -25,20 +25,25 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
                 FROM group_members
                 WHERE group_members.axis_key = $1::text
                   AND group_members.stock_id IS NOT NULL
+            ),
+            stock_change_windows AS (
+                SELECT eligible_stocks.stock_id,
+                       $2::date::timestamp AT TIME ZONE 'UTC' AS start_at,
+                       (($3::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
+                FROM eligible_stocks
             )
         "#,
+        STOCK_CHANGE_CTES,
         r#"
-            SELECT eligible_stocks.stock_id,
-                   $2::date::timestamp AT TIME ZONE 'UTC' AS start_at,
-                   (($3::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
-            FROM eligible_stocks
-        "#,
-        r#"
-            avg_turnover AS (
-                SELECT instrument_id, AVG(close * volume::numeric) AS avg_turnover
-                FROM period_bars
-                GROUP BY instrument_id
-                HAVING AVG(close * volume::numeric) >= $4::numeric
+            avg_turnover AS MATERIALIZED (
+                SELECT bars.instrument_id,
+                       AVG(bars.close * bars.volume::numeric) AS avg_turnover
+                FROM bars
+                WHERE bars.timeframe = '1d'
+                  AND bars.timestamp >= ($2::date::timestamp AT TIME ZONE 'UTC')
+                  AND bars.timestamp < (($3::date + 1)::timestamp AT TIME ZONE 'UTC')
+                GROUP BY bars.instrument_id
+                HAVING AVG(bars.close * bars.volume::numeric) >= $4::numeric
             ),
             group_returns AS (
                 SELECT group_members.group_id, group_members.group_key,
@@ -52,7 +57,6 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
                   ON stock_changes.stock_id = group_members.stock_id
                 JOIN instruments ON instruments.id = group_members.stock_id
                 LEFT JOIN stock ON stock.id = group_members.stock_id
-                WHERE group_members.axis_key = $1::text
             ),
             ranked_returns AS (
                 SELECT group_returns.*,

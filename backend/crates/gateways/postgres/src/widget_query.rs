@@ -14,7 +14,7 @@ use crate::group_query_sql::with_shared_market_ctes;
 use crate::persistence::persistence_error;
 
 const RESOLVE_AS_OF_SQL: &str = r#"
-    SELECT MAX((timestamp AT TIME ZONE 'UTC')::date) AS as_of
+    SELECT (MAX(timestamp) AT TIME ZONE 'UTC')::date AS as_of
     FROM bars
     WHERE timeframe = '1d'
       AND ($1::date IS NULL
@@ -46,21 +46,41 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
             )
         "#,
         r#"
-            SELECT candidate_stocks.id AS stock_id,
-                   period_start.start_at,
-                   (($1::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
-            FROM candidate_stocks
-            CROSS JOIN LATERAL (
-                SELECT bars.timestamp AS start_at
+            ranked_period_bars AS (
+                SELECT bars.instrument_id,
+                       bars.close,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY bars.instrument_id
+                           ORDER BY bars.timestamp DESC
+                       ) AS bar_number
                 FROM bars
-                WHERE bars.instrument_id = candidate_stocks.id
-                  AND bars.timeframe = '1d'
-                  AND bars.timestamp
-                      < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
-                ORDER BY bars.timestamp DESC
-                OFFSET ($2::bigint - 1)
-                LIMIT 1
-            ) AS period_start
+                JOIN candidate_stocks
+                  ON candidate_stocks.id = bars.instrument_id
+                WHERE bars.timeframe = '1d'
+                  AND bars.timestamp >= (
+                      (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+                      - (($2::integer * 2 + 14) * INTERVAL '1 day')
+                  )
+                  AND bars.timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+            ),
+            stock_changes AS (
+                SELECT ranked_period_bars.instrument_id AS stock_id,
+                       MAX(ranked_period_bars.close) FILTER (
+                           WHERE ranked_period_bars.bar_number = 1
+                       ) / NULLIF(
+                           MAX(ranked_period_bars.close) FILTER (
+                               WHERE ranked_period_bars.bar_number = $2::bigint + 1
+                           ),
+                           0
+                       ) - 1 AS change_rate
+                FROM ranked_period_bars
+                WHERE ranked_period_bars.bar_number IN (1, $2::bigint + 1)
+                GROUP BY ranked_period_bars.instrument_id
+                HAVING COUNT(*) FILTER (WHERE ranked_period_bars.bar_number = 1) > 0
+                   AND COUNT(*) FILTER (
+                       WHERE ranked_period_bars.bar_number = $2::bigint + 1
+                   ) > 0
+            )
         "#,
         r#"
             stock_values AS (
@@ -347,6 +367,28 @@ mod tests {
         insert_valuation(db, "D008", 3_000).await;
     }
 
+    #[backend_test_macros::database_test]
+    async fn resolves_as_of_from_the_latest_daily_bar(db: DatabaseHandle) {
+        insert_stock(&db, "D009", "Stock Iota").await;
+        for day in [1, 3, 5] {
+            insert_bar(&db, "D009", day, 100).await;
+        }
+
+        let source = PostgresWidgetQuerySource::new(db);
+        let result = (
+            source
+                .resolve_as_of(None)
+                .await
+                .expect("resolve latest as-of"),
+            source
+                .resolve_as_of(Some(date(3)))
+                .await
+                .expect("resolve requested as-of"),
+        );
+
+        assert_eq!(result, (Some(date(5)), Some(date(3))));
+    }
+
     fn market_query(
         metric: core_application::widget::WidgetMetric,
         period: Option<core_application::widget::WidgetPeriod>,
@@ -456,7 +498,16 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn widget_change_matches_group_movers_for_the_same_date_window(db: DatabaseHandle) {
         insert_stock(&db, "D004", "Stock Delta").await;
-        for (day, close) in [(2, 100), (3, 110), (4, 120), (5, 130), (6, 140), (7, 150)] {
+        for (day, close) in [
+            (1, 10_000),
+            (2, 100),
+            (3, 110),
+            (4, 120),
+            (5, 130),
+            (6, 140),
+            (7, 150),
+            (8, 20_000),
+        ] {
             insert_bar(&db, "D004", day, close).await;
         }
 
@@ -510,6 +561,52 @@ mod tests {
                     }],
                 }],
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn includes_lower_bound_bar_and_excludes_stocks_without_enough_bars(db: DatabaseHandle) {
+        insert_stock(&db, "D011", "Stock Kappa").await;
+        insert_stock(&db, "D012", "Stock Lambda").await;
+        insert_stock(&db, "D013", "Stock Mu").await;
+        insert_stock(&db, "D014", "Stock Nu").await;
+        insert_bar(&db, "D011", 1, 100).await;
+        insert_bar(&db, "D011", 2, 120).await;
+        insert_bar(&db, "D012", 19, 100).await;
+        insert_bar(&db, "D012", 20, 110).await;
+        insert_bar(&db, "D013", 4, 100).await;
+        insert_bar(&db, "D013", 20, 120).await;
+        insert_bar(&db, "D014", 5, 100).await;
+        insert_bar(&db, "D014", 20, 120).await;
+
+        let query = WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::OneDay),
+            by: WidgetBy::Stock,
+            axis: None,
+            indicator: None,
+            universe: None,
+            agg: None,
+        };
+        let result = PostgresWidgetQuerySource::new(db)
+            .query(date(20), &query)
+            .await
+            .expect("query widget stock changes");
+
+        assert_eq!(
+            result,
+            vec![
+                WidgetQueryRow {
+                    key: WidgetRowKey::Stock("D012".to_string()),
+                    name: "Stock Lambda".to_string(),
+                    value: Decimal::new(1, 1),
+                },
+                WidgetQueryRow {
+                    key: WidgetRowKey::Stock("D014".to_string()),
+                    name: "Stock Nu".to_string(),
+                    value: Decimal::new(2, 1),
+                },
+            ],
         );
     }
 
