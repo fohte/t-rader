@@ -1,5 +1,9 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { AIMessage, HumanMessage } from '@langchain/core/messages'
+import {
+  AIMessage,
+  AIMessageChunk,
+  HumanMessage,
+} from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { createAgent } from 'langchain'
 import { describe, expect, it, vi } from 'vitest'
@@ -10,7 +14,9 @@ import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry
 class ScriptedChatModel extends BaseChatModel {
   attempts = 0
 
-  constructor(private readonly failures: readonly Error[]) {
+  constructor(
+    private readonly responses: readonly (Error | AIMessage | AIMessageChunk)[],
+  ) {
     super({})
   }
 
@@ -26,12 +32,14 @@ class ScriptedChatModel extends BaseChatModel {
   }
 
   override _generate(): Promise<ChatResult> {
-    const failure = this.failures[this.attempts]
+    const response = this.responses[this.attempts]
     this.attempts += 1
-    if (failure !== undefined) return Promise.reject(failure)
+    if (response instanceof Error) return Promise.reject(response)
 
     return Promise.resolve({
-      generations: [{ text: 'done', message: new AIMessage('done') }],
+      generations: [
+        { text: 'done', message: response ?? new AIMessage('done') },
+      ],
     })
   }
 }

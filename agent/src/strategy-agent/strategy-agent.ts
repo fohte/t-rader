@@ -34,6 +34,7 @@ import {
   MAX_MODEL_CALLS_PER_INVOKE,
   type ModelCallBudget,
 } from '#strategy-agent/final-turn-middleware'
+import { malformedToolCallResponseMiddleware } from '#strategy-agent/malformed-tool-call-response-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
 import { nonAssistantModelResponseMiddleware } from '#strategy-agent/non-assistant-model-response-middleware'
@@ -152,6 +153,7 @@ const buildCompiledAgent = (
       stripMessageNameMiddleware,
       // 再試行ごとに呼び出し時間上限と tool 呼び出し上限の状態を作り直す。
       createModelCallRetryMiddleware(),
+      malformedToolCallResponseMiddleware,
       // 実際の HTTP リクエストに一番近い位置で signal / callback を差し込む。
       createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
       createCallDurationMiddleware(llmCallTimeoutMs),
