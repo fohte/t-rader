@@ -4,6 +4,21 @@ use sea_orm::{DbBackend, Statement};
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
+#[derive(DeriveIden)]
+enum BarsTimestampCoverage {
+    Table,
+    InstrumentId,
+    Timeframe,
+    EarliestTimestamp,
+    LatestTimestamp,
+}
+
+#[derive(DeriveIden)]
+enum Instruments {
+    Table,
+    Id,
+}
+
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     // backfill の範囲ごとに commit し、長い transaction を作らない。
@@ -13,16 +28,51 @@ impl MigrationTrait for Migration {
 
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
-        db.execute_unprepared(
-            "CREATE TABLE IF NOT EXISTS bars_timestamp_coverage (
-                instrument_id text NOT NULL REFERENCES instruments(id) ON DELETE CASCADE,
-                timeframe text NOT NULL CHECK (timeframe IN ('1m', '1h', '1d')),
-                earliest_timestamp timestamptz NOT NULL,
-                latest_timestamp timestamptz NOT NULL,
-                PRIMARY KEY (instrument_id, timeframe)
-            )",
-        )
-        .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(BarsTimestampCoverage::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(BarsTimestampCoverage::InstrumentId)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(BarsTimestampCoverage::Timeframe)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(BarsTimestampCoverage::EarliestTimestamp)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(BarsTimestampCoverage::LatestTimestamp)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .col(BarsTimestampCoverage::InstrumentId)
+                            .col(BarsTimestampCoverage::Timeframe),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(
+                                BarsTimestampCoverage::Table,
+                                BarsTimestampCoverage::InstrumentId,
+                            )
+                            .to(Instruments::Table, Instruments::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .check(
+                        Expr::col(BarsTimestampCoverage::Timeframe).is_in(["1m", "1h", "1d"]),
+                    )
+                    .to_owned(),
+            )
+            .await?;
         db.execute_unprepared(
             "COMMENT ON TABLE bars_timestamp_coverage IS '銘柄と時間足ごとの最古・最新のバー時刻を保持する。'",
         )
@@ -86,7 +136,11 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Alias::new("bars_timestamp_coverage")).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(BarsTimestampCoverage::Table)
+                    .to_owned(),
+            )
             .await
     }
 }

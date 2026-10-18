@@ -6,7 +6,7 @@ use crate::persistence::PersistenceError;
 
 #[async_trait]
 pub trait UsStockBarsWriteLock: Send + Sync {
-    /// 呼び出し側が `BarsIngestClock` で待機期限を管理し、期限到達時に future を cancel する。
+    /// 呼び出し側が待機期限を管理し、期限到達時に future を cancel する。
     /// `wait_timeout` が 0 の場合は、待たずに取得を試す。
     async fn acquire(
         &self,

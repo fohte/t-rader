@@ -48,14 +48,6 @@ pub(super) async fn downsample_minute_bar_range(
     until: DateTime<Utc>,
     cutoff: DateTime<Utc>,
 ) -> Result<UsStockMinuteBarsDownsampleStats, sea_orm::DbErr> {
-    transaction
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT pg_advisory_xact_lock($1::bigint)",
-            [crate::us_stock_bars_write_lock::LOCK_KEY.into()],
-        ))
-        .await?;
-
     let values = [
         from.fixed_offset().into(),
         until.fixed_offset().into(),
