@@ -9,7 +9,6 @@ import { createAgent } from 'langchain'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AbortedModelCallError } from '#strategy-agent/aborting-model-call-middleware'
-import { malformedToolCallResponseMiddleware } from '#strategy-agent/malformed-tool-call-response-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 
 class ScriptedChatModel extends BaseChatModel {
@@ -45,19 +44,11 @@ class ScriptedChatModel extends BaseChatModel {
   }
 }
 
-const buildAgent = (
-  model: ScriptedChatModel,
-  validateMalformedToolCalls = false,
-) =>
+const buildAgent = (model: ScriptedChatModel) =>
   createAgent({
     model,
     tools: [],
-    middleware: [
-      createModelCallRetryMiddleware(),
-      ...(validateMalformedToolCalls
-        ? [malformedToolCallResponseMiddleware]
-        : []),
-    ],
+    middleware: [createModelCallRetryMiddleware()],
   })
 
 const invokeOutcome = (agent: ReturnType<typeof buildAgent>) =>
@@ -66,12 +57,8 @@ const invokeOutcome = (agent: ReturnType<typeof buildAgent>) =>
     () => 'rejected' as const,
   )
 
-const runAgent = async (
-  model: ScriptedChatModel,
-  invocations = 1,
-  validateMalformedToolCalls = false,
-) => {
-  const agent = buildAgent(model, validateMalformedToolCalls)
+const runAgent = async (model: ScriptedChatModel, invocations = 1) => {
+  const agent = buildAgent(model)
   const outcomes: ('resolved' | 'rejected')[] = []
 
   for (let invocation = 0; invocation < invocations; invocation += 1) {
@@ -84,11 +71,10 @@ const runAgent = async (
 const runAgentWithFakeTimers = async (
   model: ScriptedChatModel,
   invocations = 1,
-  validateMalformedToolCalls = false,
 ) => {
   vi.useFakeTimers()
   try {
-    const result = runAgent(model, invocations, validateMalformedToolCalls)
+    const result = runAgent(model, invocations)
     await vi.runAllTimersAsync()
     return await result
   } finally {
@@ -97,87 +83,6 @@ const runAgentWithFakeTimers = async (
 }
 
 describe('createModelCallRetryMiddleware', () => {
-  it.each([
-    {
-      name: 'raw tool arguments that are not JSON',
-      malformedResponse: new AIMessageChunk({
-        content: '',
-        tool_call_chunks: [
-          {
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: '{"field": ',
-            index: 0,
-          },
-        ],
-      }),
-    },
-    {
-      name: 'invalid tool calls',
-      malformedResponse: new AIMessage({
-        content: '',
-        invalid_tool_calls: [
-          {
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: 'not-json',
-            error: 'Malformed args.',
-          },
-        ],
-      }),
-    },
-    {
-      name: 'tool call markup in message content',
-      malformedResponse: new AIMessage('<tool_call><function=demo_tool>'),
-    },
-  ])(
-    'retries $name before accepting a valid response',
-    async ({ malformedResponse }) => {
-      const model = new ScriptedChatModel([
-        malformedResponse,
-        new AIMessage('done'),
-      ])
-
-      expect(await runAgentWithFakeTimers(model, 1, true)).toEqual({
-        outcomes: ['resolved'],
-        attempts: 2,
-      })
-    },
-  )
-
-  it('fails after three malformed tool call responses', async () => {
-    const malformedResponse = new AIMessageChunk({
-      content: '',
-      tool_call_chunks: [
-        {
-          id: 'call_demo',
-          name: 'demo_tool',
-          args: '{"field": ',
-          index: 0,
-        },
-      ],
-    })
-    const model = new ScriptedChatModel([
-      malformedResponse,
-      malformedResponse,
-      malformedResponse,
-    ])
-
-    expect(await runAgentWithFakeTimers(model, 1, true)).toEqual({
-      outcomes: ['rejected'],
-      attempts: 3,
-    })
-  })
-
-  it('passes a valid response without retrying', async () => {
-    const model = new ScriptedChatModel([new AIMessage('done')])
-
-    expect(await runAgentWithFakeTimers(model, 1, true)).toEqual({
-      outcomes: ['resolved'],
-      attempts: 1,
-    })
-  })
-
   it('retries a call-duration abort once for each model call', async () => {
     const model = new ScriptedChatModel(
       Array.from(
