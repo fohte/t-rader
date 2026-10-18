@@ -21,14 +21,6 @@ pub(super) const GROUP_MEMBERSHIP_CTES: &str = r#"
 "#;
 
 pub(super) const STOCK_CHANGE_CTES: &str = r#"
-    period_bars AS (
-        SELECT bars.instrument_id, bars.timestamp, bars.close, bars.volume
-        FROM stock_change_windows
-        JOIN bars ON bars.instrument_id = stock_change_windows.stock_id
-        WHERE bars.timeframe = '1d'
-          AND bars.timestamp >= stock_change_windows.start_at
-          AND bars.timestamp < stock_change_windows.end_before
-    ),
     stock_changes AS (
         SELECT stock_change_windows.stock_id,
                end_prices.close / NULLIF(start_prices.close, 0) - 1 AS change_rate
@@ -56,14 +48,13 @@ pub(super) const STOCK_CHANGE_CTES: &str = r#"
     )
 "#;
 
-/// `stock_change_window_rows` は `stock_id`, `start_at`, `end_before` を返す。
 pub(super) fn with_shared_market_ctes(
     requested_axes: &str,
-    before_stock_change_windows: &str,
-    stock_change_window_rows: &str,
+    before_stock_changes: &str,
+    stock_changes: &str,
     after_stock_changes: &str,
 ) -> String {
     format!(
-        "WITH requested_axes AS ({requested_axes}), {GROUP_MEMBERSHIP_CTES}, {before_stock_change_windows}, stock_change_windows AS ({stock_change_window_rows}), {STOCK_CHANGE_CTES}, {after_stock_changes}"
+        "WITH requested_axes AS ({requested_axes}), {GROUP_MEMBERSHIP_CTES}, {before_stock_changes}, {stock_changes}, {after_stock_changes}"
     )
 }

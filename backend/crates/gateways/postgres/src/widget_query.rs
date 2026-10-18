@@ -46,26 +46,41 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
             )
         "#,
         r#"
-            SELECT candidate_stocks.id AS stock_id,
-                   period_start.start_at,
-                   (($1::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
-            FROM candidate_stocks
-            CROSS JOIN LATERAL (
-                SELECT bars.timestamp AS start_at
+            ranked_period_bars AS (
+                SELECT bars.instrument_id,
+                       bars.close,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY bars.instrument_id
+                           ORDER BY bars.timestamp DESC
+                       ) AS bar_number
                 FROM bars
-                WHERE bars.instrument_id = candidate_stocks.id
-                  AND bars.timeframe = '1d'
-                  AND bars.timestamp
-                      < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
-                  -- 休場日を含む期間内で取引日数を探し、古い bar のチャンク走査を避ける。
+                JOIN candidate_stocks
+                  ON candidate_stocks.id = bars.instrument_id
+                WHERE bars.timeframe = '1d'
                   AND bars.timestamp >= (
                       (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
                       - (($2::integer * 2 + 14) * INTERVAL '1 day')
                   )
-                ORDER BY bars.timestamp DESC
-                OFFSET ($2::bigint - 1)
-                LIMIT 1
-            ) AS period_start
+                  AND bars.timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+            ),
+            stock_changes AS (
+                SELECT ranked_period_bars.instrument_id AS stock_id,
+                       MAX(ranked_period_bars.close) FILTER (
+                           WHERE ranked_period_bars.bar_number = 1
+                       ) / NULLIF(
+                           MAX(ranked_period_bars.close) FILTER (
+                               WHERE ranked_period_bars.bar_number = $2::bigint + 1
+                           ),
+                           0
+                       ) - 1 AS change_rate
+                FROM ranked_period_bars
+                WHERE ranked_period_bars.bar_number IN (1, $2::bigint + 1)
+                GROUP BY ranked_period_bars.instrument_id
+                HAVING COUNT(*) FILTER (WHERE ranked_period_bars.bar_number = 1) > 0
+                   AND COUNT(*) FILTER (
+                       WHERE ranked_period_bars.bar_number = $2::bigint + 1
+                   ) > 0
+            )
         "#,
         r#"
             stock_values AS (
@@ -483,7 +498,16 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn widget_change_matches_group_movers_for_the_same_date_window(db: DatabaseHandle) {
         insert_stock(&db, "D004", "Stock Delta").await;
-        for (day, close) in [(2, 100), (3, 110), (4, 120), (5, 130), (6, 140), (7, 150)] {
+        for (day, close) in [
+            (1, 10_000),
+            (2, 100),
+            (3, 110),
+            (4, 120),
+            (5, 130),
+            (6, 140),
+            (7, 150),
+            (8, 20_000),
+        ] {
             insert_bar(&db, "D004", day, close).await;
         }
 
@@ -541,13 +565,16 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn excludes_stocks_with_only_bars_before_the_lookback_window(db: DatabaseHandle) {
+    async fn excludes_stocks_without_enough_bars_inside_the_lookback_window(db: DatabaseHandle) {
         insert_stock(&db, "D011", "Stock Kappa").await;
         insert_stock(&db, "D012", "Stock Lambda").await;
+        insert_stock(&db, "D013", "Stock Mu").await;
         insert_bar(&db, "D011", 1, 100).await;
         insert_bar(&db, "D011", 2, 120).await;
         insert_bar(&db, "D012", 19, 100).await;
         insert_bar(&db, "D012", 20, 110).await;
+        insert_bar(&db, "D013", 4, 100).await;
+        insert_bar(&db, "D013", 20, 120).await;
 
         let query = WidgetQuery {
             metric: WidgetMetric::Change,
