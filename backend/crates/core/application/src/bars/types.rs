@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+use core_domain::bar::Timeframe;
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -43,6 +44,60 @@ pub struct UsStockBarTarget {
     pub earliest_daily_bar: Option<DateTime<Utc>>,
     pub earliest_minute_bar: Option<DateTime<Utc>>,
     pub earliest_hourly_bar: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsStockSipBarRefetchTimeframe {
+    Daily,
+    Hourly,
+    Minute,
+}
+
+impl UsStockSipBarRefetchTimeframe {
+    pub const fn as_timeframe(self) -> Timeframe {
+        match self {
+            Self::Daily => Timeframe::Daily,
+            Self::Hourly => Timeframe::Hourly,
+            Self::Minute => Timeframe::Minute,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        self.as_timeframe().as_str()
+    }
+}
+
+impl std::str::FromStr for UsStockSipBarRefetchTimeframe {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "1d" => Ok(Self::Daily),
+            "1h" => Ok(Self::Hourly),
+            "1m" => Ok(Self::Minute),
+            _ => Err(format!("unsupported SIP refetch timeframe: {value}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsStockSipBarRefetchCursor {
+    pub timeframe: UsStockSipBarRefetchTimeframe,
+    pub range_from: DateTime<Utc>,
+    pub range_to: DateTime<Utc>,
+    pub page_token: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsStockSipBarRefetchTarget {
+    pub bars: UsStockBarTarget,
+    pub cursor: Option<UsStockSipBarRefetchCursor>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsStockSipBarRefetchConfig {
+    pub max_symbols: Option<usize>,
+    pub max_rows_per_hour: u64,
 }
 
 impl UsStockBarTarget {

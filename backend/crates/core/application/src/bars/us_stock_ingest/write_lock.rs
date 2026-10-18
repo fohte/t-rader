@@ -128,7 +128,7 @@ impl UsStockBarsIngestUseCases {
         }
     }
 
-    async fn acquire_us_stock_bars_write_lock(
+    pub(super) async fn acquire_us_stock_bars_write_lock(
         &self,
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,

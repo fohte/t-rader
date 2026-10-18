@@ -25,6 +25,8 @@ t-rader-backend は Kubernetes クラスタに配備する。backend Deployment 
 | 条件付き                            | `JQUANTS_PLAN`                                | J-Quants の契約プラン (`free` / `light` / `standard` / `premium`)                                                                                         | API キー設定時に未設定または不正な値なら起動失敗。API キー未設定時は無視する                                                                            |
 | 条件付き (CronJob)                  | `SEC_USER_AGENT`                              | SEC の銘柄一覧を取得する User-Agent。SEC の fair access policy に従い、アプリ名と連絡先を設定する                                                         | 未設定時は SEC の銘柄一覧を取得できない                                                                                                                 |
 | 条件付き (CronJob)                  | `ALPACA_API_KEY_ID` / `ALPACA_API_SECRET_KEY` | Alpaca Market Data API のキー ID とシークレットキー                                                                                                       | どちらか未設定時は米国株データを取得できない                                                                                                            |
+| 任意 (`us_stock_sip_bar_refetch`)   | `US_STOCK_SIP_REFETCH_MAX_SYMBOLS`            | SIP 再取得ジョブ 1 回あたりの銘柄数上限。正の整数を指定する                                                                                               | 未設定時は全ての未完了銘柄を対象にする                                                                                                                  |
+| 任意 (`us_stock_sip_bar_refetch`)   | `US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR`      | SIP 再取得ジョブの UTC 時間あたりの書き込み行数上限。`10000` 以上の整数を指定する                                                                         | `1000000` 行を上限にする                                                                                                                                |
 | 任意 (CronJob)                      | `FIRECRAWL_API_KEY`                           | ニュース記事本文を取得する Firecrawl API キー                                                                                                             | 未設定時は本文を取得しない                                                                                                                              |
 | 任意 (API)                          | `TAVILY_API_KEY`                              | MCP の `search_web` / `read_page` tools が Tavily API を呼び出すための API キー                                                                           | 未設定でも backend は起動するが、`search_web` / `read_page` はエラーを返す                                                                              |
 | 条件付き                            | `IBKR_BASE_URL` 等                            | `DATA_PROVIDER=ibkr` 時に Gateway 接続情報を設定                                                                                                          | デフォルト値で初期化を試行                                                                                                                              |
@@ -106,6 +108,7 @@ us_stock_bars_ingest
 us_stock_minute_bars_ingest
 us_stock_minute_bars_downsample
 us_stock_hourly_bars_ingest
+us_stock_sip_bar_refetch
 us_stock_master_ingest
 valuation_ingest
 ```

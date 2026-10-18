@@ -23,7 +23,9 @@ use crate::persistence::persistence_error;
 use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQuery};
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
+mod us_stock_bar_targets;
 mod us_stock_minute_bars_downsample;
+mod us_stock_sip_bar_refetch;
 
 fn current_hourly_history_cutoff_for(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
     matches!(timeframe, Timeframe::Hourly | Timeframe::FourHours)
@@ -60,90 +62,6 @@ impl PostgresBarsRepository {
                     .collect()
             })
             .map_err(repository_error)
-    }
-
-    async fn find_us_stock_bar_targets(
-        &self,
-    ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
-        #[derive(FromQueryResult)]
-        struct TargetRow {
-            instrument_id: String,
-            latest_daily_bar: Option<DateTime<FixedOffset>>,
-            latest_minute_bar: Option<DateTime<FixedOffset>>,
-            latest_hourly_bar: Option<DateTime<FixedOffset>>,
-            hourly_history_completed_through: Option<DateTime<FixedOffset>>,
-            earliest_daily_bar: Option<DateTime<FixedOffset>>,
-            earliest_minute_bar: Option<DateTime<FixedOffset>>,
-            earliest_hourly_bar: Option<DateTime<FixedOffset>>,
-        }
-
-        let query = r#"SELECT
-                instruments.id AS instrument_id,
-                daily_coverage.latest_timestamp AS latest_daily_bar,
-                minute_coverage.latest_timestamp AS latest_minute_bar,
-                hourly_coverage.latest_timestamp AS latest_hourly_bar,
-                hourly_progress.completed_through AS hourly_history_completed_through,
-                daily_coverage.earliest_timestamp AS earliest_daily_bar,
-                minute_coverage.earliest_timestamp AS earliest_minute_bar,
-                hourly_coverage.earliest_timestamp AS earliest_hourly_bar
-            FROM instruments
-            LEFT JOIN bars_timestamp_coverage AS daily_coverage
-                ON daily_coverage.instrument_id = instruments.id
-               AND daily_coverage.timeframe = '1d'
-            LEFT JOIN bars_timestamp_coverage AS minute_coverage
-                ON minute_coverage.instrument_id = instruments.id
-               AND minute_coverage.timeframe = '1m'
-            LEFT JOIN bars_timestamp_coverage AS hourly_coverage
-                ON hourly_coverage.instrument_id = instruments.id
-               AND hourly_coverage.timeframe = '1h'
-            LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
-                ON hourly_progress.instrument_id = instruments.id
-            WHERE instruments.market = 'US'
-              AND (
-                  EXISTS (
-                      SELECT 1 FROM stock
-                      WHERE stock.id = instruments.id
-                        AND stock.market IN ('Nasdaq', 'NYSE')
-                  )
-                  OR EXISTS (
-                      SELECT 1 FROM stock_group_member
-                      WHERE stock_group_member.stock_id = instruments.id
-                  )
-                  OR EXISTS (
-                      SELECT 1 FROM note_ref
-                      WHERE note_ref.ref_kind = 'stock'
-                        AND note_ref.ref_id = instruments.id
-                  )
-              )
-            ORDER BY instruments.id"#
-            .to_owned();
-        let rows = self
-            .db
-            .query_all_raw(Statement::from_string(DatabaseBackend::Postgres, query))
-            .await
-            .map_err(repository_error)?;
-
-        rows.iter()
-            .map(|row| {
-                let row = TargetRow::from_query_result(row, "").map_err(repository_error)?;
-                Ok(core_application::bars::UsStockBarTarget {
-                    instrument_id: row.instrument_id,
-                    latest_daily_bar: row.latest_daily_bar.map(|timestamp| timestamp.to_utc()),
-                    latest_minute_bar: row.latest_minute_bar.map(|timestamp| timestamp.to_utc()),
-                    latest_hourly_bar: row.latest_hourly_bar.map(|timestamp| timestamp.to_utc()),
-                    hourly_history_completed_through: row
-                        .hourly_history_completed_through
-                        .map(|timestamp| timestamp.to_utc()),
-                    earliest_daily_bar: row.earliest_daily_bar.map(|timestamp| timestamp.to_utc()),
-                    earliest_minute_bar: row
-                        .earliest_minute_bar
-                        .map(|timestamp| timestamp.to_utc()),
-                    earliest_hourly_bar: row
-                        .earliest_hourly_bar
-                        .map(|timestamp| timestamp.to_utc()),
-                })
-            })
-            .collect()
     }
 }
 
@@ -256,6 +174,60 @@ impl BarsRepository for PostgresBarsRepository {
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
         self.find_us_stock_bar_targets().await
+    }
+
+    async fn find_pending_us_stock_sip_bar_refetch_targets(
+        &self,
+        max_symbols: Option<usize>,
+    ) -> Result<Vec<core_application::bars::UsStockSipBarRefetchTarget>, BarsRepositoryError> {
+        PostgresBarsRepository::find_pending_us_stock_sip_bar_refetch_targets(self, max_symbols)
+            .await
+    }
+
+    async fn save_us_stock_sip_bar_refetch_cursor(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
+        cursor: Option<core_application::bars::UsStockSipBarRefetchCursor>,
+    ) -> Result<(), BarsRepositoryError> {
+        PostgresBarsRepository::save_us_stock_sip_bar_refetch_cursor(
+            self,
+            transaction,
+            instrument_id,
+            cursor,
+        )
+        .await
+    }
+
+    async fn mark_us_stock_sip_bar_refetch_completed(
+        &self,
+        instrument_id: &str,
+    ) -> Result<(), BarsRepositoryError> {
+        PostgresBarsRepository::mark_us_stock_sip_bar_refetch_completed(self, instrument_id).await
+    }
+
+    async fn mark_us_stock_sip_bar_refetch_skipped(
+        &self,
+        instrument_id: &str,
+        reason: &str,
+    ) -> Result<(), BarsRepositoryError> {
+        PostgresBarsRepository::mark_us_stock_sip_bar_refetch_skipped(self, instrument_id, reason)
+            .await
+    }
+
+    async fn reserve_us_stock_sip_refetch_rows(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        rows: u64,
+        max_rows_per_hour: u64,
+    ) -> Result<bool, BarsRepositoryError> {
+        PostgresBarsRepository::reserve_us_stock_sip_refetch_rows(
+            self,
+            transaction,
+            rows,
+            max_rows_per_hour,
+        )
+        .await
     }
 
     async fn find_earliest_us_stock_minute_bar_before(

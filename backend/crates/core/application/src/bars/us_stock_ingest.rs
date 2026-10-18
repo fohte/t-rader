@@ -4,7 +4,10 @@ use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::Timeframe;
 
 use super::error::BarsUseCaseError;
-use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
+use super::types::{
+    UsStockBarTarget, UsStockBarsIngestStats, UsStockSipBarRefetchCursor,
+    UsStockSipBarRefetchTimeframe,
+};
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
@@ -17,6 +20,7 @@ mod adjustment;
 mod hourly;
 mod page_write;
 mod request_budget;
+mod sip_refetch;
 mod split;
 mod write_lock;
 
@@ -27,23 +31,52 @@ struct IngestContext {
     budget: RequestBudget,
     stats: UsStockBarsIngestStats,
     write_throttle: WriteThrottle,
+    sip_refetch_max_rows_per_hour: Option<u64>,
 }
 
 struct BatchIngestContext<'a> {
     budget: &'a mut RequestBudget,
     stats: &'a mut UsStockBarsIngestStats,
     write_throttle: &'a mut WriteThrottle,
+    sip_refetch_max_rows_per_hour: Option<u64>,
+    sip_refetch_progress: Option<SipRefetchProgressContext>,
+    page_token: Option<String>,
     skipped_instrument_ids: HashSet<String>,
 }
 
 impl<'a> BatchIngestContext<'a> {
     fn new(context: &'a mut IngestContext) -> Self {
+        let sip_refetch_max_rows_per_hour = context.sip_refetch_max_rows_per_hour;
         Self {
             budget: &mut context.budget,
             stats: &mut context.stats,
             write_throttle: &mut context.write_throttle,
+            sip_refetch_max_rows_per_hour,
+            sip_refetch_progress: None,
+            page_token: None,
             skipped_instrument_ids: HashSet::new(),
         }
+    }
+
+    fn sip_refetch_checkpoint(
+        &self,
+        timeframe: UsStockBarTimeframe,
+        range: UsStockBarRange,
+        next_page_token: Option<String>,
+    ) -> Option<UsStockSipBarRefetchCheckpoint> {
+        self.sip_refetch_progress
+            .as_ref()
+            .map(|progress| UsStockSipBarRefetchCheckpoint {
+                instrument_id: progress.instrument_id.clone(),
+                cursor: next_page_token
+                    .map(|page_token| UsStockSipBarRefetchCursor {
+                        timeframe: timeframe.as_sip_refetch_timeframe(),
+                        range_from: range.from,
+                        range_to: range.to,
+                        page_token: Some(page_token),
+                    })
+                    .or_else(|| progress.resume_after.clone()),
+            })
     }
 
     fn record_skipped(&mut self, instrument_id: String, reason: String) {
@@ -56,6 +89,21 @@ impl<'a> BatchIngestContext<'a> {
         self.budget.refund_request();
         self.budget.mark_time_budget_exhausted();
     }
+}
+
+struct SipRefetchProgressContext {
+    instrument_id: String,
+    resume_after: Option<UsStockSipBarRefetchCursor>,
+}
+
+pub(super) struct UsStockSipBarRefetchCheckpoint {
+    pub instrument_id: String,
+    pub cursor: Option<UsStockSipBarRefetchCursor>,
+}
+
+pub(super) struct SipRefetchPageWrite {
+    pub max_rows_per_hour: u64,
+    pub checkpoint: Option<UsStockSipBarRefetchCheckpoint>,
 }
 
 #[derive(Clone, Copy)]
@@ -85,6 +133,14 @@ impl UsStockBarTimeframe {
             Self::Daily => Timeframe::Daily,
             Self::Minute => Timeframe::Minute,
             Self::Hourly => Timeframe::Hourly,
+        }
+    }
+
+    const fn as_sip_refetch_timeframe(self) -> UsStockSipBarRefetchTimeframe {
+        match self {
+            Self::Daily => UsStockSipBarRefetchTimeframe::Daily,
+            Self::Hourly => UsStockSipBarRefetchTimeframe::Hourly,
+            Self::Minute => UsStockSipBarRefetchTimeframe::Minute,
         }
     }
 
@@ -158,6 +214,7 @@ impl UsStockBarsIngestUseCases {
                 ..UsStockBarsIngestStats::default()
             },
             write_throttle: WriteThrottle::default(),
+            sip_refetch_max_rows_per_hour: None,
         };
         let completed = self
             .ingest_timeframe(
@@ -289,7 +346,7 @@ impl UsStockBarsIngestUseCases {
         if range.from >= range.to {
             return Ok(true);
         }
-        let mut page_token = None;
+        let mut page_token = context.page_token.take();
         loop {
             if !context.budget.take_at(1, self.clock.instant()) {
                 return Ok(false);
@@ -342,6 +399,27 @@ impl UsStockBarsIngestUseCases {
             if timeframe == UsStockBarTimeframe::Daily {
                 self.preserve_adjustment_factors(&mut bars).await?;
             }
+            let skipped_during_refetch =
+                context
+                    .sip_refetch_progress
+                    .as_ref()
+                    .is_some_and(|progress| {
+                        context
+                            .skipped_instrument_ids
+                            .contains(&progress.instrument_id)
+                    });
+            let checkpoint = if skipped_during_refetch {
+                None
+            } else {
+                context.sip_refetch_checkpoint(timeframe, range, next_page_token.clone())
+            };
+            let sip_refetch_write =
+                context
+                    .sip_refetch_max_rows_per_hour
+                    .map(|max_rows_per_hour| SipRefetchPageWrite {
+                        max_rows_per_hour,
+                        checkpoint,
+                    });
             if !self
                 .persist_bars(
                     bars,
@@ -349,6 +427,7 @@ impl UsStockBarsIngestUseCases {
                     context.write_throttle,
                     context.budget,
                     context.stats,
+                    sip_refetch_write,
                 )
                 .await?
             {

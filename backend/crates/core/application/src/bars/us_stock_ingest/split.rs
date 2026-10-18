@@ -112,6 +112,7 @@ impl UsStockBarsIngestUseCases {
                     &mut context.write_throttle,
                     &mut context.budget,
                     &mut context.stats,
+                    None,
                 )
                 .await?
             {
@@ -472,6 +473,7 @@ impl UsStockBarsIngestUseCases {
                 &mut context.write_throttle,
                 &mut context.budget,
                 &mut context.stats,
+                None,
             )
             .await?
         {

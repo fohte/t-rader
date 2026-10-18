@@ -31,6 +31,7 @@ use crate::{
             UsStockMinuteBarsIngest,
         },
         us_stock_master::UsStockMasterIngest,
+        us_stock_sip_bar_refetch::UsStockSipBarRefetch,
         valuation::ValuationIngest,
     },
     state::{SchedulerDependencies, SchedulerState},
@@ -44,7 +45,7 @@ struct SupportedJob {
     recovery_timeout: Option<Duration>,
 }
 
-const SUPPORTED_JOBS: [SupportedJob; 28] = [
+const SUPPORTED_JOBS: [SupportedJob; 29] = [
     supported_ingest_job::<AlphaVantageCalendarIngest>(crate::jobs::DAILY_TIMEOUT),
     supported_ingest_job::<BojCalendarEventIngest>(crate::jobs::DAILY_TIMEOUT),
     supported_ingest_job::<DailyBarsIngest>(crate::jobs::DAILY_TIMEOUT),
@@ -72,6 +73,7 @@ const SUPPORTED_JOBS: [SupportedJob; 28] = [
     supported_ingest_job::<UsStockMinuteBarsIngest>(crate::jobs::US_STOCK_BARS_TIMEOUT),
     supported_ingest_job::<UsStockMinuteBarsDownsample>(crate::jobs::DAILY_TIMEOUT),
     supported_ingest_job::<UsStockMasterIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<UsStockSipBarRefetch>(crate::jobs::US_STOCK_BARS_TIMEOUT),
     supported_ingest_job::<ValuationIngest>(crate::jobs::DAILY_TIMEOUT),
 ];
 
@@ -219,6 +221,7 @@ mod tests {
     #[case::us_stock_minute_bars_ingest("us_stock_minute_bars_ingest", true)]
     #[case::us_stock_hourly_bars_ingest("us_stock_hourly_bars_ingest", true)]
     #[case::us_stock_minute_bars_downsample("us_stock_minute_bars_downsample", true)]
+    #[case::us_stock_sip_bar_refetch("us_stock_sip_bar_refetch", true)]
     #[case::event_dispatch("event_dispatch", false)]
     #[case::unknown("unknown_job", false)]
     fn rejects_jobs_outside_the_one_shot_contract(#[case] job_name: &str, #[case] expected: bool) {

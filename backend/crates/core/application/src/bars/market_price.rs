@@ -359,6 +359,46 @@ mod tests {
             Err(database_error())
         }
 
+        async fn find_pending_us_stock_sip_bar_refetch_targets(
+            &self,
+            _: Option<usize>,
+        ) -> Result<Vec<crate::bars::UsStockSipBarRefetchTarget>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn save_us_stock_sip_bar_refetch_cursor(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: &str,
+            _: Option<crate::bars::UsStockSipBarRefetchCursor>,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn mark_us_stock_sip_bar_refetch_completed(
+            &self,
+            _: &str,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn mark_us_stock_sip_bar_refetch_skipped(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn reserve_us_stock_sip_refetch_rows(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: u64,
+            _: u64,
+        ) -> Result<bool, BarsRepositoryError> {
+            Err(database_error())
+        }
+
         async fn mark_us_stock_hourly_bar_history_completed(
             &self,
             _: &[String],

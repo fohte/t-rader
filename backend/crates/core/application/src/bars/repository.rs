@@ -8,7 +8,10 @@ use thiserror::Error;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget};
+use super::types::{
+    BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget,
+    UsStockSipBarRefetchCursor, UsStockSipBarRefetchTarget,
+};
 
 #[derive(Debug, Error)]
 pub enum BarsRepositoryError {
@@ -62,6 +65,36 @@ pub trait BarsRepository: Send + Sync {
     async fn find_us_stock_daily_bar_targets(
         &self,
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+
+    async fn find_pending_us_stock_sip_bar_refetch_targets(
+        &self,
+        max_symbols: Option<usize>,
+    ) -> Result<Vec<UsStockSipBarRefetchTarget>, BarsRepositoryError>;
+
+    async fn save_us_stock_sip_bar_refetch_cursor(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
+        cursor: Option<UsStockSipBarRefetchCursor>,
+    ) -> Result<(), BarsRepositoryError>;
+
+    async fn mark_us_stock_sip_bar_refetch_completed(
+        &self,
+        instrument_id: &str,
+    ) -> Result<(), BarsRepositoryError>;
+
+    async fn mark_us_stock_sip_bar_refetch_skipped(
+        &self,
+        instrument_id: &str,
+        reason: &str,
+    ) -> Result<(), BarsRepositoryError>;
+
+    async fn reserve_us_stock_sip_refetch_rows(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        rows: u64,
+        max_rows_per_hour: u64,
+    ) -> Result<bool, BarsRepositoryError>;
 
     async fn mark_us_stock_hourly_bar_history_completed(
         &self,
