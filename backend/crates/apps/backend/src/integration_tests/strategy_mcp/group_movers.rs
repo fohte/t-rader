@@ -361,6 +361,81 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
 }
 
 #[backend_test_macros::database_test]
+async fn list_group_movers_respects_start_bar_window_boundary(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let axis_id = insert_axis(&db, "sample-axis").await;
+    let group_id = insert_group(&db, axis_id, "sample-group", "Sample group").await;
+    insert_stock(&db, "demo-stock-current", "Sample current stock").await;
+    insert_stock(&db, "demo-stock-boundary", "Sample boundary stock").await;
+    insert_stock(&db, "demo-stock-stale", "Sample stale stock").await;
+    add_member(&db, "demo-stock-current", group_id).await;
+    add_member(&db, "demo-stock-boundary", group_id).await;
+    add_member(&db, "demo-stock-stale", group_id).await;
+
+    upsert_bars(
+        &db,
+        vec![
+            bar("demo-stock-current", date(2025, 2, 19), 100, 1),
+            bar("demo-stock-current", date(2025, 2, 20), 110, 1),
+            bar("demo-stock-boundary", date(2025, 2, 6), 100, 1),
+            bar("demo-stock-boundary", date(2025, 2, 20), 110, 1),
+            bar("demo-stock-stale", date(2025, 2, 5), 100, 1),
+            bar("demo-stock-stale", date(2025, 2, 20), 120, 1),
+        ],
+    )
+    .await
+    .expect("insert sample daily bars");
+
+    let (server, strategy_id) = build_test_server(db).await;
+    let result = server
+        .invoke::<_, Value>(
+            "list_group_movers",
+            strategy_id,
+            json!({
+                "axis_key": "sample-axis",
+                "from": "2025-02-20",
+                "to": "2025-02-20",
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("list group movers")
+        .as_json()
+        .clone();
+
+    assert_eq!(
+        result,
+        json!({
+            "axis_key": "sample-axis",
+            "groups": [{
+                "group_key": "sample-group",
+                "name": "Sample group",
+                "constituent_count": 2,
+                "median_change_rate": 0.1,
+                "turnover_weighted_change_rate": 0.1,
+                "total_avg_turnover": 220.0,
+                "top_stocks": [
+                    {
+                        "stock_id": "demo-stock-boundary",
+                        "name": "Sample boundary stock",
+                        "change_rate": 0.1,
+                        "avg_turnover": 110.0,
+                    },
+                    {
+                        "stock_id": "demo-stock-current",
+                        "name": "Sample current stock",
+                        "change_rate": 0.1,
+                        "avg_turnover": 110.0,
+                    },
+                ],
+            }],
+        }),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn list_group_movers_rejects_reversed_date_range(db: gateway_postgres::DatabaseHandle) {
     let (server, strategy_id) = build_test_server(db).await;
     let result = server
