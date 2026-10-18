@@ -565,16 +565,19 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn excludes_stocks_without_enough_bars_inside_the_lookback_window(db: DatabaseHandle) {
+    async fn includes_lower_bound_bar_and_excludes_stocks_without_enough_bars(db: DatabaseHandle) {
         insert_stock(&db, "D011", "Stock Kappa").await;
         insert_stock(&db, "D012", "Stock Lambda").await;
         insert_stock(&db, "D013", "Stock Mu").await;
+        insert_stock(&db, "D014", "Stock Nu").await;
         insert_bar(&db, "D011", 1, 100).await;
         insert_bar(&db, "D011", 2, 120).await;
         insert_bar(&db, "D012", 19, 100).await;
         insert_bar(&db, "D012", 20, 110).await;
         insert_bar(&db, "D013", 4, 100).await;
         insert_bar(&db, "D013", 20, 120).await;
+        insert_bar(&db, "D014", 5, 100).await;
+        insert_bar(&db, "D014", 20, 120).await;
 
         let query = WidgetQuery {
             metric: WidgetMetric::Change,
@@ -592,11 +595,18 @@ mod tests {
 
         assert_eq!(
             result,
-            vec![WidgetQueryRow {
-                key: WidgetRowKey::Stock("D012".to_string()),
-                name: "Stock Lambda".to_string(),
-                value: Decimal::new(1, 1),
-            }],
+            vec![
+                WidgetQueryRow {
+                    key: WidgetRowKey::Stock("D012".to_string()),
+                    name: "Stock Lambda".to_string(),
+                    value: Decimal::new(1, 1),
+                },
+                WidgetQueryRow {
+                    key: WidgetRowKey::Stock("D014".to_string()),
+                    name: "Stock Nu".to_string(),
+                    value: Decimal::new(2, 1),
+                },
+            ],
         );
     }
 
