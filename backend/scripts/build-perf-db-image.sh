@@ -36,9 +36,19 @@ container_name="t-rader-perf-db-build-$$"
 container_started=false
 
 if [[ "$push_image" == true ]]; then
-  if docker manifest inspect "$image_ref" > /dev/null 2>&1; then
+  if manifest_output=$(docker manifest inspect "$image_ref" 2>&1); then
     printf 'Perf DB image %s already exists; skipping build and push.\n' "$image_ref"
     exit 0
+  else
+    case "$manifest_output" in
+      *'no such manifest'* | *'manifest unknown'* | *'404 Not Found'*)
+        printf 'Perf DB image %s was not found; building and pushing.\n' "$image_ref"
+        ;;
+      *)
+        printf 'Failed to inspect perf DB image %s:\n%s\n' "$image_ref" "$manifest_output" >&2
+        exit 1
+        ;;
+    esac
   fi
 fi
 
