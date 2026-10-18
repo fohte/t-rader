@@ -38,22 +38,23 @@ describe('MarkdownBodyRangeBlock hover gutter', () => {
       name: '親項目に hover すると親だけに表示する',
       hoverTarget: '親項目',
       expected: [
-        { line: '1', opacity: '1' },
-        { line: '2', opacity: '0' },
+        { line: '1', opacity: '1', color: 'rgb(220, 38, 38)' },
+        { line: '2', opacity: '0', color: 'rgb(82, 82, 91)' },
       ],
     },
     {
       name: '子項目に hover すると子だけに表示する',
       hoverTarget: '子項目',
       expected: [
-        { line: '1', opacity: '0' },
-        { line: '2', opacity: '1' },
+        { line: '1', opacity: '0', color: 'rgb(82, 82, 91)' },
+        { line: '2', opacity: '1', color: 'rgb(220, 38, 38)' },
       ],
     },
   ])('$name', async ({ hoverTarget, expected }) => {
     render(
       <MarkdownBody
-        source={'- 親項目\n    - 子項目'}
+        source={`- 親項目
+    - 子項目`}
         rangeComments={emptyRangeComments}
       />,
     )
@@ -71,6 +72,7 @@ describe('MarkdownBodyRangeBlock hover gutter', () => {
       return {
         line: item.getAttribute('data-source-start-line'),
         opacity: marker == null ? null : getComputedStyle(marker).opacity,
+        color: marker == null ? null : getComputedStyle(marker).color,
       }
     })
 
