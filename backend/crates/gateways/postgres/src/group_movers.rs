@@ -8,10 +8,45 @@ use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 
 use crate::DatabaseHandle;
-use crate::group_query_sql::{STOCK_CHANGE_CTES, with_shared_market_ctes};
+use crate::group_query_sql::with_shared_market_ctes;
 use crate::persistence::persistence_error;
 
 const TOP_STOCKS_PER_GROUP: i64 = 5;
+
+const GROUP_MOVER_STOCK_CHANGE_CTES: &str = r#"
+    ranked_period_bars AS (
+        SELECT period_bars.stock_id,
+               period_bars.close,
+               period_bars.is_end_period,
+               ROW_NUMBER() OVER (
+                   PARTITION BY period_bars.stock_id, period_bars.is_end_period
+                   ORDER BY period_bars.timestamp DESC
+               ) AS bar_rank
+        FROM period_bars
+    ),
+    stock_change_prices AS (
+        SELECT ranked_period_bars.stock_id,
+               MAX(ranked_period_bars.close) FILTER (
+                   WHERE ranked_period_bars.is_end_period
+                     AND ranked_period_bars.bar_rank = 1
+               ) AS end_close,
+               MAX(ranked_period_bars.close) FILTER (
+                   WHERE NOT ranked_period_bars.is_end_period
+                     AND ranked_period_bars.bar_rank = 1
+               ) AS start_close
+        FROM ranked_period_bars
+        GROUP BY ranked_period_bars.stock_id
+    ),
+    stock_changes AS (
+        SELECT stock_change_prices.stock_id,
+               stock_change_prices.end_close
+                   / NULLIF(stock_change_prices.start_close, 0) - 1 AS change_rate
+        FROM stock_change_prices
+        WHERE stock_change_prices.end_close IS NOT NULL
+          AND stock_change_prices.start_close IS NOT NULL
+          AND stock_change_prices.start_close <> 0
+    )
+"#;
 
 const GROUP_AXIS_EXISTS_SQL: &str =
     "SELECT EXISTS (SELECT 1 FROM group_axis WHERE key = $1::text) AS axis_exists";
@@ -26,24 +61,29 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
                 WHERE group_members.axis_key = $1::text
                   AND group_members.stock_id IS NOT NULL
             ),
-            stock_change_windows AS (
+            period_bars AS MATERIALIZED (
                 SELECT eligible_stocks.stock_id,
-                       $2::date::timestamp AT TIME ZONE 'UTC' AS start_at,
-                       (($3::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
+                       bars.timestamp,
+                       bars.close,
+                       bars.volume,
+                       bars.timestamp >= ($2::date::timestamp AT TIME ZONE 'UTC')
+                           AS is_end_period
                 FROM eligible_stocks
+                JOIN bars ON bars.instrument_id = eligible_stocks.stock_id
+                WHERE bars.timeframe = '1d'
+                  AND bars.timestamp >= (($2::date - 14)::timestamp AT TIME ZONE 'UTC')
+                  AND bars.timestamp < (($3::date + 1)::timestamp AT TIME ZONE 'UTC')
             )
         "#,
-        STOCK_CHANGE_CTES,
+        GROUP_MOVER_STOCK_CHANGE_CTES,
         r#"
             avg_turnover AS MATERIALIZED (
-                SELECT bars.instrument_id,
-                       AVG(bars.close * bars.volume::numeric) AS avg_turnover
-                FROM bars
-                WHERE bars.timeframe = '1d'
-                  AND bars.timestamp >= ($2::date::timestamp AT TIME ZONE 'UTC')
-                  AND bars.timestamp < (($3::date + 1)::timestamp AT TIME ZONE 'UTC')
-                GROUP BY bars.instrument_id
-                HAVING AVG(bars.close * bars.volume::numeric) >= $4::numeric
+                SELECT period_bars.stock_id AS instrument_id,
+                       AVG(period_bars.close * period_bars.volume::numeric) AS avg_turnover
+                FROM period_bars
+                WHERE period_bars.is_end_period
+                GROUP BY period_bars.stock_id
+                HAVING AVG(period_bars.close * period_bars.volume::numeric) >= $4::numeric
             ),
             group_returns AS (
                 SELECT group_members.group_id, group_members.group_key,

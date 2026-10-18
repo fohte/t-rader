@@ -20,35 +20,6 @@ pub(super) const GROUP_MEMBERSHIP_CTES: &str = r#"
     )
 "#;
 
-/// `stock_change_windows(stock_id, start_at, end_before)` を先行して定義する。
-pub(super) const STOCK_CHANGE_CTES: &str = r#"
-    stock_changes AS (
-        SELECT stock_change_windows.stock_id,
-               end_prices.close / NULLIF(start_prices.close, 0) - 1 AS change_rate
-        FROM stock_change_windows
-        CROSS JOIN LATERAL (
-            SELECT bars.close
-            FROM bars
-            WHERE bars.instrument_id = stock_change_windows.stock_id
-              AND bars.timeframe = '1d'
-              AND bars.timestamp >= stock_change_windows.start_at
-              AND bars.timestamp < stock_change_windows.end_before
-            ORDER BY bars.timestamp DESC
-            LIMIT 1
-        ) AS end_prices
-        CROSS JOIN LATERAL (
-            SELECT bars.close
-            FROM bars
-            WHERE bars.instrument_id = stock_change_windows.stock_id
-              AND bars.timeframe = '1d'
-              AND bars.timestamp < stock_change_windows.start_at
-            ORDER BY bars.timestamp DESC
-            LIMIT 1
-        ) AS start_prices
-        WHERE start_prices.close <> 0
-    )
-"#;
-
 /// CTE を依存順に連結し、後続の断片から `stock_changes(stock_id, change_rate)` を参照できるようにする。
 pub(super) fn with_shared_market_ctes(
     requested_axes: &str,
