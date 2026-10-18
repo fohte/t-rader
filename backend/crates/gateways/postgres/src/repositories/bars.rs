@@ -1,27 +1,24 @@
 mod daily_adjustment_factors;
+mod timestamp_coverage;
 mod us_stock_intraday;
 
 pub use daily_adjustment_factors::find_daily_adjustment_factors_from;
+pub(crate) use timestamp_coverage::{
+    BarTimestampCoverage, set_bar_timestamp_coverage, upsert_bar_timestamp_coverage,
+};
 
 pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(high) AS high, MIN(low) AS low, last(close, timestamp) AS close, SUM(volume)::bigint AS volume";
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
-use sea_orm::sea_query::{Expr, OnConflict};
+use sea_orm::sea_query::OnConflict;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult, Iterable,
     QueryFilter, QueryOrder, Set, Statement,
 };
 
-use crate::entities::{bars, bars_timestamp_coverage};
-
-pub(crate) struct BarTimestampCoverage {
-    pub instrument_id: String,
-    pub timeframe: String,
-    pub earliest_timestamp: DateTime<FixedOffset>,
-    pub latest_timestamp: DateTime<FixedOffset>,
-}
+use crate::entities::bars;
 
 const FIND_ONE_MINUTE_BARS_SQL: &str = r#"
     SELECT instrument_id, timestamp, open, high, low, close, volume
@@ -188,79 +185,6 @@ pub async fn upsert_bars(
     }
 
     upsert_bar_timestamp_coverage(db, coverage).await?;
-
-    Ok(())
-}
-
-pub(crate) async fn upsert_bar_timestamp_coverage(
-    db: &impl sea_orm::ConnectionTrait,
-    coverage: Vec<BarTimestampCoverage>,
-) -> Result<(), DbErr> {
-    if coverage.is_empty() {
-        return Ok(());
-    }
-
-    let chunk_size = crate::repositories::max_rows_per_statement(
-        bars_timestamp_coverage::Column::iter().count(),
-    );
-    for chunk in coverage.chunks(chunk_size) {
-        bars_timestamp_coverage::Entity::insert_many(chunk.iter().map(|coverage| {
-            bars_timestamp_coverage::ActiveModel {
-                instrument_id: Set(coverage.instrument_id.clone()),
-                timeframe: Set(coverage.timeframe.clone()),
-                earliest_timestamp: Set(coverage.earliest_timestamp),
-                latest_timestamp: Set(coverage.latest_timestamp),
-            }
-        }))
-        .on_conflict(
-            OnConflict::columns([
-                bars_timestamp_coverage::Column::InstrumentId,
-                bars_timestamp_coverage::Column::Timeframe,
-            ])
-            .value(
-                bars_timestamp_coverage::Column::EarliestTimestamp,
-                Expr::cust(
-                    "LEAST(bars_timestamp_coverage.earliest_timestamp, EXCLUDED.earliest_timestamp)",
-                ),
-            )
-            .value(
-                bars_timestamp_coverage::Column::LatestTimestamp,
-                Expr::cust(
-                    "GREATEST(bars_timestamp_coverage.latest_timestamp, EXCLUDED.latest_timestamp)",
-                ),
-            )
-            .to_owned(),
-        )
-        .exec_without_returning(db)
-        .await?;
-    }
-
-    Ok(())
-}
-
-pub(crate) async fn set_bar_timestamp_coverage(
-    db: &impl sea_orm::ConnectionTrait,
-    coverage: BarTimestampCoverage,
-) -> Result<(), DbErr> {
-    bars_timestamp_coverage::Entity::insert(bars_timestamp_coverage::ActiveModel {
-        instrument_id: Set(coverage.instrument_id),
-        timeframe: Set(coverage.timeframe),
-        earliest_timestamp: Set(coverage.earliest_timestamp),
-        latest_timestamp: Set(coverage.latest_timestamp),
-    })
-    .on_conflict(
-        OnConflict::columns([
-            bars_timestamp_coverage::Column::InstrumentId,
-            bars_timestamp_coverage::Column::Timeframe,
-        ])
-        .update_columns([
-            bars_timestamp_coverage::Column::EarliestTimestamp,
-            bars_timestamp_coverage::Column::LatestTimestamp,
-        ])
-        .to_owned(),
-    )
-    .exec_without_returning(db)
-    .await?;
 
     Ok(())
 }
