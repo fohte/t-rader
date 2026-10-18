@@ -24,6 +24,9 @@ impl UsStockBarsIngestUseCases {
         range: UsStockBarRange,
         context: &mut BatchIngestContext<'_>,
     ) -> Result<Option<Vec<Vec<Bar>>>, BarsUseCaseError> {
+        if range.from >= range.to {
+            return Ok(Some(Vec::new()));
+        }
         let mut page_token = None;
         let mut pages = Vec::new();
         loop {

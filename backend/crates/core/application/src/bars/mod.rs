@@ -28,7 +28,7 @@ pub use us_stock_source::{
 pub use use_cases::{BarsUseCases, UsStockBarsIngestUseCases};
 pub use write_lock::{SharedUsStockBarsWriteLock, UsStockBarsWriteLock, UsStockBarsWriteLockGuard};
 
-use chrono::{DateTime, Months, Timelike, Utc};
+use chrono::{DateTime, Duration, Months, Timelike, Utc};
 
 pub(super) const HOURLY_HISTORY_MONTHS: u32 = 12;
 
@@ -43,6 +43,14 @@ pub const US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION: std::time::Duration =
 pub fn us_stock_hourly_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
     now.checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
         .unwrap_or(now)
+}
+
+pub(super) fn us_stock_sip_bars_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
+    let cutoff = now.checked_sub_signed(Duration::minutes(16)).unwrap_or(now);
+    cutoff
+        .with_second(0)
+        .and_then(|cutoff| cutoff.with_nanosecond(0))
+        .unwrap_or(cutoff)
 }
 
 pub(super) fn hourly_bar_bucket_start(timestamp: DateTime<Utc>) -> DateTime<Utc> {
