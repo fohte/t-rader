@@ -36,27 +36,7 @@ container_name="t-rader-perf-db-build-$$"
 container_started=false
 
 if [[ "$push_image" == true ]]; then
-  if ! command -v gh > /dev/null; then
-    echo 'The gh CLI is required to check whether the image tag already exists.' >&2
-    exit 1
-  fi
-
-  if version_tags=$(gh api \
-    --paginate \
-    --jq '.[].metadata.container.tags[]?' \
-    '/user/packages/container/t-rader%2Fperf-db/versions?per_page=100' 2>&1); then
-    :
-  else
-    api_error="$version_tags"
-    if [[ "$api_error" == *'(HTTP 404)'* ]]; then
-      version_tags=''
-    else
-      printf 'Could not check existing perf DB image tags: %s\n' "$api_error" >&2
-      exit 1
-    fi
-  fi
-
-  if grep -Fxq -- "$source_hash" <<< "$version_tags"; then
+  if docker manifest inspect "$image_ref" > /dev/null 2>&1; then
     printf 'Perf DB image %s already exists; skipping build and push.\n' "$image_ref"
     exit 0
   fi

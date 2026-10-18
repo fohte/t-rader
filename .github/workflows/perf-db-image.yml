@@ -28,6 +28,4 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push perf DB image
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: backend/scripts/build-perf-db-image.sh --push
