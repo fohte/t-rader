@@ -8,6 +8,17 @@ SELECT
     'Synthetic Stock ' || lpad(n::text, 5, '0') AS name
 FROM generate_series(1, 15000) AS n;
 
+CREATE TEMP TABLE synthetic_calendar AS
+SELECT day::date AS as_of_date
+FROM generate_series(
+    (current_date - INTERVAL '3 years')::date::timestamp,
+    current_date::timestamp,
+    INTERVAL '1 day'
+) AS days(day)
+WHERE extract(isodow FROM day) BETWEEN 1 AND 5
+ORDER BY day DESC
+LIMIT 1;
+
 -- bars は instruments を、グループ所属は stock を参照するため、両方に同じ ID を登録する。
 INSERT INTO stock (id, name, market, product_category)
 SELECT id, name, 'TSE', NULL
@@ -23,21 +34,52 @@ VALUES
     ('demo-axis', 'Demo Axis', 'Synthetic demo classification axis'),
     ('other-axis', 'Sample Axis', 'Synthetic alternate classification axis');
 
-INSERT INTO stock_group (axis_id, key, name)
-SELECT group_axis.id, group_data.key, group_data.name
+CREATE TEMP TABLE synthetic_groups AS
+SELECT
+    axes.axis_key,
+    groups.group_number,
+    CASE
+        WHEN axes.axis_key = 'sample-axis' AND groups.group_number = 1 THEN 'sample-group'
+        WHEN axes.axis_key = 'demo-axis' AND groups.group_number = 1 THEN 'group-alpha'
+        WHEN axes.axis_key = 'demo-axis' AND groups.group_number = 2 THEN 'demo-group'
+        WHEN axes.axis_key = 'other-axis' AND groups.group_number = 1 THEN 'other-group'
+        ELSE axes.group_prefix || '-' || lpad(groups.group_number::text, 2, '0')
+    END AS group_key,
+    CASE
+        WHEN axes.axis_key = 'sample-axis' THEN 'Sample Group'
+        WHEN axes.axis_key = 'demo-axis' AND groups.group_number = 1 THEN 'Group Alpha'
+        WHEN axes.axis_key = 'demo-axis' AND groups.group_number = 2 THEN 'Demo Group'
+        WHEN axes.axis_key = 'demo-axis' THEN 'Demo Group'
+        ELSE 'Other Group'
+    END || CASE
+        WHEN axes.axis_key = 'sample-axis' AND groups.group_number = 1 THEN ''
+        WHEN axes.axis_key = 'demo-axis' AND groups.group_number = 1 THEN ''
+        WHEN axes.axis_key = 'demo-axis' AND groups.group_number = 2 THEN ''
+        WHEN axes.axis_key = 'other-axis' AND groups.group_number = 1 THEN ''
+        ELSE ' ' || lpad(groups.group_number::text, 2, '0')
+    END AS group_name
 FROM (
     VALUES
-        ('sample-axis', 'sample-group', 'Sample Group'),
-        ('demo-axis', 'group-alpha', 'Group Alpha'),
-        ('demo-axis', 'demo-group', 'Sample Group'),
-        ('other-axis', 'other-group', 'Sample Group')
-) AS group_data(axis_key, key, name)
-JOIN group_axis ON group_axis.key = group_data.axis_key;
+        ('sample-axis', 'sample-group'),
+        ('demo-axis', 'demo-group'),
+        ('other-axis', 'other-group')
+) AS axes(axis_key, group_prefix)
+CROSS JOIN generate_series(1, 30) AS groups(group_number);
+
+INSERT INTO stock_group (axis_id, key, name)
+SELECT group_axis.id, synthetic_groups.group_key, synthetic_groups.group_name
+FROM synthetic_groups
+JOIN group_axis ON group_axis.key = synthetic_groups.axis_key;
 
 INSERT INTO stock_group_member (stock_id, group_id)
 SELECT synthetic_stocks.id, stock_group.id
 FROM synthetic_stocks
-CROSS JOIN stock_group;
+JOIN synthetic_groups
+  ON (synthetic_stocks.n - 1) % 30 = synthetic_groups.group_number - 1
+JOIN group_axis ON group_axis.key = synthetic_groups.axis_key
+JOIN stock_group
+  ON stock_group.axis_id = group_axis.id
+ AND stock_group.key = synthetic_groups.group_key;
 
 WITH daily_trading_days AS (
     SELECT
@@ -134,8 +176,9 @@ SELECT
 FROM bar_values;
 
 INSERT INTO valuation (code, date, mkt_cap)
-SELECT synthetic_stocks.id || '0', current_date, 1000 + synthetic_stocks.n * 10
-FROM synthetic_stocks;
+SELECT synthetic_stocks.id || '0', synthetic_calendar.as_of_date, 1000 + synthetic_stocks.n * 10
+FROM synthetic_stocks
+CROSS JOIN synthetic_calendar;
 
 SELECT compress_chunk(format('%I.%I', chunk_schema, chunk_name)::regclass)
 FROM timescaledb_information.chunks
