@@ -79,46 +79,25 @@ impl PostgresBarsRepository {
 
         let query = r#"SELECT
                 instruments.id AS instrument_id,
-                daily_bar.timestamp AS latest_daily_bar,
-                minute_bar.timestamp AS latest_minute_bar,
-                hourly_bar.timestamp AS latest_hourly_bar,
+                daily_coverage.latest_timestamp AS latest_daily_bar,
+                minute_coverage.latest_timestamp AS latest_minute_bar,
+                hourly_coverage.latest_timestamp AS latest_hourly_bar,
                 hourly_progress.completed_through AS hourly_history_completed_through,
-                earliest_daily_bar.timestamp AS earliest_daily_bar,
-                earliest_minute_bar.timestamp AS earliest_minute_bar,
-                earliest_hourly_bar.timestamp AS earliest_hourly_bar
+                daily_coverage.earliest_timestamp AS earliest_daily_bar,
+                minute_coverage.earliest_timestamp AS earliest_minute_bar,
+                hourly_coverage.earliest_timestamp AS earliest_hourly_bar
             FROM instruments
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1d'
-                ORDER BY timestamp DESC LIMIT 1
-            ) AS daily_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1d'
-                ORDER BY timestamp ASC LIMIT 1
-            ) AS earliest_daily_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1m'
-                ORDER BY timestamp DESC LIMIT 1
-            ) AS minute_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1h'
-                ORDER BY timestamp DESC LIMIT 1
-            ) AS hourly_bar ON TRUE
+            LEFT JOIN bars_timestamp_coverage AS daily_coverage
+                ON daily_coverage.instrument_id = instruments.id
+               AND daily_coverage.timeframe = '1d'
+            LEFT JOIN bars_timestamp_coverage AS minute_coverage
+                ON minute_coverage.instrument_id = instruments.id
+               AND minute_coverage.timeframe = '1m'
+            LEFT JOIN bars_timestamp_coverage AS hourly_coverage
+                ON hourly_coverage.instrument_id = instruments.id
+               AND hourly_coverage.timeframe = '1h'
             LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
                 ON hourly_progress.instrument_id = instruments.id
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1m'
-                ORDER BY timestamp ASC LIMIT 1
-            ) AS earliest_minute_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1h'
-                ORDER BY timestamp ASC LIMIT 1
-            ) AS earliest_hourly_bar ON TRUE
             WHERE instruments.market = 'US'
               AND (
                   EXISTS (
@@ -502,7 +481,8 @@ fn repository_error(error: sea_orm::DbErr) -> BarsRepositoryError {
 #[cfg(test)]
 mod tests {
     use chrono::{
-        DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc,
+        DateTime, Duration as ChronoDuration, FixedOffset, NaiveDate, NaiveTime, TimeZone,
+        Timelike, Utc,
     };
     use core_application::bars::{
         BarsQuery, BarsRepository, BarsUseCases, DailyBarAdjustmentFactor, UsStockBarTarget,
@@ -1225,10 +1205,24 @@ mod tests {
         .into_iter()
         .map(Into::into)
         .collect::<Vec<Bar>>();
+        let coverage_row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT earliest_timestamp FROM bars_timestamp_coverage \
+                 WHERE instrument_id = $1 AND timeframe = '1m'",
+                [us_instrument_id.clone().into()],
+            ))
+            .await
+            .expect("find remaining minute coverage")
+            .expect("minute coverage row");
+        let earliest_minute_after: DateTime<FixedOffset> = coverage_row
+            .try_get("", "earliest_timestamp")
+            .expect("decode earliest minute");
 
         assert_eq!(
             (
                 earliest,
+                earliest_minute_after,
                 instrument_ids,
                 stats,
                 hourly_bars,
@@ -1237,6 +1231,7 @@ mod tests {
             ),
             (
                 Some(timestamp(6, 30)),
+                timestamp(9, 0).fixed_offset(),
                 vec![us_instrument_id.clone(), empty_us_instrument_id],
                 UsStockMinuteBarsDownsampleStats {
                     hourly_bars_inserted: 1,

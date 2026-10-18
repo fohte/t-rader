@@ -8,13 +8,20 @@ pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(h
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult, Iterable,
     QueryFilter, QueryOrder, Set, Statement,
 };
 
-use crate::entities::bars;
+use crate::entities::{bars, bars_timestamp_coverage};
+
+pub(crate) struct BarTimestampCoverage {
+    pub instrument_id: String,
+    pub timeframe: String,
+    pub earliest_timestamp: DateTime<FixedOffset>,
+    pub latest_timestamp: DateTime<FixedOffset>,
+}
 
 const FIND_ONE_MINUTE_BARS_SQL: &str = r#"
     SELECT instrument_id, timestamp, open, high, low, close, volume
@@ -125,6 +132,35 @@ pub async fn upsert_bars(
         return Ok(());
     }
 
+    let mut coverage_by_series = std::collections::BTreeMap::<
+        (String, String),
+        (DateTime<FixedOffset>, DateTime<FixedOffset>),
+    >::new();
+    for bar in &bars_data {
+        let key = (bar.instrument_id.clone(), bar.timeframe.to_string());
+        let timestamp = bar.timestamp.fixed_offset();
+        coverage_by_series
+            .entry(key)
+            .and_modify(|(earliest, latest)| {
+                *earliest = (*earliest).min(timestamp);
+                *latest = (*latest).max(timestamp);
+            })
+            .or_insert((timestamp, timestamp));
+    }
+    let coverage = coverage_by_series
+        .into_iter()
+        .map(
+            |((instrument_id, timeframe), (earliest_timestamp, latest_timestamp))| {
+                BarTimestampCoverage {
+                    instrument_id,
+                    timeframe,
+                    earliest_timestamp,
+                    latest_timestamp,
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+
     // PostgreSQL の bind パラメータ数には u16::MAX の上限がある。
     let chunk_size = crate::repositories::max_rows_per_statement(bars::Column::iter().count());
     let active_models: Vec<bars::ActiveModel> = bars_data.into_iter().map(Into::into).collect();
@@ -150,6 +186,81 @@ pub async fn upsert_bars(
             .exec_without_returning(db)
             .await?;
     }
+
+    upsert_bar_timestamp_coverage(db, coverage).await?;
+
+    Ok(())
+}
+
+pub(crate) async fn upsert_bar_timestamp_coverage(
+    db: &impl sea_orm::ConnectionTrait,
+    coverage: Vec<BarTimestampCoverage>,
+) -> Result<(), DbErr> {
+    if coverage.is_empty() {
+        return Ok(());
+    }
+
+    let chunk_size = crate::repositories::max_rows_per_statement(
+        bars_timestamp_coverage::Column::iter().count(),
+    );
+    for chunk in coverage.chunks(chunk_size) {
+        bars_timestamp_coverage::Entity::insert_many(chunk.iter().map(|coverage| {
+            bars_timestamp_coverage::ActiveModel {
+                instrument_id: Set(coverage.instrument_id.clone()),
+                timeframe: Set(coverage.timeframe.clone()),
+                earliest_timestamp: Set(coverage.earliest_timestamp),
+                latest_timestamp: Set(coverage.latest_timestamp),
+            }
+        }))
+        .on_conflict(
+            OnConflict::columns([
+                bars_timestamp_coverage::Column::InstrumentId,
+                bars_timestamp_coverage::Column::Timeframe,
+            ])
+            .value(
+                bars_timestamp_coverage::Column::EarliestTimestamp,
+                Expr::cust(
+                    "LEAST(bars_timestamp_coverage.earliest_timestamp, EXCLUDED.earliest_timestamp)",
+                ),
+            )
+            .value(
+                bars_timestamp_coverage::Column::LatestTimestamp,
+                Expr::cust(
+                    "GREATEST(bars_timestamp_coverage.latest_timestamp, EXCLUDED.latest_timestamp)",
+                ),
+            )
+            .to_owned(),
+        )
+        .exec_without_returning(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn set_bar_timestamp_coverage(
+    db: &impl sea_orm::ConnectionTrait,
+    coverage: BarTimestampCoverage,
+) -> Result<(), DbErr> {
+    bars_timestamp_coverage::Entity::insert(bars_timestamp_coverage::ActiveModel {
+        instrument_id: Set(coverage.instrument_id),
+        timeframe: Set(coverage.timeframe),
+        earliest_timestamp: Set(coverage.earliest_timestamp),
+        latest_timestamp: Set(coverage.latest_timestamp),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            bars_timestamp_coverage::Column::InstrumentId,
+            bars_timestamp_coverage::Column::Timeframe,
+        ])
+        .update_columns([
+            bars_timestamp_coverage::Column::EarliestTimestamp,
+            bars_timestamp_coverage::Column::LatestTimestamp,
+        ])
+        .to_owned(),
+    )
+    .exec_without_returning(db)
+    .await?;
 
     Ok(())
 }

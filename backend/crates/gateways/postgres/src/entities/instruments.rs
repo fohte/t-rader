@@ -17,6 +17,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::bars::Entity")]
     Bars,
+    #[sea_orm(has_many = "super::bars_timestamp_coverage::Entity")]
+    BarsTimestampCoverage,
     #[sea_orm(has_one = "super::us_stock_hourly_bar_ingest_progress::Entity")]
     UsStockHourlyBarIngestProgress,
 }
@@ -24,6 +26,12 @@ pub enum Relation {
 impl Related<super::bars::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Bars.def()
+    }
+}
+
+impl Related<super::bars_timestamp_coverage::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::BarsTimestampCoverage.def()
     }
 }
 

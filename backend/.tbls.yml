@@ -328,6 +328,13 @@ comments:
       close: '調整後の終値。'
       volume: '調整後の出来高。'
       adjustment_factor: '価格調整の発生日の日足に付与する係数。国内株は J-Quants、米国株は Alpaca の株式分割比率から設定する。'
+  - table: bars_timestamp_coverage
+    tableComment: '銘柄と時間足ごとの最古・最新のバー時刻を保持する。'
+    columnComments:
+      instrument_id: 'バーの銘柄コード。'
+      timeframe: 'バーの時間足。'
+      earliest_timestamp: '保存されている最古のバー時刻。'
+      latest_timestamp: '保存されている最新のバー時刻。'
   - table: us_stock_hourly_bar_ingest_progress
     tableComment: '米国株の 1 時間足を取得済みの終端時刻を保持する。'
     columnComments:

@@ -7,7 +7,7 @@ use core_application::{
 use sqlx::postgres::{PgAdvisoryLock, PgAdvisoryLockGuard, PgAdvisoryLockKey, PgConnection};
 use sqlx::{Connection as _, Either, PgPool};
 
-const LOCK_KEY: i64 = 0x7452_6164_6572_4261;
+pub(crate) const LOCK_KEY: i64 = 0x7452_6164_6572_4261;
 
 pub struct PostgresUsStockBarsWriteLock {
     pool: PgPool,
