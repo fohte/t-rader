@@ -19,8 +19,6 @@ pub enum BarsUseCaseError {
     Repository(#[from] BarsRepositoryError),
     #[error("米国株 bars の書き込みロックを取得できませんでした: {0}")]
     UsStockBarsWriteLock(#[from] PersistenceError),
-    #[error("米国株 bars の書き込みロックが取得期限までに解放されませんでした")]
-    UsStockBarsWriteLockBusy,
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
     #[error("米国株バーの commit probe に必要な取り込み実行コンテキストがありません")]

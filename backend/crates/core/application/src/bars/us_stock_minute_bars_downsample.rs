@@ -47,6 +47,13 @@ impl UsStockBarsIngestUseCases {
             )
             .await?
             else {
+                tracing::info!(
+                    reason = "write_lock_busy",
+                    batch_from = %batch_from,
+                    hourly_bars_inserted = stats.hourly_bars_inserted,
+                    minute_bars_deleted = stats.minute_bars_deleted,
+                    "米国株の分足間引きを次回の実行に延期しました"
+                );
                 return Ok(stats);
             };
 
@@ -165,11 +172,6 @@ mod tests {
                 busy_on_attempt: AtomicUsize::new(0),
                 attempts: AtomicUsize::new(0),
             }
-        }
-
-        fn set_available(&self, available: bool) {
-            self.busy_on_attempt
-                .store(if available { 0 } else { 1 }, Ordering::SeqCst);
         }
 
         fn set_busy_on_attempt(&self, attempt: usize) {
@@ -379,7 +381,7 @@ mod tests {
                 date("2038-12-20T03:05:00Z"),
             )])
             .await;
-        downsample_fixture.write_lock.set_available(false);
+        downsample_fixture.write_lock.set_busy_on_attempt(1);
 
         let result = downsample_fixture
             .use_cases
