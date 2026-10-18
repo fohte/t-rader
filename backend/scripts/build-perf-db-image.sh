@@ -19,10 +19,10 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/../.." && pwd)"
 seed_sql="$repo_root/backend/perf-db/seed.sql"
 
-content_hash=$(
+source_hash=$(
   {
     find "$repo_root/backend/migration" -type f -print
-    printf '%s\n' "$seed_sql"
+    printf '%s\n' "$seed_sql" "$script_dir/build-perf-db-image.sh"
   } |
     LC_ALL=C sort |
     while IFS= read -r path; do
@@ -31,7 +31,7 @@ content_hash=$(
     openssl dgst -sha256 |
     awk '{print $NF}'
 )
-image_ref="$IMAGE_REPOSITORY:$content_hash"
+image_ref="$IMAGE_REPOSITORY:$source_hash"
 container_name="t-rader-perf-db-build-$$"
 container_started=false
 
@@ -65,6 +65,7 @@ container_started=true
 ready=false
 for _ in {1..120}; do
   if docker exec "$container_name" psql \
+    -h 127.0.0.1 \
     -U "$POSTGRES_USER" \
     -d "$POSTGRES_DATABASE" \
     -v ON_ERROR_STOP=1 \
