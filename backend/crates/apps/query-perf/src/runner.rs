@@ -46,6 +46,16 @@ struct StatementState {
     succeeded: bool,
 }
 
+impl StatementState {
+    fn failed(max_duration: Duration) -> Self {
+        Self {
+            max_duration,
+            runs: 0,
+            succeeded: false,
+        }
+    }
+}
+
 pub async fn replay(
     database_url: &str,
     parsed_log: ParsedLog,
@@ -60,6 +70,7 @@ pub async fn replay(
         failures: Vec::new(),
     };
     let mut statement_states = BTreeMap::<String, StatementState>::new();
+    let mut stopped_early = false;
 
     'statements: for (statement_index, (sql, parameter_sets)) in
         parsed_log.statements.into_iter().enumerate()
@@ -90,15 +101,9 @@ pub async fn replay(
                     kind: error_kind(&error),
                     message: error.to_string(),
                 });
-                statement_states.insert(
-                    sql,
-                    StatementState {
-                        max_duration: prepare_started.elapsed(),
-                        runs: 0,
-                        succeeded: false,
-                    },
-                );
+                statement_states.insert(sql, StatementState::failed(prepare_started.elapsed()));
                 if fatal {
+                    stopped_early = true;
                     break 'statements;
                 }
                 continue;
@@ -113,17 +118,8 @@ pub async fn replay(
                     shifted_parameter_sets.insert(shifted);
                 }
                 Err(reason) => {
-                    if let Some(exclusion) = exclusion_for(&exclusions, &sql) {
-                        if !report
-                            .excluded
-                            .iter()
-                            .any(|entry| entry.sql == sql && entry.reason == exclusion.reason)
-                        {
-                            report.excluded.push(ExcludedStatement {
-                                sql: sql.clone(),
-                                reason: exclusion.reason.clone(),
-                            });
-                        }
+                    if exclusion_for(&exclusions, &sql).is_some() {
+                        add_exclusion(&mut report.excluded, &exclusions, &sql);
                     } else {
                         unshiftable = true;
                         report.failures.push(Failure {
@@ -139,14 +135,7 @@ pub async fn replay(
             }
         }
         if unshiftable {
-            statement_states.insert(
-                sql,
-                StatementState {
-                    max_duration: Duration::ZERO,
-                    runs: 0,
-                    succeeded: false,
-                },
-            );
+            statement_states.insert(sql, StatementState::failed(Duration::ZERO));
             continue;
         }
 
@@ -170,11 +159,7 @@ pub async fn replay(
                     statement_states
                         .entry(sql.clone())
                         .and_modify(|state| state.succeeded = false)
-                        .or_insert(StatementState {
-                            max_duration: Duration::ZERO,
-                            runs: 0,
-                            succeeded: false,
-                        });
+                        .or_insert(StatementState::failed(Duration::ZERO));
                     continue;
                 }
             };
@@ -200,11 +185,7 @@ pub async fn replay(
                     let fatal = error.fatal;
                     let state = statement_states
                         .entry(sql.clone())
-                        .or_insert(StatementState {
-                            max_duration: Duration::ZERO,
-                            runs: 0,
-                            succeeded: false,
-                        });
+                        .or_insert(StatementState::failed(Duration::ZERO));
                     state.max_duration = state.max_duration.max(error.duration);
                     state.succeeded = false;
                     report.failures.push(Failure {
@@ -216,6 +197,7 @@ pub async fn replay(
                         message: error.message,
                     });
                     if fatal {
+                        stopped_early = true;
                         break 'statements;
                     }
                 }
@@ -223,6 +205,19 @@ pub async fn replay(
         }
         if excluded_as_non_replayable {
             statement_states.remove(&sql);
+        }
+    }
+
+    if !stopped_early {
+        for exclusion in unused_exclusions(&exclusions, &report.excluded) {
+            report.failures.push(Failure {
+                sql: exclusion.sql.clone(),
+                parameters: "[]".to_string(),
+                shifted_parameters: false,
+                duration: Duration::ZERO,
+                kind: "unused exclusion".to_string(),
+                message: "configured exclusion was not needed by any SQL statement".to_string(),
+            });
         }
     }
 
@@ -268,5 +263,41 @@ fn add_exclusion(report: &mut Vec<ExcludedStatement>, exclusions: &[Exclusion], 
             sql: exclusion.sql.clone(),
             reason: exclusion.reason.clone(),
         });
+    }
+}
+
+fn unused_exclusions<'a>(
+    exclusions: &'a [Exclusion],
+    used: &[ExcludedStatement],
+) -> Vec<&'a Exclusion> {
+    exclusions
+        .iter()
+        .filter(|exclusion| !used.iter().any(|entry| entry.sql == exclusion.sql))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unused_exclusions;
+    use crate::log::{ExcludedStatement, Exclusion};
+
+    #[test]
+    fn finds_exclusions_that_were_not_applied_during_replay() {
+        let exclusions = vec![
+            Exclusion {
+                sql: "SELECT 1".to_string(),
+                reason: "fixture reason".to_string(),
+            },
+            Exclusion {
+                sql: "SELECT 2".to_string(),
+                reason: "fixture reason".to_string(),
+            },
+        ];
+        let used = vec![ExcludedStatement {
+            sql: "SELECT 1".to_string(),
+            reason: "fixture reason".to_string(),
+        }];
+
+        assert_eq!(unused_exclusions(&exclusions, &used), vec![&exclusions[1]]);
     }
 }

@@ -72,15 +72,16 @@ entrypoint をまたぐ結合テストは composition root に置く。現在は
 
 `backend/crates/` 内の crate 間の直接依存は `Cargo.toml` で次の関係に限定する。
 
-| crate                                       | 依存先                                                       |
-| ------------------------------------------- | ------------------------------------------------------------ |
-| `core/domain`                               | なし                                                         |
-| `core/application`                          | `core/domain`                                                |
-| `entrypoints/*` (`external-webhook` を含む) | `core/application`, `core/domain`                            |
-| `gateways/*`                                | `core/application`, `core/domain`, `libs/rate-limit`         |
-| `apps/backend`                              | `backend/crates/` 内のすべての crate と `backend/migration/` |
-| `libs/rate-limit`                           | なし                                                         |
-| `libs/test-macros`                          | なし                                                         |
+| crate                                       | 依存先                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `core/domain`                               | なし                                                                                  |
+| `core/application`                          | `core/domain`                                                                         |
+| `entrypoints/*` (`external-webhook` を含む) | `core/application`, `core/domain`                                                     |
+| `gateways/*`                                | `core/application`, `core/domain`, `libs/rate-limit`                                  |
+| `apps/backend`                              | `apps/query-perf` 以外の `backend/crates/` 内のすべての crate と `backend/migration/` |
+| `apps/query-perf`                           | なし                                                                                  |
+| `libs/rate-limit`                           | なし                                                                                  |
+| `libs/test-macros`                          | なし                                                                                  |
 
 `libs/rate-limit` は外部 crate への依存だけを持ち、`backend/crates/` 内の crate には依存しない。利用できるのは `gateways/*` と `apps/backend` のみとし、`core/*` と `entrypoints/*` からは依存させない。
 

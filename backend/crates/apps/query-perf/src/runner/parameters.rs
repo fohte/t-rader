@@ -103,22 +103,24 @@ fn iso_dates(value: &str) -> Vec<NaiveDate> {
         return Vec::new();
     }
     (0..=bytes.len() - 10)
-        .filter_map(|start| {
-            let candidate = value.get(start..start + 10)?;
-            if !candidate
-                .as_bytes()
-                .iter()
-                .enumerate()
-                .all(|(index, byte)| match index {
-                    4 | 7 => *byte == b'-',
-                    _ => byte.is_ascii_digit(),
-                })
-            {
-                return None;
-            }
-            NaiveDate::parse_from_str(candidate, "%Y-%m-%d").ok()
-        })
+        .filter_map(|start| iso_date_at(value, start))
         .collect()
+}
+
+fn iso_date_at(value: &str, start: usize) -> Option<NaiveDate> {
+    let candidate = value.get(start..start + 10)?;
+    if !candidate
+        .as_bytes()
+        .iter()
+        .enumerate()
+        .all(|(index, byte)| match index {
+            4 | 7 => *byte == b'-',
+            _ => byte.is_ascii_digit(),
+        })
+    {
+        return None;
+    }
+    NaiveDate::parse_from_str(candidate, "%Y-%m-%d").ok()
 }
 
 fn shift_parameter_value(
@@ -153,21 +155,7 @@ fn shift_date_array(value: &str, day_shift: i64) -> Result<String, String> {
     let mut output = String::with_capacity(value.len());
     let mut copied_until = 0;
     for start in 0..=bytes.len() - 10 {
-        let Some(candidate) = value.get(start..start + 10) else {
-            continue;
-        };
-        if !candidate
-            .as_bytes()
-            .iter()
-            .enumerate()
-            .all(|(index, byte)| match index {
-                4 | 7 => *byte == b'-',
-                _ => byte.is_ascii_digit(),
-            })
-        {
-            continue;
-        }
-        let Ok(date) = NaiveDate::parse_from_str(candidate, "%Y-%m-%d") else {
+        let Some(date) = iso_date_at(value, start) else {
             continue;
         };
         let shifted = date
@@ -232,7 +220,10 @@ pub(super) fn format_parameters(parameters: &[Option<String>]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{DateParameterKind, date_parameter_kind, shift_date_prefix, shift_parameters};
+    use super::{
+        DateParameterKind, build_execute_sql, date_parameter_kind, shift_date_prefix,
+        shift_parameters,
+    };
     use chrono::NaiveDate;
     use rstest::rstest;
 
@@ -317,6 +308,20 @@ mod tests {
         assert_eq!(
             shift_date_prefix("2020-02-03", 1, false),
             Ok("2020-02-04".to_string())
+        );
+    }
+
+    #[test]
+    fn uses_an_unused_dollar_quote_tag_when_the_value_contains_the_default_tag() {
+        assert_eq!(
+            build_execute_sql(
+                "query_perf_0",
+                &[Some("payload $query_perf$ delimiter".to_string())]
+            ),
+            Ok(
+                "EXECUTE query_perf_0($query_perf_1$payload $query_perf$ delimiter$query_perf_1$)"
+                    .to_string()
+            )
         );
     }
 }

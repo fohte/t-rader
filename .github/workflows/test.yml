@@ -694,6 +694,12 @@ jobs:
           dump_db_logs() {
             echo "::group::PostgreSQL service logs"
             docker logs "$DB_CONTAINER_ID" || true
+            docker exec "$DB_CONTAINER_ID" sh -c '
+              for log_file in "$PGDATA"/log/*.json; do
+                [ -f "$log_file" ] || continue
+                cat "$log_file"
+              done
+            ' || true
             echo "::endgroup::"
           }
 
@@ -706,6 +712,7 @@ jobs:
             --command="ALTER SYSTEM SET log_destination = 'jsonlog'" \
             --command="ALTER SYSTEM SET log_statement = 'all'" \
             --command="ALTER SYSTEM SET log_parameter_max_length = -1" \
+            --command="ALTER SYSTEM SET log_rotation_age = 0" \
             --command="ALTER SYSTEM SET log_rotation_size = 0"
           docker restart "$DB_CONTAINER_ID"
           ready=false
@@ -740,8 +747,9 @@ jobs:
             --command="SHOW log_destination" \
             --command="SHOW log_statement" \
             --command="SHOW log_parameter_max_length" \
+            --command="SHOW log_rotation_age" \
             --command="SHOW log_rotation_size")
-          if [[ "$log_settings" != $'on\njsonlog\nall\n-1\n0' ]]; then
+          if [[ "$log_settings" != $'on\njsonlog\nall\n-1\n0\n0' ]]; then
             printf 'PostgreSQL query logging settings do not match expectations:\n%s\n' "$log_settings" >&2
             dump_db_logs
             exit 1

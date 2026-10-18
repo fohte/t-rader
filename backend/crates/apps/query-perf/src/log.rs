@@ -267,16 +267,17 @@ fn decode_parameter(raw: &str) -> Result<Option<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::{Exclusion, ParsedLog, parse_json_log};
+    use indoc::indoc;
     use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
     fn parses_execute_sql_and_deduplicates_identical_parameters() {
-        let logs = concat!(
-            "{\"message\":\"execute <unnamed>: SELECT id FROM synthetic_records WHERE created_at >= $1\",\"detail\":\"parameters: $1 = '2021-03-04'\"}\n",
-            "{\"message\":\"execute <unnamed>: SELECT id FROM synthetic_records WHERE created_at >= $1\",\"detail\":\"Parameters: $1 = '2021-03-04'\"}\n",
-            "{\"message\":\"execute <unnamed>: INSERT INTO synthetic_records VALUES ($1)\",\"detail\":\"parameters: $1 = 42\"}\n",
-            "{\"message\":\"connection authorized\"}\n"
-        );
+        let logs = indoc! {r#"
+            {"message":"execute <unnamed>: SELECT id FROM synthetic_records WHERE created_at >= $1","detail":"parameters: $1 = '2021-03-04'"}
+            {"message":"execute <unnamed>: SELECT id FROM synthetic_records WHERE created_at >= $1","detail":"Parameters: $1 = '2021-03-04'"}
+            {"message":"execute <unnamed>: INSERT INTO synthetic_records VALUES ($1)","detail":"parameters: $1 = 42"}
+            {"message":"connection authorized"}
+        "#};
 
         assert_eq!(
             parse_json_log(logs, &[]),
