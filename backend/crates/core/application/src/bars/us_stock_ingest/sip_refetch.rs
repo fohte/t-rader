@@ -4,7 +4,8 @@ use chrono::{DateTime, TimeZone, Utc};
 
 use super::super::error::{BarsUseCaseError, UsStockBarsIngestError};
 use super::super::types::{
-    UsStockBarTarget, UsStockBarsIngestResult, UsStockBarsIngestStats, UsStockSipBarRefetchConfig,
+    UsStockBarsIngestResult, UsStockBarsIngestStats, UsStockSipBarRefetchConfig,
+    UsStockSipBarRefetchCursor, UsStockSipBarRefetchTarget,
 };
 use super::super::us_stock_source::UsStockBarSource;
 use super::super::use_cases::UsStockBarsIngestUseCases;
@@ -15,6 +16,21 @@ use super::{BatchIngestContext, IngestContext, UsStockBarRange, UsStockBarTimefr
 const MAX_REQUESTS_PER_RUN: usize = usize::MAX;
 const MAX_RUN_DURATION: Duration = Duration::from_secs(90 * 60);
 const HOURLY_HISTORY_START: (i32, u32, u32) = (2016, 1, 1);
+
+#[derive(Clone, Copy)]
+struct UsStockSipBarRefetchRanges {
+    daily: UsStockBarRange,
+    hourly: UsStockBarRange,
+    minute: UsStockBarRange,
+}
+
+struct UsStockSipBarRefetchFrame {
+    instrument_id: String,
+    timeframe: UsStockBarTimeframe,
+    range: UsStockBarRange,
+    page_token: Option<String>,
+    resume_after: Option<UsStockSipBarRefetchCursor>,
+}
 
 impl UsStockBarsIngestUseCases {
     pub async fn refetch_us_stock_bars_via_sip(
@@ -44,7 +60,7 @@ impl UsStockBarsIngestUseCases {
             budget,
             stats: UsStockBarsIngestStats::default(),
             write_throttle: WriteThrottle::default(),
-            max_rows_per_hour: Some(config.max_rows_per_hour),
+            sip_refetch_max_rows_per_hour: Some(config.max_rows_per_hour),
         };
         context.stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
         let refetch_result = self
@@ -82,39 +98,34 @@ impl UsStockBarsIngestUseCases {
             .await?;
         context.stats.symbols_attempted = targets.len();
 
-        let daily_range = UsStockBarRange {
-            from: UsStockBarTimeframe::Daily.history_start(now),
-            to: UsStockBarTimeframe::Daily.history_end(now),
-        };
-        let hourly_range = UsStockBarRange {
-            from: Utc
-                .with_ymd_and_hms(
-                    HOURLY_HISTORY_START.0,
-                    HOURLY_HISTORY_START.1,
-                    HOURLY_HISTORY_START.2,
-                    0,
-                    0,
-                    0,
-                )
-                .single()
-                .unwrap_or(now),
-            to: UsStockBarTimeframe::Hourly.history_end(now),
-        };
-        let minute_range = UsStockBarRange {
-            from: UsStockBarTimeframe::Minute.history_start(now),
-            to: UsStockBarTimeframe::Minute.history_end(now),
+        let ranges = UsStockSipBarRefetchRanges {
+            daily: UsStockBarRange {
+                from: UsStockBarTimeframe::Daily.history_start(now),
+                to: UsStockBarTimeframe::Daily.history_end(now),
+            },
+            hourly: UsStockBarRange {
+                from: Utc
+                    .with_ymd_and_hms(
+                        HOURLY_HISTORY_START.0,
+                        HOURLY_HISTORY_START.1,
+                        HOURLY_HISTORY_START.2,
+                        0,
+                        0,
+                        0,
+                    )
+                    .single()
+                    .unwrap_or(now),
+                to: UsStockBarTimeframe::Hourly.history_end(now),
+            },
+            minute: UsStockBarRange {
+                from: UsStockBarTimeframe::Minute.history_start(now),
+                to: UsStockBarTimeframe::Minute.history_end(now),
+            },
         };
 
         for target in targets {
             if !self
-                .refetch_target(
-                    source,
-                    &target,
-                    daily_range,
-                    hourly_range,
-                    minute_range,
-                    context,
-                )
+                .refetch_target(source, &target, ranges, context)
                 .await?
             {
                 return Ok(false);
@@ -126,37 +137,79 @@ impl UsStockBarsIngestUseCases {
     async fn refetch_target(
         &self,
         source: &dyn UsStockBarSource,
-        target: &UsStockBarTarget,
-        daily_range: UsStockBarRange,
-        hourly_range: UsStockBarRange,
-        minute_range: UsStockBarRange,
+        refetch_target: &UsStockSipBarRefetchTarget,
+        ranges: UsStockSipBarRefetchRanges,
         context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
-        let instrument_ids = std::slice::from_ref(&target.instrument_id);
-        let frames = [
+        let cursor = refetch_target.cursor.as_ref();
+        let target = &refetch_target.bars;
+        let mut frames = [
             (
                 UsStockBarTimeframe::Daily,
                 target.earliest_daily_bar,
-                daily_range,
+                ranges.daily,
             ),
             (
                 UsStockBarTimeframe::Hourly,
                 target.earliest_hourly_bar,
-                hourly_range,
+                ranges.hourly,
             ),
             (
                 UsStockBarTimeframe::Minute,
                 target.earliest_minute_bar,
-                minute_range,
+                ranges.minute,
             ),
         ];
+        let start_index = cursor
+            .and_then(|cursor| {
+                frames.iter().position(|(timeframe, _, _)| {
+                    timeframe.as_sip_refetch_timeframe() == cursor.timeframe
+                })
+            })
+            .unwrap_or(0);
+        if let Some(cursor) = cursor {
+            frames[start_index].2 = UsStockBarRange {
+                from: cursor.range_from,
+                to: cursor.range_to,
+            };
+        }
+        let active_frames = frames
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, earliest_bar, _))| earliest_bar.is_some())
+            .collect::<Vec<_>>();
 
-        for (timeframe, earliest_bar, range) in frames {
-            if earliest_bar.is_none() {
+        for (active_index, (frame_index, (timeframe, _, range))) in active_frames.iter().enumerate()
+        {
+            if *frame_index < start_index {
                 continue;
             }
+            let resume_after =
+                active_frames
+                    .get(active_index + 1)
+                    .map(|(_, (timeframe, _, range))| UsStockSipBarRefetchCursor {
+                        timeframe: timeframe.as_sip_refetch_timeframe(),
+                        range_from: range.from,
+                        range_to: range.to,
+                        page_token: None,
+                    });
+            let page_token = cursor.and_then(|cursor| {
+                (cursor.timeframe == timeframe.as_sip_refetch_timeframe())
+                    .then(|| cursor.page_token.clone())
+                    .flatten()
+            });
             let frame_result = self
-                .ingest_refetch_frame(source, instrument_ids, timeframe, range, context)
+                .ingest_refetch_frame(
+                    source,
+                    UsStockSipBarRefetchFrame {
+                        instrument_id: target.instrument_id.clone(),
+                        timeframe: *timeframe,
+                        range: *range,
+                        page_token,
+                        resume_after,
+                    },
+                    context,
+                )
                 .await?;
             match frame_result {
                 RefetchFrameResult::Interrupted => return Ok(false),
@@ -169,9 +222,13 @@ impl UsStockBarsIngestUseCases {
                 }
                 RefetchFrameResult::Completed => {}
             }
-            if timeframe == UsStockBarTimeframe::Hourly {
-                self.mark_hourly_history_completed(instrument_ids, range.to, &Default::default())
-                    .await?;
+            if *timeframe == UsStockBarTimeframe::Hourly {
+                self.mark_hourly_history_completed(
+                    std::slice::from_ref(&target.instrument_id),
+                    range.to,
+                    &Default::default(),
+                )
+                .await?;
             }
         }
 
@@ -185,15 +242,25 @@ impl UsStockBarsIngestUseCases {
     async fn ingest_refetch_frame(
         &self,
         source: &dyn UsStockBarSource,
-        instrument_ids: &[String],
-        timeframe: UsStockBarTimeframe,
-        range: UsStockBarRange,
+        frame: UsStockSipBarRefetchFrame,
         context: &mut IngestContext,
     ) -> Result<RefetchFrameResult, BarsUseCaseError> {
+        let instrument_ids = [frame.instrument_id.clone()];
         let (completed, skipped_instrument_ids) = {
             let mut batch_context = BatchIngestContext::new(context);
+            batch_context.page_token = frame.page_token;
+            batch_context.sip_refetch_progress = Some(super::SipRefetchProgressContext {
+                instrument_id: frame.instrument_id.clone(),
+                resume_after: frame.resume_after,
+            });
             let completed = self
-                .ingest_batch(source, instrument_ids, timeframe, range, &mut batch_context)
+                .ingest_batch(
+                    source,
+                    &instrument_ids,
+                    frame.timeframe,
+                    frame.range,
+                    &mut batch_context,
+                )
                 .await?;
             (completed, batch_context.skipped_instrument_ids)
         };
@@ -201,17 +268,14 @@ impl UsStockBarsIngestUseCases {
             return Ok(RefetchFrameResult::Interrupted);
         }
 
-        let Some(instrument_id) = instrument_ids.first() else {
-            return Ok(RefetchFrameResult::Completed);
-        };
-        if !skipped_instrument_ids.contains(instrument_id) {
+        if !skipped_instrument_ids.contains(&frame.instrument_id) {
             return Ok(RefetchFrameResult::Completed);
         }
         let reason = context
             .stats
             .skipped_instruments
             .iter()
-            .find(|skipped| skipped.instrument_id == *instrument_id)
+            .find(|skipped| skipped.instrument_id == frame.instrument_id)
             .map(|skipped| skipped.reason.clone())
             .unwrap_or_else(|| "Alpaca rejected the instrument".to_owned());
         Ok(RefetchFrameResult::Skipped(reason))
@@ -227,7 +291,7 @@ enum RefetchFrameResult {
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
     use std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         sync::Arc,
         time::{Duration, Instant},
     };
@@ -240,11 +304,12 @@ mod tests {
 
     use crate::{
         bars::{
-            BarsUseCases, SharedBarsRepository, SharedUsStockBarsWriteLock, UsStockBarPage,
-            UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockBarsIngestStats,
-            UsStockBarsIngestUseCases, UsStockBarsWriteLock, UsStockBarsWriteLockGuard,
-            UsStockSipBarRefetchConfig, UsStockSplitBatch, UsStockSplitQuery,
-            us_stock_sip_bars_history_cutoff,
+            BarsUseCases, SharedBarsRepository, SharedUsStockBarsWriteLock,
+            SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
+            UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsIngestUseCases,
+            UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockSipBarRefetchConfig,
+            UsStockSipBarRefetchCursor, UsStockSipBarRefetchTimeframe, UsStockSplitBatch,
+            UsStockSplitQuery, us_stock_sip_bars_history_cutoff,
         },
         persistence::PersistenceError,
         unit_of_work::{FakeUnitOfWork, SharedUnitOfWork},
@@ -254,6 +319,8 @@ mod tests {
     struct FakeSource {
         calls: Mutex<Vec<UsStockBarQuery>>,
         bars: Mutex<Vec<Bar>>,
+        skipped_instruments: Mutex<HashMap<String, String>>,
+        scripted_pages: Mutex<Vec<UsStockBarPage>>,
     }
 
     #[async_trait]
@@ -264,11 +331,20 @@ mod tests {
             _deadline: Instant,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
             self.calls.lock().await.push(query.clone());
+            let scripted_page = {
+                let mut pages = self.scripted_pages.lock().await;
+                (!pages.is_empty()).then(|| pages.remove(0))
+            };
+            if let Some(page) = scripted_page {
+                return Ok(page);
+            }
             let configured_bars = self.bars.lock().await.clone();
+            let skipped_instruments = self.skipped_instruments.lock().await.clone();
             let bars = if configured_bars.is_empty() {
                 query
                     .instrument_ids
                     .first()
+                    .filter(|instrument_id| !skipped_instruments.contains_key(*instrument_id))
                     .map(|instrument_id| vec![bar(instrument_id, query.timeframe, query.to)])
                     .unwrap_or_default()
             } else {
@@ -276,16 +352,33 @@ mod tests {
                     .into_iter()
                     .filter(|bar| {
                         query.instrument_ids.contains(&bar.instrument_id)
+                            && !skipped_instruments.contains_key(&bar.instrument_id)
                             && bar.timeframe == query.timeframe
                             && bar.timestamp >= query.from
                             && bar.timestamp <= query.to
                     })
                     .collect()
             };
+            let skipped = if query.page_token.is_none() {
+                query
+                    .instrument_ids
+                    .iter()
+                    .filter_map(|instrument_id| {
+                        skipped_instruments.get(instrument_id).map(|reason| {
+                            SkippedUsStockInstrument {
+                                instrument_id: instrument_id.clone(),
+                                reason: reason.clone(),
+                            }
+                        })
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             Ok(UsStockBarPage {
                 bars,
                 next_page_token: None,
-                skipped_instruments: Vec::new(),
+                skipped_instruments: skipped,
             })
         }
 
@@ -552,6 +645,235 @@ mod tests {
                 1,
                 HashSet::new(),
                 0,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn resumes_from_the_first_unwritten_page_after_reaching_the_hourly_limit() {
+        let fixture = harness();
+        let instrument_id = "US:DEMO-GAMMA";
+        let now = fixed_now();
+        fixture
+            .repository
+            .seed_us_stock_minute_targets(vec![instrument_id.to_owned()])
+            .await;
+        fixture
+            .repository
+            .seed_bars(vec![bar(
+                instrument_id,
+                Timeframe::Minute,
+                now - chrono::Duration::days(5),
+            )])
+            .await;
+        *fixture.source.scripted_pages.lock().await = vec![
+            UsStockBarPage {
+                bars: vec![bar(
+                    instrument_id,
+                    Timeframe::Minute,
+                    now - chrono::Duration::days(4),
+                )],
+                next_page_token: Some("synthetic-page-two".to_owned()),
+                skipped_instruments: Vec::new(),
+            },
+            UsStockBarPage {
+                bars: vec![bar(
+                    instrument_id,
+                    Timeframe::Minute,
+                    now - chrono::Duration::days(3),
+                )],
+                next_page_token: None,
+                skipped_instruments: Vec::new(),
+            },
+        ];
+
+        let first = fixture
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &fixture.source,
+                now,
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 1,
+                },
+            )
+            .await
+            .expect("the first page is committed before the hourly limit");
+        let cursor_after_first = fixture
+            .repository
+            .us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .clone();
+        let second = fixture
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &fixture.source,
+                now + chrono::Duration::hours(1),
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 2,
+                },
+            )
+            .await
+            .expect("the next run resumes from the saved page token");
+        let queries = fixture.source.calls.lock().await.clone();
+        let completed = fixture
+            .repository
+            .us_stock_sip_refetch_completed
+            .lock()
+            .await
+            .clone();
+
+        let minute_range_start = super::super::super::us_stock_hourly_history_cutoff(now);
+        let minute_range_end = us_stock_sip_bars_history_cutoff(now);
+        let query = |page_token| UsStockBarQuery {
+            instrument_ids: vec![instrument_id.to_owned()],
+            timeframe: Timeframe::Minute,
+            from: minute_range_start,
+            to: minute_range_end,
+            page_token,
+        };
+        assert_eq!(
+            (
+                without_runtime_throttle_time(first.stats),
+                cursor_after_first,
+                without_runtime_throttle_time(second.stats),
+                queries,
+                completed,
+            ),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 2,
+                    daily_bars_upserted: 0,
+                    minute_bars_upserted: 1,
+                    hourly_bars_upserted: 0,
+                    write_lock_wait_ms: 0,
+                    write_throttle_wait_ms: 0,
+                    skipped_instruments: Vec::new(),
+                    interrupted_reason: Some("hourly_row_limit_reached".to_owned()),
+                    compression_error: None,
+                },
+                HashMap::from([(
+                    instrument_id.to_owned(),
+                    UsStockSipBarRefetchCursor {
+                        timeframe: UsStockSipBarRefetchTimeframe::Minute,
+                        range_from: minute_range_start,
+                        range_to: minute_range_end,
+                        page_token: Some("synthetic-page-two".to_owned()),
+                    },
+                )]),
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    daily_bars_upserted: 0,
+                    minute_bars_upserted: 1,
+                    hourly_bars_upserted: 0,
+                    write_lock_wait_ms: 0,
+                    write_throttle_wait_ms: 0,
+                    skipped_instruments: Vec::new(),
+                    interrupted_reason: None,
+                    compression_error: None,
+                },
+                vec![
+                    query(None),
+                    query(Some("synthetic-page-two".to_owned())),
+                    query(Some("synthetic-page-two".to_owned())),
+                ],
+                HashSet::from([instrument_id.to_owned()]),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn records_a_skipped_symbol_and_does_not_request_it_again() {
+        let fixture = harness();
+        let instrument_id = "US:DEMO-DELTA";
+        let reason = "synthetic instrument rejection";
+        let now = fixed_now();
+        fixture
+            .repository
+            .seed_us_stock_daily_targets(vec![instrument_id.to_owned()])
+            .await;
+        fixture
+            .repository
+            .seed_bars(vec![bar(
+                instrument_id,
+                Timeframe::Daily,
+                now - chrono::Duration::days(5),
+            )])
+            .await;
+        fixture
+            .source
+            .skipped_instruments
+            .lock()
+            .await
+            .insert(instrument_id.to_owned(), reason.to_owned());
+
+        let first = fixture
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &fixture.source,
+                now,
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 10,
+                },
+            )
+            .await
+            .expect("the rejected instrument is recorded");
+        let skipped = fixture
+            .repository
+            .us_stock_sip_refetch_skipped
+            .lock()
+            .await
+            .clone();
+        let second = fixture
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &fixture.source,
+                now,
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 10,
+                },
+            )
+            .await
+            .expect("a skipped instrument is excluded from the next run");
+
+        assert_eq!(
+            (
+                first.stats,
+                skipped,
+                second.stats,
+                fixture.source.calls.lock().await.clone(),
+            ),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    daily_bars_upserted: 0,
+                    minute_bars_upserted: 0,
+                    hourly_bars_upserted: 0,
+                    write_lock_wait_ms: 0,
+                    write_throttle_wait_ms: 0,
+                    skipped_instruments: vec![SkippedUsStockInstrument {
+                        instrument_id: instrument_id.to_owned(),
+                        reason: reason.to_owned(),
+                    }],
+                    interrupted_reason: None,
+                    compression_error: None,
+                },
+                HashMap::from([(instrument_id.to_owned(), reason.to_owned())]),
+                UsStockBarsIngestStats::default(),
+                vec![UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Daily,
+                    from: Utc.timestamp_opt(0, 0).single().unwrap_or_default(),
+                    to: us_stock_sip_bars_history_cutoff(now),
+                    page_token: None,
+                }],
             ),
         );
     }

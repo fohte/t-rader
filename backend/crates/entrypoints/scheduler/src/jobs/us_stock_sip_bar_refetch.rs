@@ -2,8 +2,8 @@ use std::str::FromStr;
 
 use chrono::Utc;
 use core_application::bars::{
-    DEFAULT_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR, UsStockBarsIngestResult,
-    UsStockSipBarRefetchConfig,
+    DEFAULT_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR, MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR,
+    UsStockBarsIngestResult, UsStockSipBarRefetchConfig,
 };
 
 use super::{
@@ -50,12 +50,23 @@ impl super::SchedulerJob for UsStockSipBarRefetch {
 
 fn refetch_config_from_env() -> Result<UsStockSipBarRefetchConfig, String> {
     let max_symbols = parse_optional_positive::<usize>(MAX_SYMBOLS_ENV)?;
-    let max_rows_per_hour = parse_optional_positive::<u64>(MAX_ROWS_PER_HOUR_ENV)?
-        .unwrap_or(DEFAULT_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR);
+    let max_rows_per_hour = validate_max_rows_per_hour(
+        parse_optional_positive::<u64>(MAX_ROWS_PER_HOUR_ENV)?
+            .unwrap_or(DEFAULT_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR),
+    )?;
     Ok(UsStockSipBarRefetchConfig {
         max_symbols,
         max_rows_per_hour,
     })
+}
+
+fn validate_max_rows_per_hour(value: u64) -> Result<u64, String> {
+    if value < MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR {
+        return Err(format!(
+            "{MAX_ROWS_PER_HOUR_ENV} must be at least {MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR}"
+        ));
+    }
+    Ok(value)
 }
 
 fn parse_optional_positive<T>(name: &str) -> Result<Option<T>, String>
@@ -74,4 +85,29 @@ where
         return Err(format!("{name} must be greater than zero"));
     }
     Ok(Some(parsed))
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::{MAX_ROWS_PER_HOUR_ENV, validate_max_rows_per_hour};
+    use core_application::bars::MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR;
+
+    #[rstest]
+    #[case::minimum_is_accepted(
+        MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR,
+        Ok(MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR)
+    )]
+    #[case::larger_values_are_accepted(
+        MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR + 1,
+        Ok(MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR + 1)
+    )]
+    #[case::smaller_values_are_rejected(
+        MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR - 1,
+        Err(format!("{MAX_ROWS_PER_HOUR_ENV} must be at least {MIN_US_STOCK_SIP_REFETCH_MAX_ROWS_PER_HOUR}"))
+    )]
+    fn validates_the_minimum_page_size(#[case] value: u64, #[case] expected: Result<u64, String>) {
+        assert_eq!(validate_max_rows_per_hour(value), expected);
+    }
 }

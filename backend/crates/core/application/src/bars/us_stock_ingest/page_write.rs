@@ -5,6 +5,7 @@ use crate::bars::types::UsStockBarsIngestStats;
 use crate::bars::use_cases::UsStockBarsIngestUseCases;
 use crate::bars::write_throttle::WriteThrottle;
 
+use super::SipRefetchPageWrite;
 use super::UsStockBarTimeframe;
 use super::request_budget::RequestBudget;
 
@@ -16,26 +17,33 @@ impl UsStockBarsIngestUseCases {
         write_throttle: &mut WriteThrottle,
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
-        max_rows_per_hour: Option<u64>,
+        sip_refetch_write: Option<SipRefetchPageWrite>,
     ) -> Result<bool, BarsUseCaseError> {
-        if bars.is_empty() {
+        if bars.is_empty()
+            && sip_refetch_write
+                .as_ref()
+                .is_none_or(|write| write.checkpoint.is_none())
+        {
             return Ok(true);
         }
-        if !self
-            .wait_for_page_write(write_throttle, budget, stats)
-            .await?
+        if !bars.is_empty()
+            && !self
+                .wait_for_page_write(write_throttle, budget, stats)
+                .await?
         {
             budget.mark_time_budget_exhausted();
             return Ok(false);
         }
         let count = bars.len();
         let transaction = self.bars.unit_of_work.begin().await?;
-        if let Some(max_rows_per_hour) = max_rows_per_hour {
+        if let Some(write) = sip_refetch_write.as_ref()
+            && count > 0
+        {
             let rows = u64::try_from(count).unwrap_or(u64::MAX);
             if !self
                 .bars
                 .repository
-                .reserve_us_stock_sip_refetch_rows(&transaction, rows, max_rows_per_hour)
+                .reserve_us_stock_sip_refetch_rows(&transaction, rows, write.max_rows_per_hour)
                 .await?
             {
                 stats.interrupted_reason = Some("hourly_row_limit_reached".to_owned());
@@ -43,18 +51,32 @@ impl UsStockBarsIngestUseCases {
             }
         }
         let write_started_at = self.clock.instant();
-        self.bars.repository.upsert_bars(&transaction, bars).await?;
-        let commit_started_at = self.clock.instant();
-        match timeframe {
-            UsStockBarTimeframe::Daily => stats.daily_bars_upserted += count,
-            UsStockBarTimeframe::Minute => stats.minute_bars_upserted += count,
-            UsStockBarTimeframe::Hourly => stats.hourly_bars_upserted += count,
+        if !bars.is_empty() {
+            self.bars.repository.upsert_bars(&transaction, bars).await?;
+            match timeframe {
+                UsStockBarTimeframe::Daily => stats.daily_bars_upserted += count,
+                UsStockBarTimeframe::Minute => stats.minute_bars_upserted += count,
+                UsStockBarTimeframe::Hourly => stats.hourly_bars_upserted += count,
+            }
         }
+        if let Some(checkpoint) = sip_refetch_write.and_then(|write| write.checkpoint) {
+            self.bars
+                .repository
+                .save_us_stock_sip_bar_refetch_cursor(
+                    &transaction,
+                    &checkpoint.instrument_id,
+                    checkpoint.cursor,
+                )
+                .await?;
+        }
+        let commit_started_at = self.clock.instant();
         self.bars.unit_of_work.commit(transaction).await?;
         let completed_at = self.clock.instant();
-        let write_duration = completed_at.saturating_duration_since(write_started_at);
-        let commit_duration = completed_at.saturating_duration_since(commit_started_at);
-        write_throttle.record_page(completed_at, write_duration, commit_duration);
+        if count > 0 {
+            let write_duration = completed_at.saturating_duration_since(write_started_at);
+            let commit_duration = completed_at.saturating_duration_since(commit_started_at);
+            write_throttle.record_page(completed_at, write_duration, commit_duration);
+        }
         Ok(true)
     }
 

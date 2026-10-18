@@ -362,7 +362,16 @@ mod tests {
         async fn find_pending_us_stock_sip_bar_refetch_targets(
             &self,
             _: Option<usize>,
-        ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+        ) -> Result<Vec<crate::bars::UsStockSipBarRefetchTarget>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn save_us_stock_sip_bar_refetch_cursor(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: &str,
+            _: Option<crate::bars::UsStockSipBarRefetchCursor>,
+        ) -> Result<(), BarsRepositoryError> {
             Err(database_error())
         }
 

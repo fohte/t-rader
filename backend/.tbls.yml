@@ -346,6 +346,10 @@ comments:
       instrument_id: 'SIP 足を再取得する銘柄。'
       completed_at: '指定期間の足を SIP で再取得した時刻。'
       skipped_reason: 'SIP で再取得できず、対象から除外した理由。'
+      resume_timeframe: '次回再開する時間足。'
+      resume_from: '再開する時間足の取得開始時刻。'
+      resume_to: '再開する時間足の取得終了時刻。'
+      resume_page_token: '次回再開する時間足の API ページトークン。'
   - table: us_stock_sip_bar_refetch_write_budget
     tableComment: '米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。'
     columnComments:

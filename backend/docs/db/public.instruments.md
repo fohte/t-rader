@@ -67,6 +67,10 @@ erDiagram
   text instrument_id FK
   timestamp_with_time_zone completed_at
   text skipped_reason
+  text resume_timeframe
+  timestamp_with_time_zone resume_from
+  timestamp_with_time_zone resume_to
+  text resume_page_token
 }
 ```
 

@@ -112,7 +112,7 @@ impl UsStockBarsIngestUseCases {
                     &mut context.write_throttle,
                     &mut context.budget,
                     &mut context.stats,
-                    context.max_rows_per_hour,
+                    None,
                 )
                 .await?
             {
@@ -473,7 +473,7 @@ impl UsStockBarsIngestUseCases {
                 &mut context.write_throttle,
                 &mut context.budget,
                 &mut context.stats,
-                context.max_rows_per_hour,
+                None,
             )
             .await?
         {

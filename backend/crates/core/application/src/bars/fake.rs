@@ -12,7 +12,7 @@ use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 use super::repository::{BarsRepository, BarsRepositoryError};
 use super::types::{
     BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget,
-    UsStockMinuteBarsDownsampleStats,
+    UsStockMinuteBarsDownsampleStats, UsStockSipBarRefetchCursor, UsStockSipBarRefetchTarget,
 };
 
 #[derive(Default)]
@@ -26,6 +26,7 @@ pub struct FakeBarsRepository {
     pub us_stock_minute_targets: Mutex<HashSet<String>>,
     pub us_stock_sip_refetch_completed: Mutex<HashSet<String>>,
     pub us_stock_sip_refetch_skipped: Mutex<HashMap<String, String>>,
+    pub us_stock_sip_refetch_cursors: Mutex<HashMap<String, UsStockSipBarRefetchCursor>>,
     pub us_stock_sip_refetch_rows_reserved: Mutex<u64>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub bar_compression_times: Mutex<Vec<DateTime<Utc>>>,
@@ -337,7 +338,7 @@ impl BarsRepository for FakeBarsRepository {
     async fn find_pending_us_stock_sip_bar_refetch_targets(
         &self,
         max_symbols: Option<usize>,
-    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+    ) -> Result<Vec<UsStockSipBarRefetchTarget>, BarsRepositoryError> {
         let mut target_ids = self.us_stock_targets.lock().await.clone();
         target_ids.extend(self.us_stock_daily_targets.lock().await.iter().cloned());
         target_ids.extend(self.us_stock_minute_targets.lock().await.iter().cloned());
@@ -352,7 +353,47 @@ impl BarsRepository for FakeBarsRepository {
         if let Some(max_symbols) = max_symbols {
             targets.truncate(max_symbols);
         }
-        Ok(targets)
+        let cursors = self.us_stock_sip_refetch_cursors.lock().await;
+        Ok(targets
+            .into_iter()
+            .map(|bars| UsStockSipBarRefetchTarget {
+                cursor: cursors.get(&bars.instrument_id).cloned(),
+                bars,
+            })
+            .collect())
+    }
+
+    async fn save_us_stock_sip_bar_refetch_cursor(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
+        cursor: Option<UsStockSipBarRefetchCursor>,
+    ) -> Result<(), BarsRepositoryError> {
+        self.record_transaction(transaction).await?;
+        if let Some(cursor) = cursor {
+            self.us_stock_sip_refetch_cursors
+                .lock()
+                .await
+                .insert(instrument_id.to_owned(), cursor);
+            self.us_stock_sip_refetch_completed
+                .lock()
+                .await
+                .remove(instrument_id);
+        } else {
+            self.us_stock_sip_refetch_cursors
+                .lock()
+                .await
+                .remove(instrument_id);
+            self.us_stock_sip_refetch_completed
+                .lock()
+                .await
+                .insert(instrument_id.to_owned());
+        }
+        self.us_stock_sip_refetch_skipped
+            .lock()
+            .await
+            .remove(instrument_id);
+        Ok(())
     }
 
     async fn mark_us_stock_sip_bar_refetch_completed(
@@ -363,6 +404,10 @@ impl BarsRepository for FakeBarsRepository {
             .lock()
             .await
             .insert(instrument_id.to_owned());
+        self.us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .remove(instrument_id);
         self.us_stock_sip_refetch_skipped
             .lock()
             .await
@@ -379,6 +424,14 @@ impl BarsRepository for FakeBarsRepository {
             .lock()
             .await
             .insert(instrument_id.to_owned(), reason.to_owned());
+        self.us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .remove(instrument_id);
+        self.us_stock_sip_refetch_completed
+            .lock()
+            .await
+            .remove(instrument_id);
         Ok(())
     }
 

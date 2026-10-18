@@ -9,6 +9,10 @@ enum UsStockSipBarRefetchProgress {
     InstrumentId,
     CompletedAt,
     SkippedReason,
+    ResumeTimeframe,
+    ResumeFrom,
+    ResumeTo,
+    ResumePageToken,
 }
 
 #[derive(DeriveIden)]
@@ -43,6 +47,16 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone(),
                     )
                     .col(ColumnDef::new(UsStockSipBarRefetchProgress::SkippedReason).text())
+                    .col(ColumnDef::new(UsStockSipBarRefetchProgress::ResumeTimeframe).text())
+                    .col(
+                        ColumnDef::new(UsStockSipBarRefetchProgress::ResumeFrom)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(UsStockSipBarRefetchProgress::ResumeTo)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(ColumnDef::new(UsStockSipBarRefetchProgress::ResumePageToken).text())
                     .foreign_key(
                         ForeignKey::create()
                             .from(
@@ -55,12 +69,56 @@ impl MigrationTrait for Migration {
                     .check(
                         Expr::col(UsStockSipBarRefetchProgress::CompletedAt)
                             .is_not_null()
-                            .or(Expr::col(UsStockSipBarRefetchProgress::SkippedReason).is_not_null()),
+                            .or(Expr::col(UsStockSipBarRefetchProgress::SkippedReason).is_not_null())
+                            .or(Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe).is_not_null()),
                     )
                     .check(
                         Expr::col(UsStockSipBarRefetchProgress::CompletedAt)
                             .is_null()
                             .or(Expr::col(UsStockSipBarRefetchProgress::SkippedReason).is_null()),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumePageToken)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe).is_not_null()),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::CompletedAt).is_null()),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::SkippedReason).is_null()),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                                .is_in(["1d", "1h", "1m"])),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::ResumeFrom).is_not_null()),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::ResumeTo).is_not_null()),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumeFrom)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                                .is_not_null()),
+                    )
+                    .check(
+                        Expr::col(UsStockSipBarRefetchProgress::ResumeTo)
+                            .is_null()
+                            .or(Expr::col(UsStockSipBarRefetchProgress::ResumeTimeframe)
+                                .is_not_null()),
                     )
                     .to_owned(),
             )
@@ -108,6 +166,22 @@ impl MigrationTrait for Migration {
         .await?;
         db.execute_unprepared(
             "COMMENT ON COLUMN us_stock_sip_bar_refetch_progress.skipped_reason IS 'SIP で再取得できず、対象から除外した理由。'",
+        )
+        .await?;
+        db.execute_unprepared(
+            "COMMENT ON COLUMN us_stock_sip_bar_refetch_progress.resume_timeframe IS '次回再開する時間足。'",
+        )
+        .await?;
+        db.execute_unprepared(
+            "COMMENT ON COLUMN us_stock_sip_bar_refetch_progress.resume_from IS '再開する時間足の取得開始時刻。'",
+        )
+        .await?;
+        db.execute_unprepared(
+            "COMMENT ON COLUMN us_stock_sip_bar_refetch_progress.resume_to IS '再開する時間足の取得終了時刻。'",
+        )
+        .await?;
+        db.execute_unprepared(
+            "COMMENT ON COLUMN us_stock_sip_bar_refetch_progress.resume_page_token IS '次回再開する時間足の API ページトークン。'",
         )
         .await?;
         db.execute_unprepared(

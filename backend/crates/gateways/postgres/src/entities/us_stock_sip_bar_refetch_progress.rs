@@ -11,6 +11,12 @@ pub struct Model {
     pub completed_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(column_type = "Text", nullable)]
     pub skipped_reason: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub resume_timeframe: Option<String>,
+    pub resume_from: Option<DateTimeWithTimeZone>,
+    pub resume_to: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub resume_page_token: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

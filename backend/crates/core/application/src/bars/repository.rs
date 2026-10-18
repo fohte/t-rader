@@ -8,7 +8,10 @@ use thiserror::Error;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget};
+use super::types::{
+    BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget,
+    UsStockSipBarRefetchCursor, UsStockSipBarRefetchTarget,
+};
 
 #[derive(Debug, Error)]
 pub enum BarsRepositoryError {
@@ -66,7 +69,14 @@ pub trait BarsRepository: Send + Sync {
     async fn find_pending_us_stock_sip_bar_refetch_targets(
         &self,
         max_symbols: Option<usize>,
-    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+    ) -> Result<Vec<UsStockSipBarRefetchTarget>, BarsRepositoryError>;
+
+    async fn save_us_stock_sip_bar_refetch_cursor(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
+        cursor: Option<UsStockSipBarRefetchCursor>,
+    ) -> Result<(), BarsRepositoryError>;
 
     async fn mark_us_stock_sip_bar_refetch_completed(
         &self,

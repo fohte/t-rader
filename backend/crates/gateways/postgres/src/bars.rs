@@ -262,9 +262,24 @@ impl BarsRepository for PostgresBarsRepository {
     async fn find_pending_us_stock_sip_bar_refetch_targets(
         &self,
         max_symbols: Option<usize>,
-    ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
+    ) -> Result<Vec<core_application::bars::UsStockSipBarRefetchTarget>, BarsRepositoryError> {
         PostgresBarsRepository::find_pending_us_stock_sip_bar_refetch_targets(self, max_symbols)
             .await
+    }
+
+    async fn save_us_stock_sip_bar_refetch_cursor(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
+        cursor: Option<core_application::bars::UsStockSipBarRefetchCursor>,
+    ) -> Result<(), BarsRepositoryError> {
+        PostgresBarsRepository::save_us_stock_sip_bar_refetch_cursor(
+            self,
+            transaction,
+            instrument_id,
+            cursor,
+        )
+        .await
     }
 
     async fn mark_us_stock_sip_bar_refetch_completed(

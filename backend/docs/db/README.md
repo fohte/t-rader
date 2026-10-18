@@ -66,7 +66,7 @@
 | [public.dashboard](public.dashboard.md)                                                         | 4       | ユーザーが作成したダッシュボードの YAML 設定を保持する。                                                                                           | BASE TABLE        |
 | [public.screener_stock_snapshot](public.screener_stock_snapshot.md)                             | 12      | スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。データと銘柄マスタの取り込み成功後に再生成し、個別登録銘柄は次回の再生成後に反映する。 | MATERIALIZED VIEW |
 | [public.bars_timestamp_coverage](public.bars_timestamp_coverage.md)                             | 4       | 銘柄と時間足ごとの最古・最新のバー時刻を保持する。                                                                                                 | BASE TABLE        |
-| [public.us_stock_sip_bar_refetch_progress](public.us_stock_sip_bar_refetch_progress.md)         | 3       | 米国株の SIP 足を再取得した銘柄と、再取得できない理由を保持する。                                                                                  | BASE TABLE        |
+| [public.us_stock_sip_bar_refetch_progress](public.us_stock_sip_bar_refetch_progress.md)         | 7       | 米国株の SIP 足を再取得した銘柄と、再取得できない理由を保持する。                                                                                  | BASE TABLE        |
 | [public.us_stock_sip_bar_refetch_write_budget](public.us_stock_sip_bar_refetch_write_budget.md) | 3       | 米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。                                                                                        | BASE TABLE        |
 
 ## Stored procedures and functions
@@ -856,6 +856,10 @@ erDiagram
   text instrument_id FK
   timestamp_with_time_zone completed_at
   text skipped_reason
+  text resume_timeframe
+  timestamp_with_time_zone resume_from
+  timestamp_with_time_zone resume_to
+  text resume_page_token
 }
 "public.us_stock_sip_bar_refetch_write_budget" {
   smallint id
