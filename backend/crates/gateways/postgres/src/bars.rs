@@ -1077,12 +1077,14 @@ mod tests {
         let suffix = uuid::Uuid::new_v4().simple().to_string();
         let us_instrument_id = format!("US:DEMO-DOWNSAMPLE-{suffix}");
         let empty_us_instrument_id = format!("US:DEMO-EMPTY-{suffix}");
-        let fully_downsampled_instrument_id = format!("US:DEMO-FULLY-DOWNSAMPLED-{suffix}");
+        let partial_bucket_instrument_id = format!("US:DEMO-PARTIAL-BUCKET-{suffix}");
+        let fully_deleted_instrument_id = format!("US:DEMO-FULLY-DELETED-{suffix}");
         let foreign_instrument_id = format!("JP-DEMO-DOWNSAMPLE-{suffix}");
         for (id, market) in [
             (&us_instrument_id, "US"),
             (&empty_us_instrument_id, "US"),
-            (&fully_downsampled_instrument_id, "US"),
+            (&partial_bucket_instrument_id, "US"),
+            (&fully_deleted_instrument_id, "US"),
             (&foreign_instrument_id, "OTHER"),
         ] {
             instruments::Entity::insert(instruments::ActiveModel {
@@ -1172,8 +1174,8 @@ mod tests {
             305,
             13,
         );
-        let fully_downsampled_minute = bar(
-            &fully_downsampled_instrument_id,
+        let partial_bucket_minute_to_delete = bar(
+            &partial_bucket_instrument_id,
             Timeframe::Minute,
             timestamp(6, 15),
             50,
@@ -1181,6 +1183,26 @@ mod tests {
             45,
             55,
             20,
+        );
+        let partial_bucket_minute = bar(
+            &partial_bucket_instrument_id,
+            Timeframe::Minute,
+            timestamp(8, 15),
+            60,
+            70,
+            55,
+            65,
+            25,
+        );
+        let fully_deleted_minute = bar(
+            &fully_deleted_instrument_id,
+            Timeframe::Minute,
+            timestamp(6, 15),
+            70,
+            80,
+            65,
+            75,
+            30,
         );
         let cutoff = timestamp(9, 0);
         let repository = PostgresBarsRepository::new(db.clone());
@@ -1252,7 +1274,9 @@ mod tests {
                 api_hourly_bar.clone(),
                 expected_latest_minute.clone(),
                 foreign_minute.clone(),
-                fully_downsampled_minute,
+                partial_bucket_minute_to_delete,
+                partial_bucket_minute.clone(),
+                fully_deleted_minute,
             ],
         )
         .await
@@ -1281,21 +1305,43 @@ mod tests {
             .await
             .expect("commit downsample transaction");
 
-        let full_delete_transaction = unit_of_work.begin().await.expect("begin full delete");
-        let fully_downsampled_stats = repository
+        let partial_bucket_transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin partial bucket downsample");
+        let partial_bucket_stats = repository
             .downsample_us_stock_minute_bar_range(
-                &full_delete_transaction,
-                &fully_downsampled_instrument_id,
+                &partial_bucket_transaction,
+                &partial_bucket_instrument_id,
                 timestamp(6, 0),
-                timestamp(7, 0),
-                cutoff,
+                timestamp(9, 0),
+                timestamp(8, 30),
             )
             .await
-            .expect("downsample all minutes for instrument");
+            .expect("downsample before partial cutoff hour");
         unit_of_work
-            .commit(full_delete_transaction)
+            .commit(partial_bucket_transaction)
             .await
-            .expect("commit full delete");
+            .expect("commit partial bucket downsample");
+
+        let fully_deleted_transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin fully deleted downsample");
+        let fully_deleted_stats = repository
+            .downsample_us_stock_minute_bar_range(
+                &fully_deleted_transaction,
+                &fully_deleted_instrument_id,
+                timestamp(6, 0),
+                timestamp(9, 0),
+                timestamp(8, 30),
+            )
+            .await
+            .expect("downsample all complete minute buckets");
+        unit_of_work
+            .commit(fully_deleted_transaction)
+            .await
+            .expect("commit fully deleted downsample");
 
         let hourly_bars = crate::repositories::bars::find_intraday_bars_by_instruments(
             &db,
@@ -1343,67 +1389,105 @@ mod tests {
         let earliest_minute_after: DateTime<FixedOffset> = coverage_row
             .try_get("", "earliest_timestamp")
             .expect("decode earliest minute");
-        let fully_downsampled_minutes = repository
+        let partial_bucket_minutes = repository
             .find_bars(BarsQuery {
-                instrument_id: fully_downsampled_instrument_id.clone(),
+                instrument_id: partial_bucket_instrument_id.clone(),
                 timeframe: "1m".to_owned(),
                 from: None,
                 to: None,
             })
             .await
-            .expect("find fully downsampled minutes");
-        let full_coverage_count = db
+            .expect("find partial bucket minute bars");
+        let partial_bucket_coverage = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT earliest_timestamp FROM bars_timestamp_coverage \
+                 WHERE instrument_id = $1 AND timeframe = '1m'",
+                [partial_bucket_instrument_id.clone().into()],
+            ))
+            .await
+            .expect("find partial bucket minute coverage")
+            .expect("partial bucket minute coverage row")
+            .try_get::<DateTime<FixedOffset>>("", "earliest_timestamp")
+            .expect("decode partial bucket earliest minute");
+        let fully_deleted_minutes = repository
+            .find_bars(BarsQuery {
+                instrument_id: fully_deleted_instrument_id.clone(),
+                timeframe: "1m".to_owned(),
+                from: None,
+                to: None,
+            })
+            .await
+            .expect("find fully deleted minute bars");
+        let fully_deleted_coverage_count = db
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT count(*)::bigint AS row_count FROM bars_timestamp_coverage \
                  WHERE instrument_id = $1 AND timeframe = '1m'",
-                [fully_downsampled_instrument_id.clone().into()],
+                [fully_deleted_instrument_id.clone().into()],
             ))
             .await
-            .expect("count fully downsampled coverage rows")
+            .expect("count coverage rows after all minutes are deleted")
             .expect("coverage count row")
             .try_get::<i64>("", "row_count")
             .expect("decode coverage count");
 
         assert_eq!(
             (
-                earliest,
-                earliest_minute_after,
-                instrument_ids,
-                stats,
-                hourly_bars,
-                us_minutes,
-                foreign_minutes,
-                fully_downsampled_stats,
-                fully_downsampled_minutes,
-                full_coverage_count,
+                (earliest, earliest_minute_after, instrument_ids),
+                (stats, hourly_bars, us_minutes, foreign_minutes),
+                (
+                    partial_bucket_stats,
+                    partial_bucket_minutes,
+                    partial_bucket_coverage,
+                ),
+                (
+                    fully_deleted_stats,
+                    fully_deleted_minutes,
+                    fully_deleted_coverage_count,
+                ),
             ),
             (
-                Some(timestamp(6, 15)),
-                timestamp(9, 0).fixed_offset(),
-                vec![
-                    us_instrument_id.clone(),
-                    empty_us_instrument_id,
-                    fully_downsampled_instrument_id.clone(),
-                ],
-                UsStockMinuteBarsDownsampleStats {
-                    hourly_bars_inserted: 1,
-                    minute_bars_deleted: 6,
-                },
-                vec![
-                    existing_hourly_bar,
-                    inserted_hourly_bar,
-                    api_hourly_bar,
-                    expected_latest_hourly,
-                ],
-                vec![expected_latest_minute],
-                vec![foreign_minute],
-                UsStockMinuteBarsDownsampleStats {
-                    hourly_bars_inserted: 1,
-                    minute_bars_deleted: 1,
-                },
-                Vec::new(),
-                0,
+                (
+                    Some(timestamp(6, 15)),
+                    timestamp(9, 0).fixed_offset(),
+                    vec![
+                        us_instrument_id.clone(),
+                        empty_us_instrument_id,
+                        fully_deleted_instrument_id.clone(),
+                        partial_bucket_instrument_id.clone(),
+                    ],
+                ),
+                (
+                    UsStockMinuteBarsDownsampleStats {
+                        hourly_bars_inserted: 1,
+                        minute_bars_deleted: 6,
+                    },
+                    vec![
+                        existing_hourly_bar,
+                        inserted_hourly_bar,
+                        api_hourly_bar,
+                        expected_latest_hourly,
+                    ],
+                    vec![expected_latest_minute],
+                    vec![foreign_minute],
+                ),
+                (
+                    UsStockMinuteBarsDownsampleStats {
+                        hourly_bars_inserted: 1,
+                        minute_bars_deleted: 1,
+                    },
+                    vec![partial_bucket_minute.clone()],
+                    timestamp(8, 15).fixed_offset(),
+                ),
+                (
+                    UsStockMinuteBarsDownsampleStats {
+                        hourly_bars_inserted: 1,
+                        minute_bars_deleted: 1,
+                    },
+                    Vec::new(),
+                    0,
+                ),
             ),
         );
     }

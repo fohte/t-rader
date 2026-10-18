@@ -56,30 +56,3 @@ pub(crate) async fn upsert_bar_timestamp_coverage(
 
     Ok(())
 }
-
-pub(crate) async fn set_bar_timestamp_coverage(
-    db: &impl sea_orm::ConnectionTrait,
-    coverage: BarTimestampCoverage,
-) -> Result<(), DbErr> {
-    bars_timestamp_coverage::Entity::insert(bars_timestamp_coverage::ActiveModel {
-        instrument_id: Set(coverage.instrument_id),
-        timeframe: Set(coverage.timeframe),
-        earliest_timestamp: Set(coverage.earliest_timestamp),
-        latest_timestamp: Set(coverage.latest_timestamp),
-    })
-    .on_conflict(
-        OnConflict::columns([
-            bars_timestamp_coverage::Column::InstrumentId,
-            bars_timestamp_coverage::Column::Timeframe,
-        ])
-        .update_columns([
-            bars_timestamp_coverage::Column::EarliestTimestamp,
-            bars_timestamp_coverage::Column::LatestTimestamp,
-        ])
-        .to_owned(),
-    )
-    .exec_without_returning(db)
-    .await?;
-
-    Ok(())
-}

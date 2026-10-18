@@ -3,8 +3,7 @@ use core_application::bars::UsStockMinuteBarsDownsampleStats;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 
 use crate::repositories::bars::{
-    BarTimestampCoverage, OHLCV_AGGREGATES, set_bar_timestamp_coverage,
-    upsert_bar_timestamp_coverage,
+    BarTimestampCoverage, OHLCV_AGGREGATES, upsert_bar_timestamp_coverage,
 };
 
 #[derive(Debug, FromQueryResult)]
@@ -15,12 +14,6 @@ struct TimestampRow {
 #[derive(Debug, FromQueryResult)]
 struct InsertedBarRow {
     timestamp: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, FromQueryResult)]
-struct MinuteBarBounds {
-    earliest_timestamp: Option<DateTime<FixedOffset>>,
-    latest_timestamp: Option<DateTime<FixedOffset>>,
 }
 
 pub(super) async fn find_earliest_minute_bar_before(
@@ -148,40 +141,39 @@ pub(super) async fn downsample_minute_bar_range(
     let deleted_count = deleted.rows_affected();
 
     if deleted_count > 0 {
-        let bounds = transaction
+        let earliest_timestamp = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"
-                SELECT
-                    (SELECT timestamp FROM bars
-                     WHERE instrument_id = $1 AND timeframe = '1m'
-                     ORDER BY timestamp ASC LIMIT 1) AS earliest_timestamp,
-                    (SELECT timestamp FROM bars
-                     WHERE instrument_id = $1 AND timeframe = '1m'
-                     ORDER BY timestamp DESC LIMIT 1) AS latest_timestamp
+                SELECT MIN(timestamp) AS timestamp
+                FROM bars
+                WHERE instrument_id = $1
+                  AND timeframe = '1m'
+                  AND timestamp >= LEAST($2::timestamptz, time_bucket('1 hour', $3::timestamptz))
                 "#,
-                [instrument_id.to_owned().into()],
+                [
+                    instrument_id.to_owned().into(),
+                    until.fixed_offset().into(),
+                    cutoff.fixed_offset().into(),
+                ],
             ))
             .await?
-            .ok_or_else(|| {
-                sea_orm::DbErr::Custom("minute bar bounds query returned no row".to_owned())
-            })?;
-        let bounds = MinuteBarBounds::from_query_result(&bounds, "")?;
+            .map(|row| TimestampRow::from_query_result(&row, ""))
+            .transpose()?
+            .and_then(|row| row.timestamp);
 
-        match (bounds.earliest_timestamp, bounds.latest_timestamp) {
-            (Some(earliest_timestamp), Some(latest_timestamp)) => {
-                set_bar_timestamp_coverage(
-                    transaction,
-                    BarTimestampCoverage {
-                        instrument_id: instrument_id.to_owned(),
-                        timeframe: "1m".to_owned(),
-                        earliest_timestamp,
-                        latest_timestamp,
-                    },
-                )
-                .await?;
+        match earliest_timestamp {
+            Some(earliest_timestamp) => {
+                transaction
+                    .execute_raw(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        "UPDATE bars_timestamp_coverage SET earliest_timestamp = $2 \
+                         WHERE instrument_id = $1 AND timeframe = '1m'",
+                        [instrument_id.to_owned().into(), earliest_timestamp.into()],
+                    ))
+                    .await?;
             }
-            (None, None) => {
+            None => {
                 transaction
                     .execute_raw(Statement::from_sql_and_values(
                         DatabaseBackend::Postgres,
@@ -190,11 +182,6 @@ pub(super) async fn downsample_minute_bar_range(
                         [instrument_id.to_owned().into()],
                     ))
                     .await?;
-            }
-            _ => {
-                return Err(sea_orm::DbErr::Custom(
-                    "minute bar bounds have only one timestamp".to_owned(),
-                ));
             }
         }
     }

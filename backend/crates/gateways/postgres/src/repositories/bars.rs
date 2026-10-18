@@ -3,9 +3,7 @@ mod timestamp_coverage;
 mod us_stock_intraday;
 
 pub use daily_adjustment_factors::find_daily_adjustment_factors_from;
-pub(crate) use timestamp_coverage::{
-    BarTimestampCoverage, set_bar_timestamp_coverage, upsert_bar_timestamp_coverage,
-};
+pub(crate) use timestamp_coverage::{BarTimestampCoverage, upsert_bar_timestamp_coverage};
 
 pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(high) AS high, MIN(low) AS low, last(close, timestamp) AS close, SUM(volume)::bigint AS volume";
 
