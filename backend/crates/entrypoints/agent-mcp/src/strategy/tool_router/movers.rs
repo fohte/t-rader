@@ -13,7 +13,7 @@ impl StrategyServer {
     /// 分類軸ごとのグループ騰落率を返す。
     #[tool(
         name = "list_group_movers",
-        description = "Rank groups in an axis by the absolute value of their median constituent return. Returns the constituent count, median return, turnover-weighted return, total average daily turnover, and the five constituents with the highest average daily turnover. Returns are latest close within the inclusive range divided by the previous available close before from, minus one; from=to therefore returns the daily change. min_avg_turnover filters individual constituents by their average daily close × volume during the range and defaults to 0. Turnover amounts use each stock's native currency.",
+        description = "Rank groups in an axis by the absolute value of their median constituent return. Returns the constituent count, median return, turnover-weighted return, total average daily turnover, and the five constituents with the highest average daily turnover. Returns are latest close within the inclusive range divided by the latest available close in the 14 calendar days before from, minus one; constituents without such a prior close are excluded. from=to therefore returns the daily change. min_avg_turnover filters individual constituents by their average daily close × volume during the range and defaults to 0. Turnover amounts use each stock's native currency.",
         annotations(read_only_hint = true)
     )]
     async fn list_group_movers(
