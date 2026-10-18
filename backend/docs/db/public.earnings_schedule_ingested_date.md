@@ -12,9 +12,10 @@
 
 ## Constraints
 
-| Name                                 | Type        | Definition         |
-| ------------------------------------ | ----------- | ------------------ |
-| earnings_schedule_ingested_date_pkey | PRIMARY KEY | PRIMARY KEY (date) |
+| Name                                          | Type        | Definition         |
+| --------------------------------------------- | ----------- | ------------------ |
+| earnings_schedule_ingested_date_date_not_null | n           | NOT NULL date      |
+| earnings_schedule_ingested_date_pkey          | PRIMARY KEY | PRIMARY KEY (date) |
 
 ## Indexes
 

@@ -17,6 +17,10 @@ A2A push 通知設定をタスクと設定 ID ごとに永続化するテーブ�
 
 | Name                                  | Type        | Definition                       |
 | ------------------------------------- | ----------- | -------------------------------- |
+| a2a_push_configs_config_id_not_null   | n           | NOT NULL config_id               |
+| a2a_push_configs_config_not_null      | n           | NOT NULL config                  |
+| a2a_push_configs_created_at_not_null  | n           | NOT NULL created_at              |
+| a2a_push_configs_task_id_not_null     | n           | NOT NULL task_id                 |
 | a2a_push_configs_task_id_config_id_pk | PRIMARY KEY | PRIMARY KEY (task_id, config_id) |
 
 ## Indexes

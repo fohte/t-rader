@@ -14,11 +14,14 @@
 
 ## Constraints
 
-| Name                                                     | Type        | Definition                  |
-| -------------------------------------------------------- | ----------- | --------------------------- |
-| us_stock_sip_bar_refetch_write_budget_id_check           | CHECK       | CHECK ((id = 1))            |
-| us_stock_sip_bar_refetch_write_budget_rows_written_check | CHECK       | CHECK ((rows_written >= 0)) |
-| us_stock_sip_bar_refetch_write_budget_pkey               | PRIMARY KEY | PRIMARY KEY (id)            |
+| Name                                                           | Type        | Definition                  |
+| -------------------------------------------------------------- | ----------- | --------------------------- |
+| us_stock_sip_bar_refetch_write_budget_hour_started_at_not_null | n           | NOT NULL hour_started_at    |
+| us_stock_sip_bar_refetch_write_budget_id_check                 | CHECK       | CHECK ((id = 1))            |
+| us_stock_sip_bar_refetch_write_budget_id_not_null              | n           | NOT NULL id                 |
+| us_stock_sip_bar_refetch_write_budget_rows_written_check       | CHECK       | CHECK ((rows_written >= 0)) |
+| us_stock_sip_bar_refetch_write_budget_rows_written_not_null    | n           | NOT NULL rows_written       |
+| us_stock_sip_bar_refetch_write_budget_pkey                     | PRIMARY KEY | PRIMARY KEY (id)            |
 
 ## Indexes
 

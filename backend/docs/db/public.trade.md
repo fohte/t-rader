@@ -23,12 +23,23 @@
 
 ## Constraints
 
-| Name                   | Type        | Definition                                                                                                                        |
-| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| trade_side_check       | CHECK       | CHECK (((side)::text = ANY ((ARRAY['buy'::character varying, 'sell'::character varying])::text[])))                               |
-| trade_source_check     | CHECK       | CHECK (((source)::text = ANY ((ARRAY['manual'::character varying, 'csv'::character varying, 'api'::character varying])::text[]))) |
-| trade_strategy_id_fkey | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE                                                               |
-| trade_pkey             | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                  |
+| Name                       | Type        | Definition                                                                                                                        |
+| -------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| trade_created_at_not_null  | n           | NOT NULL created_at                                                                                                               |
+| trade_date_not_null        | n           | NOT NULL date                                                                                                                     |
+| trade_fee_not_null         | n           | NOT NULL fee                                                                                                                      |
+| trade_id_not_null          | n           | NOT NULL id                                                                                                                       |
+| trade_price_not_null       | n           | NOT NULL price                                                                                                                    |
+| trade_qty_not_null         | n           | NOT NULL qty                                                                                                                      |
+| trade_side_check           | CHECK       | CHECK (((side)::text = ANY ((ARRAY['buy'::character varying, 'sell'::character varying])::text[])))                               |
+| trade_side_not_null        | n           | NOT NULL side                                                                                                                     |
+| trade_source_check         | CHECK       | CHECK (((source)::text = ANY ((ARRAY['manual'::character varying, 'csv'::character varying, 'api'::character varying])::text[]))) |
+| trade_source_not_null      | n           | NOT NULL source                                                                                                                   |
+| trade_strategy_id_not_null | n           | NOT NULL strategy_id                                                                                                              |
+| trade_symbol_not_null      | n           | NOT NULL symbol                                                                                                                   |
+| trade_updated_at_not_null  | n           | NOT NULL updated_at                                                                                                               |
+| trade_strategy_id_fkey     | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE                                                               |
+| trade_pkey                 | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                  |
 
 ## Indexes
 

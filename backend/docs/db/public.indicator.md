@@ -14,9 +14,12 @@
 
 ## Constraints
 
-| Name           | Type        | Definition       |
-| -------------- | ----------- | ---------------- |
-| indicator_pkey | PRIMARY KEY | PRIMARY KEY (id) |
+| Name                    | Type        | Definition       |
+| ----------------------- | ----------- | ---------------- |
+| indicator_id_not_null   | n           | NOT NULL id      |
+| indicator_kind_not_null | n           | NOT NULL kind    |
+| indicator_name_not_null | n           | NOT NULL name    |
+| indicator_pkey          | PRIMARY KEY | PRIMARY KEY (id) |
 
 ## Indexes
 

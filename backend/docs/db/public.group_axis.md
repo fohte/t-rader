@@ -16,10 +16,14 @@
 
 ## Constraints
 
-| Name               | Type        | Definition       |
-| ------------------ | ----------- | ---------------- |
-| group_axis_pkey    | PRIMARY KEY | PRIMARY KEY (id) |
-| group_axis_key_key | UNIQUE      | UNIQUE (key)     |
+| Name                            | Type        | Definition           |
+| ------------------------------- | ----------- | -------------------- |
+| group_axis_description_not_null | n           | NOT NULL description |
+| group_axis_id_not_null          | n           | NOT NULL id          |
+| group_axis_key_not_null         | n           | NOT NULL key         |
+| group_axis_name_not_null        | n           | NOT NULL name        |
+| group_axis_pkey                 | PRIMARY KEY | PRIMARY KEY (id)     |
+| group_axis_key_key              | UNIQUE      | UNIQUE (key)         |
 
 ## Indexes
 

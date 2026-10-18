@@ -18,10 +18,17 @@ purpose ごとのエージェント実行設定を保持する。
 
 ## Constraints
 
-| Name                     | Type        | Definition       |
-| ------------------------ | ----------- | ---------------- |
-| agent_config_pkey        | PRIMARY KEY | PRIMARY KEY (id) |
-| agent_config_purpose_key | UNIQUE      | UNIQUE (purpose) |
+| Name                              | Type        | Definition           |
+| --------------------------------- | ----------- | -------------------- |
+| agent_config_agent_graph_not_null | n           | NOT NULL agent_graph |
+| agent_config_agents_md_not_null   | n           | NOT NULL agents_md   |
+| agent_config_created_at_not_null  | n           | NOT NULL created_at  |
+| agent_config_id_not_null          | n           | NOT NULL id          |
+| agent_config_purpose_not_null     | n           | NOT NULL purpose     |
+| agent_config_skills_not_null      | n           | NOT NULL skills      |
+| agent_config_updated_at_not_null  | n           | NOT NULL updated_at  |
+| agent_config_pkey                 | PRIMARY KEY | PRIMARY KEY (id)     |
+| agent_config_purpose_key          | UNIQUE      | UNIQUE (purpose)     |
 
 ## Indexes
 

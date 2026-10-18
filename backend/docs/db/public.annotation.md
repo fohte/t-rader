@@ -26,12 +26,21 @@
 
 ## Constraints
 
-| Name                             | Type        | Definition                                                                                                                                  |
-| -------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| annotation_created_by_kind_check | CHECK       | CHECK (((created_by_kind)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                             |
-| annotation_status_check          | CHECK       | CHECK (((status)::text = ANY ((ARRAY['approved'::character varying, 'unread'::character varying, 'rejected'::character varying])::text[]))) |
-| annotation_linked_note_id_fkey   | FOREIGN KEY | FOREIGN KEY (linked_note_id) REFERENCES note(id) ON DELETE SET NULL                                                                         |
-| annotation_pkey                  | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                            |
+| Name                                | Type        | Definition                                                                                                                                  |
+| ----------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| annotation_created_at_not_null      | n           | NOT NULL created_at                                                                                                                         |
+| annotation_created_by_kind_check    | CHECK       | CHECK (((created_by_kind)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                             |
+| annotation_created_by_kind_not_null | n           | NOT NULL created_by_kind                                                                                                                    |
+| annotation_id_not_null              | n           | NOT NULL id                                                                                                                                 |
+| annotation_status_check             | CHECK       | CHECK (((status)::text = ANY ((ARRAY['approved'::character varying, 'unread'::character varying, 'rejected'::character varying])::text[]))) |
+| annotation_status_not_null          | n           | NOT NULL status                                                                                                                             |
+| annotation_target_kind_not_null     | n           | NOT NULL target_kind                                                                                                                        |
+| annotation_target_symbol_not_null   | n           | NOT NULL target_symbol                                                                                                                      |
+| annotation_text_not_null            | n           | NOT NULL text                                                                                                                               |
+| annotation_timestamp_not_null       | n           | NOT NULL "timestamp"                                                                                                                        |
+| annotation_updated_at_not_null      | n           | NOT NULL updated_at                                                                                                                         |
+| annotation_linked_note_id_fkey      | FOREIGN KEY | FOREIGN KEY (linked_note_id) REFERENCES note(id) ON DELETE SET NULL                                                                         |
+| annotation_pkey                     | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                            |
 
 ## Indexes
 

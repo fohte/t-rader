@@ -19,9 +19,15 @@
 
 ## Constraints
 
-| Name                             | Type        | Definition       |
-| -------------------------------- | ----------- | ---------------- |
-| strategy_task_step_evidence_pkey | PRIMARY KEY | PRIMARY KEY (id) |
+| Name                                                   | Type        | Definition                 |
+| ------------------------------------------------------ | ----------- | -------------------------- |
+| strategy_task_step_evidence_execution_step_id_not_null | n           | NOT NULL execution_step_id |
+| strategy_task_step_evidence_id_not_null                | n           | NOT NULL id                |
+| strategy_task_step_evidence_observed_at_not_null       | n           | NOT NULL observed_at       |
+| strategy_task_step_evidence_snapshot_not_null          | n           | NOT NULL snapshot          |
+| strategy_task_step_evidence_source_not_null            | n           | NOT NULL source            |
+| strategy_task_step_evidence_source_ref_not_null        | n           | NOT NULL source_ref        |
+| strategy_task_step_evidence_pkey                       | PRIMARY KEY | PRIMARY KEY (id)           |
 
 ## Indexes
 

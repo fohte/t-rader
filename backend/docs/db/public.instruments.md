@@ -15,10 +15,13 @@
 
 ## Constraints
 
-| Name                     | Type        | Definition                                                                                                                      |
-| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| instruments_market_check | CHECK       | CHECK (((market)::text = ANY ((ARRAY['TSE'::character varying, 'US'::character varying, 'OTHER'::character varying])::text[]))) |
-| instruments_pkey         | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                |
+| Name                        | Type        | Definition                                                                                                                      |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| instruments_id_not_null     | n           | NOT NULL id                                                                                                                     |
+| instruments_market_check    | CHECK       | CHECK (((market)::text = ANY ((ARRAY['TSE'::character varying, 'US'::character varying, 'OTHER'::character varying])::text[]))) |
+| instruments_market_not_null | n           | NOT NULL market                                                                                                                 |
+| instruments_name_not_null   | n           | NOT NULL name                                                                                                                   |
+| instruments_pkey            | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                |
 
 ## Indexes
 

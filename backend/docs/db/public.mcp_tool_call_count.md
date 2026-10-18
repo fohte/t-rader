@@ -17,9 +17,15 @@
 
 ## Constraints
 
-| Name                     | Type        | Definition       |
-| ------------------------ | ----------- | ---------------- |
-| mcp_tool_call_count_pkey | PRIMARY KEY | PRIMARY KEY (id) |
+| Name                                           | Type        | Definition                 |
+| ---------------------------------------------- | ----------- | -------------------------- |
+| mcp_tool_call_count_call_count_not_null        | n           | NOT NULL call_count        |
+| mcp_tool_call_count_created_at_not_null        | n           | NOT NULL created_at        |
+| mcp_tool_call_count_id_not_null                | n           | NOT NULL id                |
+| mcp_tool_call_count_task_execution_id_not_null | n           | NOT NULL task_execution_id |
+| mcp_tool_call_count_tool_name_not_null         | n           | NOT NULL tool_name         |
+| mcp_tool_call_count_updated_at_not_null        | n           | NOT NULL updated_at        |
+| mcp_tool_call_count_pkey                       | PRIMARY KEY | PRIMARY KEY (id)           |
 
 ## Indexes
 

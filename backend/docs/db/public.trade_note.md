@@ -15,12 +15,16 @@
 
 ## Constraints
 
-| Name                       | Type        | Definition                                                                  |
-| -------------------------- | ----------- | --------------------------------------------------------------------------- |
-| trade_note_note_id_fkey    | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                 |
-| trade_note_trade_id_fkey   | FOREIGN KEY | FOREIGN KEY (trade_id) REFERENCES trade(id) ON DELETE CASCADE               |
-| trade_note_pkey            | PRIMARY KEY | PRIMARY KEY (trade_id, note_id)                                             |
-| fk_trade_note_note_version | FOREIGN KEY | FOREIGN KEY (note_version_id) REFERENCES note_version(id) ON DELETE CASCADE |
+| Name                                | Type        | Definition                                                                  |
+| ----------------------------------- | ----------- | --------------------------------------------------------------------------- |
+| trade_note_created_at_not_null      | n           | NOT NULL created_at                                                         |
+| trade_note_note_id_not_null         | n           | NOT NULL note_id                                                            |
+| trade_note_note_version_id_not_null | n           | NOT NULL note_version_id                                                    |
+| trade_note_trade_id_not_null        | n           | NOT NULL trade_id                                                           |
+| trade_note_note_id_fkey             | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                 |
+| trade_note_trade_id_fkey            | FOREIGN KEY | FOREIGN KEY (trade_id) REFERENCES trade(id) ON DELETE CASCADE               |
+| trade_note_pkey                     | PRIMARY KEY | PRIMARY KEY (trade_id, note_id)                                             |
+| fk_trade_note_note_version          | FOREIGN KEY | FOREIGN KEY (note_version_id) REFERENCES note_version(id) ON DELETE CASCADE |
 
 ## Indexes
 

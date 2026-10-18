@@ -19,11 +19,19 @@
 
 ## Constraints
 
-| Name                          | Type        | Definition                                                                        |
-| ----------------------------- | ----------- | --------------------------------------------------------------------------------- |
-| rss_feed_content_source_check | CHECK       | CHECK ((content_source = ANY (ARRAY['none'::text, 'feed'::text, 'crawl'::text]))) |
-| rss_feed_pkey                 | PRIMARY KEY | PRIMARY KEY (id)                                                                  |
-| rss_feed_source_key           | UNIQUE      | UNIQUE (source)                                                                   |
+| Name                             | Type        | Definition                                                                        |
+| -------------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| rss_feed_content_source_check    | CHECK       | CHECK ((content_source = ANY (ARRAY['none'::text, 'feed'::text, 'crawl'::text]))) |
+| rss_feed_content_source_not_null | n           | NOT NULL content_source                                                           |
+| rss_feed_created_at_not_null     | n           | NOT NULL created_at                                                               |
+| rss_feed_display_name_not_null   | n           | NOT NULL display_name                                                             |
+| rss_feed_enabled_not_null        | n           | NOT NULL enabled                                                                  |
+| rss_feed_id_not_null             | n           | NOT NULL id                                                                       |
+| rss_feed_source_not_null         | n           | NOT NULL source                                                                   |
+| rss_feed_updated_at_not_null     | n           | NOT NULL updated_at                                                               |
+| rss_feed_url_not_null            | n           | NOT NULL url                                                                      |
+| rss_feed_pkey                    | PRIMARY KEY | PRIMARY KEY (id)                                                                  |
+| rss_feed_source_key              | UNIQUE      | UNIQUE (source)                                                                   |
 
 ## Indexes
 

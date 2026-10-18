@@ -18,9 +18,16 @@
 
 ## Constraints
 
-| Name                             | Type        | Definition       |
-| -------------------------------- | ----------- | ---------------- |
-| custom_indicator_evaluation_pkey | PRIMARY KEY | PRIMARY KEY (id) |
+| Name                                                | Type        | Definition              |
+| --------------------------------------------------- | ----------- | ----------------------- |
+| custom_indicator_evaluation_args_not_null           | n           | NOT NULL args           |
+| custom_indicator_evaluation_code_not_null           | n           | NOT NULL code           |
+| custom_indicator_evaluation_evaluated_at_not_null   | n           | NOT NULL evaluated_at   |
+| custom_indicator_evaluation_id_not_null             | n           | NOT NULL id             |
+| custom_indicator_evaluation_indicator_id_not_null   | n           | NOT NULL indicator_id   |
+| custom_indicator_evaluation_indicator_name_not_null | n           | NOT NULL indicator_name |
+| custom_indicator_evaluation_output_not_null         | n           | NOT NULL output         |
+| custom_indicator_evaluation_pkey                    | PRIMARY KEY | PRIMARY KEY (id)        |
 
 ## Indexes
 

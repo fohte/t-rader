@@ -19,10 +19,17 @@
 
 ## Constraints
 
-| Name                        | Type        | Definition                                                          |
-| --------------------------- | ----------- | ------------------------------------------------------------------- |
-| checkpoint_strategy_id_fkey | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE |
-| checkpoint_pkey             | PRIMARY KEY | PRIMARY KEY (id)                                                    |
+| Name                            | Type        | Definition                                                          |
+| ------------------------------- | ----------- | ------------------------------------------------------------------- |
+| checkpoint_created_at_not_null  | n           | NOT NULL created_at                                                 |
+| checkpoint_cursor_not_null      | n           | NOT NULL cursor                                                     |
+| checkpoint_graph_not_null       | n           | NOT NULL graph                                                      |
+| checkpoint_id_not_null          | n           | NOT NULL id                                                         |
+| checkpoint_strategy_id_not_null | n           | NOT NULL strategy_id                                                |
+| checkpoint_stream_not_null      | n           | NOT NULL stream                                                     |
+| checkpoint_updated_at_not_null  | n           | NOT NULL updated_at                                                 |
+| checkpoint_strategy_id_fkey     | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE |
+| checkpoint_pkey                 | PRIMARY KEY | PRIMARY KEY (id)                                                    |
 
 ## Indexes
 

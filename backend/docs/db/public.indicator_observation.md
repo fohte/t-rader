@@ -14,10 +14,13 @@
 
 ## Constraints
 
-| Name                                    | Type        | Definition                                                            |
-| --------------------------------------- | ----------- | --------------------------------------------------------------------- |
-| indicator_observation_indicator_id_fkey | FOREIGN KEY | FOREIGN KEY (indicator_id) REFERENCES indicator(id) ON DELETE CASCADE |
-| indicator_observation_pkey              | PRIMARY KEY | PRIMARY KEY (indicator_id, date)                                      |
+| Name                                        | Type        | Definition                                                            |
+| ------------------------------------------- | ----------- | --------------------------------------------------------------------- |
+| indicator_observation_date_not_null         | n           | NOT NULL date                                                         |
+| indicator_observation_indicator_id_not_null | n           | NOT NULL indicator_id                                                 |
+| indicator_observation_value_not_null        | n           | NOT NULL value                                                        |
+| indicator_observation_indicator_id_fkey     | FOREIGN KEY | FOREIGN KEY (indicator_id) REFERENCES indicator(id) ON DELETE CASCADE |
+| indicator_observation_pkey                  | PRIMARY KEY | PRIMARY KEY (indicator_id, date)                                      |
 
 ## Indexes
 

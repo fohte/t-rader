@@ -14,10 +14,13 @@
 
 ## Constraints
 
-| Name                         | Type        | Definition       |
-| ---------------------------- | ----------- | ---------------- |
-| account_risk_policy_id_check | CHECK       | CHECK ((id = 1)) |
-| account_risk_policy_pkey     | PRIMARY KEY | PRIMARY KEY (id) |
+| Name                                     | Type        | Definition           |
+| ---------------------------------------- | ----------- | -------------------- |
+| account_risk_policy_id_check             | CHECK       | CHECK ((id = 1))     |
+| account_risk_policy_id_not_null          | n           | NOT NULL id          |
+| account_risk_policy_risk_policy_not_null | n           | NOT NULL risk_policy |
+| account_risk_policy_updated_at_not_null  | n           | NOT NULL updated_at  |
+| account_risk_policy_pkey                 | PRIMARY KEY | PRIMARY KEY (id)     |
 
 ## Indexes
 

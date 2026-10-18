@@ -21,17 +21,26 @@
 
 ## Constraints
 
-| Name                               | Type        | Definition                                                                      |
-| ---------------------------------- | ----------- | ------------------------------------------------------------------------------- |
-| prediction_check                   | CHECK       | CHECK (((target_stock_id)::text <> (benchmark_stock_id)::text))                 |
-| prediction_check1                  | CHECK       | CHECK ((due_date > base_date))                                                  |
-| prediction_direction_check         | CHECK       | CHECK ((direction = ANY (ARRAY['outperform'::text, 'underperform'::text])))     |
-| prediction_probability_check       | CHECK       | CHECK ((probability = ANY (ARRAY[0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]))) |
-| prediction_strategy_id_fkey        | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE             |
-| prediction_benchmark_stock_id_fkey | FOREIGN KEY | FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)                           |
-| prediction_target_stock_id_fkey    | FOREIGN KEY | FOREIGN KEY (target_stock_id) REFERENCES stock(id)                              |
-| prediction_note_id_fkey            | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE SET NULL                    |
-| prediction_pkey                    | PRIMARY KEY | PRIMARY KEY (prediction_id)                                                     |
+| Name                                   | Type        | Definition                                                                      |
+| -------------------------------------- | ----------- | ------------------------------------------------------------------------------- |
+| prediction_base_date_not_null          | n           | NOT NULL base_date                                                              |
+| prediction_benchmark_stock_id_not_null | n           | NOT NULL benchmark_stock_id                                                     |
+| prediction_check                       | CHECK       | CHECK (((target_stock_id)::text <> (benchmark_stock_id)::text))                 |
+| prediction_check1                      | CHECK       | CHECK ((due_date > base_date))                                                  |
+| prediction_created_at_not_null         | n           | NOT NULL created_at                                                             |
+| prediction_direction_check             | CHECK       | CHECK ((direction = ANY (ARRAY['outperform'::text, 'underperform'::text])))     |
+| prediction_direction_not_null          | n           | NOT NULL direction                                                              |
+| prediction_due_date_not_null           | n           | NOT NULL due_date                                                               |
+| prediction_prediction_id_not_null      | n           | NOT NULL prediction_id                                                          |
+| prediction_probability_check           | CHECK       | CHECK ((probability = ANY (ARRAY[0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]))) |
+| prediction_probability_not_null        | n           | NOT NULL probability                                                            |
+| prediction_strategy_id_not_null        | n           | NOT NULL strategy_id                                                            |
+| prediction_target_stock_id_not_null    | n           | NOT NULL target_stock_id                                                        |
+| prediction_strategy_id_fkey            | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE             |
+| prediction_benchmark_stock_id_fkey     | FOREIGN KEY | FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)                           |
+| prediction_target_stock_id_fkey        | FOREIGN KEY | FOREIGN KEY (target_stock_id) REFERENCES stock(id)                              |
+| prediction_note_id_fkey                | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE SET NULL                    |
+| prediction_pkey                        | PRIMARY KEY | PRIMARY KEY (prediction_id)                                                     |
 
 ## Indexes
 

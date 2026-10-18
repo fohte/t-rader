@@ -14,11 +14,14 @@
 
 ## Constraints
 
-| Name                    | Type        | Definition                                                                                                                                 |
-| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| note_ref_ref_kind_check | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'group'::character varying])::text[]))) |
-| note_ref_note_id_fkey   | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                                                                                |
-| note_ref_pkey           | PRIMARY KEY | PRIMARY KEY (note_id, ref_kind, ref_id)                                                                                                    |
+| Name                       | Type        | Definition                                                                                                                                 |
+| -------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| note_ref_note_id_not_null  | n           | NOT NULL note_id                                                                                                                           |
+| note_ref_ref_id_not_null   | n           | NOT NULL ref_id                                                                                                                            |
+| note_ref_ref_kind_check    | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'group'::character varying])::text[]))) |
+| note_ref_ref_kind_not_null | n           | NOT NULL ref_kind                                                                                                                          |
+| note_ref_note_id_fkey      | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                                                                                |
+| note_ref_pkey              | PRIMARY KEY | PRIMARY KEY (note_id, ref_kind, ref_id)                                                                                                    |
 
 ## Indexes
 

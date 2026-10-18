@@ -22,9 +22,11 @@
 
 ## Constraints
 
-| Name           | Type        | Definition               |
-| -------------- | ----------- | ------------------------ |
-| valuation_pkey | PRIMARY KEY | PRIMARY KEY (code, date) |
+| Name                            | Type        | Definition               |
+| ------------------------------- | ----------- | ------------------------ |
+| jquants_valuation_code_not_null | n           | NOT NULL code            |
+| jquants_valuation_date_not_null | n           | NOT NULL date            |
+| valuation_pkey                  | PRIMARY KEY | PRIMARY KEY (code, date) |
 
 ## Indexes
 

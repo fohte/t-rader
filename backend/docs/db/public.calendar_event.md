@@ -24,11 +24,20 @@
 
 ## Constraints
 
-| Name                             | Type        | Definition                                                                                  |
-| -------------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
-| calendar_event_category_check    | CHECK       | CHECK ((category = ANY (ARRAY['indicator'::text, 'central_bank'::text, 'earnings'::text]))) |
-| calendar_event_time_of_day_check | CHECK       | CHECK ((time_of_day = ANY (ARRAY['pre_market'::text, 'post_market'::text])))                |
-| calendar_event_pkey              | PRIMARY KEY | PRIMARY KEY (id)                                                                            |
+| Name                                | Type        | Definition                                                                                  |
+| ----------------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| calendar_event_category_check       | CHECK       | CHECK ((category = ANY (ARRAY['indicator'::text, 'central_bank'::text, 'earnings'::text]))) |
+| calendar_event_category_not_null    | n           | NOT NULL category                                                                           |
+| calendar_event_country_not_null     | n           | NOT NULL country                                                                            |
+| calendar_event_created_at_not_null  | n           | NOT NULL created_at                                                                         |
+| calendar_event_event_date_not_null  | n           | NOT NULL event_date                                                                         |
+| calendar_event_external_id_not_null | n           | NOT NULL external_id                                                                        |
+| calendar_event_id_not_null          | n           | NOT NULL id                                                                                 |
+| calendar_event_source_not_null      | n           | NOT NULL source                                                                             |
+| calendar_event_time_of_day_check    | CHECK       | CHECK ((time_of_day = ANY (ARRAY['pre_market'::text, 'post_market'::text])))                |
+| calendar_event_title_not_null       | n           | NOT NULL title                                                                              |
+| calendar_event_updated_at_not_null  | n           | NOT NULL updated_at                                                                         |
+| calendar_event_pkey                 | PRIMARY KEY | PRIMARY KEY (id)                                                                            |
 
 ## Indexes
 

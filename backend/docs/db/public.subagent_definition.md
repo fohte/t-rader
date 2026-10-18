@@ -24,12 +24,24 @@
 
 ## Constraints
 
-| Name                                      | Type        | Definition                                                    |
-| ----------------------------------------- | ----------- | ------------------------------------------------------------- |
-| subagent_definition_max_model_calls_check | CHECK       | CHECK ((max_model_calls > 0))                                 |
-| subagent_definition_timeout_minutes_check | CHECK       | CHECK (((timeout_minutes >= 1) AND (timeout_minutes <= 360))) |
-| subagent_definition_pkey                  | PRIMARY KEY | PRIMARY KEY (id)                                              |
-| subagent_definition_key_key               | UNIQUE      | UNIQUE (key)                                                  |
+| Name                                         | Type        | Definition                                                    |
+| -------------------------------------------- | ----------- | ------------------------------------------------------------- |
+| subagent_definition_created_at_not_null      | n           | NOT NULL created_at                                           |
+| subagent_definition_description_not_null     | n           | NOT NULL description                                          |
+| subagent_definition_id_not_null              | n           | NOT NULL id                                                   |
+| subagent_definition_key_not_null             | n           | NOT NULL key                                                  |
+| subagent_definition_max_model_calls_check    | CHECK       | CHECK ((max_model_calls > 0))                                 |
+| subagent_definition_max_model_calls_not_null | n           | NOT NULL max_model_calls                                      |
+| subagent_definition_model_not_null           | n           | NOT NULL model                                                |
+| subagent_definition_output_not_null          | n           | NOT NULL output                                               |
+| subagent_definition_prompt_not_null          | n           | NOT NULL prompt                                               |
+| subagent_definition_timeout_minutes_check    | CHECK       | CHECK (((timeout_minutes >= 1) AND (timeout_minutes <= 360))) |
+| subagent_definition_timeout_minutes_not_null | n           | NOT NULL timeout_minutes                                      |
+| subagent_definition_tool_limits_not_null     | n           | NOT NULL tool_limits                                          |
+| subagent_definition_tools_not_null           | n           | NOT NULL tools                                                |
+| subagent_definition_updated_at_not_null      | n           | NOT NULL updated_at                                           |
+| subagent_definition_pkey                     | PRIMARY KEY | PRIMARY KEY (id)                                              |
+| subagent_definition_key_key                  | UNIQUE      | UNIQUE (key)                                                  |
 
 ## Indexes
 

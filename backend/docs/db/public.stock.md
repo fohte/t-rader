@@ -17,9 +17,13 @@
 
 ## Constraints
 
-| Name       | Type        | Definition       |
-| ---------- | ----------- | ---------------- |
-| stock_pkey | PRIMARY KEY | PRIMARY KEY (id) |
+| Name                      | Type        | Definition          |
+| ------------------------- | ----------- | ------------------- |
+| stock_created_at_not_null | n           | NOT NULL created_at |
+| stock_id_not_null         | n           | NOT NULL id         |
+| stock_name_not_null       | n           | NOT NULL name       |
+| stock_updated_at_not_null | n           | NOT NULL updated_at |
+| stock_pkey                | PRIMARY KEY | PRIMARY KEY (id)    |
 
 ## Indexes
 

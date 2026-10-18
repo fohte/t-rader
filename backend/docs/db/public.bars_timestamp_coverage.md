@@ -15,11 +15,15 @@
 
 ## Constraints
 
-| Name                                       | Type        | Definition                                                               |
-| ------------------------------------------ | ----------- | ------------------------------------------------------------------------ |
-| bars_timestamp_coverage_timeframe_check    | CHECK       | CHECK ((timeframe = ANY (ARRAY['1m'::text, '1h'::text, '1d'::text])))    |
-| bars_timestamp_coverage_instrument_id_fkey | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE |
-| bars_timestamp_coverage_pkey               | PRIMARY KEY | PRIMARY KEY (instrument_id, timeframe)                                   |
+| Name                                                | Type        | Definition                                                               |
+| --------------------------------------------------- | ----------- | ------------------------------------------------------------------------ |
+| bars_timestamp_coverage_earliest_timestamp_not_null | n           | NOT NULL earliest_timestamp                                              |
+| bars_timestamp_coverage_instrument_id_not_null      | n           | NOT NULL instrument_id                                                   |
+| bars_timestamp_coverage_latest_timestamp_not_null   | n           | NOT NULL latest_timestamp                                                |
+| bars_timestamp_coverage_timeframe_check             | CHECK       | CHECK ((timeframe = ANY (ARRAY['1m'::text, '1h'::text, '1d'::text])))    |
+| bars_timestamp_coverage_timeframe_not_null          | n           | NOT NULL timeframe                                                       |
+| bars_timestamp_coverage_instrument_id_fkey          | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE |
+| bars_timestamp_coverage_pkey                        | PRIMARY KEY | PRIMARY KEY (instrument_id, timeframe)                                   |
 
 ## Indexes
 

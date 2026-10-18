@@ -25,9 +25,21 @@
 
 ## Constraints
 
-| Name                   | Type        | Definition                                                                                |
-| ---------------------- | ----------- | ----------------------------------------------------------------------------------------- |
-| short_sale_report_pkey | PRIMARY KEY | PRIMARY KEY (disc_date, calc_date, code, ss_name, ss_addr, dic_name, dic_addr, fund_name) |
+| Name                                             | Type        | Definition                                                                                |
+| ------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------- |
+| short_sale_report_calc_date_not_null             | n           | NOT NULL calc_date                                                                        |
+| short_sale_report_code_not_null                  | n           | NOT NULL code                                                                             |
+| short_sale_report_dic_addr_not_null              | n           | NOT NULL dic_addr                                                                         |
+| short_sale_report_dic_name_not_null              | n           | NOT NULL dic_name                                                                         |
+| short_sale_report_disc_date_not_null             | n           | NOT NULL disc_date                                                                        |
+| short_sale_report_fund_name_not_null             | n           | NOT NULL fund_name                                                                        |
+| short_sale_report_notes_not_null                 | n           | NOT NULL notes                                                                            |
+| short_sale_report_short_position_ratio_not_null  | n           | NOT NULL short_position_ratio                                                             |
+| short_sale_report_short_position_shares_not_null | n           | NOT NULL short_position_shares                                                            |
+| short_sale_report_short_position_units_not_null  | n           | NOT NULL short_position_units                                                             |
+| short_sale_report_ss_addr_not_null               | n           | NOT NULL ss_addr                                                                          |
+| short_sale_report_ss_name_not_null               | n           | NOT NULL ss_name                                                                          |
+| short_sale_report_pkey                           | PRIMARY KEY | PRIMARY KEY (disc_date, calc_date, code, ss_name, ss_addr, dic_name, dic_addr, fund_name) |
 
 ## Indexes
 

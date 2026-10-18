@@ -29,6 +29,7 @@
 | us_stock_sip_bar_refetch_progress_check6                 | CHECK       | CHECK (((resume_timeframe IS NULL) OR (resume_to IS NOT NULL)))                                              |
 | us_stock_sip_bar_refetch_progress_check7                 | CHECK       | CHECK (((resume_from IS NULL) OR (resume_timeframe IS NOT NULL)))                                            |
 | us_stock_sip_bar_refetch_progress_check8                 | CHECK       | CHECK (((resume_to IS NULL) OR (resume_timeframe IS NOT NULL)))                                              |
+| us_stock_sip_bar_refetch_progress_instrument_id_not_null | n           | NOT NULL instrument_id                                                                                       |
 | us_stock_sip_bar_refetch_progress_resume_timeframe_check | CHECK       | CHECK (((resume_timeframe IS NULL) OR (resume_timeframe = ANY (ARRAY['1d'::text, '1h'::text, '1m'::text])))) |
 | us_stock_sip_bar_refetch_progress_instrument_id_fkey     | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE                                     |
 | us_stock_sip_bar_refetch_progress_pkey                   | PRIMARY KEY | PRIMARY KEY (instrument_id)                                                                                  |

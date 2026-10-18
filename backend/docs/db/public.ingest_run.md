@@ -18,10 +18,14 @@
 
 ## Constraints
 
-| Name                    | Type        | Definition                                                                         |
-| ----------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| ingest_run_status_check | CHECK       | CHECK ((status = ANY (ARRAY['running'::text, 'succeeded'::text, 'failed'::text]))) |
-| ingest_run_pkey         | PRIMARY KEY | PRIMARY KEY (id)                                                                   |
+| Name                           | Type        | Definition                                                                         |
+| ------------------------------ | ----------- | ---------------------------------------------------------------------------------- |
+| ingest_run_id_not_null         | n           | NOT NULL id                                                                        |
+| ingest_run_job_not_null        | n           | NOT NULL job                                                                       |
+| ingest_run_started_at_not_null | n           | NOT NULL started_at                                                                |
+| ingest_run_status_check        | CHECK       | CHECK ((status = ANY (ARRAY['running'::text, 'succeeded'::text, 'failed'::text]))) |
+| ingest_run_status_not_null     | n           | NOT NULL status                                                                    |
+| ingest_run_pkey                | PRIMARY KEY | PRIMARY KEY (id)                                                                   |
 
 ## Indexes
 

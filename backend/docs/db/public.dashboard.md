@@ -15,9 +15,13 @@
 
 ## Constraints
 
-| Name           | Type        | Definition        |
-| -------------- | ----------- | ----------------- |
-| dashboard_pkey | PRIMARY KEY | PRIMARY KEY (key) |
+| Name                          | Type        | Definition          |
+| ----------------------------- | ----------- | ------------------- |
+| dashboard_config_not_null     | n           | NOT NULL config     |
+| dashboard_created_at_not_null | n           | NOT NULL created_at |
+| dashboard_key_not_null        | n           | NOT NULL key        |
+| dashboard_updated_at_not_null | n           | NOT NULL updated_at |
+| dashboard_pkey                | PRIMARY KEY | PRIMARY KEY (key)   |
 
 ## Indexes
 

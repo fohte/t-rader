@@ -17,9 +17,14 @@
 
 ## Constraints
 
-| Name          | Type        | Definition       |
-| ------------- | ----------- | ---------------- |
-| strategy_pkey | PRIMARY KEY | PRIMARY KEY (id) |
+| Name                         | Type        | Definition          |
+| ---------------------------- | ----------- | ------------------- |
+| strategy_created_at_not_null | n           | NOT NULL created_at |
+| strategy_id_not_null         | n           | NOT NULL id         |
+| strategy_name_not_null       | n           | NOT NULL name       |
+| strategy_sort_order_not_null | n           | NOT NULL sort_order |
+| strategy_updated_at_not_null | n           | NOT NULL updated_at |
+| strategy_pkey                | PRIMARY KEY | PRIMARY KEY (id)    |
 
 ## Indexes
 

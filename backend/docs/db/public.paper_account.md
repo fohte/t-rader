@@ -20,14 +20,22 @@
 
 ## Constraints
 
-| Name                                  | Type        | Definition                                                                |
-| ------------------------------------- | ----------- | ------------------------------------------------------------------------- |
-| paper_account_initial_cash_jpy_check  | CHECK       | CHECK ((initial_cash_jpy > (0)::numeric))                                 |
-| paper_account_strategy_id_fkey        | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE       |
-| paper_account_benchmark_stock_id_fkey | FOREIGN KEY | FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)                     |
-| paper_account_purpose_fkey            | FOREIGN KEY | FOREIGN KEY (purpose) REFERENCES agent_config(purpose) ON DELETE RESTRICT |
-| paper_account_pkey                    | PRIMARY KEY | PRIMARY KEY (id)                                                          |
-| paper_account_name_key                | UNIQUE      | UNIQUE (name)                                                             |
+| Name                                    | Type        | Definition                                                                |
+| --------------------------------------- | ----------- | ------------------------------------------------------------------------- |
+| paper_account_created_at_not_null       | n           | NOT NULL created_at                                                       |
+| paper_account_id_not_null               | n           | NOT NULL id                                                               |
+| paper_account_initial_cash_jpy_check    | CHECK       | CHECK ((initial_cash_jpy > (0)::numeric))                                 |
+| paper_account_initial_cash_jpy_not_null | n           | NOT NULL initial_cash_jpy                                                 |
+| paper_account_name_not_null             | n           | NOT NULL name                                                             |
+| paper_account_purpose_not_null          | n           | NOT NULL purpose                                                          |
+| paper_account_started_on_not_null       | n           | NOT NULL started_on                                                       |
+| paper_account_strategy_id_not_null      | n           | NOT NULL strategy_id                                                      |
+| paper_account_updated_at_not_null       | n           | NOT NULL updated_at                                                       |
+| paper_account_strategy_id_fkey          | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE       |
+| paper_account_benchmark_stock_id_fkey   | FOREIGN KEY | FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)                     |
+| paper_account_purpose_fkey              | FOREIGN KEY | FOREIGN KEY (purpose) REFERENCES agent_config(purpose) ON DELETE RESTRICT |
+| paper_account_pkey                      | PRIMARY KEY | PRIMARY KEY (id)                                                          |
+| paper_account_name_key                  | UNIQUE      | UNIQUE (name)                                                             |
 
 ## Indexes
 

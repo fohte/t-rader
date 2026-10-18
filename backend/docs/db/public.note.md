@@ -20,8 +20,11 @@
 
 | Name                     | Type        | Definition                                                                                                                                                                                  |
 | ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| note_created_at_not_null | n           | NOT NULL created_at                                                                                                                                                                         |
+| note_id_not_null         | n           | NOT NULL id                                                                                                                                                                                 |
 | note_kind_nonblank_check | CHECK       | CHECK (((kind IS NULL) OR ((kind)::text ~ '[^[:space:]]'::text)))                                                                                                                           |
 | note_trigger_check       | CHECK       | CHECK (((trigger IS NULL) OR ((trigger)::text = ANY ((ARRAY['hook'::character varying, 'cron'::character varying, 'on-demand'::character varying, 'manual'::character varying])::text[])))) |
+| note_updated_at_not_null | n           | NOT NULL updated_at                                                                                                                                                                         |
 | note_pkey                | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                                            |
 | fk_note_kind             | FOREIGN KEY | FOREIGN KEY (kind) REFERENCES note_kind(key) ON DELETE RESTRICT                                                                                                                             |
 

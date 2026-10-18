@@ -16,10 +16,15 @@
 
 ## Constraints
 
-| Name                                        | Type        | Definition                                                          |
-| ------------------------------------------- | ----------- | ------------------------------------------------------------------- |
-| strategy_investable_amount_strategy_id_fkey | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE |
-| strategy_investable_amount_pkey             | PRIMARY KEY | PRIMARY KEY (id)                                                    |
+| Name                                             | Type        | Definition                                                          |
+| ------------------------------------------------ | ----------- | ------------------------------------------------------------------- |
+| strategy_investable_amount_amount_jpy_not_null   | n           | NOT NULL amount_jpy                                                 |
+| strategy_investable_amount_created_at_not_null   | n           | NOT NULL created_at                                                 |
+| strategy_investable_amount_effective_at_not_null | n           | NOT NULL effective_at                                               |
+| strategy_investable_amount_id_not_null           | n           | NOT NULL id                                                         |
+| strategy_investable_amount_strategy_id_not_null  | n           | NOT NULL strategy_id                                                |
+| strategy_investable_amount_strategy_id_fkey      | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE |
+| strategy_investable_amount_pkey                  | PRIMARY KEY | PRIMARY KEY (id)                                                    |
 
 ## Indexes
 

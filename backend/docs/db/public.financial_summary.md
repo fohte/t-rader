@@ -48,9 +48,13 @@
 
 ## Constraints
 
-| Name                   | Type        | Definition                        |
-| ---------------------- | ----------- | --------------------------------- |
-| financial_summary_pkey | PRIMARY KEY | PRIMARY KEY (code, disclosure_no) |
+| Name                                        | Type        | Definition                        |
+| ------------------------------------------- | ----------- | --------------------------------- |
+| financial_summary_code_not_null             | n           | NOT NULL code                     |
+| financial_summary_disclosure_date_not_null  | n           | NOT NULL disclosure_date          |
+| financial_summary_disclosure_no_not_null    | n           | NOT NULL disclosure_no            |
+| financial_summary_report_group_key_not_null | n           | NOT NULL report_group_key         |
+| financial_summary_pkey                      | PRIMARY KEY | PRIMARY KEY (code, disclosure_no) |
 
 ## Indexes
 
