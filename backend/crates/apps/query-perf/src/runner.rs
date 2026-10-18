@@ -1,8 +1,9 @@
 mod execution;
 mod parameters;
+mod sql_rewrite;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     time::{Duration, Instant},
 };
 
@@ -30,6 +31,7 @@ pub struct PerfReport {
 #[derive(Debug)]
 pub struct StatementReport {
     pub sql: String,
+    pub replay_sql: String,
     pub max_duration: Duration,
     pub runs: usize,
     pub succeeded: bool,
@@ -38,6 +40,7 @@ pub struct StatementReport {
 #[derive(Debug)]
 pub struct Failure {
     pub sql: String,
+    pub replay_sql: String,
     pub parameters: String,
     pub shifted_parameters: bool,
     pub duration: Duration,
@@ -46,14 +49,16 @@ pub struct Failure {
 }
 
 struct StatementState {
+    replay_sql: String,
     max_duration: Duration,
     runs: usize,
     succeeded: bool,
 }
 
 impl StatementState {
-    fn failed(max_duration: Duration) -> Self {
+    fn failed(replay_sql: &str, max_duration: Duration) -> Self {
         Self {
+            replay_sql: replay_sql.to_string(),
             max_duration,
             runs: 0,
             succeeded: false,
@@ -90,6 +95,7 @@ pub async fn replay(
                 for parameters in parameter_sets {
                     report.failures.push(Failure {
                         sql: sql.clone(),
+                        replay_sql: sql.clone(),
                         parameters: format_parameters(&parameters),
                         shifted_parameters: false,
                         duration: Duration::ZERO,
@@ -97,11 +103,11 @@ pub async fn replay(
                         message: message.clone(),
                     });
                 }
-                statement_states.insert(sql, StatementState::failed(Duration::ZERO));
+                statement_states.insert(sql.clone(), StatementState::failed(&sql, Duration::ZERO));
                 continue;
             }
         };
-        let mut excluded_as_non_replayable = false;
+        let mut exclusion_handled = false;
         let mut parameter_iter = parameter_sets.into_iter();
         while let Some(parameters) = parameter_iter.next() {
             let acquire_started = Instant::now();
@@ -111,6 +117,7 @@ pub async fn replay(
                     let duration = acquire_started.elapsed();
                     report.failures.push(Failure {
                         sql: sql.clone(),
+                        replay_sql: replay_sql.clone(),
                         parameters: format_parameters(&parameters),
                         shifted_parameters: false,
                         duration,
@@ -123,25 +130,19 @@ pub async fn replay(
                             state.max_duration = state.max_duration.max(duration);
                             state.succeeded = false;
                         })
-                        .or_insert(StatementState::failed(duration));
-                    for remaining_parameters in parameter_iter {
-                        record_unexecuted_statement(
-                            &mut report,
-                            &mut statement_states,
-                            &sql,
-                            &remaining_parameters,
-                        );
-                    }
-                    for (_, (remaining_sql, remaining_parameter_sets)) in statement_iter.by_ref() {
-                        for remaining_parameters in remaining_parameter_sets {
-                            record_unexecuted_statement(
-                                &mut report,
-                                &mut statement_states,
-                                &remaining_sql,
-                                &remaining_parameters,
-                            );
-                        }
-                    }
+                        .or_insert(StatementState::failed(&replay_sql, duration));
+                    record_unexecuted_parameter_sets(
+                        &mut report,
+                        &mut statement_states,
+                        &sql,
+                        &replay_sql,
+                        parameter_iter,
+                    );
+                    record_remaining_statements(
+                        &mut report,
+                        &mut statement_states,
+                        statement_iter.by_ref(),
+                    );
                     stopped_early = true;
                     break 'statements;
                 }
@@ -158,12 +159,13 @@ pub async fn replay(
                             && exclusion_for(&exclusions, &sql).is_some()
                         {
                             add_exclusion(&mut report.excluded, &exclusions, &sql);
-                            excluded_as_non_replayable = true;
+                            exclusion_handled = true;
                             break;
                         }
                         let duration = prepare_started.elapsed();
                         report.failures.push(Failure {
                             sql: sql.clone(),
+                            replay_sql: replay_sql.clone(),
                             parameters: format_parameters(&parameters),
                             shifted_parameters: false,
                             duration,
@@ -172,7 +174,7 @@ pub async fn replay(
                         });
                         let state = statement_states
                             .entry(sql.clone())
-                            .or_insert(StatementState::failed(Duration::ZERO));
+                            .or_insert(StatementState::failed(&replay_sql, Duration::ZERO));
                         state.max_duration = state.max_duration.max(duration);
                         state.succeeded = false;
                         if !is_database_error(&error) {
@@ -185,19 +187,15 @@ pub async fn replay(
             let parameters = match shift_parameters(&parameters, &parameter_types, target_date) {
                 Ok(parameters) => parameters,
                 Err(message) => {
-                    if deallocate_statement(&mut connection, &statement_name)
-                        .await
-                        .is_err()
-                    {
-                        let _ = connection.close().await;
-                    }
+                    let _ = deallocate_or_close(&mut connection, &statement_name).await;
                     if exclusion_for(&exclusions, &sql).is_some() {
                         add_exclusion(&mut report.excluded, &exclusions, &sql);
-                        excluded_as_non_replayable = true;
+                        exclusion_handled = true;
                         break;
                     }
                     report.failures.push(Failure {
                         sql: sql.clone(),
+                        replay_sql: replay_sql.clone(),
                         parameters: format_parameters(&parameters),
                         shifted_parameters: false,
                         duration: Duration::ZERO,
@@ -206,8 +204,11 @@ pub async fn replay(
                     });
                     statement_states
                         .entry(sql.clone())
-                        .and_modify(|state| state.succeeded = false)
-                        .or_insert(StatementState::failed(Duration::ZERO));
+                        .and_modify(|state| {
+                            state.succeeded = false;
+                            state.replay_sql.clone_from(&replay_sql);
+                        })
+                        .or_insert(StatementState::failed(&replay_sql, Duration::ZERO));
                     continue;
                 }
             };
@@ -215,19 +216,15 @@ pub async fn replay(
             let execute_sql = match build_execute_sql(&statement_name, &parameters) {
                 Ok(execute_sql) => execute_sql,
                 Err(message) => {
-                    if deallocate_statement(&mut connection, &statement_name)
-                        .await
-                        .is_err()
-                    {
-                        let _ = connection.close().await;
-                    }
+                    let _ = deallocate_or_close(&mut connection, &statement_name).await;
                     if exclusion_for(&exclusions, &sql).is_some() {
                         add_exclusion(&mut report.excluded, &exclusions, &sql);
-                        excluded_as_non_replayable = true;
+                        exclusion_handled = true;
                         break;
                     }
                     report.failures.push(Failure {
                         sql: sql.clone(),
+                        replay_sql: replay_sql.clone(),
                         parameters: format_parameters(&parameters),
                         shifted_parameters: true,
                         duration: Duration::ZERO,
@@ -236,8 +233,11 @@ pub async fn replay(
                     });
                     statement_states
                         .entry(sql.clone())
-                        .and_modify(|state| state.succeeded = false)
-                        .or_insert(StatementState::failed(Duration::ZERO));
+                        .and_modify(|state| {
+                            state.succeeded = false;
+                            state.replay_sql.clone_from(&replay_sql);
+                        })
+                        .or_insert(StatementState::failed(&replay_sql, Duration::ZERO));
                     continue;
                 }
             };
@@ -248,13 +248,9 @@ pub async fn replay(
                 let _ = connection.close().await;
                 None
             } else {
-                match deallocate_statement(&mut connection, &statement_name).await {
-                    Ok(()) => None,
-                    Err(error) => {
-                        let _ = connection.close().await;
-                        Some(error)
-                    }
-                }
+                deallocate_or_close(&mut connection, &statement_name)
+                    .await
+                    .err()
             };
 
             match execution {
@@ -262,6 +258,7 @@ pub async fn replay(
                     let state = statement_states
                         .entry(sql.clone())
                         .or_insert(StatementState {
+                            replay_sql: replay_sql.clone(),
                             max_duration: Duration::ZERO,
                             runs: 0,
                             succeeded: true,
@@ -272,16 +269,17 @@ pub async fn replay(
                 Err(error) => {
                     if error.non_replayable && exclusion_for(&exclusions, &sql).is_some() {
                         add_exclusion(&mut report.excluded, &exclusions, &sql);
-                        excluded_as_non_replayable = true;
+                        exclusion_handled = true;
                         break;
                     }
                     let state = statement_states
                         .entry(sql.clone())
-                        .or_insert(StatementState::failed(Duration::ZERO));
+                        .or_insert(StatementState::failed(&replay_sql, Duration::ZERO));
                     state.max_duration = state.max_duration.max(error.duration);
                     state.succeeded = false;
                     report.failures.push(Failure {
                         sql: sql.clone(),
+                        replay_sql: replay_sql.clone(),
                         parameters: format_parameters(&parameters),
                         shifted_parameters: true,
                         duration: error.duration,
@@ -293,10 +291,14 @@ pub async fn replay(
             if let Some(error) = cleanup_error {
                 statement_states
                     .entry(sql.clone())
-                    .and_modify(|state| state.succeeded = false)
-                    .or_insert(StatementState::failed(Duration::ZERO));
+                    .and_modify(|state| {
+                        state.succeeded = false;
+                        state.replay_sql.clone_from(&replay_sql);
+                    })
+                    .or_insert(StatementState::failed(&replay_sql, Duration::ZERO));
                 report.failures.push(Failure {
                     sql: sql.clone(),
+                    replay_sql: replay_sql.clone(),
                     parameters: format_parameters(&parameters),
                     shifted_parameters: true,
                     duration: Duration::ZERO,
@@ -305,7 +307,7 @@ pub async fn replay(
                 });
             }
         }
-        if excluded_as_non_replayable {
+        if exclusion_handled {
             statement_states.remove(&sql);
         }
     }
@@ -314,6 +316,7 @@ pub async fn replay(
         for exclusion in unused_exclusions(&exclusions, &report.excluded) {
             report.failures.push(Failure {
                 sql: exclusion.sql.clone(),
+                replay_sql: exclusion.sql.clone(),
                 parameters: "[]".to_string(),
                 shifted_parameters: false,
                 duration: Duration::ZERO,
@@ -327,6 +330,7 @@ pub async fn replay(
         .into_iter()
         .map(|(sql, state)| StatementReport {
             sql,
+            replay_sql: state.replay_sql,
             max_duration: state.max_duration,
             runs: state.runs,
             succeeded: state.succeeded,
@@ -389,24 +393,58 @@ fn unused_exclusions<'a>(
         .collect()
 }
 
-fn record_unexecuted_statement(
+fn record_unexecuted_parameter_sets(
     report: &mut PerfReport,
     statement_states: &mut BTreeMap<String, StatementState>,
     sql: &str,
-    parameters: &[Option<String>],
+    replay_sql: &str,
+    parameter_sets: impl IntoIterator<Item = Vec<Option<String>>>,
 ) {
-    report.failures.push(Failure {
-        sql: sql.to_string(),
-        parameters: format_parameters(parameters),
-        shifted_parameters: false,
-        duration: Duration::ZERO,
-        kind: "connection unavailable".to_string(),
-        message: "not executed because perf-db could not be reconnected".to_string(),
-    });
-    statement_states
-        .entry(sql.to_string())
-        .and_modify(|state| state.succeeded = false)
-        .or_insert(StatementState::failed(Duration::ZERO));
+    for parameters in parameter_sets {
+        report.failures.push(Failure {
+            sql: sql.to_string(),
+            replay_sql: replay_sql.to_string(),
+            parameters: format_parameters(&parameters),
+            shifted_parameters: false,
+            duration: Duration::ZERO,
+            kind: "connection unavailable".to_string(),
+            message: "not executed because perf-db could not be reconnected".to_string(),
+        });
+        statement_states
+            .entry(sql.to_string())
+            .and_modify(|state| state.succeeded = false)
+            .or_insert(StatementState::failed(replay_sql, Duration::ZERO));
+    }
+}
+
+fn record_remaining_statements(
+    report: &mut PerfReport,
+    statement_states: &mut BTreeMap<String, StatementState>,
+    remaining: impl Iterator<Item = (usize, (String, BTreeSet<Vec<Option<String>>>))>,
+) {
+    for (_, (sql, parameter_sets)) in remaining {
+        let replay_sql = strip_for_update_clause(&sql).unwrap_or_else(|_| sql.clone());
+        record_unexecuted_parameter_sets(
+            report,
+            statement_states,
+            &sql,
+            &replay_sql,
+            parameter_sets,
+        );
+    }
+}
+
+async fn deallocate_or_close(
+    connection: &mut PoolConnection<Postgres>,
+    statement_name: &str,
+) -> Result<(), sqlx::Error> {
+    match deallocate_statement(connection, statement_name).await {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            connection.close_on_drop();
+            Err(error)
+        }
+    }
 }
 
 #[cfg(test)]

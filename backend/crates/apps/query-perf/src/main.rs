@@ -79,11 +79,12 @@ fn print_report(report: &PerfReport) {
     );
     for statement in &report.statements {
         println!(
-            "{} max={}ms runs={} SQL={}",
+            "{} max={}ms runs={} SQL={} Replay SQL={}",
             if statement.succeeded { "PASS" } else { "FAIL" },
             statement.max_duration.as_secs_f64() * 1_000.0,
             statement.runs,
-            statement.sql.replace('\n', " ")
+            statement.sql.replace('\n', " "),
+            replay_sql_description(&statement.sql, &statement.replay_sql).replace('\n', " ")
         );
     }
     for excluded in &report.excluded {
@@ -93,13 +94,15 @@ fn print_report(report: &PerfReport) {
         eprintln!(
             indoc! {"
                 FAIL {} after {}ms
-                SQL: {}
+                Original SQL: {}
+                Replay SQL: {}
                 {}: {}
                 {}
             "},
             failure.kind,
             failure.duration.as_secs_f64() * 1_000.0,
             failure.sql,
+            replay_sql_description(&failure.sql, &failure.replay_sql),
             if failure.shifted_parameters {
                 "Shifted parameters"
             } else {
@@ -124,19 +127,22 @@ fn append_step_summary(report: &PerfReport) -> io::Result<()> {
 
             Target date: `{}`
 
-            | Result | Maximum | Runs | SQL |
-            | --- | ---: | ---: | --- |
+            | Result | Maximum | Runs | Original SQL | Replay SQL |
+            | --- | ---: | ---: | --- | --- |
         "},
         report.target_date
     )?;
     for statement in &report.statements {
         writeln!(
             file,
-            "| {} | {:.3} ms | {} | `{}` |",
+            "| {} | {:.3} ms | {} | `{}` | `{}` |",
             if statement.succeeded { "PASS" } else { "FAIL" },
             statement.max_duration.as_secs_f64() * 1_000.0,
             statement.runs,
-            statement.sql.replace('|', "\\|").replace('\n', " ")
+            statement.sql.replace('|', "\\|").replace('\n', " "),
+            replay_sql_description(&statement.sql, &statement.replay_sql)
+                .replace('|', "\\|")
+                .replace('\n', " ")
         )?;
     }
     for excluded in &report.excluded {
@@ -156,7 +162,13 @@ fn append_step_summary(report: &PerfReport) -> io::Result<()> {
 
                 Elapsed: {:.3} ms
 
-                SQL:
+                Original SQL:
+
+                ```sql
+                {}
+                ```
+
+                Replay SQL:
 
                 ```sql
                 {}
@@ -169,6 +181,7 @@ fn append_step_summary(report: &PerfReport) -> io::Result<()> {
             failure.kind,
             failure.duration.as_secs_f64() * 1_000.0,
             failure.sql,
+            replay_sql_description(&failure.sql, &failure.replay_sql),
             if failure.shifted_parameters {
                 "Shifted parameters"
             } else {
@@ -180,6 +193,14 @@ fn append_step_summary(report: &PerfReport) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn replay_sql_description<'a>(original: &'a str, replay: &'a str) -> &'a str {
+    if original == replay {
+        "(same as original)"
+    } else {
+        replay
+    }
 }
 
 #[cfg(test)]

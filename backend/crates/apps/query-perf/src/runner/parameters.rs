@@ -17,16 +17,26 @@ pub(super) fn shift_parameters(
         .iter()
         .map(|type_name| date_parameter_kind(type_name))
         .collect();
-    let mut latest_date = None;
+    let mut latest_typed_date: Option<NaiveDate> = None;
+    let mut latest_text_date: Option<NaiveDate> = None;
     for (parameter, kind) in parameters.iter().zip(&kinds) {
         let (Some(value), Some(kind)) = (parameter, kind) else {
             continue;
         };
+        let latest_date = if matches!(*kind, DateParameterKind::Text) {
+            &mut latest_text_date
+        } else {
+            &mut latest_typed_date
+        };
         for date in parameter_dates(value, *kind)? {
-            latest_date = Some(latest_date.map_or(date, |current: NaiveDate| current.max(date)));
+            *latest_date = Some(match *latest_date {
+                Some(current) => current.max(date),
+                None => date,
+            });
         }
     }
-    let day_shift = latest_date
+    let day_shift = latest_typed_date
+        .or(latest_text_date)
         .map(|date| target_date.signed_duration_since(date).num_days())
         .unwrap_or(0);
 
@@ -66,14 +76,16 @@ fn date_parameter_kind(type_name: &str) -> Option<DateParameterKind> {
         | "timestamp with time zone"
         | "pg_catalog.timestamp"
         | "pg_catalog.timestamptz" => DateParameterKind::Timestamp,
-        "text" | "pg_catalog.text" | "varchar" | "character varying" => DateParameterKind::Text,
+        "text" | "pg_catalog.text" | "varchar" | "pg_catalog.varchar" | "character varying" => {
+            DateParameterKind::Text
+        }
         _ => return None,
     };
-    Some(if is_array {
-        DateParameterKind::Array
-    } else {
-        kind
-    })
+    match (is_array, kind) {
+        (true, DateParameterKind::Text) => None,
+        (true, _) => Some(DateParameterKind::Array),
+        (false, kind) => Some(kind),
+    }
 }
 
 fn parameter_dates(value: &str, kind: DateParameterKind) -> Result<Vec<NaiveDate>, String> {
@@ -283,16 +295,24 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn shifts_iso_date_text_and_keeps_other_text_and_null_dates_unchanged()
-    -> Result<(), std::io::Error> {
+    #[rstest]
+    #[case::text("text")]
+    #[case::varchar("varchar")]
+    #[case::character_varying("character varying")]
+    fn shifts_iso_date_text_and_keeps_other_text_unchanged(
+        #[case] date_type: &str,
+    ) -> Result<(), std::io::Error> {
         let shifted = shift_parameters(
             &[
                 Some("2021-01-03".to_string()),
                 None,
                 Some("record-7".to_string()),
             ],
-            &["text".to_string(), "date".to_string(), "text".to_string()],
+            &[
+                date_type.to_string(),
+                "text".to_string(),
+                "text".to_string(),
+            ],
             NaiveDate::parse_from_str("2026-10-16", "%Y-%m-%d").map_err(std::io::Error::other)?,
         )
         .map_err(std::io::Error::other)?;
@@ -308,17 +328,81 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn recognizes_postgres_date_type_names() {
+    #[rstest]
+    #[case::timestamp_array("timestamp with time zone[]", Some("array"))]
+    #[case::text("text", Some("text"))]
+    #[case::varchar("varchar", Some("text"))]
+    #[case::character_varying("character varying", Some("text"))]
+    #[case::date("date", Some("date"))]
+    #[case::timestamp("timestamp with time zone", Some("timestamp"))]
+    #[case::text_array("text[]", None)]
+    #[case::pg_catalog_text_array("pg_catalog.text[]", None)]
+    #[case::catalog_text_array("_text", None)]
+    #[case::varchar_array("varchar[]", None)]
+    #[case::character_varying_array("character varying[]", None)]
+    fn recognizes_postgres_date_type_names(
+        #[case] type_name: &str,
+        #[case] expected: Option<&str>,
+    ) {
         assert_eq!(
-            date_parameter_kind("timestamp with time zone[]")
-                .map(|kind| matches!(kind, DateParameterKind::Array)),
-            Some(true)
+            date_parameter_kind(type_name).map(|kind| match kind {
+                DateParameterKind::Date => "date",
+                DateParameterKind::Timestamp => "timestamp",
+                DateParameterKind::Array => "array",
+                DateParameterKind::Text => "text",
+            }),
+            expected
         );
+    }
+
+    #[rstest]
+    #[case::text_array("text[]")]
+    #[case::varchar_array("varchar[]")]
+    #[case::character_varying_array("character varying[]")]
+    fn keeps_iso_dates_in_text_arrays_unchanged(
+        #[case] type_name: &str,
+    ) -> Result<(), std::io::Error> {
+        let shifted = shift_parameters(
+            &[Some("{2020-02-03,2020-02-04}".to_string())],
+            &[type_name.to_string()],
+            NaiveDate::parse_from_str("2026-10-16", "%Y-%m-%d").map_err(std::io::Error::other)?,
+        )
+        .map_err(std::io::Error::other)?;
+
+        assert_eq!(shifted, vec![Some("{2020-02-03,2020-02-04}".to_string())]);
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::date("date", "2020-02-03", "2026-10-16")]
+    #[case::timestamp(
+        "timestamp with time zone",
+        "2020-02-03 09:30:00+00",
+        "2026-10-16 09:30:00+00"
+    )]
+    fn text_date_does_not_change_the_shift_anchor_when_a_typed_date_exists(
+        #[case] typed_type: &str,
+        #[case] typed_value: &str,
+        #[case] expected_typed_value: &str,
+    ) -> Result<(), std::io::Error> {
+        let shifted = shift_parameters(
+            &[
+                Some(typed_value.to_string()),
+                Some("2020-02-04".to_string()),
+            ],
+            &[typed_type.to_string(), "text".to_string()],
+            NaiveDate::parse_from_str("2026-10-16", "%Y-%m-%d").map_err(std::io::Error::other)?,
+        )
+        .map_err(std::io::Error::other)?;
+
         assert_eq!(
-            date_parameter_kind("text").map(|kind| matches!(kind, DateParameterKind::Text)),
-            Some(true)
+            shifted,
+            vec![
+                Some(expected_typed_value.to_string()),
+                Some("2026-10-17".to_string()),
+            ]
         );
+        Ok(())
     }
 
     #[test]
