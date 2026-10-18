@@ -70,6 +70,94 @@ cleanup() {
 }
 trap cleanup EXIT
 
+psql_exec() {
+  docker exec "$container_name" psql \
+    -X \
+    -q \
+    -U "$POSTGRES_USER" \
+    -d "$POSTGRES_DATABASE" \
+    -v ON_ERROR_STOP=1 \
+    "$@"
+}
+
+psql_value() {
+  psql_exec -A -t "$@"
+}
+
+wal_dir_bytes() {
+  psql_value -c 'SELECT coalesce(sum(size), 0) FROM pg_ls_waldir()'
+}
+
+wait_for_postgres() {
+  local readiness_attempt=0
+  for ((readiness_attempt = 0; readiness_attempt < 120; readiness_attempt++)); do
+    if psql_exec -c 'SELECT 1' > /dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo 'PostgreSQL did not become ready within 120 seconds.' >&2
+  docker logs "$container_name" >&2
+  return 1
+}
+
+shrink_wal() {
+  local reload_attempt=0 shrink_round=0 checkpoint_cycle=0
+  local wal_settings
+  psql_exec \
+    -c "ALTER SYSTEM SET max_wal_size = '64MB'" \
+    -c "ALTER SYSTEM SET min_wal_size = '32MB'" \
+    -c 'SELECT pg_reload_conf()' > /dev/null
+
+  for ((reload_attempt = 0; reload_attempt < 30; reload_attempt++)); do
+    wal_settings=$(psql_value \
+      -c "SELECT current_setting('max_wal_size') || '/' || current_setting('min_wal_size')")
+    if [[ "$wal_settings" == '64MB/32MB' ]]; then
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$wal_settings" != '64MB/32MB' ]]; then
+    printf 'WAL settings were not reloaded: %s\n' "$wal_settings" >&2
+    return 1
+  fi
+
+  # PostgreSQL は直近の checkpoint cycle に基づいて WAL を再利用するため、小さい設定で複数 cycle を回して余分な segment を解放する。
+  local max_wal_bytes=67108864
+  local wal_bytes
+  wal_bytes=$(wal_dir_bytes)
+  for ((shrink_round = 0; shrink_round < 12; shrink_round++)); do
+    if ((wal_bytes <= max_wal_bytes)); then
+      break
+    fi
+    local checkpoint_args=()
+    for ((checkpoint_cycle = 0; checkpoint_cycle < 10; checkpoint_cycle++)); do
+      checkpoint_args+=(-c 'SELECT pg_switch_wal()' -c 'CHECKPOINT')
+    done
+    psql_exec "${checkpoint_args[@]}" > /dev/null
+    wal_bytes=$(wal_dir_bytes)
+  done
+  if ((wal_bytes > max_wal_bytes)); then
+    printf 'WAL size did not shrink to 64MB: %s bytes\n' "$wal_bytes" >&2
+    return 1
+  fi
+
+  psql_exec \
+    -c 'ALTER SYSTEM RESET max_wal_size' \
+    -c 'ALTER SYSTEM RESET min_wal_size' \
+    -c 'SELECT pg_reload_conf()' > /dev/null
+  local wal_settings_override
+  wal_settings_override=$(psql_value \
+    -c "SELECT bool_and(sourcefile IS DISTINCT FROM (current_setting('data_directory') || '/postgresql.auto.conf')) FROM pg_settings WHERE name IN ('max_wal_size', 'min_wal_size')")
+  if [[ "$wal_settings_override" != 't' ]]; then
+    printf 'Build WAL settings remain in postgresql.auto.conf: %s\n' "$wal_settings_override" >&2
+    return 1
+  fi
+
+  printf 'WAL size: %s bytes; max_wal_size and min_wal_size restored to defaults.\n' "$wal_bytes"
+}
+
 docker run \
   --detach \
   --name "$container_name" \
@@ -87,24 +175,7 @@ docker run \
   -c autovacuum_max_workers=2 > /dev/null
 container_started=true
 
-ready=false
-for _ in {1..120}; do
-  if docker exec "$container_name" psql \
-    -h 127.0.0.1 \
-    -U "$POSTGRES_USER" \
-    -d "$POSTGRES_DATABASE" \
-    -v ON_ERROR_STOP=1 \
-    -c 'SELECT 1' > /dev/null 2>&1; then
-    ready=true
-    break
-  fi
-  sleep 1
-done
-if [[ "$ready" != true ]]; then
-  echo 'PostgreSQL did not become ready within 120 seconds.' >&2
-  docker logs "$container_name" >&2
-  exit 1
-fi
+wait_for_postgres
 
 docker exec "$container_name" psql \
   -U "$POSTGRES_USER" \
@@ -126,51 +197,7 @@ docker exec -i "$container_name" psql \
   -d "$POSTGRES_DATABASE" \
   -v ON_ERROR_STOP=1 < "$seed_sql"
 
-docker exec "$container_name" psql \
-  -U "$POSTGRES_USER" \
-  -d "$POSTGRES_DATABASE" \
-  -v ON_ERROR_STOP=1 \
-  -c "ALTER SYSTEM SET max_wal_size = '64MB'" \
-  -c "ALTER SYSTEM SET min_wal_size = '32MB'" \
-  -c 'SELECT pg_reload_conf()' > /dev/null
-
-wal_settings=''
-for _ in {1..30}; do
-  wal_settings=$(docker exec "$container_name" psql \
-    -X -At -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -v ON_ERROR_STOP=1 \
-    -c "SELECT current_setting('max_wal_size') || '/' || current_setting('min_wal_size')")
-  if [[ "$wal_settings" == '64MB/32MB' ]]; then
-    break
-  fi
-  sleep 1
-done
-if [[ "$wal_settings" != '64MB/32MB' ]]; then
-  printf 'WAL settings were not reloaded: %s\n' "$wal_settings" >&2
-  exit 1
-fi
-
-# PostgreSQL は直近の checkpoint cycle に基づいて WAL を再利用するため、小さい設定で複数 cycle を回して余分な segment を解放する。
-max_wal_bytes=67108864
-wal_bytes=$(docker exec "$container_name" psql \
-  -X -At -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -v ON_ERROR_STOP=1 \
-  -c 'SELECT coalesce(sum(size), 0) FROM pg_ls_waldir()')
-for _ in {1..12}; do
-  if ((wal_bytes <= max_wal_bytes)); then
-    break
-  fi
-  psql_command_args=(-X -q -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -v ON_ERROR_STOP=1)
-  for _ in {1..10}; do
-    psql_command_args+=(-c 'SELECT pg_switch_wal()' -c 'CHECKPOINT')
-  done
-  docker exec "$container_name" psql "${psql_command_args[@]}" > /dev/null
-  wal_bytes=$(docker exec "$container_name" psql \
-    -X -At -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -v ON_ERROR_STOP=1 \
-    -c 'SELECT coalesce(sum(size), 0) FROM pg_ls_waldir()')
-done
-if ((wal_bytes > max_wal_bytes)); then
-  printf 'WAL size did not shrink to 64MB: %s bytes\n' "$wal_bytes" >&2
-  exit 1
-fi
+shrink_wal
 docker stop --timeout 60 "$container_name" > /dev/null
 docker commit \
   --change 'ENV PGDATA=/pgdata' \
