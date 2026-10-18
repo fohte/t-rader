@@ -28,6 +28,11 @@ import type { SourceLineRange } from '#components/note-detail/use-markdown-body-
 
 type MarkdownNode = NonNullable<ExtraProps['node']>
 
+const DEFAULT_GUTTER_MARKER_CLASS_NAME =
+  'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary'
+const LIST_GUTTER_MARKER_CLASS_NAME = 'opacity-0'
+const LIST_RANGE_BLOCK_CLASS_NAME = 'note-body-list-range-block'
+
 interface MarkdownBodyRangeBlockProps {
   node?: MarkdownNode
   children?: ReactNode
@@ -105,6 +110,7 @@ interface RangeBlockGutterButtonProps {
   onPointerDown: (range: SourceLineRange) => void
   onClick: (range: SourceLineRange, shiftKey: boolean) => void
   className: string
+  markerClassName?: string
   style?: CSSProperties
 }
 
@@ -114,6 +120,7 @@ function RangeBlockGutterButton({
   onPointerDown,
   onClick,
   className,
+  markerClassName = DEFAULT_GUTTER_MARKER_CLASS_NAME,
   style,
 }: RangeBlockGutterButtonProps) {
   const pointerTypeRef = useRef<string | null>(null)
@@ -123,6 +130,7 @@ function RangeBlockGutterButton({
       type="button"
       aria-label={`行 ${String(range.startLine)}${range.endLine > range.startLine ? ` から ${String(range.endLine)}` : ''} にコメント`}
       data-comment-text-ignore="true"
+      data-source-gutter-button="true"
       onPointerDown={(event) => {
         pointerTypeRef.current = event.pointerType
         if (event.pointerType === 'touch') return
@@ -151,7 +159,8 @@ function RangeBlockGutterButton({
       ) : (
         <span
           aria-hidden="true"
-          className="opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary"
+          data-source-gutter-marker="true"
+          className={markerClassName}
         >
           +
         </span>
@@ -204,9 +213,10 @@ export function MarkdownBodyRangeBlock({
   const context = useContext(MarkdownBodyRangeCommentContext)
   const parentSourceBlock = useContext(MarkdownBodySourceBlockContext)
   const sourceBlockTag = node?.tagName ?? 'block'
+  const isListSourceBlock = sourceBlockTag === 'li'
   const isNestedSourceBlock =
     parentSourceBlock != null &&
-    !(parentSourceBlock === 'li' && sourceBlockTag === 'li')
+    !(parentSourceBlock === 'li' && isListSourceBlock)
   const range = sourceLineRange(node)
   const content = element ?? children
   const rowClassName = 'border-b border-border last:border-b-0'
@@ -218,10 +228,7 @@ export function MarkdownBodyRangeBlock({
     )
   }
 
-  const childRanges = descendantSourceBlockRanges(
-    content,
-    sourceBlockTag === 'li',
-  )
+  const childRanges = descendantSourceBlockRanges(content, isListSourceBlock)
   const presentation = commentBlockPresentation(range, context, childRanges)
   const textHighlight =
     presentation.highlightText == null || presentation.highlightText === ''
@@ -345,6 +352,9 @@ export function MarkdownBodyRangeBlock({
       onPointerDown={context.onGutterPointerDown}
       onClick={context.onGutterClick}
       className={`absolute ${gutterButtonClassName}`}
+      markerClassName={
+        isListSourceBlock ? LIST_GUTTER_MARKER_CLASS_NAME : undefined
+      }
       style={gutterStyle}
     />
   )
@@ -352,9 +362,9 @@ export function MarkdownBodyRangeBlock({
   const isIntrinsicElement =
     isValidElement<RangeBlockElementProps>(renderedContent) &&
     typeof renderedContent.type === 'string'
-  if (isIntrinsicElement && sourceBlockTag === 'li') {
+  if (isIntrinsicElement && isListSourceBlock) {
     const hostElement = cloneElement(renderedContent, {
-      className: `${renderedContent.props.className ?? ''} group relative ${isBlockSelected ? 'bg-primary/10' : ''}`,
+      className: `${renderedContent.props.className ?? ''} group relative ${LIST_RANGE_BLOCK_CLASS_NAME} ${isBlockSelected ? 'bg-primary/10' : ''}`,
       'data-source-block': 'true',
       'data-source-start-line': range.startLine,
       'data-source-end-line': range.endLine,
@@ -386,7 +396,7 @@ export function MarkdownBodyRangeBlock({
         data-source-block="true"
         data-source-start-line={range.startLine}
         data-source-end-line={range.endLine}
-        className="group relative min-w-0"
+        className={`group relative min-w-0 ${isListSourceBlock ? LIST_RANGE_BLOCK_CLASS_NAME : ''}`}
       >
         {gutterButton}
         {commentMarker}

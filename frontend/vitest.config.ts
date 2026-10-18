@@ -19,7 +19,25 @@ export default mergeConfig(
           extends: true,
           test: {
             name: 'unit',
+            include: ['src/**/*.test.{ts,tsx}'],
+            exclude: ['src/**/*.browser.test.{ts,tsx}'],
             environment: 'jsdom',
+            setupFiles: ['./src/test-setup.ts'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'browser',
+            include: ['src/**/*.browser.test.{ts,tsx}'],
+            browser: {
+              enabled: true,
+              provider: playwright({
+                launchOptions: { args: [...BLOCK_EXTERNAL_REQUESTS_ARGS] },
+              }),
+              headless: true,
+              instances: [{ browser: 'chromium' }],
+            },
             setupFiles: ['./src/test-setup.ts'],
           },
         },
