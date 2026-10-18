@@ -355,22 +355,35 @@ describe('NoteVersionBodyComments', () => {
     ])
   })
 
-  it('toggles the resolved state of a comment', async () => {
+  it.each([
+    {
+      name: 'resolves an unresolved comment',
+      initialResolved: false,
+      action: '解決する',
+      expectedResolved: true,
+    },
+    {
+      name: 'reopens a resolved comment',
+      initialResolved: true,
+      action: '未解決に戻す',
+      expectedResolved: false,
+    },
+  ])('$name', async ({ initialResolved, action, expectedResolved }) => {
     const user = userEvent.setup()
     useQuery.mockReturnValue({
-      data: [comment],
+      data: [{ ...comment, resolved: initialResolved }],
       isPending: false,
       isError: false,
     })
     renderNoteBodyComments('対象の本文')
 
-    await user.click(screen.getByRole('button', { name: '未解決' }))
+    await user.click(screen.getByRole('button', { name: action }))
 
     expect(apiRequests).toEqual([
       {
         method: 'PATCH',
         path: '/api/comments/sample-comment',
-        body: { resolved: true },
+        body: { resolved: expectedResolved },
       },
     ])
   })

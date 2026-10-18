@@ -8,11 +8,11 @@ const comment: NoteVersionComment = {
   target_kind: 'note_version',
   target_id: 'sample-version',
   parent_id: null,
-  body: '集計条件の根拠を補足してください。',
+  body: '数値の根拠を補足してください。',
   author_kind: 'human',
-  author_label: 'レビュー担当者',
+  author_label: 'human-author',
   resolved: false,
-  anchor_text: '集計結果を再確認する。',
+  anchor_text: '保存された引用文',
   anchor_side: 'new',
   start_line: 4,
   end_line: 4,
@@ -41,11 +41,21 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const UnresolvedHumanComment: Story = {
-  name: 'shows an unresolved comment written by a reviewer.',
+  name: 'shows an unresolved comment written by you.',
+}
+
+export const ResolvedHumanComment: Story = {
+  name: 'shows a resolved comment with a separate reset action.',
+  args: {
+    comment: {
+      ...comment,
+      resolved: true,
+    },
+  },
 }
 
 export const ResolvedAgentReply: Story = {
-  name: 'shows a resolved assistant reply in a comment thread.',
+  name: 'shows a resolved assistant reply with its LLM label.',
   args: {
     comment: {
       ...comment,
@@ -53,21 +63,8 @@ export const ResolvedAgentReply: Story = {
       parent_id: comment.id,
       body: '確認して補足しました。',
       author_kind: 'llm',
-      author_label: 'analyst',
+      author_label: 'scenario-agent',
       resolved: true,
-    },
-  },
-}
-
-export const UnanchoredComment: Story = {
-  name: 'shows a comment without a line anchor.',
-  args: {
-    comment: {
-      ...comment,
-      anchor_text: null,
-      anchor_side: null,
-      start_line: null,
-      end_line: null,
     },
   },
 }
