@@ -508,7 +508,7 @@ fn request_params(query: &UsStockBarQuery) -> Result<Vec<(&'static str, String)>
         ("start", query.from.to_rfc3339()),
         ("end", query.to.to_rfc3339()),
         ("adjustment", "split".to_owned()),
-        ("feed", "iex".to_owned()),
+        ("feed", "sip".to_owned()),
         ("limit", RESPONSE_LIMIT.to_string()),
         ("sort", "asc".to_owned()),
     ];
@@ -630,7 +630,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn fetches_split_adjusted_iex_bars_and_maps_class_share_symbols() {
+    async fn fetches_split_adjusted_sip_bars_and_maps_class_share_symbols() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v2/stocks/bars"))
@@ -641,7 +641,7 @@ mod tests {
             .and(query_param("start", "1970-01-01T00:00:00+00:00"))
             .and(query_param("end", "2040-01-03T00:00:00+00:00"))
             .and(query_param("adjustment", "split"))
-            .and(query_param("feed", "iex"))
+            .and(query_param("feed", "sip"))
             .and(query_param("limit", "10000"))
             .and(query_param("sort", "asc"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -1059,9 +1059,9 @@ mod tests {
     #[rstest]
     #[case::invalid_symbol_400(400, "invalid symbol: QZ7", true)]
     #[case::unknown_asset_422(422, r#"{"code":42210000,"message":"asset QZ7 not found"}"#, true)]
-    #[case::subscription_error_422(
-        422,
-        r#"{"code":42210000,"message":"subscription does not permit querying recent SIP data"}"#,
+    #[case::subscription_error_403(
+        403,
+        r#"{"message":"subscription does not permit querying recent SIP data"}"#,
         false
     )]
     #[tokio::test]

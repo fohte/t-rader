@@ -5,12 +5,12 @@ use core_domain::bar::Timeframe;
 
 use super::error::BarsUseCaseError;
 use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
-use super::us_stock_hourly_history_cutoff;
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::UsStockBarsIngestUseCases;
 use super::write_throttle::WriteThrottle;
+use super::{us_stock_hourly_history_cutoff, us_stock_sip_bars_history_cutoff};
 use request_budget::RequestBudget;
 
 mod adjustment;
@@ -116,10 +116,11 @@ impl UsStockBarTimeframe {
     }
 
     fn history_end(self, now: DateTime<Utc>) -> DateTime<Utc> {
-        match self {
+        let end = match self {
             Self::Hourly => us_stock_hourly_history_cutoff(now),
             Self::Daily | Self::Minute => now,
-        }
+        };
+        end.min(us_stock_sip_bars_history_cutoff(now))
     }
 
     fn is_complete(self, target: &UsStockBarTarget) -> bool {
@@ -180,7 +181,7 @@ impl UsStockBarsIngestUseCases {
                     daily_from: timeframe.history_start(now),
                     minute_from: UsStockBarTimeframe::Minute.history_start(now),
                     hourly_from: UsStockBarTimeframe::Hourly.history_start(now),
-                    to: now,
+                    to: timeframe.history_end(now),
                     hourly_to: UsStockBarTimeframe::Hourly.history_end(now),
                 },
                 &mut context,
@@ -285,6 +286,9 @@ impl UsStockBarsIngestUseCases {
         range: UsStockBarRange,
         context: &mut BatchIngestContext<'_>,
     ) -> Result<bool, BarsUseCaseError> {
+        if range.from >= range.to {
+            return Ok(true);
+        }
         let mut page_token = None;
         loop {
             if !context.budget.take_at(1, self.clock.instant()) {
@@ -439,7 +443,163 @@ mod tests {
 
     use super::{
         MAX_REQUESTS_PER_RUN, RequestBudget, UsStockBarTimeframe, us_stock_hourly_history_cutoff,
+        us_stock_sip_bars_history_cutoff,
     };
+
+    #[rstest]
+    #[case::whole_minute("2040-01-02T12:00:00Z", "2040-01-02T11:44:00Z")]
+    #[case::partial_minute("2040-01-02T12:00:59.999999Z", "2040-01-02T11:44:00Z")]
+    fn sip_bars_cutoff_leaves_sixteen_minutes_and_rounds_down(
+        #[case] now: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(us_stock_sip_bars_history_cutoff(date(now)), date(expected));
+    }
+
+    #[rstest]
+    #[case::daily(UsStockBarTimeframe::Daily)]
+    #[case::minute(UsStockBarTimeframe::Minute)]
+    #[case::hourly(UsStockBarTimeframe::Hourly)]
+    #[tokio::test]
+    async fn caps_each_timeframe_bar_request_before_recent_sip_data(
+        #[case] timeframe: UsStockBarTimeframe,
+        harness: Harness,
+    ) {
+        let instrument_id = "US:DEMO-CUTOFF";
+        let now = date("2040-01-02T12:00:59.999999Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+
+        match timeframe {
+            UsStockBarTimeframe::Daily => harness
+                .use_cases
+                .ingest_us_stock_daily_bars(&harness.source, now)
+                .await
+                .expect("daily bar ingestion succeeds"),
+            UsStockBarTimeframe::Minute => harness
+                .use_cases
+                .ingest_us_stock_minute_bars(&harness.source, now)
+                .await
+                .expect("minute bar ingestion succeeds"),
+            UsStockBarTimeframe::Hourly => harness
+                .use_cases
+                .ingest_us_stock_hourly_bars(&harness.source, now)
+                .await
+                .expect("hourly bar ingestion succeeds"),
+        };
+
+        assert_eq!(
+            harness.source.calls.lock().await.clone(),
+            vec![UsStockBarQuery {
+                instrument_ids: vec![instrument_id.to_owned()],
+                timeframe: timeframe.timeframe(),
+                from: timeframe.history_start(now),
+                to: timeframe.history_end(now),
+                page_token: None,
+            }],
+        );
+    }
+
+    #[rstest]
+    #[case::daily_at_cutoff(UsStockBarTimeframe::Daily, 0)]
+    #[case::daily_after_cutoff(UsStockBarTimeframe::Daily, 1)]
+    #[case::minute_at_cutoff(UsStockBarTimeframe::Minute, 0)]
+    #[case::minute_after_cutoff(UsStockBarTimeframe::Minute, 1)]
+    #[case::hourly_at_cutoff(UsStockBarTimeframe::Hourly, 0)]
+    #[case::hourly_after_cutoff(UsStockBarTimeframe::Hourly, 1)]
+    #[tokio::test]
+    async fn skips_bar_requests_when_history_starts_at_or_after_the_cutoff(
+        #[case] timeframe: UsStockBarTimeframe,
+        #[case] newer_by_minutes: i64,
+        harness: Harness,
+    ) {
+        let instrument_id = "US:DEMO-AT-CUTOFF";
+        let now = date("2040-01-02T12:00:59.999999Z");
+        let cutoff = timeframe.history_end(now);
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![bar(
+                instrument_id,
+                timeframe.timeframe(),
+                cutoff + chrono::Duration::minutes(newer_by_minutes),
+            )])
+            .await;
+
+        match timeframe {
+            UsStockBarTimeframe::Daily => harness
+                .use_cases
+                .ingest_us_stock_daily_bars(&harness.source, now)
+                .await
+                .expect("daily bar ingestion succeeds"),
+            UsStockBarTimeframe::Minute => harness
+                .use_cases
+                .ingest_us_stock_minute_bars(&harness.source, now)
+                .await
+                .expect("minute bar ingestion succeeds"),
+            UsStockBarTimeframe::Hourly => harness
+                .use_cases
+                .ingest_us_stock_hourly_bars(&harness.source, now)
+                .await
+                .expect("hourly bar ingestion succeeds"),
+        };
+
+        assert_eq!(harness.source.calls.lock().await.clone(), Vec::new());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn skips_split_refetch_bar_requests_when_history_starts_after_the_cutoff(
+        harness: Harness,
+    ) {
+        let instrument_id = "US:DEMO-SPLIT-CUTOFF";
+        let now = date("2040-01-02T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![bar(
+                instrument_id,
+                Timeframe::Daily,
+                cutoff + chrono::Duration::minutes(1),
+            )])
+            .await;
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: cutoff.date_naive(),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+
+        harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("US stock split history ingestion succeeds");
+
+        assert_eq!(
+            (
+                harness.source.calls.lock().await.clone(),
+                harness.source.split_calls.lock().await.clone(),
+            ),
+            (
+                Vec::new(),
+                vec![UsStockSplitQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    from: date("1970-01-01T00:00:00Z").date_naive(),
+                    to: cutoff.date_naive(),
+                }],
+            ),
+        );
+    }
 
     struct TestClock {
         started_at: Instant,
@@ -1678,7 +1838,7 @@ mod tests {
 
         let failure = harness
             .use_cases
-            .ingest_us_stock_daily_bars(&harness.source, date("2040-01-02T12:00:00Z"))
+            .ingest_us_stock_daily_bars(&harness.source, date("2040-01-02T12:30:00Z"))
             .await
             .expect_err("source error is returned with failure stats");
         let (result, error) = failure.into_parts();
@@ -1794,7 +1954,7 @@ mod tests {
         let instrument_id = "US:DEMO-THROTTLE-DEADLINE";
         let first_timestamp = date("2040-01-02T11:58:00Z");
         let second_timestamp = date("2040-01-02T11:59:00Z");
-        let now = date("2040-01-02T12:00:00Z");
+        let now = date("2040-01-02T12:30:00Z");
         harness
             .repository
             .seed_us_stock_targets(vec![instrument_id.to_owned()])
@@ -1907,7 +2067,7 @@ mod tests {
         let instrument_id = "US:DEMO-THROTTLE-PROBE";
         let first_timestamp = date("2040-01-02T11:58:00Z");
         let second_timestamp = date("2040-01-02T11:59:00Z");
-        let now = date("2040-01-02T12:00:00Z");
+        let now = date("2040-01-02T12:30:00Z");
         let run_id = Uuid::new_v4();
         harness
             .repository
@@ -1989,7 +2149,7 @@ mod tests {
         let instrument_id = "US:DEMO-THROTTLE-CONTEXT";
         let first_timestamp = date("2040-01-02T11:58:00Z");
         let second_timestamp = date("2040-01-02T11:59:00Z");
-        let now = date("2040-01-02T12:00:00Z");
+        let now = date("2040-01-02T12:30:00Z");
         harness
             .repository
             .seed_us_stock_targets(vec![instrument_id.to_owned()])
@@ -2025,6 +2185,7 @@ mod tests {
     async fn records_a_source_deadline_and_still_compresses_minute_bars(mut harness: Harness) {
         let instrument_id = "US:DEMO-TIME";
         let now = date("2040-01-02T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         harness
             .repository
             .seed_us_stock_targets(vec![instrument_id.to_owned()])
@@ -2060,7 +2221,7 @@ mod tests {
                     instrument_ids: vec![instrument_id.to_owned()],
                     timeframe: Timeframe::Minute,
                     from: UsStockBarTimeframe::Minute.history_start(now),
-                    to: now,
+                    to: cutoff,
                     page_token: None,
                 }],
                 vec![now],
@@ -2185,9 +2346,10 @@ mod tests {
             ])
             .await;
         let now = Utc
-            .with_ymd_and_hms(2040, 1, 2, 12, 0, 0)
+            .with_ymd_and_hms(2040, 1, 2, 12, 30, 0)
             .single()
             .unwrap_or_default();
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         let daily_stats = harness
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
@@ -2234,47 +2396,47 @@ mod tests {
                     instrument_ids: vec!["US:QZ-7".to_owned()],
                     timeframe: Timeframe::Daily,
                     from: date("2040-01-01T00:00:00Z"),
-                    to: now,
+                    to: cutoff,
                     page_token: None,
                 },
                 UsStockBarQuery {
                     instrument_ids: vec!["US:QZ7".to_owned()],
                     timeframe: Timeframe::Daily,
                     from: date("1970-01-01T00:00:00Z"),
-                    to: now,
+                    to: cutoff,
                     page_token: None,
                 },
                 UsStockBarQuery {
                     instrument_ids: vec!["US:QZ7".to_owned()],
                     timeframe: Timeframe::Daily,
                     from: date("1970-01-01T00:00:00Z"),
-                    to: now,
+                    to: cutoff,
                     page_token: Some("synthetic-page".to_owned()),
                 },
                 UsStockBarQuery {
                     instrument_ids: vec!["US:QZ-7".to_owned()],
                     timeframe: Timeframe::Minute,
                     from: date("2040-01-02T11:59:00Z"),
-                    to: now,
+                    to: cutoff,
                     page_token: None,
                 },
                 UsStockBarQuery {
                     instrument_ids: vec!["US:QZ7".to_owned()],
                     timeframe: Timeframe::Minute,
                     from: expected_minute_start,
-                    to: now,
+                    to: cutoff,
                     page_token: None,
                 },
             ],
             vec![
                 bar("US:QZ-7", Timeframe::Daily, date("2040-01-01T00:00:00Z")),
-                bar("US:QZ-7", Timeframe::Daily, now),
-                bar("US:QZ7", Timeframe::Daily, now),
+                bar("US:QZ-7", Timeframe::Daily, cutoff),
+                bar("US:QZ7", Timeframe::Daily, cutoff),
             ],
             vec![
                 bar("US:QZ-7", Timeframe::Minute, date("2040-01-02T11:59:00Z")),
-                bar("US:QZ-7", Timeframe::Minute, now),
-                bar("US:QZ7", Timeframe::Minute, now),
+                bar("US:QZ-7", Timeframe::Minute, cutoff),
+                bar("US:QZ7", Timeframe::Minute, cutoff),
             ],
         );
 
@@ -2300,6 +2462,7 @@ mod tests {
             .seed_us_stock_daily_targets(vec!["US:QZ-DAILY".to_owned()])
             .await;
         let now = date("2040-01-02T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
 
         let daily_stats = harness
             .use_cases
@@ -2337,14 +2500,14 @@ mod tests {
                         instrument_ids: vec!["US:QZ-DAILY".to_owned(), "US:QZ-MINUTE".to_owned(),],
                         timeframe: Timeframe::Daily,
                         from: date("1970-01-01T00:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec!["US:QZ-DAILY".to_owned(), "US:QZ-MINUTE".to_owned()],
                         timeframe: Timeframe::Minute,
                         from: date("2039-01-02T12:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
@@ -2448,7 +2611,8 @@ mod tests {
             .seed_us_stock_targets(vec![rejected_id.to_owned(), supported_id.to_owned()])
             .await;
         harness.source.rejected_instruments = vec![rejected_id.to_owned()];
-        let now = date("2040-01-02T12:00:00Z");
+        let now = date("2040-01-02T12:30:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
 
         let stats = harness
             .use_cases
@@ -2485,25 +2649,25 @@ mod tests {
                         instrument_ids: vec![rejected_id.to_owned(), supported_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: date("1970-01-01T00:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![rejected_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: date("1970-01-01T00:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![supported_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: date("1970-01-01T00:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                 ],
-                vec![bar(supported_id, Timeframe::Daily, now)],
+                vec![bar(supported_id, Timeframe::Daily, cutoff,)],
             ),
         );
     }
@@ -2536,6 +2700,7 @@ mod tests {
             .with_ymd_and_hms(2040, 1, 2, 12, 0, 0)
             .single()
             .unwrap_or_default();
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         harness
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
@@ -2553,28 +2718,28 @@ mod tests {
                 instrument_ids: instrument_ids[..100].to_vec(),
                 timeframe: Timeframe::Daily,
                 from: older_bar,
-                to: now,
+                to: cutoff,
                 page_token: None,
             },
             UsStockBarQuery {
                 instrument_ids: vec![instrument_ids[100].clone()],
                 timeframe: Timeframe::Daily,
                 from: recent_bar,
-                to: now,
+                to: cutoff,
                 page_token: None,
             },
             UsStockBarQuery {
                 instrument_ids: instrument_ids[..100].to_vec(),
                 timeframe: Timeframe::Minute,
                 from: older_bar,
-                to: now,
+                to: cutoff,
                 page_token: None,
             },
             UsStockBarQuery {
                 instrument_ids: vec![instrument_ids[100].clone()],
                 timeframe: Timeframe::Minute,
                 from: recent_bar,
-                to: now,
+                to: cutoff,
                 page_token: None,
             },
         ];
@@ -2591,7 +2756,8 @@ mod tests {
         let missing_id = "US:ZX-43";
         let existing_latest = date("2040-01-02T00:00:00Z");
         let missing_latest = date("2040-01-04T11:59:00Z");
-        let now = date("2040-01-04T12:00:00Z");
+        let now = date("2040-01-04T12:30:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         let history_start = us_stock_hourly_history_cutoff(now);
         harness
             .repository
@@ -2627,7 +2793,7 @@ mod tests {
                 instrument_ids: vec![existing_id.to_owned()],
                 timeframe: Timeframe::Minute,
                 from: existing_latest,
-                to: now,
+                to: cutoff,
                 page_count: 1,
                 first_page_token: None,
                 last_page_token: None,
@@ -2637,7 +2803,7 @@ mod tests {
                 instrument_ids: vec![missing_id.to_owned()],
                 timeframe: Timeframe::Minute,
                 from: history_start,
-                to: now,
+                to: cutoff,
                 page_count: MAX_REQUESTS_PER_RUN - 1,
                 first_page_token: None,
                 last_page_token: Some((MAX_REQUESTS_PER_RUN - 2).to_string()),
@@ -2647,7 +2813,7 @@ mod tests {
                 instrument_ids: vec![missing_id.to_owned(), existing_id.to_owned()],
                 timeframe: Timeframe::Minute,
                 from: missing_latest,
-                to: now,
+                to: cutoff,
                 page_count: 1,
                 first_page_token: None,
                 last_page_token: None,
@@ -2693,9 +2859,9 @@ mod tests {
                 expected_calls,
                 vec![
                     bar(existing_id, Timeframe::Minute, existing_latest),
-                    bar(existing_id, Timeframe::Minute, now),
+                    bar(existing_id, Timeframe::Minute, cutoff,),
                     bar(missing_id, Timeframe::Minute, missing_latest),
-                    bar(missing_id, Timeframe::Minute, now),
+                    bar(missing_id, Timeframe::Minute, cutoff,),
                 ],
             ),
         );
@@ -2710,7 +2876,8 @@ mod tests {
         let earliest_daily = date("2039-12-31T00:00:00Z");
         let ex_date = date("2040-01-01T00:00:00Z");
         let latest_daily = date("2040-01-02T00:00:00Z");
-        let now = date("2040-01-04T12:00:00Z");
+        let now = date("2040-01-04T12:30:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         let replacement_bar = priced_bar(instrument_id, Timeframe::Daily, earliest_daily, 100);
         harness
             .repository
@@ -2752,7 +2919,7 @@ mod tests {
                 instrument_ids: vec![instrument_id.to_owned()],
                 timeframe: Timeframe::Daily,
                 from: latest_daily,
-                to: now,
+                to: cutoff,
                 page_count: 1,
                 first_page_token: None,
                 last_page_token: None,
@@ -2762,7 +2929,7 @@ mod tests {
                 instrument_ids: vec![instrument_id.to_owned()],
                 timeframe: Timeframe::Daily,
                 from: earliest_daily,
-                to: now,
+                to: cutoff,
                 page_count: MAX_REQUESTS_PER_RUN - 2,
                 first_page_token: None,
                 last_page_token: Some((MAX_REQUESTS_PER_RUN - 3).to_string()),
@@ -2801,7 +2968,7 @@ mod tests {
                     priced_bar(instrument_id, Timeframe::Daily, earliest_daily, 200),
                     priced_bar(instrument_id, Timeframe::Daily, ex_date, 200),
                     priced_bar(instrument_id, Timeframe::Daily, latest_daily, 200),
-                    bar(instrument_id, Timeframe::Daily, now),
+                    bar(instrument_id, Timeframe::Daily, cutoff,),
                 ],
                 vec![],
             ),
@@ -2815,6 +2982,7 @@ mod tests {
         let supported_id = "US:QZ-SUPPORTED";
         let ex_date = date("2040-01-01T00:00:00Z");
         let now = date("2040-01-03T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         harness
             .repository
             .seed_us_stock_daily_targets(vec![rejected_id.to_owned(), supported_id.to_owned()])
@@ -2872,21 +3040,21 @@ mod tests {
                         instrument_ids: vec![supported_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: ex_date,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![rejected_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: date("1970-01-01T00:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![supported_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: ex_date,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                 ],
@@ -2909,8 +3077,8 @@ mod tests {
                 ],
                 vec![
                     priced_bar(supported_id, Timeframe::Daily, ex_date, 200),
-                    bar(supported_id, Timeframe::Daily, now),
-                    bar(rejected_id, Timeframe::Daily, now),
+                    bar(supported_id, Timeframe::Daily, cutoff,),
+                    bar(rejected_id, Timeframe::Daily, cutoff,),
                 ],
             ),
         );
@@ -2926,6 +3094,7 @@ mod tests {
         let earliest_minute = date("2039-12-31T14:30:00Z");
         let latest_minute = date("2040-01-02T20:59:00Z");
         let now = date("2040-01-03T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         harness
             .repository
             .seed_us_stock_targets(vec![instrument_id.to_owned()])
@@ -2990,21 +3159,21 @@ mod tests {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: latest_daily,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: earliest_daily,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Minute,
                         from: earliest_minute,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                 ],
@@ -3035,6 +3204,7 @@ mod tests {
         let earliest_hourly = date("2039-12-31T23:00:00Z");
         let latest_hourly = date("2040-01-02T15:00:00Z");
         let now = date("2041-03-02T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         let hourly_end = date("2040-03-02T12:00:00Z");
         let old_progress = date("2040-02-01T00:00:00Z");
         harness
@@ -3160,7 +3330,7 @@ mod tests {
                 UsStockBarsIngestStats {
                     symbols_attempted: 1,
                     requests_attempted: 4,
-                    daily_bars_upserted: 2,
+                    daily_bars_upserted: 1,
                     ..UsStockBarsIngestStats::default()
                 },
                 Some(old_progress),
@@ -3172,7 +3342,7 @@ mod tests {
                 UsStockBarsIngestStats {
                     symbols_attempted: 1,
                     requests_attempted: 4,
-                    daily_bars_upserted: 4,
+                    daily_bars_upserted: 3,
                     hourly_bars_upserted: 2,
                     ..UsStockBarsIngestStats::default()
                 },
@@ -3180,15 +3350,15 @@ mod tests {
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
-                        from: now,
-                        to: now,
+                        from: latest_daily,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: earliest_daily,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
@@ -3202,7 +3372,6 @@ mod tests {
                 vec![
                     adjusted_ex_date,
                     bar(instrument_id, Timeframe::Daily, latest_daily),
-                    bar(instrument_id, Timeframe::Daily, now),
                 ],
                 vec![
                     priced_bar(instrument_id, Timeframe::Hourly, earliest_hourly, 100),
@@ -3222,6 +3391,7 @@ mod tests {
         let earliest_hourly = date("2039-12-31T23:00:00Z");
         let latest_hourly = date("2040-01-02T15:00:00Z");
         let now = date("2041-03-02T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         let hourly_end = date("2040-03-02T12:00:00Z");
         harness
             .repository
@@ -3298,14 +3468,14 @@ mod tests {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: latest_daily,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: earliest_daily,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
@@ -3345,6 +3515,7 @@ mod tests {
         let latest_daily = date("2040-01-01T00:00:00Z");
         let latest_minute = date("2040-01-01T14:30:00Z");
         let now = date("2040-01-03T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         let saved_bars = vec![
             bar(instrument_id, Timeframe::Daily, latest_daily),
             bar(instrument_id, Timeframe::Minute, latest_minute),
@@ -3392,7 +3563,7 @@ mod tests {
                     instrument_ids: vec![instrument_id.to_owned()],
                     timeframe: Timeframe::Daily,
                     from: latest_daily,
-                    to: now,
+                    to: cutoff,
                     page_token: None,
                 },],
                 vec![UsStockSplitQuery {
@@ -3415,6 +3586,7 @@ mod tests {
         let earliest_minute = date("2040-01-01T14:30:00Z");
         let latest_minute = date("2040-01-03T20:59:00Z");
         let now = date("2040-01-04T12:00:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
         harness
             .repository
             .seed_us_stock_targets(vec![instrument_id.to_owned()])
@@ -3474,21 +3646,21 @@ mod tests {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: latest_daily,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
                         from: earliest_daily,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Minute,
                         from: earliest_minute,
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                 ],
@@ -3513,8 +3685,10 @@ mod tests {
     #[tokio::test]
     async fn incremental_ingestion_preserves_applied_split_factor(harness: Harness) {
         let instrument_id = "US:QZ-7";
-        let now = date("2040-01-03T12:00:00Z");
-        let mut split_bar = bar(instrument_id, Timeframe::Daily, now);
+        let split_bar_timestamp = date("2040-01-03T12:00:00Z");
+        let now = date("2040-01-03T12:30:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
+        let mut split_bar = bar(instrument_id, Timeframe::Daily, split_bar_timestamp);
         split_bar.adjustment_factor = Decimal::new(5, 1);
         harness
             .repository
@@ -3543,8 +3717,8 @@ mod tests {
             (
                 UsStockBarsIngestStats {
                     symbols_attempted: 1,
-                    requests_attempted: 2,
-                    daily_bars_upserted: 1,
+                    requests_attempted: 3,
+                    daily_bars_upserted: 2,
                     minute_bars_upserted: 0,
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
@@ -3553,19 +3727,32 @@ mod tests {
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
-                vec![UsStockBarQuery {
-                    instrument_ids: vec![instrument_id.to_owned()],
-                    timeframe: Timeframe::Daily,
-                    from: now,
-                    to: now,
-                    page_token: None,
-                },],
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: split_bar_timestamp,
+                        to: cutoff,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: split_bar_timestamp,
+                        to: cutoff,
+                        page_token: None,
+                    },
+                ],
                 vec![UsStockSplitQuery {
                     instrument_ids: vec![instrument_id.to_owned()],
                     from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
                     to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
                 }],
-                vec![split_bar],
+                vec![split_bar, {
+                    let mut bar = bar(instrument_id, Timeframe::Daily, cutoff);
+                    bar.adjustment_factor = Decimal::new(5, 1);
+                    bar
+                },],
                 vec![],
             ),
         );
@@ -3584,6 +3771,7 @@ mod tests {
             .with_ymd_and_hms(2040, 1, 2, 12, 0, 0)
             .single()
             .unwrap_or_default();
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
 
         let result = harness
             .use_cases
@@ -3602,14 +3790,14 @@ mod tests {
                         instrument_ids: vec!["US:QZ7".to_owned()],
                         timeframe: Timeframe::Daily,
                         from: date("1970-01-01T00:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec!["US:QZ7".to_owned()],
                         timeframe: Timeframe::Daily,
                         from: date("1970-01-01T00:00:00Z"),
-                        to: now,
+                        to: cutoff,
                         page_token: Some("synthetic-page".to_owned()),
                     },
                 ],
