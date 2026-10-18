@@ -177,13 +177,11 @@ describe('MarkdownBodyRangeBlock', () => {
     expect(getGutterMarkerClasses()).toEqual([
       {
         label: '行 2 にコメント',
-        markerClassName:
-          'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary',
+        markerClassName: 'opacity-0',
       },
       {
         label: '行 1 から 2 にコメント',
-        markerClassName:
-          'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary',
+        markerClassName: 'opacity-0',
       },
     ])
   })

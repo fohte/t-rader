@@ -105,6 +105,7 @@ interface RangeBlockGutterButtonProps {
   onPointerDown: (range: SourceLineRange) => void
   onClick: (range: SourceLineRange, shiftKey: boolean) => void
   className: string
+  markerClassName?: string
   style?: CSSProperties
 }
 
@@ -114,6 +115,7 @@ function RangeBlockGutterButton({
   onPointerDown,
   onClick,
   className,
+  markerClassName = 'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary',
   style,
 }: RangeBlockGutterButtonProps) {
   const pointerTypeRef = useRef<string | null>(null)
@@ -123,6 +125,7 @@ function RangeBlockGutterButton({
       type="button"
       aria-label={`行 ${String(range.startLine)}${range.endLine > range.startLine ? ` から ${String(range.endLine)}` : ''} にコメント`}
       data-comment-text-ignore="true"
+      data-source-gutter-button="true"
       onPointerDown={(event) => {
         pointerTypeRef.current = event.pointerType
         if (event.pointerType === 'touch') return
@@ -151,7 +154,8 @@ function RangeBlockGutterButton({
       ) : (
         <span
           aria-hidden="true"
-          className="opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary"
+          data-source-gutter-marker="true"
+          className={markerClassName}
         >
           +
         </span>
@@ -345,6 +349,7 @@ export function MarkdownBodyRangeBlock({
       onPointerDown={context.onGutterPointerDown}
       onClick={context.onGutterClick}
       className={`absolute ${gutterButtonClassName}`}
+      markerClassName={sourceBlockTag === 'li' ? 'opacity-0' : undefined}
       style={gutterStyle}
     />
   )

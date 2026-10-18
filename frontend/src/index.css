@@ -117,3 +117,11 @@
     @apply font-sans;
   }
 }
+
+@layer utilities {
+  li[data-source-block='true']:hover:not(:has([data-source-block='true']:hover))
+    > button[data-source-gutter-button='true']
+    > span[data-source-gutter-marker='true'] {
+    @apply opacity-100 text-primary;
+  }
+}
