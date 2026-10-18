@@ -4,20 +4,12 @@
     "reason": "この移行テスト用テーブルは perf-db に存在しない"
   },
   {
-    "sql": "SELECT \"event\".\"event_id\", \"event\".\"event_type\", \"event\".\"payload\", \"event\".\"chain_depth\", \"event\".\"occurred_at\", \"event\".\"dispatched_at\" FROM \"event\" WHERE \"event\".\"dispatched_at\" IS NULL ORDER BY \"event\".\"occurred_at\" ASC, \"event\".\"event_id\" ASC LIMIT $1 FOR UPDATE SKIP LOCKED",
-    "reason": "FOR UPDATE による行ロックは READ ONLY transaction 内で実行できない"
-  },
-  {
     "sql": "SELECT \"id\", \"axis_id\", \"key\", \"name\", \"description\", \"sync_source_code\" FROM \"stock_group\"",
     "reason": "移行前の sync_source 列は perf-db に存在しない"
   },
   {
     "sql": "SELECT \"id\", \"key\", \"name\", \"description\", \"sync_source\" FROM \"group_axis\"",
     "reason": "移行前の sync_source 列は perf-db に存在しない"
-  },
-  {
-    "sql": "SELECT \"strategy_task\".\"task_id\", \"strategy_task\".\"strategy_id\", \"strategy_task\".\"a2a_task_id\", \"strategy_task\".\"source\", \"strategy_task\".\"prompt\", CAST(\"strategy_task\".\"phase\" AS \"text\"), \"strategy_task\".\"error_summary\", \"strategy_task\".\"created_at\", \"strategy_task\".\"updated_at\", \"strategy_task\".\"result_text\", \"strategy_task\".\"deadline_at\", \"strategy_task\".\"purpose\", \"strategy_task\".\"as_of\", \"strategy_task\".\"auto_resumed_at\", \"strategy_task\".\"context_kind\", \"strategy_task\".\"context_id\" FROM \"strategy_task\" WHERE \"strategy_task\".\"task_id\" = $1 AND \"strategy_task\".\"phase\" IN ($2::\"strategy_task_phase\", $3::\"strategy_task_phase\") AND \"strategy_task\".\"a2a_task_id\" = $4 LIMIT $5 FOR UPDATE",
-    "reason": "FOR UPDATE による行ロックは READ ONLY transaction 内で実行できない"
   },
   {
     "sql": "SELECT \"sync_source\" FROM \"group_axis\"",
@@ -33,7 +25,7 @@
   },
   {
     "sql": "SELECT compress_chunk(\n                    format('%I.%I', chunk_schema, chunk_name)::regclass,\n                    if_not_compressed => TRUE\n                )\n                FROM timescaledb_information.chunks\n                WHERE hypertable_schema = current_schema()\n                  AND hypertable_name = 'bars'\n                  AND range_end < $1\n                  AND is_compressed = FALSE",
-    "reason": "TimescaleDB のチャンク圧縮クエリは JSON log に実行時パラメータが記録されず再現できない"
+    "reason": "compress_chunk() はチャンクの圧縮状態を変更するため read-only replay で実行できない"
   },
   {
     "sql": "SELECT create_hypertable('bars', by_range('timestamp'))",

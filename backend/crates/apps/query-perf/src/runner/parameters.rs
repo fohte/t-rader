@@ -45,6 +45,7 @@ enum DateParameterKind {
     Date,
     Timestamp,
     Array,
+    Text,
 }
 
 fn date_parameter_kind(type_name: &str) -> Option<DateParameterKind> {
@@ -65,6 +66,7 @@ fn date_parameter_kind(type_name: &str) -> Option<DateParameterKind> {
         | "timestamp with time zone"
         | "pg_catalog.timestamp"
         | "pg_catalog.timestamptz" => DateParameterKind::Timestamp,
+        "text" | "pg_catalog.text" | "varchar" | "character varying" => DateParameterKind::Text,
         _ => return None,
     };
     Some(if is_array {
@@ -79,6 +81,7 @@ fn parameter_dates(value: &str, kind: DateParameterKind) -> Result<Vec<NaiveDate
         DateParameterKind::Date => Ok(vec![parse_date_prefix(value, true)?]),
         DateParameterKind::Timestamp => Ok(vec![parse_date_prefix(value, false)?]),
         DateParameterKind::Array => Ok(iso_dates(value)),
+        DateParameterKind::Text => Ok(parse_iso_date(value).into_iter().collect()),
     }
 }
 
@@ -132,7 +135,17 @@ fn shift_parameter_value(
         DateParameterKind::Date => shift_date_prefix(value, day_shift, true),
         DateParameterKind::Timestamp => shift_date_prefix(value, day_shift, false),
         DateParameterKind::Array => shift_date_array(value, day_shift),
+        DateParameterKind::Text if parse_iso_date(value).is_some() => {
+            shift_date_prefix(value, day_shift, true)
+        }
+        DateParameterKind::Text => Ok(value.to_string()),
     }
+}
+
+fn parse_iso_date(value: &str) -> Option<NaiveDate> {
+    (value.len() == 10)
+        .then(|| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+        .flatten()
 }
 
 fn shift_date_prefix(value: &str, day_shift: i64, date_only: bool) -> Result<String, String> {
@@ -271,7 +284,8 @@ mod tests {
     }
 
     #[test]
-    fn keeps_non_date_parameters_and_null_dates_unchanged() -> Result<(), std::io::Error> {
+    fn shifts_iso_date_text_and_keeps_other_text_and_null_dates_unchanged()
+    -> Result<(), std::io::Error> {
         let shifted = shift_parameters(
             &[
                 Some("2021-01-03".to_string()),
@@ -286,7 +300,7 @@ mod tests {
         assert_eq!(
             shifted,
             vec![
-                Some("2021-01-03".to_string()),
+                Some("2026-10-16".to_string()),
                 None,
                 Some("record-7".to_string()),
             ]
@@ -299,6 +313,10 @@ mod tests {
         assert_eq!(
             date_parameter_kind("timestamp with time zone[]")
                 .map(|kind| matches!(kind, DateParameterKind::Array)),
+            Some(true)
+        );
+        assert_eq!(
+            date_parameter_kind("text").map(|kind| matches!(kind, DateParameterKind::Text)),
             Some(true)
         );
     }

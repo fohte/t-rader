@@ -892,6 +892,7 @@ jobs:
           docker run \
             --detach \
             --name query-perf-db \
+            --restart=on-failure:5 \
             --memory=6g \
             --memory-swap=6g \
             --publish 127.0.0.1:5432:5432 \

@@ -2,18 +2,23 @@ mod execution;
 mod parameters;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     time::{Duration, Instant},
 };
 
 use chrono::NaiveDate;
-use sqlx::{Connection as _, PgConnection};
+use sqlx::{PgPool, Postgres, pool::PoolConnection, postgres::PgPoolOptions};
 
 use crate::log::{ExcludedStatement, Exclusion, ParsedLog};
 use execution::{
-    error_kind, execute_read_only, is_database_error, is_non_replayable_error, prepare_statement,
+    deallocate_statement, error_kind, execute_read_only, is_database_error,
+    is_non_replayable_error, prepare_statement, strip_for_update_clause,
 };
 use parameters::{build_execute_sql, format_parameters, shift_parameters};
+
+const CONNECTION_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+const RECONNECT_TIMEOUT: Duration = Duration::from_secs(120);
+const RECONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Debug)]
 pub struct PerfReport {
@@ -61,8 +66,12 @@ pub async fn replay(
     parsed_log: ParsedLog,
     exclusions: Vec<Exclusion>,
 ) -> Result<PerfReport, sqlx::Error> {
-    let mut connection = PgConnection::connect(database_url).await?;
-    let target_date = latest_bar_date(&mut connection).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(CONNECTION_ACQUIRE_TIMEOUT)
+        .connect(database_url)
+        .await?;
+    let target_date = latest_bar_date(&pool).await?;
     let mut report = PerfReport {
         target_date,
         statements: Vec::new(),
@@ -71,82 +80,151 @@ pub async fn replay(
     };
     let mut statement_states = BTreeMap::<String, StatementState>::new();
     let mut stopped_early = false;
+    let mut statement_iter = parsed_log.statements.into_iter().enumerate();
 
-    'statements: for (statement_index, (sql, parameter_sets)) in
-        parsed_log.statements.into_iter().enumerate()
-    {
+    'statements: while let Some((statement_index, (sql, parameter_sets))) = statement_iter.next() {
         let statement_name = format!("query_perf_{statement_index}");
-        let first_parameters = parameter_sets.first().cloned().unwrap_or_default();
-        let prepare_started = Instant::now();
-        let parameter_types = match prepare_statement(
-            &mut connection,
-            &statement_name,
-            &sql,
-            &first_parameters,
-        )
-        .await
-        {
-            Ok(types) => types,
-            Err(error) => {
-                if is_non_replayable_error(&error) && exclusion_for(&exclusions, &sql).is_some() {
-                    add_exclusion(&mut report.excluded, &exclusions, &sql);
-                    continue;
+        let replay_sql = match strip_for_update_clause(&sql) {
+            Ok(replay_sql) => replay_sql,
+            Err(message) => {
+                for parameters in parameter_sets {
+                    report.failures.push(Failure {
+                        sql: sql.clone(),
+                        parameters: format_parameters(&parameters),
+                        shifted_parameters: false,
+                        duration: Duration::ZERO,
+                        kind: "query transformation error".to_string(),
+                        message: message.clone(),
+                    });
                 }
-                let fatal = !is_database_error(&error);
-                report.failures.push(Failure {
-                    sql: sql.clone(),
-                    parameters: format_parameters(&first_parameters),
-                    shifted_parameters: false,
-                    duration: prepare_started.elapsed(),
-                    kind: error_kind(&error),
-                    message: error.to_string(),
-                });
-                statement_states.insert(sql, StatementState::failed(prepare_started.elapsed()));
-                if fatal {
-                    stopped_early = true;
-                    break 'statements;
-                }
+                statement_states.insert(sql, StatementState::failed(Duration::ZERO));
                 continue;
             }
         };
-
-        let mut shifted_parameter_sets = BTreeSet::new();
-        let mut unshiftable = false;
-        for parameters in parameter_sets {
-            match shift_parameters(&parameters, &parameter_types, target_date) {
-                Ok(shifted) => {
-                    shifted_parameter_sets.insert(shifted);
+        let mut excluded_as_non_replayable = false;
+        let mut parameter_iter = parameter_sets.into_iter();
+        while let Some(parameters) = parameter_iter.next() {
+            let acquire_started = Instant::now();
+            let mut connection = match acquire_connection(&pool).await {
+                Ok(connection) => connection,
+                Err(error) => {
+                    let duration = acquire_started.elapsed();
+                    report.failures.push(Failure {
+                        sql: sql.clone(),
+                        parameters: format_parameters(&parameters),
+                        shifted_parameters: false,
+                        duration,
+                        kind: "connection unavailable".to_string(),
+                        message: format!("could not reconnect to perf-db: {error}"),
+                    });
+                    statement_states
+                        .entry(sql.clone())
+                        .and_modify(|state| {
+                            state.max_duration = state.max_duration.max(duration);
+                            state.succeeded = false;
+                        })
+                        .or_insert(StatementState::failed(duration));
+                    for remaining_parameters in parameter_iter {
+                        record_unexecuted_statement(
+                            &mut report,
+                            &mut statement_states,
+                            &sql,
+                            &remaining_parameters,
+                        );
+                    }
+                    for (_, (remaining_sql, remaining_parameter_sets)) in statement_iter.by_ref() {
+                        for remaining_parameters in remaining_parameter_sets {
+                            record_unexecuted_statement(
+                                &mut report,
+                                &mut statement_states,
+                                &remaining_sql,
+                                &remaining_parameters,
+                            );
+                        }
+                    }
+                    stopped_early = true;
+                    break 'statements;
                 }
-                Err(reason) => {
-                    if exclusion_for(&exclusions, &sql).is_some() {
-                        add_exclusion(&mut report.excluded, &exclusions, &sql);
-                    } else {
-                        unshiftable = true;
+            };
+
+            let prepare_started = Instant::now();
+            let parameter_types =
+                match prepare_statement(&mut connection, &statement_name, &replay_sql, &parameters)
+                    .await
+                {
+                    Ok(types) => types,
+                    Err(error) => {
+                        if is_non_replayable_error(&error)
+                            && exclusion_for(&exclusions, &sql).is_some()
+                        {
+                            add_exclusion(&mut report.excluded, &exclusions, &sql);
+                            excluded_as_non_replayable = true;
+                            break;
+                        }
+                        let duration = prepare_started.elapsed();
                         report.failures.push(Failure {
                             sql: sql.clone(),
                             parameters: format_parameters(&parameters),
                             shifted_parameters: false,
-                            duration: Duration::ZERO,
-                            kind: "parameter replay error".to_string(),
-                            message: reason,
+                            duration,
+                            kind: error_kind(&error),
+                            message: error.to_string(),
                         });
+                        let state = statement_states
+                            .entry(sql.clone())
+                            .or_insert(StatementState::failed(Duration::ZERO));
+                        state.max_duration = state.max_duration.max(duration);
+                        state.succeeded = false;
+                        if !is_database_error(&error) {
+                            let _ = connection.close().await;
+                        }
+                        continue;
                     }
-                }
-            }
-        }
-        if unshiftable {
-            statement_states.insert(sql, StatementState::failed(Duration::ZERO));
-            continue;
-        }
+                };
 
-        let mut excluded_as_non_replayable = false;
-        for parameters in shifted_parameter_sets {
+            let parameters = match shift_parameters(&parameters, &parameter_types, target_date) {
+                Ok(parameters) => parameters,
+                Err(message) => {
+                    if deallocate_statement(&mut connection, &statement_name)
+                        .await
+                        .is_err()
+                    {
+                        let _ = connection.close().await;
+                    }
+                    if exclusion_for(&exclusions, &sql).is_some() {
+                        add_exclusion(&mut report.excluded, &exclusions, &sql);
+                        excluded_as_non_replayable = true;
+                        break;
+                    }
+                    report.failures.push(Failure {
+                        sql: sql.clone(),
+                        parameters: format_parameters(&parameters),
+                        shifted_parameters: false,
+                        duration: Duration::ZERO,
+                        kind: "parameter replay error".to_string(),
+                        message,
+                    });
+                    statement_states
+                        .entry(sql.clone())
+                        .and_modify(|state| state.succeeded = false)
+                        .or_insert(StatementState::failed(Duration::ZERO));
+                    continue;
+                }
+            };
+
             let execute_sql = match build_execute_sql(&statement_name, &parameters) {
                 Ok(execute_sql) => execute_sql,
                 Err(message) => {
+                    if deallocate_statement(&mut connection, &statement_name)
+                        .await
+                        .is_err()
+                    {
+                        let _ = connection.close().await;
+                    }
                     if exclusion_for(&exclusions, &sql).is_some() {
                         add_exclusion(&mut report.excluded, &exclusions, &sql);
-                        continue;
+                        excluded_as_non_replayable = true;
+                        break;
                     }
                     report.failures.push(Failure {
                         sql: sql.clone(),
@@ -164,7 +242,22 @@ pub async fn replay(
                 }
             };
 
-            match execute_read_only(&mut connection, &execute_sql).await {
+            let execution = execute_read_only(&mut connection, &execute_sql).await;
+            let execution_fatal = matches!(&execution, Err(error) if error.fatal);
+            let cleanup_error = if execution_fatal {
+                let _ = connection.close().await;
+                None
+            } else {
+                match deallocate_statement(&mut connection, &statement_name).await {
+                    Ok(()) => None,
+                    Err(error) => {
+                        let _ = connection.close().await;
+                        Some(error)
+                    }
+                }
+            };
+
+            match execution {
                 Ok(duration) => {
                     let state = statement_states
                         .entry(sql.clone())
@@ -182,7 +275,6 @@ pub async fn replay(
                         excluded_as_non_replayable = true;
                         break;
                     }
-                    let fatal = error.fatal;
                     let state = statement_states
                         .entry(sql.clone())
                         .or_insert(StatementState::failed(Duration::ZERO));
@@ -196,11 +288,21 @@ pub async fn replay(
                         kind: error.kind,
                         message: error.message,
                     });
-                    if fatal {
-                        stopped_early = true;
-                        break 'statements;
-                    }
                 }
+            }
+            if let Some(error) = cleanup_error {
+                statement_states
+                    .entry(sql.clone())
+                    .and_modify(|state| state.succeeded = false)
+                    .or_insert(StatementState::failed(Duration::ZERO));
+                report.failures.push(Failure {
+                    sql: sql.clone(),
+                    parameters: format_parameters(&parameters),
+                    shifted_parameters: true,
+                    duration: Duration::ZERO,
+                    kind: error_kind(&error),
+                    message: format!("failed to deallocate prepared statement: {error}"),
+                });
             }
         }
         if excluded_as_non_replayable {
@@ -239,15 +341,26 @@ pub async fn replay(
     Ok(report)
 }
 
-async fn latest_bar_date(connection: &mut PgConnection) -> Result<NaiveDate, sqlx::Error> {
+async fn latest_bar_date(pool: &PgPool) -> Result<NaiveDate, sqlx::Error> {
     let date = sqlx::query_scalar::<_, Option<String>>(
         "SELECT max(timestamp)::date::text FROM bars WHERE timeframe = '1d'",
     )
-    .fetch_one(connection)
+    .fetch_one(pool)
     .await?;
 
     date.and_then(|value| NaiveDate::parse_from_str(&value, "%Y-%m-%d").ok())
         .ok_or_else(|| sqlx::Error::Protocol("perf-db has no daily bar date".to_string()))
+}
+
+async fn acquire_connection(pool: &PgPool) -> Result<PoolConnection<Postgres>, sqlx::Error> {
+    let started = Instant::now();
+    loop {
+        match pool.acquire().await {
+            Ok(connection) => return Ok(connection),
+            Err(error) if started.elapsed() >= RECONNECT_TIMEOUT => return Err(error),
+            Err(_) => tokio::time::sleep(RECONNECT_RETRY_INTERVAL).await,
+        }
+    }
 }
 
 fn exclusion_for<'a>(exclusions: &'a [Exclusion], sql: &str) -> Option<&'a Exclusion> {
@@ -274,6 +387,26 @@ fn unused_exclusions<'a>(
         .iter()
         .filter(|exclusion| !used.iter().any(|entry| entry.sql == exclusion.sql))
         .collect()
+}
+
+fn record_unexecuted_statement(
+    report: &mut PerfReport,
+    statement_states: &mut BTreeMap<String, StatementState>,
+    sql: &str,
+    parameters: &[Option<String>],
+) {
+    report.failures.push(Failure {
+        sql: sql.to_string(),
+        parameters: format_parameters(parameters),
+        shifted_parameters: false,
+        duration: Duration::ZERO,
+        kind: "connection unavailable".to_string(),
+        message: "not executed because perf-db could not be reconnected".to_string(),
+    });
+    statement_states
+        .entry(sql.to_string())
+        .and_modify(|state| state.succeeded = false)
+        .or_insert(StatementState::failed(Duration::ZERO));
 }
 
 #[cfg(test)]
