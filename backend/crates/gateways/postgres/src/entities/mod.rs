@@ -6,6 +6,7 @@ pub mod account_risk_policy;
 pub mod agent_config;
 pub mod annotation;
 pub mod bars;
+pub mod bars_timestamp_coverage;
 pub mod calendar_event;
 pub mod change_history;
 pub mod checkpoint;

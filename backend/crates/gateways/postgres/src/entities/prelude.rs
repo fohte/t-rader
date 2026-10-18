@@ -4,6 +4,7 @@ pub use super::account_risk_policy::Entity as AccountRiskPolicy;
 pub use super::agent_config::Entity as AgentConfig;
 pub use super::annotation::Entity as Annotation;
 pub use super::bars::Entity as Bars;
+pub use super::bars_timestamp_coverage::Entity as BarsTimestampCoverage;
 pub use super::calendar_event::Entity as CalendarEvent;
 pub use super::change_history::Entity as ChangeHistory;
 pub use super::checkpoint::Entity as Checkpoint;

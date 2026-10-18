@@ -79,46 +79,25 @@ impl PostgresBarsRepository {
 
         let query = r#"SELECT
                 instruments.id AS instrument_id,
-                daily_bar.timestamp AS latest_daily_bar,
-                minute_bar.timestamp AS latest_minute_bar,
-                hourly_bar.timestamp AS latest_hourly_bar,
+                daily_coverage.latest_timestamp AS latest_daily_bar,
+                minute_coverage.latest_timestamp AS latest_minute_bar,
+                hourly_coverage.latest_timestamp AS latest_hourly_bar,
                 hourly_progress.completed_through AS hourly_history_completed_through,
-                earliest_daily_bar.timestamp AS earliest_daily_bar,
-                earliest_minute_bar.timestamp AS earliest_minute_bar,
-                earliest_hourly_bar.timestamp AS earliest_hourly_bar
+                daily_coverage.earliest_timestamp AS earliest_daily_bar,
+                minute_coverage.earliest_timestamp AS earliest_minute_bar,
+                hourly_coverage.earliest_timestamp AS earliest_hourly_bar
             FROM instruments
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1d'
-                ORDER BY timestamp DESC LIMIT 1
-            ) AS daily_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1d'
-                ORDER BY timestamp ASC LIMIT 1
-            ) AS earliest_daily_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1m'
-                ORDER BY timestamp DESC LIMIT 1
-            ) AS minute_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1h'
-                ORDER BY timestamp DESC LIMIT 1
-            ) AS hourly_bar ON TRUE
+            LEFT JOIN bars_timestamp_coverage AS daily_coverage
+                ON daily_coverage.instrument_id = instruments.id
+               AND daily_coverage.timeframe = '1d'
+            LEFT JOIN bars_timestamp_coverage AS minute_coverage
+                ON minute_coverage.instrument_id = instruments.id
+               AND minute_coverage.timeframe = '1m'
+            LEFT JOIN bars_timestamp_coverage AS hourly_coverage
+                ON hourly_coverage.instrument_id = instruments.id
+               AND hourly_coverage.timeframe = '1h'
             LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
                 ON hourly_progress.instrument_id = instruments.id
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1m'
-                ORDER BY timestamp ASC LIMIT 1
-            ) AS earliest_minute_bar ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT timestamp FROM bars
-                WHERE instrument_id = instruments.id AND timeframe = '1h'
-                ORDER BY timestamp ASC LIMIT 1
-            ) AS earliest_hourly_bar ON TRUE
             WHERE instruments.market = 'US'
               AND (
                   EXISTS (
@@ -502,18 +481,24 @@ fn repository_error(error: sea_orm::DbErr) -> BarsRepositoryError {
 #[cfg(test)]
 mod tests {
     use chrono::{
-        DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc,
+        DateTime, Duration as ChronoDuration, FixedOffset, NaiveDate, NaiveTime, TimeZone,
+        Timelike, Utc,
     };
     use core_application::bars::{
-        BarsQuery, BarsRepository, BarsUseCases, DailyBarAdjustmentFactor, UsStockBarTarget,
-        UsStockMinuteBarsDownsampleStats, us_stock_hourly_history_cutoff,
+        BarsQuery, BarsRepository, BarsUseCases, DailyBarAdjustmentFactor,
+        SharedUsStockBarsWriteLock, UsStockBarTarget, UsStockBarsIngestUseCases,
+        UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockMinuteBarsDownsampleStats,
+        us_stock_hourly_history_cutoff,
     };
+    use core_application::persistence::PersistenceError;
     use core_application::unit_of_work::{SharedUnitOfWork, UnitOfWork};
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, Statement};
     use std::collections::HashSet;
+    use std::sync::Arc;
+    use std::time::Duration;
 
     use crate::entities::{
         bars, group_axis, instruments, note, note_ref, stock, stock_group, stock_group_member,
@@ -524,6 +509,22 @@ mod tests {
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
+    }
+
+    struct TestWriteLock;
+
+    struct TestWriteLockGuard;
+
+    impl UsStockBarsWriteLockGuard for TestWriteLockGuard {}
+
+    #[async_trait::async_trait]
+    impl UsStockBarsWriteLock for TestWriteLock {
+        async fn acquire(
+            &self,
+            _wait_timeout: Duration,
+        ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
+            Ok(Some(Box::new(TestWriteLockGuard)))
+        }
     }
 
     #[derive(Debug, FromQueryResult, PartialEq, Eq)]
@@ -588,6 +589,81 @@ mod tests {
             .expect("find ingested dates");
 
         assert_eq!((bars, ingested_dates), (vec![bar], HashSet::from([date])),);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn upsert_bars_merges_coverage_across_transactions(db: DatabaseHandle) {
+        let instrument_id = format!("US:DEMO-COVERAGE-{}", uuid::Uuid::new_v4().simple());
+        let timestamp = |day| {
+            Utc.with_ymd_and_hms(2099, 7, day, 0, 0, 0)
+                .single()
+                .expect("fixture timestamp")
+        };
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+
+        let first_transaction = unit_of_work.begin().await.expect("begin first transaction");
+        repository
+            .ensure_instruments_exist(&first_transaction, &HashSet::from([instrument_id.clone()]))
+            .await
+            .expect("ensure instrument");
+        repository
+            .upsert_bars(
+                &first_transaction,
+                vec![
+                    test_bar(&instrument_id, Timeframe::Minute, timestamp(2)),
+                    test_bar(&instrument_id, Timeframe::Minute, timestamp(3)),
+                ],
+            )
+            .await
+            .expect("upsert first bars");
+        unit_of_work
+            .commit(first_transaction)
+            .await
+            .expect("commit first transaction");
+
+        let second_transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin second transaction");
+        repository
+            .upsert_bars(
+                &second_transaction,
+                vec![
+                    test_bar(&instrument_id, Timeframe::Minute, timestamp(1)),
+                    test_bar(&instrument_id, Timeframe::Minute, timestamp(4)),
+                ],
+            )
+            .await
+            .expect("upsert later bars");
+        unit_of_work
+            .commit(second_transaction)
+            .await
+            .expect("commit second transaction");
+
+        let coverage_row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT earliest_timestamp, latest_timestamp FROM bars_timestamp_coverage \
+                 WHERE instrument_id = $1 AND timeframe = '1m'",
+                [instrument_id.into()],
+            ))
+            .await
+            .expect("find minute coverage")
+            .expect("minute coverage row");
+        let actual = (
+            coverage_row
+                .try_get::<DateTime<FixedOffset>>("", "earliest_timestamp")
+                .expect("decode earliest minute"),
+            coverage_row
+                .try_get::<DateTime<FixedOffset>>("", "latest_timestamp")
+                .expect("decode latest minute"),
+        );
+
+        assert_eq!(
+            actual,
+            (timestamp(1).fixed_offset(), timestamp(4).fixed_offset())
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -1001,10 +1077,14 @@ mod tests {
         let suffix = uuid::Uuid::new_v4().simple().to_string();
         let us_instrument_id = format!("US:DEMO-DOWNSAMPLE-{suffix}");
         let empty_us_instrument_id = format!("US:DEMO-EMPTY-{suffix}");
+        let partial_bucket_instrument_id = format!("US:DEMO-PARTIAL-BUCKET-{suffix}");
+        let fully_deleted_instrument_id = format!("US:DEMO-FULLY-DELETED-{suffix}");
         let foreign_instrument_id = format!("JP-DEMO-DOWNSAMPLE-{suffix}");
         for (id, market) in [
             (&us_instrument_id, "US"),
             (&empty_us_instrument_id, "US"),
+            (&partial_bucket_instrument_id, "US"),
+            (&fully_deleted_instrument_id, "US"),
             (&foreign_instrument_id, "OTHER"),
         ] {
             instruments::Entity::insert(instruments::ActiveModel {
@@ -1094,6 +1174,36 @@ mod tests {
             305,
             13,
         );
+        let partial_bucket_minute_to_delete = bar(
+            &partial_bucket_instrument_id,
+            Timeframe::Minute,
+            timestamp(6, 15),
+            50,
+            60,
+            45,
+            55,
+            20,
+        );
+        let partial_bucket_minute = bar(
+            &partial_bucket_instrument_id,
+            Timeframe::Minute,
+            timestamp(8, 15),
+            60,
+            70,
+            55,
+            65,
+            25,
+        );
+        let fully_deleted_minute = bar(
+            &fully_deleted_instrument_id,
+            Timeframe::Minute,
+            timestamp(6, 15),
+            70,
+            80,
+            65,
+            75,
+            30,
+        );
         let cutoff = timestamp(9, 0);
         let repository = PostgresBarsRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
@@ -1164,6 +1274,9 @@ mod tests {
                 api_hourly_bar.clone(),
                 expected_latest_minute.clone(),
                 foreign_minute.clone(),
+                partial_bucket_minute_to_delete,
+                partial_bucket_minute.clone(),
+                fully_deleted_minute,
             ],
         )
         .await
@@ -1191,6 +1304,44 @@ mod tests {
             .commit(transaction)
             .await
             .expect("commit downsample transaction");
+
+        let partial_bucket_transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin partial bucket downsample");
+        let partial_bucket_stats = repository
+            .downsample_us_stock_minute_bar_range(
+                &partial_bucket_transaction,
+                &partial_bucket_instrument_id,
+                timestamp(6, 0),
+                timestamp(9, 0),
+                timestamp(8, 30),
+            )
+            .await
+            .expect("downsample before partial cutoff hour");
+        unit_of_work
+            .commit(partial_bucket_transaction)
+            .await
+            .expect("commit partial bucket downsample");
+
+        let fully_deleted_transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin fully deleted downsample");
+        let fully_deleted_stats = repository
+            .downsample_us_stock_minute_bar_range(
+                &fully_deleted_transaction,
+                &fully_deleted_instrument_id,
+                timestamp(6, 0),
+                timestamp(9, 0),
+                timestamp(8, 30),
+            )
+            .await
+            .expect("downsample all complete minute buckets");
+        unit_of_work
+            .commit(fully_deleted_transaction)
+            .await
+            .expect("commit fully deleted downsample");
 
         let hourly_bars = crate::repositories::bars::find_intraday_bars_by_instruments(
             &db,
@@ -1225,31 +1376,118 @@ mod tests {
         .into_iter()
         .map(Into::into)
         .collect::<Vec<Bar>>();
+        let coverage_row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT earliest_timestamp FROM bars_timestamp_coverage \
+                 WHERE instrument_id = $1 AND timeframe = '1m'",
+                [us_instrument_id.clone().into()],
+            ))
+            .await
+            .expect("find remaining minute coverage")
+            .expect("minute coverage row");
+        let earliest_minute_after: DateTime<FixedOffset> = coverage_row
+            .try_get("", "earliest_timestamp")
+            .expect("decode earliest minute");
+        let partial_bucket_minutes = repository
+            .find_bars(BarsQuery {
+                instrument_id: partial_bucket_instrument_id.clone(),
+                timeframe: "1m".to_owned(),
+                from: None,
+                to: None,
+            })
+            .await
+            .expect("find partial bucket minute bars");
+        let partial_bucket_coverage = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT earliest_timestamp FROM bars_timestamp_coverage \
+                 WHERE instrument_id = $1 AND timeframe = '1m'",
+                [partial_bucket_instrument_id.clone().into()],
+            ))
+            .await
+            .expect("find partial bucket minute coverage")
+            .expect("partial bucket minute coverage row")
+            .try_get::<DateTime<FixedOffset>>("", "earliest_timestamp")
+            .expect("decode partial bucket earliest minute");
+        let fully_deleted_minutes = repository
+            .find_bars(BarsQuery {
+                instrument_id: fully_deleted_instrument_id.clone(),
+                timeframe: "1m".to_owned(),
+                from: None,
+                to: None,
+            })
+            .await
+            .expect("find fully deleted minute bars");
+        let fully_deleted_coverage_count = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT count(*)::bigint AS row_count FROM bars_timestamp_coverage \
+                 WHERE instrument_id = $1 AND timeframe = '1m'",
+                [fully_deleted_instrument_id.clone().into()],
+            ))
+            .await
+            .expect("count coverage rows after all minutes are deleted")
+            .expect("coverage count row")
+            .try_get::<i64>("", "row_count")
+            .expect("decode coverage count");
 
         assert_eq!(
             (
-                earliest,
-                instrument_ids,
-                stats,
-                hourly_bars,
-                us_minutes,
-                foreign_minutes,
+                (earliest, earliest_minute_after, instrument_ids),
+                (stats, hourly_bars, us_minutes, foreign_minutes),
+                (
+                    partial_bucket_stats,
+                    partial_bucket_minutes,
+                    partial_bucket_coverage,
+                ),
+                (
+                    fully_deleted_stats,
+                    fully_deleted_minutes,
+                    fully_deleted_coverage_count,
+                ),
             ),
             (
-                Some(timestamp(6, 30)),
-                vec![us_instrument_id.clone(), empty_us_instrument_id],
-                UsStockMinuteBarsDownsampleStats {
-                    hourly_bars_inserted: 1,
-                    minute_bars_deleted: 6,
-                },
-                vec![
-                    existing_hourly_bar,
-                    inserted_hourly_bar,
-                    api_hourly_bar,
-                    expected_latest_hourly,
-                ],
-                vec![expected_latest_minute],
-                vec![foreign_minute],
+                (
+                    Some(timestamp(6, 15)),
+                    timestamp(9, 0).fixed_offset(),
+                    vec![
+                        us_instrument_id.clone(),
+                        empty_us_instrument_id,
+                        fully_deleted_instrument_id.clone(),
+                        partial_bucket_instrument_id.clone(),
+                    ],
+                ),
+                (
+                    UsStockMinuteBarsDownsampleStats {
+                        hourly_bars_inserted: 1,
+                        minute_bars_deleted: 6,
+                    },
+                    vec![
+                        existing_hourly_bar,
+                        inserted_hourly_bar,
+                        api_hourly_bar,
+                        expected_latest_hourly,
+                    ],
+                    vec![expected_latest_minute],
+                    vec![foreign_minute],
+                ),
+                (
+                    UsStockMinuteBarsDownsampleStats {
+                        hourly_bars_inserted: 1,
+                        minute_bars_deleted: 1,
+                    },
+                    vec![partial_bucket_minute.clone()],
+                    timestamp(8, 15).fixed_offset(),
+                ),
+                (
+                    UsStockMinuteBarsDownsampleStats {
+                        hourly_bars_inserted: 1,
+                        minute_bars_deleted: 1,
+                    },
+                    Vec::new(),
+                    0,
+                ),
             ),
         );
     }
@@ -1321,10 +1559,14 @@ mod tests {
             std::sync::Arc::new(PostgresUnitOfWork::new(db.clone()));
         let repository: core_application::bars::SharedBarsRepository =
             std::sync::Arc::new(repository);
-        let result = BarsUseCases::new(unit_of_work, repository.clone())
-            .downsample_old_us_stock_minute_bars(now)
-            .await
-            .map_err(|_| ());
+        let write_lock: SharedUsStockBarsWriteLock = Arc::new(TestWriteLock);
+        let result = UsStockBarsIngestUseCases::new(
+            BarsUseCases::new(unit_of_work, repository.clone()),
+            write_lock,
+        )
+        .downsample_old_us_stock_minute_bars(now)
+        .await
+        .map_err(|_| ());
         let mut remaining_minutes = Vec::new();
         for instrument_id in &instrument_ids {
             remaining_minutes.push(

@@ -335,11 +335,12 @@ async fn main() -> Result<(), StartupError> {
     let valuation_source: Option<SharedValuationSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedValuationSource);
+    let us_stock_bars_write_lock: core_application::bars::SharedUsStockBarsWriteLock = Arc::new(
+        PostgresUsStockBarsWriteLock::new(db.get_postgres_connection_pool().clone()),
+    );
     let dependencies = SchedulerDependencies {
         bars: use_cases.bars(),
-        us_stock_bars_ingest: use_cases.us_stock_bars_ingest(Arc::new(
-            PostgresUsStockBarsWriteLock::new(db.get_postgres_connection_pool().clone()),
-        )),
+        us_stock_bars_ingest: use_cases.us_stock_bars_ingest(us_stock_bars_write_lock),
         calendar_events: use_cases.calendar_events(),
         boj_calendar_source,
         ecb_calendar_source,

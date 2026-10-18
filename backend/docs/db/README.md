@@ -65,6 +65,7 @@
 | [public.us_stock_hourly_bar_ingest_progress](public.us_stock_hourly_bar_ingest_progress.md) | 2       | 米国株の 1 時間足を取得済みの終端時刻を保持する。                                                                                                  | BASE TABLE        |
 | [public.dashboard](public.dashboard.md)                                                     | 4       | ユーザーが作成したダッシュボードの YAML 設定を保持する。                                                                                           | BASE TABLE        |
 | [public.screener_stock_snapshot](public.screener_stock_snapshot.md)                         | 12      | スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。データと銘柄マスタの取り込み成功後に再生成し、個別登録銘柄は次回の再生成後に反映する。 | MATERIALIZED VIEW |
+| [public.bars_timestamp_coverage](public.bars_timestamp_coverage.md)                         | 4       | 銘柄と時間足ごとの最古・最新のバー時刻を保持する。                                                                                                 | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -229,6 +230,7 @@ erDiagram
 "public.event_firing" }o--|| "public.trigger" : "FOREIGN KEY (trigger_id) REFERENCES trigger(trigger_id) ON DELETE CASCADE"
 "public.event_firing" }o--|| "public.event" : "FOREIGN KEY (event_id) REFERENCES event(event_id) ON DELETE CASCADE"
 "public.us_stock_hourly_bar_ingest_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
+"public.bars_timestamp_coverage" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -840,6 +842,12 @@ erDiagram
   numeric dividend_yield
   numeric market_cap
   date as_of
+}
+"public.bars_timestamp_coverage" {
+  text instrument_id FK
+  text timeframe
+  timestamp_with_time_zone earliest_timestamp
+  timestamp_with_time_zone latest_timestamp
 }
 ```
 

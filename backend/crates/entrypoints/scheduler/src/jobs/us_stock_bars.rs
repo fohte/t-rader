@@ -128,7 +128,7 @@ impl super::SchedulerJob for UsStockMinuteBarsDownsample {
                 |state| async move {
                     let stats = state
                         .dependencies
-                        .bars
+                        .us_stock_bars_ingest
                         .downsample_old_us_stock_minute_bars(Utc::now())
                         .await
                         .map_err(|error| error.to_string())?;

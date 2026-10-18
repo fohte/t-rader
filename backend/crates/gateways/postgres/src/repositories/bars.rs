@@ -1,7 +1,9 @@
 mod daily_adjustment_factors;
+mod timestamp_coverage;
 mod us_stock_intraday;
 
 pub use daily_adjustment_factors::find_daily_adjustment_factors_from;
+pub(crate) use timestamp_coverage::{BarTimestampCoverage, upsert_bar_timestamp_coverage};
 
 pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(high) AS high, MIN(low) AS low, last(close, timestamp) AS close, SUM(volume)::bigint AS volume";
 
@@ -125,6 +127,35 @@ pub async fn upsert_bars(
         return Ok(());
     }
 
+    let mut coverage_by_series = std::collections::BTreeMap::<
+        (String, String),
+        (DateTime<FixedOffset>, DateTime<FixedOffset>),
+    >::new();
+    for bar in &bars_data {
+        let key = (bar.instrument_id.clone(), bar.timeframe.to_string());
+        let timestamp = bar.timestamp.fixed_offset();
+        coverage_by_series
+            .entry(key)
+            .and_modify(|(earliest, latest)| {
+                *earliest = (*earliest).min(timestamp);
+                *latest = (*latest).max(timestamp);
+            })
+            .or_insert((timestamp, timestamp));
+    }
+    let coverage = coverage_by_series
+        .into_iter()
+        .map(
+            |((instrument_id, timeframe), (earliest_timestamp, latest_timestamp))| {
+                BarTimestampCoverage {
+                    instrument_id,
+                    timeframe,
+                    earliest_timestamp,
+                    latest_timestamp,
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+
     // PostgreSQL の bind パラメータ数には u16::MAX の上限がある。
     let chunk_size = crate::repositories::max_rows_per_statement(bars::Column::iter().count());
     let active_models: Vec<bars::ActiveModel> = bars_data.into_iter().map(Into::into).collect();
@@ -150,6 +181,8 @@ pub async fn upsert_bars(
             .exec_without_returning(db)
             .await?;
     }
+
+    upsert_bar_timestamp_coverage(db, coverage).await?;
 
     Ok(())
 }
