@@ -1,0 +1,322 @@
+use chrono::{Duration as ChronoDuration, NaiveDate};
+
+pub(super) fn shift_parameters(
+    parameters: &[Option<String>],
+    parameter_types: &[String],
+    target_date: NaiveDate,
+) -> Result<Vec<Option<String>>, String> {
+    if parameters.len() != parameter_types.len() {
+        return Err(format!(
+            "log contains {} parameter(s), while PostgreSQL inferred {} parameter type(s)",
+            parameters.len(),
+            parameter_types.len()
+        ));
+    }
+
+    let kinds: Vec<_> = parameter_types
+        .iter()
+        .map(|type_name| date_parameter_kind(type_name))
+        .collect();
+    let mut latest_date = None;
+    for (parameter, kind) in parameters.iter().zip(&kinds) {
+        let (Some(value), Some(kind)) = (parameter, kind) else {
+            continue;
+        };
+        for date in parameter_dates(value, *kind)? {
+            latest_date = Some(latest_date.map_or(date, |current: NaiveDate| current.max(date)));
+        }
+    }
+    let day_shift = latest_date
+        .map(|date| target_date.signed_duration_since(date).num_days())
+        .unwrap_or(0);
+
+    parameters
+        .iter()
+        .zip(kinds)
+        .map(|(parameter, kind)| match (parameter, kind) {
+            (Some(value), Some(kind)) => shift_parameter_value(value, kind, day_shift).map(Some),
+            (value, _) => Ok(value.clone()),
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy)]
+enum DateParameterKind {
+    Date,
+    Timestamp,
+    Array,
+}
+
+fn date_parameter_kind(type_name: &str) -> Option<DateParameterKind> {
+    let normalized = type_name.trim().to_ascii_lowercase();
+    let is_array = normalized.ends_with("[]") || normalized.starts_with('_');
+    let base = if let Some(base) = normalized.strip_suffix("[]") {
+        base
+    } else if is_array {
+        normalized.strip_prefix('_').unwrap_or(&normalized)
+    } else {
+        &normalized
+    };
+    let kind = match base {
+        "date" | "pg_catalog.date" => DateParameterKind::Date,
+        "timestamp"
+        | "timestamp without time zone"
+        | "timestamptz"
+        | "timestamp with time zone"
+        | "pg_catalog.timestamp"
+        | "pg_catalog.timestamptz" => DateParameterKind::Timestamp,
+        _ => return None,
+    };
+    Some(if is_array {
+        DateParameterKind::Array
+    } else {
+        kind
+    })
+}
+
+fn parameter_dates(value: &str, kind: DateParameterKind) -> Result<Vec<NaiveDate>, String> {
+    match kind {
+        DateParameterKind::Date => Ok(vec![parse_date_prefix(value, true)?]),
+        DateParameterKind::Timestamp => Ok(vec![parse_date_prefix(value, false)?]),
+        DateParameterKind::Array => Ok(iso_dates(value)),
+    }
+}
+
+fn parse_date_prefix(value: &str, date_only: bool) -> Result<NaiveDate, String> {
+    let date_text = value
+        .get(..10)
+        .ok_or_else(|| format!("date parameter is shorter than 10 characters: {value:?}"))?;
+    let date = NaiveDate::parse_from_str(date_text, "%Y-%m-%d")
+        .map_err(|error| format!("cannot parse date parameter {value:?}: {error}"))?;
+    let suffix = value
+        .get(10..)
+        .ok_or_else(|| format!("invalid UTF-8 boundary in date parameter {value:?}"))?;
+    if date_only && !suffix.is_empty() {
+        return Err(format!("expected a date parameter, got {value:?}"));
+    }
+    Ok(date)
+}
+
+fn iso_dates(value: &str) -> Vec<NaiveDate> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 10 {
+        return Vec::new();
+    }
+    (0..=bytes.len() - 10)
+        .filter_map(|start| {
+            let candidate = value.get(start..start + 10)?;
+            if !candidate
+                .as_bytes()
+                .iter()
+                .enumerate()
+                .all(|(index, byte)| match index {
+                    4 | 7 => *byte == b'-',
+                    _ => byte.is_ascii_digit(),
+                })
+            {
+                return None;
+            }
+            NaiveDate::parse_from_str(candidate, "%Y-%m-%d").ok()
+        })
+        .collect()
+}
+
+fn shift_parameter_value(
+    value: &str,
+    kind: DateParameterKind,
+    day_shift: i64,
+) -> Result<String, String> {
+    match kind {
+        DateParameterKind::Date => shift_date_prefix(value, day_shift, true),
+        DateParameterKind::Timestamp => shift_date_prefix(value, day_shift, false),
+        DateParameterKind::Array => shift_date_array(value, day_shift),
+    }
+}
+
+fn shift_date_prefix(value: &str, day_shift: i64, date_only: bool) -> Result<String, String> {
+    let date = parse_date_prefix(value, date_only)?;
+    let shifted = date
+        .checked_add_signed(ChronoDuration::days(day_shift))
+        .ok_or_else(|| format!("date shift is out of range for {value:?}"))?;
+    let suffix = value
+        .get(10..)
+        .ok_or_else(|| format!("invalid UTF-8 boundary in date parameter {value:?}"))?;
+    Ok(format!("{}{}", shifted.format("%Y-%m-%d"), suffix))
+}
+
+fn shift_date_array(value: &str, day_shift: i64) -> Result<String, String> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 10 {
+        return Ok(value.to_string());
+    }
+
+    let mut output = String::with_capacity(value.len());
+    let mut copied_until = 0;
+    for start in 0..=bytes.len() - 10 {
+        let Some(candidate) = value.get(start..start + 10) else {
+            continue;
+        };
+        if !candidate
+            .as_bytes()
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| match index {
+                4 | 7 => *byte == b'-',
+                _ => byte.is_ascii_digit(),
+            })
+        {
+            continue;
+        }
+        let Ok(date) = NaiveDate::parse_from_str(candidate, "%Y-%m-%d") else {
+            continue;
+        };
+        let shifted = date
+            .checked_add_signed(ChronoDuration::days(day_shift))
+            .ok_or_else(|| format!("date shift is out of range for {value:?}"))?;
+        output.push_str(
+            value.get(copied_until..start).ok_or_else(|| {
+                format!("invalid UTF-8 boundary in date array parameter {value:?}")
+            })?,
+        );
+        output.push_str(&shifted.format("%Y-%m-%d").to_string());
+        copied_until = start + 10;
+    }
+    output.push_str(
+        value
+            .get(copied_until..)
+            .ok_or_else(|| format!("invalid UTF-8 boundary in date array parameter {value:?}"))?,
+    );
+    Ok(output)
+}
+
+pub(super) fn build_execute_sql(
+    statement_name: &str,
+    parameters: &[Option<String>],
+) -> Result<String, String> {
+    if parameters.is_empty() {
+        return Ok(format!("EXECUTE {statement_name}"));
+    }
+
+    let values = parameters
+        .iter()
+        .map(|parameter| match parameter {
+            None => Ok("NULL".to_string()),
+            Some(value) => dollar_quote(value),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(format!("EXECUTE {statement_name}({})", values.join(", ")))
+}
+
+fn dollar_quote(value: &str) -> Result<String, String> {
+    if value.contains('\0') {
+        return Err("PostgreSQL text literals cannot contain a NUL byte".to_string());
+    }
+
+    let mut index = 0;
+    loop {
+        let tag = if index == 0 {
+            "$query_perf$".to_string()
+        } else {
+            format!("$query_perf_{index}$")
+        };
+        if !value.contains(&tag) {
+            return Ok(format!("{tag}{value}{tag}"));
+        }
+        index += 1;
+    }
+}
+
+pub(super) fn format_parameters(parameters: &[Option<String>]) -> String {
+    format!("{parameters:?}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DateParameterKind, date_parameter_kind, shift_date_prefix, shift_parameters};
+    use chrono::NaiveDate;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::date("date", Some("2020-02-03"), "2026-10-16")]
+    #[case::timestamp(
+        "timestamp without time zone",
+        Some("2020-02-03 09:30:00.123"),
+        "2026-10-16 09:30:00.123"
+    )]
+    #[case::timestamptz(
+        "timestamp with time zone",
+        Some("2020-02-03 09:30:00+00"),
+        "2026-10-16 09:30:00+00"
+    )]
+    fn shifts_typed_dates_to_the_perf_database_end_date(
+        #[case] type_name: &str,
+        #[case] value: Option<&str>,
+        #[case] expected: &str,
+    ) -> Result<(), std::io::Error> {
+        let target_date =
+            NaiveDate::parse_from_str("2026-10-16", "%Y-%m-%d").map_err(std::io::Error::other)?;
+        let shifted = shift_parameters(
+            &[value.map(str::to_string)],
+            &[type_name.to_string()],
+            target_date,
+        )
+        .map_err(std::io::Error::other)?;
+
+        assert_eq!(shifted, vec![Some(expected.to_string())]);
+        Ok(())
+    }
+
+    #[test]
+    fn shifts_every_date_in_a_date_array_by_one_shared_day_offset() -> Result<(), std::io::Error> {
+        let shifted = shift_parameters(
+            &[Some("{2020-02-02,2020-02-03}".to_string())],
+            &["date[]".to_string()],
+            NaiveDate::parse_from_str("2026-10-16", "%Y-%m-%d").map_err(std::io::Error::other)?,
+        )
+        .map_err(std::io::Error::other)?;
+
+        assert_eq!(shifted, vec![Some("{2026-10-15,2026-10-16}".to_string())]);
+        Ok(())
+    }
+
+    #[test]
+    fn keeps_non_date_parameters_and_null_dates_unchanged() -> Result<(), std::io::Error> {
+        let shifted = shift_parameters(
+            &[
+                Some("2021-01-03".to_string()),
+                None,
+                Some("record-7".to_string()),
+            ],
+            &["text".to_string(), "date".to_string(), "text".to_string()],
+            NaiveDate::parse_from_str("2026-10-16", "%Y-%m-%d").map_err(std::io::Error::other)?,
+        )
+        .map_err(std::io::Error::other)?;
+
+        assert_eq!(
+            shifted,
+            vec![
+                Some("2021-01-03".to_string()),
+                None,
+                Some("record-7".to_string()),
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn recognizes_postgres_date_type_names() {
+        assert_eq!(
+            date_parameter_kind("timestamp with time zone[]")
+                .map(|kind| matches!(kind, DateParameterKind::Array)),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn shifts_a_timestamp_value_without_a_time_part() {
+        assert_eq!(
+            shift_date_prefix("2020-02-03", 1, false),
+            Ok("2020-02-04".to_string())
+        );
+    }
+}
