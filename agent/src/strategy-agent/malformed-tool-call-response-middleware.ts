@@ -15,9 +15,7 @@ const hasMalformedToolCallArguments = (response: AIMessage): boolean =>
   AIMessageChunk.isInstance(response) &&
   (response.tool_call_chunks ?? []).some((toolCallChunk) => {
     const args = toolCallChunk.args
-    return (
-      args !== undefined && args.trim().length > 0 && parseJson(args).isErr()
-    )
+    return args !== undefined && parseJson(args).isErr()
   })
 
 const messageText = (content: unknown): string => {

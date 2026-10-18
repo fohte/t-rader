@@ -103,6 +103,20 @@ describe('malformedToolCallResponseMiddleware', () => {
       }),
     },
     {
+      name: 'empty raw tool arguments',
+      malformedResponse: new AIMessageChunk({
+        content: '',
+        tool_call_chunks: [
+          {
+            id: 'call_demo',
+            name: 'demo_tool',
+            args: '',
+            index: 0,
+          },
+        ],
+      }),
+    },
+    {
       name: 'invalid tool calls',
       malformedResponse: new AIMessage({
         content: '',
