@@ -24,7 +24,8 @@ pub(crate) fn persistence_error(error: DbErr) -> PersistenceError {
         _ => None,
     };
     match code.as_deref() {
-        Some("23503") => PersistenceError::MissingReference(message),
+        // PostgreSQL 18 は ON DELETE RESTRICT に専用の SQLSTATE を返す。
+        Some("23001" | "23503") => PersistenceError::MissingReference(message),
         Some("23505") => PersistenceError::Conflict(message),
         Some("23514") => PersistenceError::ConstraintViolation(message),
         _ => PersistenceError::Database(message),
