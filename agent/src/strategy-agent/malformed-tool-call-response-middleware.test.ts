@@ -63,7 +63,7 @@ const runAgent = async (
   model: ScriptedChatModel,
   options: {
     readonly tools?: readonly DynamicStructuredTool[]
-    readonly toolArguments?: { field: string }[]
+    readonly toolArguments?: unknown[]
   } = {},
 ) => {
   const agent = buildAgent(model, options.tools)
@@ -103,20 +103,6 @@ describe('malformedToolCallResponseMiddleware', () => {
       }),
     },
     {
-      name: 'empty raw tool arguments',
-      malformedResponse: new AIMessageChunk({
-        content: '',
-        tool_call_chunks: [
-          {
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: '',
-            index: 0,
-          },
-        ],
-      }),
-    },
-    {
       name: 'invalid tool calls',
       malformedResponse: new AIMessage({
         content: '',
@@ -131,10 +117,22 @@ describe('malformedToolCallResponseMiddleware', () => {
       }),
     },
     {
-      name: 'tool call markup in message content',
+      name: 'tool call opening markup in message content',
       malformedResponse: new AIMessage(
         '<tool_call><function=demo_tool><parameter=field>value</parameter>',
       ),
+    },
+    {
+      name: 'parameter closing markup in message content',
+      malformedResponse: new AIMessage('</parameter>'),
+    },
+    {
+      name: 'function closing markup in message content',
+      malformedResponse: new AIMessage('</function>'),
+    },
+    {
+      name: 'tool call closing markup in message content',
+      malformedResponse: new AIMessage('</tool_call>'),
     },
   ])(
     'retries $name before accepting a valid response',
@@ -177,8 +175,18 @@ describe('malformedToolCallResponseMiddleware', () => {
     })
   })
 
-  it('passes a valid response without retrying', async () => {
-    const model = new ScriptedChatModel([new AIMessage('done')])
+  it.each([
+    { name: 'plain text', content: 'done' },
+    {
+      name: 'XML elements named function and parameter',
+      content: 'Documentation mentions <function> and <parameter> elements.',
+    },
+    {
+      name: 'capitalized XML elements',
+      content: 'Documentation mentions <Function> and <Parameter> elements.',
+    },
+  ])('passes $name without retrying', async ({ content }) => {
+    const model = new ScriptedChatModel([new AIMessage(content)])
 
     expect(await runAgent(model)).toEqual({
       outcome: 'resolved',
@@ -188,7 +196,7 @@ describe('malformedToolCallResponseMiddleware', () => {
   })
 
   it('executes a tool call with valid streamed arguments', async () => {
-    const toolArguments: { field: string }[] = []
+    const toolArguments: unknown[] = []
     const tool = new DynamicStructuredTool({
       name: 'demo_tool',
       description: 'Returns a demo result',
@@ -217,6 +225,39 @@ describe('malformedToolCallResponseMiddleware', () => {
       outcome: 'resolved',
       attempts: 2,
       toolArguments: [{ field: 'valid' }],
+    })
+  })
+
+  it('executes a tool call with empty arguments without retrying', async () => {
+    const toolArguments: unknown[] = []
+    const tool = new DynamicStructuredTool({
+      name: 'demo_tool',
+      description: 'Returns a demo result',
+      schema: z.object({}),
+      func: (input) => {
+        toolArguments.push(input)
+        return Promise.resolve('tool result')
+      },
+    })
+    const model = new ScriptedChatModel([
+      new AIMessageChunk({
+        content: '',
+        tool_call_chunks: [
+          {
+            id: 'call_demo',
+            name: 'demo_tool',
+            args: '',
+            index: 0,
+          },
+        ],
+      }),
+      new AIMessage('done'),
+    ])
+
+    expect(await runAgent(model, { tools: [tool], toolArguments })).toEqual({
+      outcome: 'resolved',
+      attempts: 2,
+      toolArguments: [{}],
     })
   })
 })

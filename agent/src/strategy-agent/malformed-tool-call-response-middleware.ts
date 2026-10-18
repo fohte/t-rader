@@ -4,7 +4,8 @@ import { Result } from 'neverthrow'
 
 import { isRecord } from '#errors'
 
-const MALFORMED_TOOL_CALL_MARKUP = /<\/?(?:tool_call|function|parameter)\b/i
+const MALFORMED_TOOL_CALL_MARKUP =
+  /<tool_call>|<\/(?:parameter|function|tool_call)>/
 
 const parseJson = Result.fromThrowable(
   (value: string): unknown => JSON.parse(value),
@@ -15,7 +16,7 @@ const hasMalformedToolCallArguments = (response: AIMessage): boolean =>
   AIMessageChunk.isInstance(response) &&
   (response.tool_call_chunks ?? []).some((toolCallChunk) => {
     const args = toolCallChunk.args
-    return args !== undefined && parseJson(args).isErr()
+    return args !== undefined && args !== '' && parseJson(args).isErr()
   })
 
 const messageText = (content: unknown): string => {
