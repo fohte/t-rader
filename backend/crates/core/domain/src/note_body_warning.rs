@@ -42,11 +42,11 @@ pub fn scan_note_body_warnings_with_ids(body: &str) -> Vec<NoteBodyWarning> {
                     finding.value
                 ),
                 WarningKind::Price => format!(
-                    "価格候補の数値「{}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。",
+                    "価格候補の数値「{}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。",
                     finding.value
                 ),
                 WarningKind::Relative => format!(
-                    "相対表現「{}」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。",
+                    "相対表現「{}」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。",
                     finding.value
                 ),
             };
@@ -214,13 +214,57 @@ fn starts_with_ascii_word_character_before(text: &str, start: usize) -> bool {
 }
 
 fn is_price_candidate(text: &str, number: &NumberRange) -> bool {
-    if is_date_year(text, &number.range, number.digits) {
+    if is_date_year(text, &number.range, number.digits)
+        || has_non_price_scaled_counter(text, number.range.end)
+    {
         return false;
     }
     number.digits >= 4
         || has_currency_prefix(text, number.number_start)
         || has_price_context(text, number.number_start)
         || has_price_unit(text, number.range.end)
+}
+
+fn has_non_price_scaled_counter(text: &str, number_end: usize) -> bool {
+    let Some((_, scale_end)) = unit_after(text, number_end, &["万", "億", "千"]) else {
+        return false;
+    };
+    unit_after(
+        text,
+        scale_end,
+        &[
+            "件",
+            "人",
+            "回",
+            "台",
+            "社",
+            "個",
+            "本",
+            "名",
+            "枚",
+            "冊",
+            "匹",
+            "頭",
+            "羽",
+            "軒",
+            "戸",
+            "棟",
+            "株",
+            "口",
+            "組",
+            "世帯",
+            "店舗",
+            "倍",
+            "ポイント",
+            "年",
+            "月",
+            "日",
+            "時間",
+            "分",
+            "秒",
+        ],
+    )
+    .is_some()
 }
 
 fn is_date_year(text: &str, range: &Range<usize>, digits: usize) -> bool {
@@ -395,16 +439,23 @@ mod tests {
     #[case::price_and_relative_values(
         "close 12,345円 then -6.0%",
         vec![
-            "価格候補の数値「12,345円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
-            "相対表現「-6.0%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+            "価格候補の数値「12,345円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
+            "相対表現「-6.0%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
         ],
     )]
     #[case::small_price_with_spacing("for 950 円", vec![
-        "価格候補の数値「950 円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        "価格候補の数値「950 円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
     #[case::bare_four_digit_price_candidate("9876", vec![
-        "価格候補の数値「9876」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        "価格候補の数値「9876」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
+    #[case::scaled_non_price_counters_are_not_price_warnings(
+        "1,200万件、3万人、4千回、5億台、6億社、7千個、2,400万円、5億ドル",
+        vec![
+            "価格候補の数値「2,400万円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
+            "価格候補の数値「5億ドル」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
+        ],
+    )]
     #[case::bar_counts(
         "73足、18 本、53本のローソク足、61営業日、34 営業日分、26取引日、45 取引日分、10637本",
         vec![
@@ -419,37 +470,37 @@ mod tests {
         ],
     )]
     #[case::price_before_negative_change("終値 987654 -4.2%", vec![
-        "価格候補の数値「987654」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
-        "相対表現「-4.2%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+        "価格候補の数値「987654」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
+        "相対表現「-4.2%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
     #[case::price_before_positive_change("close 86420 +3%", vec![
-        "価格候補の数値「86420」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
-        "相対表現「+3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+        "価格候補の数値「86420」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
+        "相対表現「+3%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
     #[case::unmatched_closing_bracket_is_not_a_link("値上がりは5.0% ](内容)", vec![
-        "相対表現「5.0%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+        "相対表現「5.0%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
     #[case::relative_range("日中2〜3%が通常", vec![
-        "相対表現「2〜3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+        "相対表現「2〜3%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
     #[case::spaced_relative_range("日中 2 ~ 3% が通常", vec![
-        "相対表現「2 ~ 3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+        "相対表現「2 ~ 3%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
     #[case::hyphen_relative_range("2-3%", vec![
-        "相対表現「2-3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+        "相対表現「2-3%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
     ])]
     #[case::ordinary_date_is_not_a_price("2030-01-02", vec![])]
     #[case::price_followed_by_honjitsu(
         "終値 2,673 本日は反落",
         vec![
-            "価格候補の数値「2,673」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        "価格候補の数値「2,673」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
         ],
     )]
     #[case::date_followed_by_ashimoto("9/6 足元では", vec![])]
     #[case::inline_link_url_is_not_scanned(
         "[123456円](https://news.example.com/articles/(2030)/12345678)",
         vec![
-            "価格候補の数値「123456円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+            "価格候補の数値「123456円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
         ],
     )]
     #[case::relative_inline_link_url_is_not_scanned("[記事](/articles/2030/12345678)", vec![])]
@@ -466,19 +517,19 @@ mod tests {
     #[case::japanese_punctuation_ends_bare_url(
         "https://example.com/a。次は5000円",
         vec![
-            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
         ],
     )]
     #[case::japanese_comma_ends_bare_url(
         "https://example.com/a、次は5000円",
         vec![
-            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
         ],
     )]
     #[case::japanese_text_ends_bare_url(
         "https://example.com/a次は5000円",
         vec![
-            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+            "価格候補の数値「5000円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".to_string(),
         ],
     )]
     #[case::www_url_is_not_scanned("www.news.example.com/12345678", vec![])]
@@ -517,25 +568,25 @@ mod tests {
                 vec![
                     NoteBodyWarning {
                         id: "price:45%2C678%E5%86%86:1".into(),
-                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".into(),
                     },
                     NoteBodyWarning {
                         id: "price:45%2C678%E5%86%86:2".into(),
-                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".into(),
                     },
                 ],
                 vec![
                     NoteBodyWarning {
                         id: "relative:-3.5%25:1".into(),
-                        message: "相対表現「-3.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                        message: "相対表現「-3.5%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".into(),
                     },
                     NoteBodyWarning {
                         id: "price:45%2C678%E5%86%86:1".into(),
-                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".into(),
                     },
                     NoteBodyWarning {
                         id: "price:45%2C678%E5%86%86:2".into(),
-                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".into(),
                     },
                 ],
             ),

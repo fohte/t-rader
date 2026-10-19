@@ -481,7 +481,7 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db.clone());
-        let body_md = "close 67,890円, then -4.5%, with 73足";
+        let body_md = "close 67,890円, then -4.5%, with 73足, 1,200万件, and 3万人";
 
         let error = server
             .invoke::<_, serde_json::Value>(
@@ -542,8 +542,8 @@ mod tests {
                 rmcp::model::ErrorCode::INVALID_PARAMS,
                 concat!(
                     "note body warnings must be fixed or dismissed with a reason:\n",
-                    "price:67%2C890%E5%86%86:1: 価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。\n",
-                    "relative:-4.5%25:1: 相対表現「-4.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。\n",
+                    "price:67%2C890%E5%86%86:1: 価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。\n",
+                    "relative:-4.5%25:1: 相対表現「-4.5%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。\n",
                     "bar-count:73%E8%B6%B3:1: ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。"
                 )
                 .into(),
@@ -554,11 +554,11 @@ mod tests {
                     warnings: vec![
                         WriteNoteWarning {
                             id: "price:67%2C890%E5%86%86:1".into(),
-                            message: "価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                            message: "価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。".into(),
                         },
                         WriteNoteWarning {
                             id: "relative:-4.5%25:1".into(),
-                            message: "相対表現「-4.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                            message: "相対表現「-4.5%」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。".into(),
                         },
                         WriteNoteWarning {
                             id: "bar-count:73%E8%B6%B3:1".into(),
