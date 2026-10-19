@@ -25,6 +25,12 @@ pub enum ValuationReferenceField {
     Bps,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotePriceReferencePolicy {
+    Standard,
+    AllowIndicatorChanges,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NotePriceReference {
     Price {
@@ -67,18 +73,18 @@ pub struct NotePriceReferenceToken {
 pub fn extract_note_price_references(
     body: &str,
 ) -> Result<Vec<NotePriceReferenceToken>, Vec<NoteTokenValidationError>> {
-    extract_note_price_references_with_policy(body, false)
+    extract_note_price_references_with_policy(body, NotePriceReferencePolicy::Standard)
 }
 
 pub fn extract_note_price_references_with_indicator_changes(
     body: &str,
 ) -> Result<Vec<NotePriceReferenceToken>, Vec<NoteTokenValidationError>> {
-    extract_note_price_references_with_policy(body, true)
+    extract_note_price_references_with_policy(body, NotePriceReferencePolicy::AllowIndicatorChanges)
 }
 
-fn extract_note_price_references_with_policy(
+pub fn extract_note_price_references_with_policy(
     body: &str,
-    allow_indicator_changes: bool,
+    policy: NotePriceReferencePolicy,
 ) -> Result<Vec<NotePriceReferenceToken>, Vec<NoteTokenValidationError>> {
     let mut references = Vec::new();
     let mut errors = Vec::new();
@@ -88,7 +94,7 @@ fn extract_note_price_references_with_policy(
         .filter(|token| is_value_reference_kind(token.inner))
     {
         let token_text = body[token.start..token.end].to_string();
-        match parse_note_price_reference(token.inner, allow_indicator_changes) {
+        match parse_note_price_reference(token.inner, policy) {
             Ok(reference) => references.push(NotePriceReferenceToken {
                 token: token_text,
                 reference,
@@ -117,7 +123,7 @@ pub(crate) fn is_value_reference_kind(token: &str) -> bool {
 
 fn parse_note_price_reference(
     token: &str,
-    allow_indicator_changes: bool,
+    policy: NotePriceReferencePolicy,
 ) -> Result<NotePriceReference, &'static str> {
     let (kind, content) = token
         .split_once(':')
@@ -135,7 +141,7 @@ fn parse_note_price_reference(
             })
         }
         "change" => {
-            if allow_indicator_changes
+            if policy == NotePriceReferencePolicy::AllowIndicatorChanges
                 && let Some(indicator_content) = content.strip_prefix("indicator:")
             {
                 let (indicator_id, dates) = indicator_content

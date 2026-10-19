@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::note_price_reference::{
-    NotePriceReference, NotePriceReferenceToken, PriceReferenceField, ValuationReferenceField,
+    NotePriceReference, NotePriceReferencePolicy, NotePriceReferenceToken, PriceReferenceField,
+    ValuationReferenceField,
 };
 use core_domain::valuation::Valuation;
 use rust_decimal::Decimal;
@@ -34,32 +35,25 @@ pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReference
         })
 }
 
+pub(super) fn extract_note_price_references(
+    body_md: &str,
+    policy: NotePriceReferencePolicy,
+) -> Result<Vec<NotePriceReferenceToken>, NoteUseCaseError> {
+    core_domain::note_price_reference::extract_note_price_references_with_policy(body_md, policy)
+        .map_err(|errors| {
+            NoteUseCaseError::Validation(
+                core_domain::note_reference::format_note_token_errors_with_policy(&errors, policy),
+            )
+        })
+}
+
 impl NoteUseCases {
     pub(in crate::note) async fn resolve_market_data_references(
         &self,
         body_md: &str,
-        allow_indicator_changes: bool,
+        policy: NotePriceReferencePolicy,
     ) -> Result<Map<String, Value>, NoteUseCaseError> {
-        let references = if allow_indicator_changes {
-            core_domain::note_price_reference::extract_note_price_references_with_indicator_changes(
-                body_md,
-            )
-            .map_err(|errors| {
-                NoteUseCaseError::Validation(
-                    core_domain::note_reference::format_note_token_errors_with_indicator_changes(
-                        &errors,
-                    ),
-                )
-            })?
-        } else {
-            core_domain::note_price_reference::extract_note_price_references(body_md).map_err(
-                |errors| {
-                    NoteUseCaseError::Validation(
-                        core_domain::note_reference::format_note_token_errors(&errors),
-                    )
-                },
-            )?
-        };
+        let references = extract_note_price_references(body_md, policy)?;
         self.resolve_market_data_reference_tokens(&references).await
     }
 

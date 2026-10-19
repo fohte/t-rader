@@ -6,6 +6,7 @@ use uuid::Uuid;
 use core_domain::note_body_warning::{
     NoteBodyWarning, scan_note_body_warnings_with_ids, warning_id_group,
 };
+use core_domain::note_price_reference::NotePriceReferencePolicy;
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{
@@ -26,7 +27,8 @@ impl NoteUseCases {
         &self,
         command: NoteWriteCommand,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
-        self.write_inner(command, None, false).await
+        self.write_inner(command, None, NotePriceReferencePolicy::Standard)
+            .await
     }
 
     pub async fn write_with_warning_dispositions(
@@ -34,8 +36,12 @@ impl NoteUseCases {
         command: NoteWriteCommand,
         warning_dispositions: Vec<NoteBodyWarningDisposition>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
-        self.write_inner(command, Some(warning_dispositions), false)
-            .await
+        self.write_inner(
+            command,
+            Some(warning_dispositions),
+            NotePriceReferencePolicy::Standard,
+        )
+        .await
     }
 
     pub async fn write_agent_note_with_warning_dispositions(
@@ -43,15 +49,19 @@ impl NoteUseCases {
         command: NoteWriteCommand,
         warning_dispositions: Vec<NoteBodyWarningDisposition>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
-        self.write_inner(command, Some(warning_dispositions), true)
-            .await
+        self.write_inner(
+            command,
+            Some(warning_dispositions),
+            NotePriceReferencePolicy::AllowIndicatorChanges,
+        )
+        .await
     }
 
     async fn write_inner(
         &self,
         command: NoteWriteCommand,
         warning_dispositions: Option<Vec<NoteBodyWarningDisposition>>,
-        allow_indicator_changes: bool,
+        reference_policy: NotePriceReferencePolicy,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         if let Some(body_md) = command.body_md.as_deref() {
             validate_note_widget_blocks(body_md)?;
@@ -71,7 +81,7 @@ impl NoteUseCases {
         }
         let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
             Some(
-                self.resolve_market_data_references(body_md, allow_indicator_changes)
+                self.resolve_market_data_references(body_md, reference_policy)
                     .await,
             )
         } else {
@@ -87,7 +97,7 @@ impl NoteUseCases {
                     command,
                     resolved_market_data,
                     warning_dispositions.as_deref(),
-                    allow_indicator_changes,
+                    reference_policy,
                 )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
@@ -108,7 +118,7 @@ impl NoteUseCases {
                     command,
                     resolved_market_data,
                     warning_dispositions.as_deref(),
-                    allow_indicator_changes,
+                    reference_policy,
                 )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
@@ -172,7 +182,7 @@ impl NoteUseCases {
                     command,
                     resolved_market_data,
                     warning_dispositions.as_deref(),
-                    allow_indicator_changes,
+                    reference_policy,
                 )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
@@ -203,7 +213,7 @@ impl NoteUseCases {
                     change_diff: command.change_diff,
                     actor: command.actor,
                     resolved_market_data,
-                    allow_indicator_changes,
+                    reference_policy,
                 },
             )
             .await?;
@@ -273,7 +283,7 @@ impl NoteUseCases {
         command: NoteWriteCommand,
         resolved_market_data: Option<Result<Map<String, serde_json::Value>, NoteUseCaseError>>,
         warning_dispositions: Option<&[NoteBodyWarningDisposition]>,
-        allow_indicator_changes: bool,
+        reference_policy: NotePriceReferencePolicy,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -347,7 +357,7 @@ impl NoteUseCases {
                     change_diff: None,
                     actor: command.actor,
                     resolved_market_data,
-                    allow_indicator_changes,
+                    reference_policy,
                 },
             )
             .await?;
@@ -1149,6 +1159,75 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::missing_start(
+        None,
+        Some(125),
+        "指標変化参照 [[change:indicator:demo-indicator@2030-01-02..2030-01-03]] を指定日の観測値から解決できません"
+    )]
+    #[case::missing_end(
+        Some(100),
+        None,
+        "指標変化参照 [[change:indicator:demo-indicator@2030-01-02..2030-01-03]] を指定日の観測値から解決できません"
+    )]
+    #[case::zero_start(
+        Some(0),
+        Some(125),
+        "指標変化参照 [[change:indicator:demo-indicator@2030-01-02..2030-01-03]] の開始値は 0 です"
+    )]
+    #[tokio::test]
+    async fn agent_note_write_rejects_unresolvable_indicator_change_references(
+        #[case] start_value: Option<i64>,
+        #[case] end_value: Option<i64>,
+        #[case] expected_error: &str,
+    ) {
+        let reference = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
+        let indicator_repository = Arc::new(FakeIndicatorObservationRepository::new());
+        if let Some(value) = start_value {
+            indicator_repository
+                .seed_observation(
+                    "demo-indicator",
+                    "2030-01-02".parse().expect("start date"),
+                    Decimal::from(value),
+                )
+                .await;
+        }
+        if let Some(value) = end_value {
+            indicator_repository
+                .seed_observation(
+                    "demo-indicator",
+                    "2030-01-03".parse().expect("end date"),
+                    Decimal::from(value),
+                )
+                .await;
+        }
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let valuations = ValuationUseCases::new(
+            Arc::new(FakeValuationRepository::default()),
+            bars_repository.clone(),
+        );
+        let (use_cases, repository) = make_note_use_cases_with_services(
+            source_version(),
+            source_version(),
+            false,
+            bars_repository,
+            valuations,
+            IndicatorObservationUseCases::new(indicator_repository),
+        );
+        let result = use_cases
+            .write_agent_note_with_warning_dispositions(write_body_command(reference), vec![])
+            .await;
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                inserted_version_count,
+            ),
+            (Some(expected_error.into()), 0),
+        );
+    }
+
     #[tokio::test]
     async fn standard_note_write_rejects_indicator_change_references() {
         let reference = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
@@ -1793,6 +1872,71 @@ mod tests {
                 },
                 vec![],
                 vec![],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn human_update_preserves_indicator_change_resolution_when_body_is_resubmitted() {
+        let body = "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]]";
+        let mut current = source_version();
+        current.body_md = body.into();
+        current.resolved_price_references_json = json!({
+            "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]]": { "value": 25 },
+        });
+        let (use_cases, repository) = make_note_use_cases(current);
+
+        let result = use_cases
+            .update(
+                SOURCE_NOTE_ID,
+                UpdateNoteCommand {
+                    title: Some("Human title edit".into()),
+                    body_md: Some(body.into()),
+                    frontmatter_json: None,
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                },
+            )
+            .await
+            .map(|snapshot| snapshot.version.resolved_price_references_json)
+            .map_err(|error| error.to_string());
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the human update creates a version");
+        actual.id = Uuid::nil();
+
+        assert_eq!(
+            (result, actual),
+            (
+                Ok(json!({
+                    "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]]": {
+                        "value": 25,
+                    },
+                })),
+                NewNoteVersion {
+                    id: Uuid::nil(),
+                    note_id: SOURCE_NOTE_ID,
+                    version_no: 2,
+                    title: "Human title edit".into(),
+                    body_md: body.into(),
+                    frontmatter_json: json!({}),
+                    graphs_json: json!([]),
+                    resolved_price_references_json: json!({
+                        "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]]": {
+                            "value": 25,
+                        },
+                    }),
+                    status: "approved".into(),
+                    is_current: true,
+                    change_reason: None,
+                    created_by_kind: "human".into(),
+                    execution_id: None,
+                },
             ),
         );
     }
