@@ -3,9 +3,7 @@ use serde_json::{Map, json};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use core_domain::note_body_warning::{
-    NoteBodyWarning, scan_note_body_warnings_with_ids, warning_id_group,
-};
+use core_domain::note_body_warning::{NoteBodyWarning, warning_id_group};
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{
@@ -15,7 +13,7 @@ use crate::note::types::{
 use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
 use crate::note::widget_blocks::validate_note_widget_blocks;
-use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
+use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases, scan_note_warnings};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
@@ -117,8 +115,10 @@ impl NoteUseCases {
         if let Some(kind) = kind.as_deref() {
             self.ensure_note_kind_exists(&transaction, kind).await?;
         }
-        validate_body_warning_dispositions(
+        let graphs_json = command.graphs_json.clone().unwrap_or_else(|| json!([]));
+        validate_warning_dispositions(
             command.body_md.as_deref().unwrap_or_default(),
+            &graphs_json,
             warning_dispositions.as_deref(),
         )?;
 
@@ -162,7 +162,6 @@ impl NoteUseCases {
             return Ok(result);
         };
 
-        let graphs_json = command.graphs_json.unwrap_or_else(|| json!([]));
         let frontmatter_json = command.frontmatter_json.unwrap_or_else(|| json!({}));
         let status = command.status.as_deref().unwrap_or_else(|| {
             if command.created_by_kind == "human" {
@@ -296,7 +295,7 @@ impl NoteUseCases {
             graphs_json = graphs;
             touched = true;
         }
-        validate_body_warning_dispositions(&body_md, warning_dispositions)?;
+        validate_warning_dispositions(&body_md, &graphs_json, warning_dispositions)?;
         if !touched {
             return Err(NoteUseCaseError::Validation(
                 "at least one of title / body_md / frontmatter_json / graphs must be provided"
@@ -362,14 +361,16 @@ impl NoteUseCases {
     }
 }
 
-fn validate_body_warning_dispositions(
+fn validate_warning_dispositions(
     body_md: &str,
+    graphs_json: &serde_json::Value,
     warning_dispositions: Option<&[NoteBodyWarningDisposition]>,
 ) -> Result<(), NoteUseCaseError> {
     let Some(warning_dispositions) = warning_dispositions else {
         return Ok(());
     };
-    let warnings = scan_note_body_warnings_with_ids(body_md);
+    let warnings = scan_note_warnings(body_md, graphs_json)
+        .map_err(|error| NoteUseCaseError::Validation(format!("invalid graphs_json: {error}")))?;
     let warning_counts = warnings.iter().fold(HashMap::new(), |mut counts, warning| {
         if let Some(group_id) = warning_id_group(&warning.id) {
             *counts.entry(group_id.to_string()).or_insert(0_usize) += 1;
@@ -423,9 +424,10 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
     use core_domain::bar::{Bar, Timeframe};
+    use core_domain::note_body_warning::scan_note_warnings_with_ids;
     use core_domain::valuation::Valuation;
     use indoc::indoc;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
     use serde_json::json;
     use tokio::sync::Mutex;
@@ -742,6 +744,21 @@ mod tests {
             actor: Actor::Llm { label: "analyst" },
             change_diff: None,
         }
+    }
+
+    #[fixture]
+    fn graph_with_warning_labels() -> serde_json::Value {
+        json!([{
+            "id": "fictional-chart",
+            "layout": "flow",
+            "nodes": [
+                { "id": "entry", "label": "45,678円" },
+                { "id": "exit", "label": "終点" },
+            ],
+            "edges": [
+                { "source": "entry", "target": "exit", "label": "-3.5%" },
+            ],
+        }])
     }
 
     fn make_note_use_cases(source_version: NoteVersion) -> (NoteUseCases, Arc<LinkNoteRepository>) {
@@ -1805,8 +1822,48 @@ mod tests {
         let result = use_cases
             .write_with_warning_dispositions(write_body_command(body), vec![])
             .await;
-        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
+        assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn gated_write_rejects_graph_label_warnings_on_update(
+        graph_with_warning_labels: serde_json::Value,
+    ) {
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let mut command = write_body_command("Update explanation");
+        command.graphs_json = Some(graph_with_warning_labels.clone());
+        let graphs: Vec<core_domain::note_graph::GraphDef> =
+            serde_json::from_value(graph_with_warning_labels).expect("fixture graphs are valid");
+        let expected_warnings = scan_note_warnings_with_ids("Update explanation", &graphs);
+
+        let result = use_cases
+            .write_with_warning_dispositions(command, vec![])
             .await;
+
+        assert_rejected_without_saving(result, &repository, expected_warnings).await;
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn gated_write_checks_existing_graph_labels_when_graphs_are_omitted(
+        graph_with_warning_labels: serde_json::Value,
+    ) {
+        let mut current_version = source_version();
+        current_version.graphs_json = graph_with_warning_labels.clone();
+        let (use_cases, repository) = make_note_use_cases(current_version);
+        let graphs: Vec<core_domain::note_graph::GraphDef> =
+            serde_json::from_value(graph_with_warning_labels).expect("fixture graphs are valid");
+        let result = use_cases
+            .write_with_warning_dispositions(write_body_command("Update explanation"), vec![])
+            .await;
+
+        assert_rejected_without_saving(
+            result,
+            &repository,
+            scan_note_warnings_with_ids("Update explanation", &graphs),
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -1820,8 +1877,7 @@ mod tests {
         let result = use_cases
             .write_with_warning_dispositions(command, vec![])
             .await;
-        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
-            .await;
+        assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
     }
 
     #[tokio::test]
@@ -1832,7 +1888,7 @@ mod tests {
         multiline_reason.push('\r');
         multiline_reason.push('\n');
         multiline_reason.push_str("補足理由");
-        let warning_dispositions = scan_note_body_warnings_with_ids(body)
+        let warning_dispositions = scan_body_warnings(body)
             .into_iter()
             .map(|warning| NoteBodyWarningDisposition {
                 id: warning.id,
@@ -1867,7 +1923,7 @@ mod tests {
     #[tokio::test]
     async fn gated_write_rejects_when_only_some_warnings_have_dispositions() {
         let body = "close 45,678円 and -3.5%";
-        let warnings = scan_note_body_warnings_with_ids(body);
+        let warnings = scan_body_warnings(body);
         let (use_cases, repository) = make_note_use_cases(source_version());
         let result = use_cases
             .write_with_warning_dispositions(
@@ -1886,7 +1942,7 @@ mod tests {
     #[tokio::test]
     async fn gated_write_rejects_a_disposition_for_a_different_warning() {
         let body = "close 45,678円";
-        let mismatched_warning = scan_note_body_warnings_with_ids("close 98,765円")
+        let mismatched_warning = scan_body_warnings("close 98,765円")
             .into_iter()
             .next()
             .expect("other body has a warning");
@@ -1901,8 +1957,7 @@ mod tests {
             )
             .await;
 
-        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
-            .await;
+        assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
     }
 
     #[rstest]
@@ -1911,7 +1966,7 @@ mod tests {
     #[tokio::test]
     async fn gated_write_requires_a_nonempty_reason(#[case] reason: &str) {
         let body = "close 45,678円";
-        let warning = scan_note_body_warnings_with_ids(body)
+        let warning = scan_body_warnings(body)
             .into_iter()
             .next()
             .expect("body has a warning");
@@ -1925,8 +1980,7 @@ mod tests {
                 }],
             )
             .await;
-        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
-            .await;
+        assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
     }
 
     async fn assert_rejected_without_saving(
@@ -1944,6 +1998,10 @@ mod tests {
             (unresolved_warnings, inserted_version_count),
             (Some(expected_warnings), 0),
         );
+    }
+
+    fn scan_body_warnings(body: &str) -> Vec<NoteBodyWarning> {
+        scan_note_warnings_with_ids(body, &[])
     }
 
     #[tokio::test]
