@@ -31,7 +31,7 @@ fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
                 .join("\n");
             McpError::invalid_params(
                 format!(
-                    "note body warnings must be fixed or dismissed with a reason:\n{warning_details}"
+                    "note warnings must be fixed or dismissed with a reason:\n{warning_details}"
                 ),
                 Some(serde_json::json!({"warnings": warnings})),
             )
@@ -152,18 +152,24 @@ impl StrategyServer {
             )
             .await
             .map_err(note_use_case_to_mcp)?;
+        let graphs: Vec<core_domain::note_graph::GraphDef> = serde_json::from_value(
+            result.snapshot.version.graphs_json.clone(),
+        )
+        .map_err(|error| internal_error(format!("failed to deserialize saved graphs: {error}")))?;
+        let warnings = core_domain::note_body_warning::scan_note_warnings_with_ids(
+            &result.snapshot.version.body_md,
+            &graphs,
+        )
+        .into_iter()
+        .map(|warning| WriteNoteWarning {
+            id: warning.id,
+            message: warning.message,
+        })
+        .collect();
         Ok(WriteNoteResult {
             note_id: result.note_id,
             created: result.created,
-            warnings: core_domain::note_body_warning::scan_note_body_warnings_with_ids(
-                &result.snapshot.version.body_md,
-            )
-            .into_iter()
-            .map(|warning| WriteNoteWarning {
-                id: warning.id,
-                message: warning.message,
-            })
-            .collect(),
+            warnings,
         })
     }
 }
@@ -191,7 +197,7 @@ mod tests {
             (
                 ErrorCode::INVALID_PARAMS,
                 concat!(
-                    "note body warnings must be fixed or dismissed with a reason:\n",
+                    "note warnings must be fixed or dismissed with a reason:\n",
                     "price:45%2C678%E5%86%86:1: 価格候補の数値「45,678円」がリンク外にあります。"
                 )
                 .into(),

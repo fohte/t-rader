@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use core_domain::note_body_warning::{
-    NoteBodyWarning, scan_note_body_warnings_with_ids, warning_id_group,
+    NoteBodyWarning, scan_note_warnings_with_ids, warning_id_group,
 };
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
@@ -117,8 +117,10 @@ impl NoteUseCases {
         if let Some(kind) = kind.as_deref() {
             self.ensure_note_kind_exists(&transaction, kind).await?;
         }
+        let graphs_json = command.graphs_json.clone().unwrap_or_else(|| json!([]));
         validate_body_warning_dispositions(
             command.body_md.as_deref().unwrap_or_default(),
+            &graphs_json,
             warning_dispositions.as_deref(),
         )?;
 
@@ -162,7 +164,6 @@ impl NoteUseCases {
             return Ok(result);
         };
 
-        let graphs_json = command.graphs_json.unwrap_or_else(|| json!([]));
         let frontmatter_json = command.frontmatter_json.unwrap_or_else(|| json!({}));
         let status = command.status.as_deref().unwrap_or_else(|| {
             if command.created_by_kind == "human" {
@@ -296,7 +297,7 @@ impl NoteUseCases {
             graphs_json = graphs;
             touched = true;
         }
-        validate_body_warning_dispositions(&body_md, warning_dispositions)?;
+        validate_body_warning_dispositions(&body_md, &graphs_json, warning_dispositions)?;
         if !touched {
             return Err(NoteUseCaseError::Validation(
                 "at least one of title / body_md / frontmatter_json / graphs must be provided"
@@ -364,12 +365,17 @@ impl NoteUseCases {
 
 fn validate_body_warning_dispositions(
     body_md: &str,
+    graphs_json: &serde_json::Value,
     warning_dispositions: Option<&[NoteBodyWarningDisposition]>,
 ) -> Result<(), NoteUseCaseError> {
     let Some(warning_dispositions) = warning_dispositions else {
         return Ok(());
     };
-    let warnings = scan_note_body_warnings_with_ids(body_md);
+    let graphs: Vec<core_domain::note_graph::GraphDef> =
+        serde_json::from_value(graphs_json.clone()).map_err(|error| {
+            NoteUseCaseError::Validation(format!("invalid graphs_json: {error}"))
+        })?;
+    let warnings = scan_note_warnings_with_ids(body_md, &graphs);
     let warning_counts = warnings.iter().fold(HashMap::new(), |mut counts, warning| {
         if let Some(group_id) = warning_id_group(&warning.id) {
             *counts.entry(group_id.to_string()).or_insert(0_usize) += 1;
@@ -423,9 +429,10 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
     use core_domain::bar::{Bar, Timeframe};
+    use core_domain::note_body_warning::scan_note_body_warnings_with_ids;
     use core_domain::valuation::Valuation;
     use indoc::indoc;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
     use serde_json::json;
     use tokio::sync::Mutex;
@@ -742,6 +749,21 @@ mod tests {
             actor: Actor::Llm { label: "analyst" },
             change_diff: None,
         }
+    }
+
+    #[fixture]
+    fn graph_with_warning_labels() -> serde_json::Value {
+        json!([{
+            "id": "fictional-chart",
+            "layout": "flow",
+            "nodes": [
+                { "id": "entry", "label": "45,678円" },
+                { "id": "exit", "label": "終点" },
+            ],
+            "edges": [
+                { "source": "entry", "target": "exit", "label": "-3.5%" },
+            ],
+        }])
     }
 
     fn make_note_use_cases(source_version: NoteVersion) -> (NoteUseCases, Arc<LinkNoteRepository>) {
@@ -1807,6 +1829,47 @@ mod tests {
             .await;
         assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
             .await;
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn gated_write_rejects_graph_label_warnings_on_update(
+        graph_with_warning_labels: serde_json::Value,
+    ) {
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let mut command = write_body_command("Update explanation");
+        command.graphs_json = Some(graph_with_warning_labels.clone());
+        let graphs: Vec<core_domain::note_graph::GraphDef> =
+            serde_json::from_value(graph_with_warning_labels).expect("fixture graphs are valid");
+        let expected_warnings = scan_note_warnings_with_ids("Update explanation", &graphs);
+
+        let result = use_cases
+            .write_with_warning_dispositions(command, vec![])
+            .await;
+
+        assert_rejected_without_saving(result, &repository, expected_warnings).await;
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn gated_write_checks_existing_graph_labels_when_graphs_are_omitted(
+        graph_with_warning_labels: serde_json::Value,
+    ) {
+        let mut current_version = source_version();
+        current_version.graphs_json = graph_with_warning_labels.clone();
+        let (use_cases, repository) = make_note_use_cases(current_version);
+        let graphs: Vec<core_domain::note_graph::GraphDef> =
+            serde_json::from_value(graph_with_warning_labels).expect("fixture graphs are valid");
+        let result = use_cases
+            .write_with_warning_dispositions(write_body_command("Update explanation"), vec![])
+            .await;
+
+        assert_rejected_without_saving(
+            result,
+            &repository,
+            scan_note_warnings_with_ids("Update explanation", &graphs),
+        )
+        .await;
     }
 
     #[tokio::test]

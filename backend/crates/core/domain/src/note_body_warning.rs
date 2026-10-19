@@ -3,6 +3,7 @@ use std::ops::Range;
 
 use serde::Serialize;
 
+use crate::note_graph::GraphDef;
 use crate::note_reference::prose_segments;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -26,8 +27,44 @@ pub struct NoteBodyWarning {
 }
 
 pub fn scan_note_body_warnings_with_ids(body: &str) -> Vec<NoteBodyWarning> {
+    scan_note_warnings_with_ids(body, &[])
+}
+
+pub fn scan_note_warnings_with_ids(body: &str, graphs: &[GraphDef]) -> Vec<NoteBodyWarning> {
     let mut occurrences = HashMap::<(WarningKind, String), usize>::new();
-    prose_segments(body)
+    let mut warnings = scan_text_with_ids(body, None, &mut occurrences);
+    for (graph_index, graph) in graphs.iter().enumerate() {
+        for (node_index, node) in graph.nodes.iter().enumerate() {
+            let location = format!(
+                "graphs[{graph_index}] (id={:?}).nodes[{node_index}] (id={:?}).label",
+                graph.id, node.id
+            );
+            warnings.extend(scan_text_with_ids(
+                &node.label,
+                Some(&location),
+                &mut occurrences,
+            ));
+        }
+        for (edge_index, edge) in graph.edges.iter().enumerate() {
+            let Some(label) = edge.label.as_deref() else {
+                continue;
+            };
+            let location = format!(
+                "graphs[{graph_index}] (id={:?}).edges[{edge_index}] ({:?} -> {:?}).label",
+                graph.id, edge.source, edge.target
+            );
+            warnings.extend(scan_text_with_ids(label, Some(&location), &mut occurrences));
+        }
+    }
+    warnings
+}
+
+fn scan_text_with_ids(
+    text: &str,
+    location: Option<&str>,
+    occurrences: &mut HashMap<(WarningKind, String), usize>,
+) -> Vec<NoteBodyWarning> {
+    prose_segments(text)
         .into_iter()
         .flat_map(scan_prose_segment)
         .map(|finding| {
@@ -36,23 +73,27 @@ pub fn scan_note_body_warnings_with_ids(body: &str) -> Vec<NoteBodyWarning> {
                 .and_modify(|count| *count += 1)
                 .or_insert(1);
             let id = warning_id(finding.kind, &finding.value, *occurrence);
-            let message = match finding.kind {
-                WarningKind::BarCount => format!(
-                    "ローソク足の本数「{}」があります。本数ではなく、開始日と終了日で対象期間を記載してください。",
-                    finding.value
-                ),
-                WarningKind::Price => format!(
-                    "価格候補の数値「{}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。",
-                    finding.value
-                ),
-                WarningKind::Relative => format!(
-                    "相対表現「{}」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。",
-                    finding.value
-                ),
-            };
+            let message = warning_message(finding.kind, &finding.value);
+            let message = location
+                .map(|location| format!("{location}: {message}"))
+                .unwrap_or(message);
             NoteBodyWarning { id, message }
         })
         .collect()
+}
+
+fn warning_message(kind: WarningKind, value: &str) -> String {
+    match kind {
+        WarningKind::BarCount => format!(
+            "ローソク足の本数「{value}」があります。本数ではなく、開始日と終了日で対象期間を記載してください。"
+        ),
+        WarningKind::Price => format!(
+            "価格候補の数値「{value}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。"
+        ),
+        WarningKind::Relative => format!(
+            "相対表現「{value}」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。"
+        ),
+    }
 }
 
 fn scan_prose_segment(segment: &str) -> Vec<Finding> {
@@ -389,7 +430,9 @@ mod tests {
     use indoc::indoc;
     use rstest::rstest;
 
-    use super::{NoteBodyWarning, scan_note_body_warnings_with_ids};
+    use crate::note_graph::{GraphDef, GraphEdge, GraphNode, Layout};
+
+    use super::{NoteBodyWarning, scan_note_body_warnings_with_ids, scan_note_warnings_with_ids};
 
     #[rstest]
     #[case::price_and_relative_values(
@@ -539,6 +582,62 @@ mod tests {
                     },
                 ],
             ),
+        );
+    }
+
+    #[test]
+    fn scans_graph_label_warnings_with_locations_and_shared_occurrence_ids() {
+        let graph = GraphDef {
+            id: "fictional-chart".into(),
+            layout: Layout::Flow,
+            title: None,
+            nodes: vec![
+                GraphNode {
+                    id: "entry".into(),
+                    label: "45,678円".into(),
+                    r#ref: None,
+                    value: None,
+                    cite: None,
+                    parent: None,
+                    x: None,
+                    y: None,
+                },
+                GraphNode {
+                    id: "exit".into(),
+                    label: "終点".into(),
+                    r#ref: None,
+                    value: None,
+                    cite: None,
+                    parent: None,
+                    x: None,
+                    y: None,
+                },
+            ],
+            edges: vec![GraphEdge {
+                source: "entry".into(),
+                target: "exit".into(),
+                label: Some("-3.5%".into()),
+                value: None,
+                cite: None,
+            }],
+        };
+
+        assert_eq!(
+            scan_note_warnings_with_ids("close 45,678円", &[graph]),
+            vec![
+                NoteBodyWarning {
+                    id: "price:45%2C678%E5%86%86:1".into(),
+                    message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                },
+                NoteBodyWarning {
+                    id: "price:45%2C678%E5%86%86:2".into(),
+                    message: "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: 価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                },
+                NoteBodyWarning {
+                    id: "relative:-3.5%25:1".into(),
+                    message: "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: 相対表現「-3.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                },
+            ],
         );
     }
 }
