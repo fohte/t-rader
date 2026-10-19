@@ -102,7 +102,12 @@ export function MarkdownBodyWidget({ source }: { source: string }) {
   }
   return (
     <MarkdownBodyWidgetView
-      state={{ kind: 'ready', result: query.data, viz: parsed.viz }}
+      state={{
+        kind: 'ready',
+        queries: parsed.request.queries,
+        result: query.data,
+        viz: parsed.viz,
+      }}
     />
   )
 }

@@ -4,6 +4,7 @@ import type { ComponentType } from 'react'
 
 import { WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
+import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 import { createStoryRouter } from '#storybook/story-router'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
@@ -18,17 +19,17 @@ const groupResult: WidgetQueryResponse = {
     {
       key: 'group:demo-axis/demo-group-a',
       name: 'デモグループ A',
-      values: { size: 48, change: 2.4 },
+      values: { size: 48, change: 0.0042 },
     },
     {
       key: 'group:demo-axis/demo-group-b',
       name: 'デモグループ B',
-      values: { size: 30, change: -1.8 },
+      values: { size: 30, change: -0.009 },
     },
     {
       key: 'group:demo-axis/demo-group-c',
       name: 'デモグループ C',
-      values: { size: 22, change: 0 },
+      values: { size: 22, change: -0.00001 },
     },
   ],
 }
@@ -39,12 +40,12 @@ const stockResult: WidgetQueryResponse = {
     {
       key: 'stock:DEMO-A',
       name: '架空銘柄 A',
-      values: { size: 54, change: 1.2 },
+      values: { size: 54, change: 0.0012 },
     },
     {
       key: 'stock:DEMO-B',
       name: '架空銘柄 B',
-      values: { size: 46, change: -0.9 },
+      values: { size: 46, change: -0.0009 },
     },
   ],
 }
@@ -56,7 +57,7 @@ const manyGroupResult: WidgetQueryResponse = {
     return {
       key: `group:demo-axis/demo-group-${suffix}`,
       name: `デモグループ ${suffix}`,
-      values: { size: 1, change: index % 2 === 0 ? 1 : -1 },
+      values: { size: 1, change: index % 2 === 0 ? 0.0001 : -0.0001 },
     }
   }),
 }
@@ -65,6 +66,12 @@ const groupViz: WidgetTreemapDefinition = {
   type: 'treemap',
   size: 'size',
   color: 'change',
+}
+const queries: WidgetQueryDefinitions = {
+  change: { metric: 'change', by: 'group' },
+}
+const stockQueries: WidgetQueryDefinitions = {
+  change: { metric: 'change', by: 'stock' },
 }
 
 function withGroupRouter(Story: ComponentType) {
@@ -86,7 +93,7 @@ const meta = {
   title: 'Widgets/WidgetTreemap',
   component: WidgetTreemap,
   decorators: [withGroupRouter],
-  args: { result: groupResult, viz: groupViz },
+  args: { queries, result: groupResult, viz: groupViz },
   parameters: { layout: 'padded' },
 } satisfies Meta<typeof WidgetTreemap>
 
@@ -94,12 +101,12 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const GroupRows: Story = {
-  name: 'グループ別のタイルを値の符号で色分けし、各ページへリンクする。',
+  name: '小さな騰落率を符号付きパーセントで表示し、各ページへリンクする。',
 }
 
 export const StockRows: Story = {
-  name: '銘柄別のタイルを表示し、グループへのリンクは付けない。',
-  args: { result: stockResult },
+  name: '銘柄別の小さな騰落率を符号付きパーセントで表示する。',
+  args: { queries: stockQueries, result: stockResult },
 }
 
 export const ManyGroups: Story = {

@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import type { DashboardConfigIssue } from '#components/dashboard-pages/dashboard-config'
 import { WidgetToplist, WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
+import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
 
@@ -11,6 +12,7 @@ export type DashboardWidgetPageState = {
   title: string
   width: 'half' | 'full'
   definition: {
+    queries: WidgetQueryDefinitions
     viz: Extract<
       components['schemas']['WidgetVisualizationRequest'],
       { type: 'treemap' | 'toplist' }
@@ -121,9 +123,17 @@ function WidgetCard({ widget }: { widget: DashboardWidgetPageState }) {
           ウィジェットのデータを取得できませんでした。
         </p>
       ) : widget.definition.viz.type === 'treemap' ? (
-        <WidgetTreemap result={widget.result} viz={widget.definition.viz} />
+        <WidgetTreemap
+          queries={widget.definition.queries}
+          result={widget.result}
+          viz={widget.definition.viz}
+        />
       ) : (
-        <WidgetToplist result={widget.result} viz={widget.definition.viz} />
+        <WidgetToplist
+          queries={widget.definition.queries}
+          result={widget.result}
+          viz={widget.definition.viz}
+        />
       )}
     </article>
   )

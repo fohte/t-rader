@@ -32,4 +32,49 @@ describe('DashboardPageView', () => {
 
     expect(onAsOfChange.mock.calls).toEqual([['']])
   })
+
+  it('change query を符号付きパーセントで表示する', () => {
+    const state: DashboardPageState = {
+      status: 'ready',
+      title: '市場の動き',
+      asOf: '2099-01-05',
+      onAsOfChange: () => undefined,
+      widgets: [
+        {
+          key: 'movement-list',
+          title: '値動き',
+          width: 'half',
+          definition: {
+            queries: {
+              movement: { metric: 'change', by: 'stock' },
+            },
+            viz: {
+              type: 'toplist',
+              value: 'movement',
+              order: 'desc',
+              limit: 5,
+            },
+          },
+          isPending: false,
+          errorMessage: null,
+          result: {
+            as_of: '2099-01-05',
+            rows: [
+              {
+                key: 'stock:DEMO-A',
+                name: '架空銘柄 A',
+                values: { movement: 0.0042 },
+              },
+            ],
+          },
+        },
+      ],
+    }
+    render(<DashboardPageView state={state} showDashboardListLink={false} />)
+
+    const row = screen.getByRole('listitem', {
+      name: '1 位: 架空銘柄 A +0.42%',
+    })
+    expect(row.lastElementChild?.textContent).toBe('+0.42%')
+  })
 })

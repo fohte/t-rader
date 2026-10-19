@@ -46,7 +46,10 @@ export function useDashboardWidgetQueries(
         key: `${String(index)}-${widget.title}`,
         title: widget.title,
         width: widget.width,
-        definition: { viz: widget.definition.viz },
+        definition: {
+          queries: widget.definition.queries,
+          viz: widget.definition.viz,
+        },
         isPending: query?.isPending ?? true,
         errorMessage:
           query?.isError === true
