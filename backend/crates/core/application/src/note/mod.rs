@@ -11,6 +11,7 @@ mod types;
 mod use_cases;
 mod version_review;
 mod version_write;
+mod warning_scan;
 mod widget_blocks;
 
 pub const INITIAL_NOTE_STATUS: &str = "unread";
@@ -29,3 +30,4 @@ pub use types::{
     NoteWriteResult, PendingNoteVersion, UpdateNoteCommand,
 };
 pub use use_cases::NoteUseCases;
+pub use warning_scan::scan_note_warnings;

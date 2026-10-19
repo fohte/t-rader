@@ -38,13 +38,13 @@ mod tests {
 
     fn price_warning_message(value: &str) -> String {
         format!(
-            "価格候補の数値「{value}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値なら本文から削除せず、必要な理由を `warning_dispositions` に記載して警告を無視してください。"
+            "価格候補の数値「{value}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値ならそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。"
         )
     }
 
     fn relative_warning_message(value: &str) -> String {
         format!(
-            "相対表現「{value}」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値は本文から削除せず、そのまま残して、必要な理由を `warning_dispositions` に記載して警告を無視してください。"
+            "相対表現「{value}」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値はそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。"
         )
     }
 
@@ -501,6 +501,17 @@ mod tests {
         insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db.clone());
         let body_md = "close 67,890円, then -4.5%, with 73足, 1,200万件, and 3万人";
+        let graphs = serde_json::json!([{
+            "id": "fictional-chart",
+            "layout": "flow",
+            "nodes": [
+                { "id": "entry", "label": "48,765円" },
+                { "id": "exit", "label": "終点" },
+            ],
+            "edges": [
+                { "source": "entry", "target": "exit", "label": "-2.5%" },
+            ],
+        }]);
 
         let error = server
             .invoke::<_, serde_json::Value>(
@@ -510,6 +521,7 @@ mod tests {
                     "title": "first note",
                     "body_md": body_md,
                     "kind": "sample-kind",
+                    "graphs": graphs.clone(),
                 }),
                 None,
                 None,
@@ -525,6 +537,7 @@ mod tests {
                     "title": "first note",
                     "body_md": body_md,
                     "kind": "sample-kind",
+                    "graphs": graphs,
                     "warning_dispositions": [
                         {
                             "id": "price:67%2C890%E5%86%86:1",
@@ -537,6 +550,14 @@ mod tests {
                         {
                             "id": "bar-count:73%E8%B6%B3:1",
                             "reason": "期間の概況を示すため記載",
+                        },
+                        {
+                            "id": "price:48%2C765%E5%86%86:1",
+                            "reason": "図の価格例として記載",
+                        },
+                        {
+                            "id": "relative:-2.5%25:1",
+                            "reason": "図の変化率例として記載",
                         },
                     ],
                 }),
@@ -561,13 +582,17 @@ mod tests {
                 rmcp::model::ErrorCode::INVALID_PARAMS,
                 format!(
                     indoc! {"
-                        note body warnings must be fixed or dismissed with a reason:
+                        note warnings must be fixed or dismissed with a reason:
                         price:67%2C890%E5%86%86:1: {}
                         relative:-4.5%25:1: {}
-                        bar-count:73%E8%B6%B3:1: {}"},
+                        bar-count:73%E8%B6%B3:1: {}
+                        price:48%2C765%E5%86%86:1: graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}
+                        relative:-2.5%25:1: graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}"},
                     price_warning_message("67,890円"),
                     relative_warning_message("-4.5%"),
                     bar_count_warning_message("73足"),
+                    price_warning_message("48,765円"),
+                    relative_warning_message("-2.5%"),
                 ),
                 0,
                 WriteNoteResult {
@@ -585,6 +610,20 @@ mod tests {
                         WriteNoteWarning {
                             id: "bar-count:73%E8%B6%B3:1".into(),
                             message: bar_count_warning_message("73足"),
+                        },
+                        WriteNoteWarning {
+                            id: "price:48%2C765%E5%86%86:1".into(),
+                            message: format!(
+                                "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
+                                price_warning_message("48,765円"),
+                            ),
+                        },
+                        WriteNoteWarning {
+                            id: "relative:-2.5%25:1".into(),
+                            message: format!(
+                                "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}",
+                                relative_warning_message("-2.5%"),
+                            ),
                         },
                     ],
                 },

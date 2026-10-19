@@ -131,6 +131,10 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - SeaORM は実行時に SQL を構築するため、Docker ビルド時の DB 接続は不要 (旧 `SQLX_OFFLINE` は廃止済み)
 - clippy で `unwrap_used`, `expect_used`, `panic` が deny。本番コードでは `?` と `map_err` を使うこと
 
+### Query performance checks
+
+- `query-perf` が失敗した場合は SQL を修正する。5 秒の閾値を上げたり、除外リストに追加して回避したりしないこと
+
 ## Code organization rules
 
 ### Backend architecture

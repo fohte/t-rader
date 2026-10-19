@@ -694,6 +694,12 @@ jobs:
           dump_db_logs() {
             echo "::group::PostgreSQL service logs"
             docker logs "$DB_CONTAINER_ID" || true
+            docker exec "$DB_CONTAINER_ID" sh -c '
+              for log_file in "$PGDATA"/log/*.json; do
+                [ -f "$log_file" ] || continue
+                cat "$log_file"
+              done
+            ' || true
             echo "::endgroup::"
           }
 
@@ -701,7 +707,13 @@ jobs:
             --command="ALTER SYSTEM SET fsync = off" \
             --command="ALTER SYSTEM SET synchronous_commit = off" \
             --command="ALTER SYSTEM SET full_page_writes = off" \
-            --command="ALTER SYSTEM SET timescaledb.max_background_workers = 0"
+            --command="ALTER SYSTEM SET timescaledb.max_background_workers = 0" \
+            --command="ALTER SYSTEM SET logging_collector = on" \
+            --command="ALTER SYSTEM SET log_destination = 'jsonlog'" \
+            --command="ALTER SYSTEM SET log_statement = 'all'" \
+            --command="ALTER SYSTEM SET log_parameter_max_length = -1" \
+            --command="ALTER SYSTEM SET log_rotation_age = 0" \
+            --command="ALTER SYSTEM SET log_rotation_size = 0"
           docker restart "$DB_CONTAINER_ID"
           ready=false
           for _ in {1..60}; do
@@ -725,6 +737,20 @@ jobs:
             --command="SHOW timescaledb.max_background_workers")
           if [[ "$settings" != $'off\noff\noff\n0' ]]; then
             printf 'PostgreSQL test settings do not match expectations:\n%s\n' "$settings" >&2
+            dump_db_logs
+            exit 1
+          fi
+          log_settings=$(db_psql \
+            --tuples-only \
+            --no-align \
+            --command="SHOW logging_collector" \
+            --command="SHOW log_destination" \
+            --command="SHOW log_statement" \
+            --command="SHOW log_parameter_max_length" \
+            --command="SHOW log_rotation_age" \
+            --command="SHOW log_rotation_size")
+          if [[ "$log_settings" != $'on\njsonlog\nall\n-1\n0\n0' ]]; then
+            printf 'PostgreSQL query logging settings do not match expectations:\n%s\n' "$log_settings" >&2
             dump_db_logs
             exit 1
           fi
@@ -755,6 +781,41 @@ jobs:
           REDIS_URL: redis://rate-limit-test:test-password@localhost:6379/
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
+      - name: Capture PostgreSQL query log
+        if: always()
+        env:
+          DB_CONTAINER_ID: ${{ job.services.db.id }}
+          QUERY_LOG_PATH: ${{ runner.temp }}/backend-query-log/postgresql.json
+        run: |
+          db_psql() {
+            docker exec "$DB_CONTAINER_ID" psql \
+              --username=t_rader \
+              --dbname=t_rader_test \
+              --set=ON_ERROR_STOP=1 \
+              --tuples-only \
+              --no-align \
+              "$@"
+          }
+
+          log_path=$(db_psql --command="SELECT current_setting('data_directory') || '/' || pg_current_logfile('jsonlog')")
+          if [[ -z "$log_path" ]]; then
+            echo "PostgreSQL did not report an active JSON log file" >&2
+            docker logs "$DB_CONTAINER_ID"
+            exit 1
+          fi
+
+          mkdir -p "$(dirname "$QUERY_LOG_PATH")"
+          docker cp "$DB_CONTAINER_ID:$log_path" "$QUERY_LOG_PATH"
+
+      - name: Upload PostgreSQL query log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-query-log
+          path: ${{ runner.temp }}/backend-query-log/postgresql.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
@@ -762,6 +823,107 @@ jobs:
           files: backend/lcov.info
           flags: backend
           fail_ci_if_error: false
+
+  query-perf:
+    needs: unit-test-backend
+    if: needs.unit-test-backend.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    env:
+      CARGO_INCREMENTAL: '0'
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: rustup show
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          version: 2026.9.11
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download backend query log
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: backend-query-log
+          path: backend-query-log
+
+      - name: Build query performance runner
+        run: cargo build --manifest-path backend/Cargo.toml -p query-perf
+
+      - name: Pull or build perf DB image
+        id: perf-db-image
+        run: |
+          image_ref=$(backend/scripts/build-perf-db-image.sh --image-ref)
+          if manifest_output=$(docker manifest inspect "$image_ref" 2>&1); then
+            docker pull "$image_ref"
+          else
+            case "$manifest_output" in
+              *'no such manifest'* | *'manifest unknown'* | *'404 Not Found'*)
+                echo "Perf DB image is missing; building it locally."
+                backend/scripts/build-perf-db-image.sh
+                ;;
+              *)
+                printf 'Failed to inspect perf DB image %s:\n%s\n' "$image_ref" "$manifest_output" >&2
+                exit 1
+                ;;
+            esac
+          fi
+          echo "image_ref=$image_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Start memory-limited perf DB
+        run: |
+          docker run \
+            --detach \
+            --name query-perf-db \
+            --restart=on-failure:5 \
+            --memory=6g \
+            --memory-swap=6g \
+            --publish 127.0.0.1:5432:5432 \
+            "${{ steps.perf-db-image.outputs.image_ref }}"
+
+      - name: Wait for perf DB
+        run: |
+          ready=false
+          for _ in {1..120}; do
+            if docker exec query-perf-db pg_isready --username=t_rader --dbname=t_rader; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            docker logs query-perf-db
+            exit 1
+          fi
+
+      - name: Replay backend SELECT queries
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@127.0.0.1:5432/t_rader
+        run: cargo run --manifest-path backend/Cargo.toml -p query-perf -- --log-file backend-query-log/postgresql.json
+
+      - name: Remove perf DB container
+        if: always()
+        run: |
+          if docker ps -a --format '{{.Names}}' | rg -x 'query-perf-db'; then
+            docker rm --force query-perf-db
+          fi
 
   unit-test-agent:
     needs: detect-changes
@@ -859,6 +1021,7 @@ jobs:
       - terraform-provider
       - unit-test-frontend
       - unit-test-backend
+      - query-perf
       - unit-test-agent
       - knip
     if: failure()
