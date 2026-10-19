@@ -12,8 +12,9 @@ backend の crate は `backend/crates/<区分>/<crate>/` の 2 階層に配置�
 
 ```text
 backend/crates/
-├── apps/                 # composition root
-│   └── backend/
+├── apps/                 # アプリケーションと CI 用 CLI
+│   ├── backend/          # composition root
+│   └── query-perf/       # CI 用 SQL 性能検査 CLI
 ├── core/
 │   ├── domain/           # 値、エンティティ、ドメインルール
 │   └── application/      # ユースケースと port
@@ -54,11 +55,14 @@ backend/crates/
 | `entrypoints/*`      | HTTP、MCP、webhook、単発ジョブなどの入力を受け取り、application のユースケースを呼び出す。 |
 | `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                               |
 | `apps/backend`       | 各 crate を組み立て、アプリケーションを起動する。                                          |
+| `apps/query-perf`    | backend test の JSON SQL log を perf-db で再実行する CI 専用 CLI。                         |
 | `libs/rate-limit`    | Redis を使って process 間で共有する rate limit と cooldown を提供する。                    |
 | `libs/test-macros`   | DB test 用 proc macro を提供する。                                                         |
 | `backend/migration/` | SeaORM migration を管理する。                                                              |
 
 composition root は `backend/crates/apps/backend/` にある。`src/main.rs` が外部接続、依存の組み立て、起動モードを管理し、`src/lib.rs` と `src/mcp/` が HTTP router、MCP の session 管理、allowed hosts、access log など複数の entrypoint を組み合わせる。`src/services/use_cases/` は gateway 実装から application のユースケースを組み立てる。
+
+`backend/crates/apps/query-perf/` は CI 用の独立 CLI であり、アプリケーションのユースケースや本番 DB 接続には使わない。
 
 entrypoint をまたぐ結合テストは composition root に置く。現在は `backend/crates/apps/backend/src/integration_tests/` がその場所である。
 
@@ -68,15 +72,16 @@ entrypoint をまたぐ結合テストは composition root に置く。現在は
 
 `backend/crates/` 内の crate 間の直接依存は `Cargo.toml` で次の関係に限定する。
 
-| crate                                       | 依存先                                                       |
-| ------------------------------------------- | ------------------------------------------------------------ |
-| `core/domain`                               | なし                                                         |
-| `core/application`                          | `core/domain`                                                |
-| `entrypoints/*` (`external-webhook` を含む) | `core/application`, `core/domain`                            |
-| `gateways/*`                                | `core/application`, `core/domain`, `libs/rate-limit`         |
-| `apps/backend`                              | `backend/crates/` 内のすべての crate と `backend/migration/` |
-| `libs/rate-limit`                           | なし                                                         |
-| `libs/test-macros`                          | なし                                                         |
+| crate                                       | 依存先                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `core/domain`                               | なし                                                                                  |
+| `core/application`                          | `core/domain`                                                                         |
+| `entrypoints/*` (`external-webhook` を含む) | `core/application`, `core/domain`                                                     |
+| `gateways/*`                                | `core/application`, `core/domain`, `libs/rate-limit`                                  |
+| `apps/backend`                              | `apps/query-perf` 以外の `backend/crates/` 内のすべての crate と `backend/migration/` |
+| `apps/query-perf`                           | なし                                                                                  |
+| `libs/rate-limit`                           | なし                                                                                  |
+| `libs/test-macros`                          | なし                                                                                  |
 
 `libs/rate-limit` は外部 crate への依存だけを持ち、`backend/crates/` 内の crate には依存しない。利用できるのは `gateways/*` と `apps/backend` のみとし、`core/*` と `entrypoints/*` からは依存させない。
 

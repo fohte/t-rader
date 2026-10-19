@@ -362,6 +362,7 @@ mod tests {
                 "list_recent_notes",
                 "list_rss_feeds",
                 "list_strategies",
+                "preview_dashboard",
                 "resume_strategy_task",
                 "submit_strategy_task",
                 "update_rss_feed",

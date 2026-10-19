@@ -1,0 +1,62 @@
+[
+  {
+    "sql": "SELECT\n(SELECT string_agg(timeframe, ',' ORDER BY timeframe) FROM bars) AS bar_timeframes,\n(\n    SELECT time_interval::text\n    FROM timescaledb_information.dimensions\n    WHERE hypertable_schema = current_schema()\n      AND hypertable_name = 'bars'\n      AND column_name = 'timestamp'\n) AS bars_chunk_interval,\n(SELECT count(*) FROM minute_bars) AS minute_count,\n(SELECT close::integer FROM minute_bars) AS minute_close,\nEXISTS (\n    SELECT 1 FROM timescaledb_information.jobs\n    WHERE hypertable_schema = current_schema()\n      AND hypertable_name = 'minute_bars'\n      AND proc_name = 'policy_compression'\n) AS minute_policy_restored,\nNOT EXISTS (\n    SELECT 1 FROM timescaledb_information.jobs\n    WHERE hypertable_schema = current_schema()\n      AND hypertable_name = 'bars'\n      AND proc_name = 'policy_compression'\n) AS bars_policy_removed",
+    "reason": "この移行テスト用テーブルは perf-db に存在しない"
+  },
+  {
+    "sql": "SELECT \"id\", \"axis_id\", \"key\", \"name\", \"description\", \"sync_source_code\" FROM \"stock_group\"",
+    "reason": "移行前の sync_source 列は perf-db に存在しない"
+  },
+  {
+    "sql": "SELECT \"id\", \"key\", \"name\", \"description\", \"sync_source\" FROM \"group_axis\"",
+    "reason": "移行前の sync_source 列は perf-db に存在しない"
+  },
+  {
+    "sql": "SELECT \"sync_source\" FROM \"group_axis\"",
+    "reason": "移行前の sync_source 列は perf-db に存在しない"
+  },
+  {
+    "sql": "SELECT add_compression_policy('bars', INTERVAL '7 days')",
+    "reason": "TimescaleDB の圧縮ポリシーを変更する関数は READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "SELECT add_compression_policy('minute_bars', INTERVAL '7 days')",
+    "reason": "TimescaleDB の圧縮ポリシーを変更する関数は READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "SELECT compress_chunk(\n                    format('%I.%I', chunk_schema, chunk_name)::regclass,\n                    if_not_compressed => TRUE\n                )\n                FROM timescaledb_information.chunks\n                WHERE hypertable_schema = current_schema()\n                  AND hypertable_name = 'bars'\n                  AND range_end < $1\n                  AND is_compressed = FALSE",
+    "reason": "compress_chunk() はチャンクの圧縮状態を変更するため read-only replay で実行できない"
+  },
+  {
+    "sql": "SELECT create_hypertable('bars', by_range('timestamp'))",
+    "reason": "create_hypertable() はテーブル定義を変更するため READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "SELECT create_hypertable('bars', by_range('timestamp', INTERVAL '7 days'))",
+    "reason": "create_hypertable() はテーブル定義を変更するため READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "SELECT create_hypertable('minute_bars', by_range('timestamp', INTERVAL '1 day'))",
+    "reason": "create_hypertable() はテーブル定義を変更するため READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "SELECT remove_compression_policy('bars')",
+    "reason": "TimescaleDB の圧縮ポリシーを変更する関数は READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "SELECT remove_compression_policy('minute_bars')",
+    "reason": "TimescaleDB の圧縮ポリシーを変更する関数は READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "SELECT sync_source FROM group_axis WHERE sync_source IS NOT NULL AND sync_source <> 'jquants' LIMIT 1",
+    "reason": "移行前の sync_source 列は perf-db に存在しない"
+  },
+  {
+    "sql": "WITH aggregated AS (\n                SELECT\n                    instrument_id,\n                    time_bucket('1 hour', timestamp) AS timestamp,\n                    first(open, timestamp) AS open, MAX(high) AS high, MIN(low) AS low, last(close, timestamp) AS close, SUM(volume)::bigint AS volume\n                FROM bars\n                WHERE instrument_id LIKE 'US:%'\n                  AND timeframe = '1m'\n                  AND timestamp >= $1\n                  AND timestamp < $2\n                  AND timestamp < $3\n                  AND instrument_id = $4\n                GROUP BY instrument_id, time_bucket('1 hour', timestamp)\n            )\n            INSERT INTO bars (instrument_id, timeframe, timestamp, open, high, low, close, volume, adjustment_factor)\n            SELECT aggregated.instrument_id, '1h', aggregated.timestamp,\n                   aggregated.open, aggregated.high, aggregated.low,\n                   aggregated.close, aggregated.volume, 1\n            FROM aggregated\n            WHERE aggregated.timestamp + INTERVAL '1 hour' <= $3\n               OR EXISTS (\n                    SELECT 1 FROM bars AS existing_hourly\n                    WHERE existing_hourly.instrument_id = aggregated.instrument_id\n                      AND existing_hourly.timeframe = '1h'\n                      AND existing_hourly.timestamp = aggregated.timestamp\n                      AND existing_hourly.timestamp >= time_bucket('1 hour', $1::timestamptz)\n                      AND existing_hourly.timestamp < $2\n                      AND existing_hourly.timestamp < $3\n                      AND existing_hourly.instrument_id = $4\n               )\n            ON CONFLICT (instrument_id, timeframe, timestamp) DO NOTHING\n            RETURNING timestamp",
+    "reason": "WITH 句の後で bars に INSERT するため READ ONLY transaction 内で実行できない"
+  },
+  {
+    "sql": "WITH dated_schedules AS (\n    SELECT\n        schedule.code,\n        schedule.fq_name,\n        schedule.pub_date,\n        schedule.sch_date,\n        schedule.co_name,\n        CASE\n            WHEN quarter_end_in_schedule_year.quarter_end < schedule.sch_date\n                THEN quarter_end_in_schedule_year.quarter_end\n            ELSE (quarter_end_in_schedule_year.quarter_end - INTERVAL '1 year')::date\n        END AS quarter_end\n    FROM jquants_earnings_date AS schedule\n    CROSS JOIN LATERAL (\n        SELECT (\n            make_date(\n                EXTRACT(YEAR FROM schedule.sch_date)::integer,\n                (\n                    (\n                        substring(schedule.fye FROM 1 FOR 2)::integer\n                        - (\n                            4 - CASE schedule.fq_name\n                                WHEN 'FY' THEN 4\n                                ELSE substring(schedule.fq_name FROM 1 FOR 1)::integer\n                            END\n                        ) * 3\n                        - 1 + 12\n                    ) % 12\n                ) + 1,\n                1\n            ) + INTERVAL '1 month' - INTERVAL '1 day'\n        )::date AS quarter_end\n    ) AS quarter_end_in_schedule_year\n    WHERE schedule.sch_date IS NOT NULL\n      AND schedule.fq_name IN ('1Q', '2Q', '3Q', '4Q', 'FY')\n      AND schedule.fye ~ '^(0[1-9]|1[0-2])[0-9]{2}$'\n), latest_dated_candidates AS (\n    SELECT DISTINCT ON (code, quarter_end)\n        code, fq_name, pub_date, sch_date, co_name, quarter_end\n    FROM dated_schedules\n    ORDER BY code, quarter_end, pub_date DESC, fq_name\n)\nINSERT INTO calendar_event (\n    source, external_id, category, country, title, stock_id, fiscal_period, event_date\n)\nSELECT\n    'jquants',\n    code || ':' || fq_name || ':' || to_char(quarter_end, 'YYYY-MM-DD'),\n    'earnings',\n    'JP',\n    co_name,\n    code,\n    to_char(quarter_end, 'YYYY-MM-DD'),\n    sch_date\nFROM latest_dated_candidates AS candidate\nWHERE NOT EXISTS (\n    SELECT 1\n    FROM jquants_earnings_date AS unknown_schedule\n    WHERE unknown_schedule.code = candidate.code\n      AND unknown_schedule.fq_name = candidate.fq_name\n      AND unknown_schedule.pub_date > candidate.pub_date\n      AND unknown_schedule.sch_date IS NULL\n      AND candidate.sch_date >= unknown_schedule.pub_date\n)",
+    "reason": "この移行テスト用テーブルは perf-db に存在しない"
+  }
+]

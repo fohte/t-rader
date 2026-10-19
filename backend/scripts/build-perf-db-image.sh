@@ -8,10 +8,18 @@ readonly POSTGRES_PASSWORD='t_rader'
 readonly POSTGRES_DATABASE='t_rader'
 
 push_image=false
-if [[ $# -eq 1 && "$1" == '--push' ]]; then
-  push_image=true
+print_image_ref=false
+if [[ $# -eq 1 ]]; then
+  case "$1" in
+    --push) push_image=true ;;
+    --image-ref) print_image_ref=true ;;
+    *)
+      echo "Usage: $0 [--push|--image-ref]" >&2
+      exit 2
+      ;;
+  esac
 elif [[ $# -gt 0 ]]; then
-  echo "Usage: $0 [--push]" >&2
+  echo "Usage: $0 [--push|--image-ref]" >&2
   exit 2
 fi
 
@@ -32,6 +40,10 @@ source_hash=$(
     awk '{print $NF}'
 )
 image_ref="$IMAGE_REPOSITORY:$source_hash"
+if [[ "$print_image_ref" == true ]]; then
+  echo "$image_ref"
+  exit 0
+fi
 container_name="t-rader-perf-db-build-$$"
 container_started=false
 
