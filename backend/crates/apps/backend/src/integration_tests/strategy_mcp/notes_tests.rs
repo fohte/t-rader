@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use indoc::indoc;
     use uuid::Uuid;
 
     use sea_orm::ActiveModelTrait;
@@ -34,6 +35,24 @@ mod tests {
         "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / group の参照だけを使用できます\n",
         "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
+
+    fn price_warning_message(value: &str) -> String {
+        format!(
+            "価格候補の数値「{value}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値ならそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。"
+        )
+    }
+
+    fn relative_warning_message(value: &str) -> String {
+        format!(
+            "相対表現「{value}」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値はそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。"
+        )
+    }
+
+    fn bar_count_warning_message(value: &str) -> String {
+        format!(
+            "ローソク足の本数「{value}」があります。本数ではなく、開始日と終了日で対象期間を記載してください。"
+        )
+    }
 
     fn widget_write_note_params(note_id: Option<Uuid>, body_md: &str) -> WriteNoteParams {
         WriteNoteParams {
@@ -481,7 +500,7 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db.clone());
-        let body_md = "close 67,890円, then -4.5%, with 73足";
+        let body_md = "close 67,890円, then -4.5%, with 73足, 1,200万件, and 3万人";
         let graphs = serde_json::json!([{
             "id": "fictional-chart",
             "layout": "flow",
@@ -561,15 +580,20 @@ mod tests {
             ),
             (
                 rmcp::model::ErrorCode::INVALID_PARAMS,
-                concat!(
-                    "note warnings must be fixed or dismissed with a reason:\n",
-                    "price:67%2C890%E5%86%86:1: 価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。\n",
-                    "relative:-4.5%25:1: 相対表現「-4.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。\n",
-                    "bar-count:73%E8%B6%B3:1: ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。\n",
-                    "price:48%2C765%E5%86%86:1: graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: 価格候補の数値「48,765円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。\n",
-                    "relative:-2.5%25:1: graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: 相対表現「-2.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。"
-                )
-                .into(),
+                format!(
+                    indoc! {"
+                        note warnings must be fixed or dismissed with a reason:
+                        price:67%2C890%E5%86%86:1: {}
+                        relative:-4.5%25:1: {}
+                        bar-count:73%E8%B6%B3:1: {}
+                        price:48%2C765%E5%86%86:1: graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}
+                        relative:-2.5%25:1: graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}"},
+                    price_warning_message("67,890円"),
+                    relative_warning_message("-4.5%"),
+                    bar_count_warning_message("73足"),
+                    price_warning_message("48,765円"),
+                    relative_warning_message("-2.5%"),
+                ),
                 0,
                 WriteNoteResult {
                     note_id: written_note_id,
@@ -577,23 +601,29 @@ mod tests {
                     warnings: vec![
                         WriteNoteWarning {
                             id: "price:67%2C890%E5%86%86:1".into(),
-                            message: "価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                            message: price_warning_message("67,890円"),
                         },
                         WriteNoteWarning {
                             id: "relative:-4.5%25:1".into(),
-                            message: "相対表現「-4.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                            message: relative_warning_message("-4.5%"),
                         },
                         WriteNoteWarning {
                             id: "bar-count:73%E8%B6%B3:1".into(),
-                            message: "ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".into(),
+                            message: bar_count_warning_message("73足"),
                         },
                         WriteNoteWarning {
                             id: "price:48%2C765%E5%86%86:1".into(),
-                            message: "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: 価格候補の数値「48,765円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                            message: format!(
+                                "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
+                                price_warning_message("48,765円"),
+                            ),
                         },
                         WriteNoteWarning {
                             id: "relative:-2.5%25:1".into(),
-                            message: "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: 相対表現「-2.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                            message: format!(
+                                "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}",
+                                relative_warning_message("-2.5%"),
+                            ),
                         },
                     ],
                 },
