@@ -2271,7 +2271,6 @@ mod tests {
         expected_warnings: Vec<NoteBodyWarning>,
     ) {
         let unresolved_warnings = result.err().and_then(|error| match error {
-            NoteUseCaseError::UnresolvedBodyWarnings { warnings } => Some(warnings),
             NoteUseCaseError::BodyLintRejected { warnings, .. } => Some(warnings),
             _ => None,
         });

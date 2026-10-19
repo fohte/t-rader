@@ -8,7 +8,7 @@ pub mod rules;
 mod runner;
 mod types;
 
-pub use decision::{Disposition, evaluate_dispositions};
+pub use decision::{Disposition, DispositionEvaluation, evaluate_dispositions};
 pub use document::{ParsedMarkdown, ParsedMarkdownError, TextRun, TextRunKind, ValidatedTokenSpan};
 pub use fix::{FixError, apply_safe_edits};
 pub(crate) use id::lint_id;

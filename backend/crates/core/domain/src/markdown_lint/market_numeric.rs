@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use super::types::{MarkdownLintContext, RuleFinding};
 use crate::note_reference::prose_segment_ranges;
 
 const PRICE_WARNING_SUFFIX: &str = "がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値ならそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。";
@@ -28,6 +29,18 @@ pub struct MarketNumericFinding {
     pub key: String,
     pub range: Range<usize>,
     pub message: String,
+}
+
+pub(crate) fn findings_of_kind(
+    context: &MarkdownLintContext<'_>,
+    kind: MarketNumericKind,
+) -> Vec<RuleFinding> {
+    context
+        .market_numeric_findings
+        .iter()
+        .filter(|finding| finding.kind == kind)
+        .map(RuleFinding::from_market_numeric)
+        .collect()
 }
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use super::super::market_numeric::MarketNumericKind;
+use super::super::market_numeric::{MarketNumericKind, findings_of_kind};
 use super::super::{MarkdownLintContext, RuleDefinition, RuleFinding, RuleRequirements, Severity};
 
 pub static RULE: RuleDefinition = RuleDefinition::new(
@@ -9,10 +9,5 @@ pub static RULE: RuleDefinition = RuleDefinition::new(
 );
 
 fn check(context: &MarkdownLintContext<'_>) -> Vec<RuleFinding> {
-    context
-        .market_numeric_findings
-        .iter()
-        .filter(|finding| finding.kind == MarketNumericKind::Price)
-        .map(RuleFinding::from_market_numeric)
-        .collect()
+    findings_of_kind(context, MarketNumericKind::Price)
 }

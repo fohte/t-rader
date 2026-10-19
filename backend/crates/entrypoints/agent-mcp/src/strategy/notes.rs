@@ -25,19 +25,6 @@ pub(crate) use read::note_read_error_to_mcp;
 fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
     match error {
         NoteUseCaseError::Validation(message) => invalid_params(message),
-        NoteUseCaseError::UnresolvedBodyWarnings { warnings } => {
-            let warning_details = warnings
-                .iter()
-                .map(|warning| format!("{}: {}", warning.id, warning.message))
-                .collect::<Vec<_>>()
-                .join("\n");
-            McpError::invalid_params(
-                format!(
-                    "note warnings must be fixed or dismissed with a reason:\n{warning_details}"
-                ),
-                Some(serde_json::json!({"warnings": warnings})),
-            )
-        }
         NoteUseCaseError::BodyLintRejected {
             diagnostics,
             warnings,
@@ -239,36 +226,10 @@ mod tests {
     use core_domain::markdown_lint::{LintDiagnostic, Severity};
     use core_domain::note_body_warning::NoteBodyWarning;
 
-    #[test]
-    fn unresolved_warning_errors_include_warning_ids_in_data() {
-        let error = note_use_case_to_mcp(NoteUseCaseError::UnresolvedBodyWarnings {
-            warnings: vec![NoteBodyWarning {
-                id: "price:45%2C678%E5%86%86:1".into(),
-                message: "価格候補の数値「45,678円」がリンク外にあります。".into(),
-            }],
-        });
-
-        assert_eq!(
-            (error.code, error.message.to_string(), error.data),
-            (
-                ErrorCode::INVALID_PARAMS,
-                concat!(
-                    "note warnings must be fixed or dismissed with a reason:\n",
-                    "price:45%2C678%E5%86%86:1: 価格候補の数値「45,678円」がリンク外にあります。"
-                )
-                .into(),
-                Some(json!({
-                    "warnings": [{
-                        "id": "price:45%2C678%E5%86%86:1",
-                        "message": "価格候補の数値「45,678円」がリンク外にあります。",
-                    }],
-                })),
-            ),
-        );
-    }
-
-    #[test]
-    fn lint_rejections_return_error_diagnostics_and_warning_subset() {
+    #[rstest::rstest]
+    #[case::warning_only(false)]
+    #[case::error_with_warning(true)]
+    fn lint_rejections_return_error_diagnostics_and_warning_subset(#[case] has_error: bool) {
         let warning = LintDiagnostic {
             rule_id: "price",
             id: "price:12%2C345%E5%86%86:1".into(),
@@ -285,8 +246,12 @@ mod tests {
             message: "sample blocking diagnostic".into(),
             fix: None,
         };
+        let mut diagnostics = vec![warning.clone()];
+        if has_error {
+            diagnostics.push(error_diagnostic);
+        }
         let error = note_use_case_to_mcp(NoteUseCaseError::BodyLintRejected {
-            diagnostics: vec![warning.clone(), error_diagnostic],
+            diagnostics,
             warnings: vec![NoteBodyWarning {
                 id: warning.id.clone(),
                 message: warning.message.clone(),
@@ -297,35 +262,52 @@ mod tests {
             (error.code, error.message.to_string(), error.data),
             (
                 ErrorCode::INVALID_PARAMS,
-                concat!(
-                    "note body contains blocking lint diagnostics:\n",
-                    "price:12%2C345%E5%86%86:1: sample price warning\n",
-                    "sample-rule:sample-key:1: sample blocking diagnostic"
-                )
+                if has_error {
+                    concat!(
+                        "note body contains blocking lint diagnostics:\n",
+                        "price:12%2C345%E5%86%86:1: sample price warning\n",
+                        "sample-rule:sample-key:1: sample blocking diagnostic"
+                    )
+                } else {
+                    "note warnings must be fixed or dismissed with a reason:\nprice:12%2C345%E5%86%86:1: sample price warning"
+                }
                 .into(),
                 Some(json!({
                     "warnings": [{
                         "id": "price:12%2C345%E5%86%86:1",
                         "message": "sample price warning",
                     }],
-                    "diagnostics": [
-                        {
-                            "rule_id": "price",
-                            "id": "price:12%2C345%E5%86%86:1",
-                            "severity": "warning",
-                            "range": {"start": 0, "end": 9},
-                            "message": "sample price warning",
-                            "fix": null,
-                        },
-                        {
-                            "rule_id": "sample-rule",
-                            "id": "sample-rule:sample-key:1",
-                            "severity": "error",
-                            "range": {"start": 10, "end": 15},
-                            "message": "sample blocking diagnostic",
-                            "fix": null,
-                        },
-                    ],
+                    "diagnostics": if has_error {
+                        json!([
+                            {
+                                "rule_id": "price",
+                                "id": "price:12%2C345%E5%86%86:1",
+                                "severity": "warning",
+                                "range": {"start": 0, "end": 9},
+                                "message": "sample price warning",
+                                "fix": null,
+                            },
+                            {
+                                "rule_id": "sample-rule",
+                                "id": "sample-rule:sample-key:1",
+                                "severity": "error",
+                                "range": {"start": 10, "end": 15},
+                                "message": "sample blocking diagnostic",
+                                "fix": null,
+                            },
+                        ])
+                    } else {
+                        json!([
+                            {
+                                "rule_id": "price",
+                                "id": "price:12%2C345%E5%86%86:1",
+                                "severity": "warning",
+                                "range": {"start": 0, "end": 9},
+                                "message": "sample price warning",
+                                "fix": null,
+                            },
+                        ])
+                    }
                 })),
             ),
         );

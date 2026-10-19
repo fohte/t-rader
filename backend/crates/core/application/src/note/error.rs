@@ -15,8 +15,6 @@ use core_domain::note_body_warning::NoteBodyWarning;
 pub enum NoteUseCaseError {
     #[error("{0}")]
     Validation(String),
-    #[error("note body contains unresolved warnings")]
-    UnresolvedBodyWarnings { warnings: Vec<NoteBodyWarning> },
     #[error("note body has lint errors or unresolved warnings")]
     BodyLintRejected {
         diagnostics: Vec<LintDiagnostic>,

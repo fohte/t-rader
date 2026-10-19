@@ -9,15 +9,27 @@ pub struct Disposition<'a> {
     pub reason: &'a str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DispositionEvaluation {
+    pub unresolved_diagnostics: Vec<LintDiagnostic>,
+    pub unresolved_warning_ids: Vec<String>,
+}
+
 pub fn evaluate_dispositions(
     report: &LintReport,
+    additional_warning_ids: &[String],
     dispositions: &[Disposition<'_>],
-) -> Result<(), Vec<LintDiagnostic>> {
+) -> DispositionEvaluation {
+    let warning_ids = report
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Warning)
+        .map(|diagnostic| diagnostic.id.as_str())
+        .chain(additional_warning_ids.iter().map(String::as_str))
+        .collect::<Vec<_>>();
     let mut warning_counts = HashMap::<String, usize>::new();
-    for diagnostic in &report.diagnostics {
-        if diagnostic.severity == Severity::Warning
-            && let Some(group_id) = warning_id_group(&diagnostic.id)
-        {
+    for id in &warning_ids {
+        if let Some(group_id) = warning_id_group(id) {
             *warning_counts.entry(group_id.to_string()).or_default() += 1;
         }
     }
@@ -37,29 +49,37 @@ pub fn evaluate_dispositions(
         }
     }
 
-    let unresolved = report
+    let is_disposed = |id: &str| {
+        let Some(group_id) = warning_id_group(id) else {
+            return false;
+        };
+        let Some(group_dispositions) = disposition_ids.get(group_id) else {
+            return false;
+        };
+        group_dispositions.contains(id) || group_dispositions.len() >= warning_counts[group_id]
+    };
+    let unresolved_warning_ids = warning_ids
+        .iter()
+        .filter(|id| !is_disposed(id))
+        .map(|id| (*id).to_string())
+        .collect::<Vec<_>>();
+    let unresolved_warning_id_set = unresolved_warning_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let unresolved_diagnostics = report
         .diagnostics
         .iter()
         .filter(|diagnostic| match diagnostic.severity {
             Severity::Error => true,
-            Severity::Warning => {
-                let Some(group_id) = warning_id_group(&diagnostic.id) else {
-                    return true;
-                };
-                let Some(group_dispositions) = disposition_ids.get(group_id) else {
-                    return true;
-                };
-                !group_dispositions.contains(&diagnostic.id)
-                    && group_dispositions.len() < warning_counts[group_id]
-            }
+            Severity::Warning => unresolved_warning_id_set.contains(diagnostic.id.as_str()),
         })
         .cloned()
         .collect::<Vec<_>>();
 
-    if unresolved.is_empty() {
-        Ok(())
-    } else {
-        Err(unresolved)
+    DispositionEvaluation {
+        unresolved_diagnostics,
+        unresolved_warning_ids,
     }
 }
 
@@ -69,7 +89,7 @@ mod tests {
 
     use rstest::rstest;
 
-    use super::{Disposition, evaluate_dispositions};
+    use super::{Disposition, DispositionEvaluation, evaluate_dispositions};
     use crate::markdown_lint::{LintDiagnostic, LintReport, Severity};
 
     fn diagnostic(rule_id: &'static str, id: &str, severity: Severity) -> LintDiagnostic {
@@ -110,16 +130,18 @@ mod tests {
         let dispositions = disposition.into_iter().collect::<Vec<_>>();
 
         assert_eq!(
-            evaluate_dispositions(&report, &dispositions).map_err(|diagnostics| {
-                diagnostics
-                    .into_iter()
-                    .map(|diagnostic| diagnostic.id)
-                    .collect::<Vec<_>>()
-            }),
-            if error {
-                Err(vec!["sample-rule:sample-key:1".to_string()])
-            } else {
-                Ok(())
+            evaluate_dispositions(&report, &[], &dispositions),
+            DispositionEvaluation {
+                unresolved_diagnostics: if error {
+                    vec![diagnostic(
+                        "sample-rule",
+                        "sample-rule:sample-key:1",
+                        Severity::Error,
+                    )]
+                } else {
+                    Vec::new()
+                },
+                unresolved_warning_ids: Vec::new(),
             },
         );
     }
@@ -135,18 +157,26 @@ mod tests {
         assert_eq!(
             evaluate_dispositions(
                 &report,
+                &["price:sample-key:3".into()],
                 &[
-                    Disposition {
-                        id: "price:sample-key:3",
-                        reason: "documented",
-                    },
                     Disposition {
                         id: "price:sample-key:4",
                         reason: "documented",
                     },
+                    Disposition {
+                        id: "price:sample-key:5",
+                        reason: "documented",
+                    },
+                    Disposition {
+                        id: "price:sample-key:6",
+                        reason: "documented",
+                    },
                 ],
             ),
-            Ok(()),
+            DispositionEvaluation {
+                unresolved_diagnostics: Vec::new(),
+                unresolved_warning_ids: Vec::new(),
+            },
         );
     }
 }
