@@ -46,16 +46,6 @@ impl NoteUseCases {
             .find_latest_version(transaction, note.id)
             .await?;
         let previous_content = current.as_ref().or(latest.as_ref());
-        let body_unchanged =
-            previous_content.is_some_and(|previous| previous.body_md == content.body_md);
-        let reference_policy = if content.reference_policy
-            == NotePriceReferencePolicy::AllowIndicatorChanges
-            || (content.resolved_market_data.is_none() && body_unchanged)
-        {
-            NotePriceReferencePolicy::AllowIndicatorChanges
-        } else {
-            NotePriceReferencePolicy::Standard
-        };
         let requires_approval = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             false
         } else if let Some(kind_key) = note.kind.as_deref() {
@@ -79,7 +69,7 @@ impl NoteUseCases {
             ));
         }
 
-        let references = extract_note_price_references(&content.body_md, reference_policy)?;
+        let references = extract_note_price_references(&content.body_md, content.reference_policy)?;
         let body_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.body_md != content.body_md);

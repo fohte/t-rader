@@ -337,12 +337,6 @@ pub fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
     format_note_token_errors_with_policy(errors, NotePriceReferencePolicy::Standard)
 }
 
-pub fn format_note_token_errors_with_indicator_changes(
-    errors: &[NoteTokenValidationError],
-) -> String {
-    format_note_token_errors_with_policy(errors, NotePriceReferencePolicy::AllowIndicatorChanges)
-}
-
 pub fn format_note_token_errors_with_policy(
     errors: &[NoteTokenValidationError],
     policy: NotePriceReferencePolicy,

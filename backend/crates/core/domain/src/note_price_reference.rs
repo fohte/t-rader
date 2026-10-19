@@ -76,12 +76,6 @@ pub fn extract_note_price_references(
     extract_note_price_references_with_policy(body, NotePriceReferencePolicy::Standard)
 }
 
-pub fn extract_note_price_references_with_indicator_changes(
-    body: &str,
-) -> Result<Vec<NotePriceReferenceToken>, Vec<NoteTokenValidationError>> {
-    extract_note_price_references_with_policy(body, NotePriceReferencePolicy::AllowIndicatorChanges)
-}
-
 pub fn extract_note_price_references_with_policy(
     body: &str,
     policy: NotePriceReferencePolicy,
@@ -299,8 +293,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        NotePriceReference, NotePriceReferenceToken, PriceReferenceField, ValuationReferenceField,
-        extract_note_price_references, extract_note_price_references_with_indicator_changes,
+        NotePriceReference, NotePriceReferencePolicy, NotePriceReferenceToken, PriceReferenceField,
+        ValuationReferenceField, extract_note_price_references,
+        extract_note_price_references_with_policy,
     };
     use crate::note_reference::NoteTokenValidationError;
 
@@ -336,7 +331,10 @@ mod tests {
         let body = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
 
         assert_eq!(
-            extract_note_price_references_with_indicator_changes(body),
+            extract_note_price_references_with_policy(
+                body,
+                NotePriceReferencePolicy::AllowIndicatorChanges,
+            ),
             Ok(vec![NotePriceReferenceToken {
                 token: body.to_string(),
                 reference: NotePriceReference::IndicatorChange {

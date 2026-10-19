@@ -27,6 +27,15 @@ impl NoteUseCases {
             .ok_or_else(|| {
                 NoteUseCaseError::NotFound(format!("current version for note {note_id} not found"))
             })?;
+        let body_unchanged = command
+            .body_md
+            .as_deref()
+            .is_none_or(|body_md| body_md == current_version.body_md.as_str());
+        let reference_policy = if body_unchanged {
+            NotePriceReferencePolicy::AllowIndicatorChanges
+        } else {
+            NotePriceReferencePolicy::Standard
+        };
         let resolved_market_data = match command.body_md.as_deref() {
             Some(body_md) if body_md != current_version.body_md.as_str() => Some(
                 self.resolve_market_data_references(body_md, NotePriceReferencePolicy::Standard)
@@ -127,7 +136,7 @@ impl NoteUseCases {
                     change_diff: Some(Value::Object(diff)),
                     actor: Actor::Human,
                     resolved_market_data,
-                    reference_policy: NotePriceReferencePolicy::Standard,
+                    reference_policy,
                 },
             )
             .await?;

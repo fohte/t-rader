@@ -292,6 +292,18 @@ impl NoteUseCases {
             .ok_or_else(|| {
                 NoteUseCaseError::Conflict(format!("note {} has no version", note.id))
             })?;
+        let body_unchanged = command
+            .body_md
+            .as_deref()
+            .is_none_or(|body| body == current_version.body_md);
+        let reference_policy = if reference_policy
+            == NotePriceReferencePolicy::AllowIndicatorChanges
+            || body_unchanged
+        {
+            NotePriceReferencePolicy::AllowIndicatorChanges
+        } else {
+            NotePriceReferencePolicy::Standard
+        };
         let mut touched = false;
         let mut title = current_version.title.clone();
         let mut body_md = current_version.body_md.clone();
@@ -1246,6 +1258,42 @@ mod tests {
                     reason: "銘柄 ID と日付を `@` で区切ってください".into(),
                 },
             ])),
+        );
+    }
+
+    #[tokio::test]
+    async fn human_update_rejects_new_indicator_change_references() {
+        let reference = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .update(
+                SOURCE_NOTE_ID,
+                UpdateNoteCommand {
+                    title: Some("Human title edit".into()),
+                    body_md: Some(reference.into()),
+                    frontmatter_json: None,
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                },
+            )
+            .await;
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                inserted_version_count,
+            ),
+            (
+                Some(core_domain::note_reference::format_note_token_errors(&[
+                    core_domain::note_reference::NoteTokenValidationError::BodyToken {
+                        token: reference.into(),
+                        reason: "銘柄 ID と日付を `@` で区切ってください".into(),
+                    },
+                ])),
+                0,
+            ),
         );
     }
 
