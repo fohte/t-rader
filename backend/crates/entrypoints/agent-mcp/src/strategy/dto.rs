@@ -121,6 +121,9 @@ pub struct NoteDto {
     /// `list_notes` で `include_body: false` を指定したときのみ省略される (null)。
     /// `read_note` の結果では常に値を含む
     pub body_md: Option<String>,
+    /// `read_note` の結果でのみ含まれる、確認したバージョンへの Markdown リンク。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_reference: Option<String>,
     pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
     pub tags: Vec<String>,
     pub kind: Option<String>,
