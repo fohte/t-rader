@@ -8,7 +8,7 @@ pub(super) const GROUP_MEMBERSHIP_CTES: &str = r#"
         JOIN group_axis AS axis ON axis.key = requested_axes.axis_key
         JOIN stock_group AS group_row ON group_row.axis_id = axis.id
     ),
-    group_members AS (
+    group_members AS NOT MATERIALIZED (
         SELECT axis_groups.axis_key,
                axis_groups.group_id,
                axis_groups.group_key,

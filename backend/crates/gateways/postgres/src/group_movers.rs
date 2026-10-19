@@ -14,28 +14,27 @@ use crate::persistence::persistence_error;
 const TOP_STOCKS_PER_GROUP: i64 = 5;
 
 const GROUP_MOVER_STOCK_CHANGE_CTES: &str = r#"
-    ranked_period_bars AS (
+    latest_period_bars AS (
         SELECT period_bars.stock_id,
-               period_bars.close,
                period_bars.is_end_period,
-               ROW_NUMBER() OVER (
-                   PARTITION BY period_bars.stock_id, period_bars.is_end_period
-                   ORDER BY period_bars.timestamp DESC
-               ) AS bar_rank
+               MAX(period_bars.timestamp) AS timestamp
         FROM period_bars
+        GROUP BY period_bars.stock_id, period_bars.is_end_period
     ),
     stock_change_prices AS (
-        SELECT ranked_period_bars.stock_id,
-               MAX(ranked_period_bars.close) FILTER (
-                   WHERE ranked_period_bars.is_end_period
-                     AND ranked_period_bars.bar_rank = 1
+        SELECT latest_period_bars.stock_id,
+               MAX(period_bars.close) FILTER (
+                   WHERE latest_period_bars.is_end_period
                ) AS end_close,
-               MAX(ranked_period_bars.close) FILTER (
-                   WHERE NOT ranked_period_bars.is_end_period
-                     AND ranked_period_bars.bar_rank = 1
+               MAX(period_bars.close) FILTER (
+                   WHERE NOT latest_period_bars.is_end_period
                ) AS start_close
-        FROM ranked_period_bars
-        GROUP BY ranked_period_bars.stock_id
+        FROM latest_period_bars
+        JOIN period_bars
+          ON period_bars.stock_id = latest_period_bars.stock_id
+         AND period_bars.is_end_period = latest_period_bars.is_end_period
+         AND period_bars.timestamp = latest_period_bars.timestamp
+        GROUP BY latest_period_bars.stock_id
     ),
     stock_changes AS (
         SELECT stock_change_prices.stock_id,
@@ -56,10 +55,11 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
         "SELECT $1::text AS axis_key",
         r#"
             eligible_stocks AS (
-                SELECT DISTINCT group_members.stock_id
-                FROM group_members
-                WHERE group_members.axis_key = $1::text
-                  AND group_members.stock_id IS NOT NULL
+                SELECT DISTINCT stock_group_member.stock_id
+                FROM axis_groups
+                JOIN stock_group_member
+                  ON stock_group_member.group_id = axis_groups.group_id
+                WHERE stock_group_member.stock_id IS NOT NULL
             ),
             period_bars AS MATERIALIZED (
                 SELECT eligible_stocks.stock_id,
