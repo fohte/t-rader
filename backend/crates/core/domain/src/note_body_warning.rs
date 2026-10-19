@@ -26,10 +26,6 @@ pub struct NoteBodyWarning {
     pub message: String,
 }
 
-pub fn scan_note_body_warnings_with_ids(body: &str) -> Vec<NoteBodyWarning> {
-    scan_note_warnings_with_ids(body, &[])
-}
-
 pub fn scan_note_warnings_with_ids(body: &str, graphs: &[GraphDef]) -> Vec<NoteBodyWarning> {
     let mut occurrences = HashMap::<(WarningKind, String), usize>::new();
     let mut warnings = scan_text_with_ids(body, None, &mut occurrences);
@@ -432,7 +428,7 @@ mod tests {
 
     use crate::note_graph::{GraphDef, GraphEdge, GraphNode, Layout};
 
-    use super::{NoteBodyWarning, scan_note_body_warnings_with_ids, scan_note_warnings_with_ids};
+    use super::{NoteBodyWarning, scan_note_warnings_with_ids};
 
     #[rstest]
     #[case::price_and_relative_values(
@@ -541,7 +537,7 @@ mod tests {
     )]
     fn scans_unlinked_note_body_warnings(#[case] body: &str, #[case] expected: Vec<String>) {
         assert_eq!(
-            scan_note_body_warnings_with_ids(body)
+            scan_note_warnings_with_ids(body, &[])
                 .into_iter()
                 .map(|warning| warning.message)
                 .collect::<Vec<_>>(),
@@ -553,8 +549,8 @@ mod tests {
     fn warning_ids_remain_stable_when_another_warning_is_added() {
         assert_eq!(
             (
-                scan_note_body_warnings_with_ids("45,678円、45,678円"),
-                scan_note_body_warnings_with_ids("-3.5%、45,678円、45,678円"),
+                scan_note_warnings_with_ids("45,678円、45,678円", &[]),
+                scan_note_warnings_with_ids("-3.5%、45,678円、45,678円", &[]),
             ),
             (
                 vec![

@@ -4,6 +4,7 @@
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::note::{
     NoteBodyWarningDisposition, NoteRepositoryError, NoteUseCaseError, NoteWriteCommand,
+    scan_note_warnings,
 };
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::unit_of_work::UnitOfWorkError;
@@ -152,20 +153,18 @@ impl StrategyServer {
             )
             .await
             .map_err(note_use_case_to_mcp)?;
-        let graphs: Vec<core_domain::note_graph::GraphDef> = serde_json::from_value(
-            result.snapshot.version.graphs_json.clone(),
+        let warnings = scan_note_warnings(
+            &result.snapshot.version.body_md,
+            &result.snapshot.version.graphs_json,
         )
         .map_err(|error| internal_error(format!("failed to deserialize saved graphs: {error}")))?;
-        let warnings = core_domain::note_body_warning::scan_note_warnings_with_ids(
-            &result.snapshot.version.body_md,
-            &graphs,
-        )
-        .into_iter()
-        .map(|warning| WriteNoteWarning {
-            id: warning.id,
-            message: warning.message,
-        })
-        .collect();
+        let warnings = warnings
+            .into_iter()
+            .map(|warning| WriteNoteWarning {
+                id: warning.id,
+                message: warning.message,
+            })
+            .collect();
         Ok(WriteNoteResult {
             note_id: result.note_id,
             created: result.created,
