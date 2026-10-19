@@ -26,7 +26,7 @@ impl NoteUseCases {
         &self,
         command: NoteWriteCommand,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
-        self.write_inner(command, None).await
+        self.write_inner(command, None, false).await
     }
 
     pub async fn write_with_warning_dispositions(
@@ -34,13 +34,24 @@ impl NoteUseCases {
         command: NoteWriteCommand,
         warning_dispositions: Vec<NoteBodyWarningDisposition>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
-        self.write_inner(command, Some(warning_dispositions)).await
+        self.write_inner(command, Some(warning_dispositions), false)
+            .await
+    }
+
+    pub async fn write_agent_note_with_warning_dispositions(
+        &self,
+        command: NoteWriteCommand,
+        warning_dispositions: Vec<NoteBodyWarningDisposition>,
+    ) -> Result<NoteWriteResult, NoteUseCaseError> {
+        self.write_inner(command, Some(warning_dispositions), true)
+            .await
     }
 
     async fn write_inner(
         &self,
         command: NoteWriteCommand,
         warning_dispositions: Option<Vec<NoteBodyWarningDisposition>>,
+        allow_indicator_changes: bool,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         if let Some(body_md) = command.body_md.as_deref() {
             validate_note_widget_blocks(body_md)?;
@@ -59,7 +70,10 @@ impl NoteUseCases {
                 .map_err(|error| NoteUseCaseError::Validation(error.to_string()))?;
         }
         let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
-            Some(self.resolve_market_data_references(body_md).await)
+            Some(
+                self.resolve_market_data_references(body_md, allow_indicator_changes)
+                    .await,
+            )
         } else {
             None
         };
@@ -73,6 +87,7 @@ impl NoteUseCases {
                     command,
                     resolved_market_data,
                     warning_dispositions.as_deref(),
+                    allow_indicator_changes,
                 )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
@@ -93,6 +108,7 @@ impl NoteUseCases {
                     command,
                     resolved_market_data,
                     warning_dispositions.as_deref(),
+                    allow_indicator_changes,
                 )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
@@ -156,6 +172,7 @@ impl NoteUseCases {
                     command,
                     resolved_market_data,
                     warning_dispositions.as_deref(),
+                    allow_indicator_changes,
                 )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
@@ -186,6 +203,7 @@ impl NoteUseCases {
                     change_diff: command.change_diff,
                     actor: command.actor,
                     resolved_market_data,
+                    allow_indicator_changes,
                 },
             )
             .await?;
@@ -255,6 +273,7 @@ impl NoteUseCases {
         command: NoteWriteCommand,
         resolved_market_data: Option<Result<Map<String, serde_json::Value>, NoteUseCaseError>>,
         warning_dispositions: Option<&[NoteBodyWarningDisposition]>,
+        allow_indicator_changes: bool,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -328,6 +347,7 @@ impl NoteUseCases {
                     change_diff: None,
                     actor: command.actor,
                     resolved_market_data,
+                    allow_indicator_changes,
                 },
             )
             .await?;
@@ -1078,6 +1098,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn agent_note_write_resolves_indicator_change_references() {
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let indicator_repository = Arc::new(FakeIndicatorObservationRepository::new());
+        indicator_repository
+            .seed_observation(
+                "demo-indicator",
+                "2030-01-02".parse().expect("start date"),
+                Decimal::from(100),
+            )
+            .await;
+        indicator_repository
+            .seed_observation(
+                "demo-indicator",
+                "2030-01-03".parse().expect("end date"),
+                Decimal::from(125),
+            )
+            .await;
+        let valuations = ValuationUseCases::new(
+            Arc::new(FakeValuationRepository::default()),
+            bars_repository.clone(),
+        );
+        let indicator_observations = IndicatorObservationUseCases::new(indicator_repository);
+        let (use_cases, _) = make_note_use_cases_with_services(
+            source_version(),
+            source_version(),
+            false,
+            bars_repository,
+            valuations,
+            indicator_observations,
+        );
+        let reference = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
+        let mut result = use_cases
+            .write_agent_note_with_warning_dispositions(write_body_command(reference), vec![])
+            .await
+            .expect("agent note writes resolve indicator observations");
+
+        result.snapshot.version.id = NORMALIZED_VERSION_ID;
+        assert_eq!(
+            result,
+            expected_write_result(
+                "Updated title",
+                reference,
+                json!({
+                    "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]": {
+                        "value": 25,
+                    },
+                }),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn standard_note_write_rejects_indicator_change_references() {
+        let reference = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
+        let (use_cases, _) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write(write_body_command(reference))
+            .await
+            .map(|result| result.snapshot.version.resolved_price_references_json)
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            result,
+            Err(core_domain::note_reference::format_note_token_errors(&[
+                core_domain::note_reference::NoteTokenValidationError::BodyToken {
+                    token: reference.into(),
+                    reason: "銘柄 ID と日付を `@` で区切ってください".into(),
+                },
+            ])),
+        );
+    }
+
+    #[tokio::test]
     async fn write_resolves_valuation_and_indicator_values_without_query_data() {
         let date = "2030-01-02".parse::<NaiveDate>().expect("valid date");
         let valuation_repository = Arc::new(FakeValuationRepository::default());
@@ -1609,6 +1702,7 @@ mod tests {
             "[[indicator:demo-indicator@2030-01-02]] ",
             "[[price:fictional-code@2030-01-02:close]] ",
             "[[change:fictional-code@2030-01-02..2030-01-03:close]] ",
+            "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]] ",
             "[[eval:00000000-0000-0000-0000-000000000101:result]]",
         );
         let mut current = source_version();
@@ -1619,6 +1713,7 @@ mod tests {
             "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
             "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
             "[[change:fictional-code@2030-01-02..2030-01-03:close]]": { "value": 20 },
+            "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]]": { "value": 25 },
             "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
         });
         let valuation_repository = Arc::new(FakeValuationRepository::default());
@@ -1687,6 +1782,7 @@ mod tests {
                         "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
                         "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
                         "[[change:fictional-code@2030-01-02..2030-01-03:close]]": { "value": 20 },
+                        "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]]": { "value": 25 },
                         "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
                     }),
                     status: "approved".into(),

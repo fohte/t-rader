@@ -17,7 +17,7 @@ impl NoteUseCases {
         command: UpdateNoteCommand,
     ) -> Result<NoteSnapshot, NoteUseCaseError> {
         let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
-            Some(self.resolve_market_data_references(body_md).await)
+            Some(self.resolve_market_data_references(body_md, false).await)
         } else {
             None
         };
@@ -123,6 +123,7 @@ impl NoteUseCases {
                     change_diff: Some(Value::Object(diff)),
                     actor: Actor::Human,
                     resolved_market_data,
+                    allow_indicator_changes: false,
                 },
             )
             .await?;

@@ -38,6 +38,11 @@ pub enum NotePriceReference {
         end: NaiveDate,
         field: PriceReferenceField,
     },
+    IndicatorChange {
+        indicator_id: String,
+        start: NaiveDate,
+        end: NaiveDate,
+    },
     Valuation {
         symbol: String,
         date: NaiveDate,
@@ -62,6 +67,19 @@ pub struct NotePriceReferenceToken {
 pub fn extract_note_price_references(
     body: &str,
 ) -> Result<Vec<NotePriceReferenceToken>, Vec<NoteTokenValidationError>> {
+    extract_note_price_references_with_policy(body, false)
+}
+
+pub fn extract_note_price_references_with_indicator_changes(
+    body: &str,
+) -> Result<Vec<NotePriceReferenceToken>, Vec<NoteTokenValidationError>> {
+    extract_note_price_references_with_policy(body, true)
+}
+
+fn extract_note_price_references_with_policy(
+    body: &str,
+    allow_indicator_changes: bool,
+) -> Result<Vec<NotePriceReferenceToken>, Vec<NoteTokenValidationError>> {
     let mut references = Vec::new();
     let mut errors = Vec::new();
 
@@ -70,7 +88,7 @@ pub fn extract_note_price_references(
         .filter(|token| is_value_reference_kind(token.inner))
     {
         let token_text = body[token.start..token.end].to_string();
-        match parse_note_price_reference(token.inner) {
+        match parse_note_price_reference(token.inner, allow_indicator_changes) {
             Ok(reference) => references.push(NotePriceReferenceToken {
                 token: token_text,
                 reference,
@@ -97,7 +115,10 @@ pub(crate) fn is_value_reference_kind(token: &str) -> bool {
         || (kind == "indicator" && content.contains('@'))
 }
 
-fn parse_note_price_reference(token: &str) -> Result<NotePriceReference, &'static str> {
+fn parse_note_price_reference(
+    token: &str,
+    allow_indicator_changes: bool,
+) -> Result<NotePriceReference, &'static str> {
     let (kind, content) = token
         .split_once(':')
         .ok_or("`price:<id>@<date>:<field>` または `change:<id>@<start>..<end>:<field>` を指定してください")?;
@@ -114,22 +135,28 @@ fn parse_note_price_reference(token: &str) -> Result<NotePriceReference, &'stati
             })
         }
         "change" => {
+            if allow_indicator_changes
+                && let Some(indicator_content) = content.strip_prefix("indicator:")
+            {
+                let (indicator_id, dates) = indicator_content
+                    .rsplit_once('@')
+                    .ok_or("指標 ID と期間を `@` で区切ってください")?;
+                if !is_valid_instrument_id(indicator_id) {
+                    return Err("指標 ID を空にせず、空白や `@` を含めないでください");
+                }
+                let (start, end) = parse_change_date_range(dates)?;
+                return Ok(NotePriceReference::IndicatorChange {
+                    indicator_id: indicator_id.to_string(),
+                    start,
+                    end,
+                });
+            }
             let (instrument_id, dates, field) = parse_instrument_date_field(
                 content,
                 "項目を `open`, `high`, `low`, `close`, `volume` のいずれかで指定してください",
             )?;
             let field = parse_price_field(field)?;
-            let (start, end) = dates
-                .split_once("..")
-                .ok_or("期間を `YYYY-MM-DD..YYYY-MM-DD` で指定してください")?;
-            if end.contains("..") {
-                return Err("期間は 2 つの日付で指定してください");
-            }
-            let start = parse_date(start)?;
-            let end = parse_date(end)?;
-            if start >= end {
-                return Err("期間の開始日は終了日より前にしてください");
-            }
+            let (start, end) = parse_change_date_range(dates)?;
             Ok(NotePriceReference::Change {
                 instrument_id: instrument_id.to_string(),
                 start,
@@ -176,6 +203,21 @@ fn parse_note_price_reference(token: &str) -> Result<NotePriceReference, &'stati
         }
         _ => Err("価格参照は `price` または `change` を指定してください"),
     }
+}
+
+fn parse_change_date_range(dates: &str) -> Result<(NaiveDate, NaiveDate), &'static str> {
+    let (start, end) = dates
+        .split_once("..")
+        .ok_or("期間を `YYYY-MM-DD..YYYY-MM-DD` で指定してください")?;
+    if end.contains("..") {
+        return Err("期間は 2 つの日付で指定してください");
+    }
+    let start = parse_date(start)?;
+    let end = parse_date(end)?;
+    if start >= end {
+        return Err("期間の開始日は終了日より前にしてください");
+    }
+    Ok((start, end))
 }
 
 fn parse_instrument_date_field<'a>(
@@ -252,7 +294,7 @@ mod tests {
 
     use super::{
         NotePriceReference, NotePriceReferenceToken, PriceReferenceField, ValuationReferenceField,
-        extract_note_price_references,
+        extract_note_price_references, extract_note_price_references_with_indicator_changes,
     };
     use crate::note_reference::NoteTokenValidationError;
 
@@ -279,6 +321,36 @@ mod tests {
             Ok(vec![NotePriceReferenceToken {
                 token: body.to_string(),
                 reference,
+            }]),
+        );
+    }
+
+    #[test]
+    fn parses_indicator_change_references_for_agent_notes() {
+        let body = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
+
+        assert_eq!(
+            extract_note_price_references_with_indicator_changes(body),
+            Ok(vec![NotePriceReferenceToken {
+                token: body.to_string(),
+                reference: NotePriceReference::IndicatorChange {
+                    indicator_id: "demo-indicator".into(),
+                    start: "2030-01-02".parse().expect("start date"),
+                    end: "2030-01-03".parse().expect("end date"),
+                },
+            }]),
+        );
+    }
+
+    #[test]
+    fn rejects_indicator_change_references_in_the_standard_parser() {
+        let body = "[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]";
+
+        assert_eq!(
+            extract_note_price_references(body),
+            Err(vec![NoteTokenValidationError::BodyToken {
+                token: body.to_string(),
+                reason: "銘柄 ID と日付を `@` で区切ってください".into(),
             }]),
         );
     }

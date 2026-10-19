@@ -26,6 +26,7 @@ pub(super) struct AppendVersionCommand {
     pub change_diff: Option<Value>,
     pub actor: Actor,
     pub resolved_market_data: Option<Result<Map<String, Value>, NoteUseCaseError>>,
+    pub allow_indicator_changes: bool,
 }
 
 impl NoteUseCases {
@@ -44,6 +45,11 @@ impl NoteUseCases {
             .find_latest_version(transaction, note.id)
             .await?;
         let previous_content = current.as_ref().or(latest.as_ref());
+        let allow_indicator_changes = content.allow_indicator_changes
+            || (content.resolved_market_data.is_none()
+                && previous_content
+                    .as_ref()
+                    .is_some_and(|previous| previous.body_md == content.body_md));
         let requires_approval = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             false
         } else if let Some(kind_key) = note.kind.as_deref() {
@@ -67,13 +73,25 @@ impl NoteUseCases {
             ));
         }
 
-        let references =
+        let references = if allow_indicator_changes {
+            core_domain::note_price_reference::extract_note_price_references_with_indicator_changes(
+                &content.body_md,
+            )
+            .map_err(|errors| {
+                NoteUseCaseError::Validation(
+                    core_domain::note_reference::format_note_token_errors_with_indicator_changes(
+                        &errors,
+                    ),
+                )
+            })?
+        } else {
             core_domain::note_price_reference::extract_note_price_references(&content.body_md)
                 .map_err(|errors| {
                     NoteUseCaseError::Validation(
                         core_domain::note_reference::format_note_token_errors(&errors),
                     )
-                })?;
+                })?
+        };
         let body_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.body_md != content.body_md);

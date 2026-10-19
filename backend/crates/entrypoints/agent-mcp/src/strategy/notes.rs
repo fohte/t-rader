@@ -129,7 +129,7 @@ impl StrategyServer {
         let result = self
             .dependencies
             .notes
-            .write_with_warning_dispositions(
+            .write_agent_note_with_warning_dispositions(
                 NoteWriteCommand {
                     execution_id,
                     note_id: params.note_id,
