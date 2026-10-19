@@ -16,18 +16,7 @@ fn date(year: i32, month: u32, day: u32) -> NaiveDate {
 }
 
 fn bar(instrument_id: &str, date: NaiveDate, close: i64, volume: i64) -> Bar {
-    let timestamp = Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).expect("valid fixture time"));
-    Bar {
-        instrument_id: instrument_id.to_string(),
-        timeframe: Timeframe::Daily,
-        timestamp,
-        open: Decimal::from(close),
-        high: Decimal::from(close + 1),
-        low: Decimal::from(close - 1),
-        close: Decimal::from(close),
-        volume,
-        adjustment_factor: Decimal::ONE,
-    }
+    decimal_bar(instrument_id, date, Decimal::from(close), volume)
 }
 
 fn decimal_bar(instrument_id: &str, date: NaiveDate, close: Decimal, volume: i64) -> Bar {
