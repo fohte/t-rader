@@ -7,7 +7,7 @@ use crate::note_graph::GraphDef;
 use crate::note_reference::prose_segments;
 
 const PRICE_WARNING_SUFFIX: &str = "がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。株価ではない値ならそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。";
-const RELATIVE_WARNING_SUFFIX: &str = "」があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値はそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。";
+const RELATIVE_WARNING_SUFFIX: &str = "があります。株価の騰落率であれば、計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。株価の騰落率ではない値はそのまま残し、必要な理由を `warning_dispositions` に記載して警告を無視してください。";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum WarningKind {
@@ -87,7 +87,7 @@ fn warning_message(kind: WarningKind, value: &str) -> String {
             "ローソク足の本数「{value}」があります。本数ではなく、開始日と終了日で対象期間を記載してください。"
         ),
         WarningKind::Price => format!("価格候補の数値「{value}」{PRICE_WARNING_SUFFIX}"),
-        WarningKind::Relative => format!("相対表現「{value}{RELATIVE_WARNING_SUFFIX}"),
+        WarningKind::Relative => format!("相対表現「{value}」{RELATIVE_WARNING_SUFFIX}"),
     }
 }
 
