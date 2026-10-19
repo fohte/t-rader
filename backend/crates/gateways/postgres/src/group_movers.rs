@@ -121,9 +121,11 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
                                (ranked_returns.return_count + 2) / 2
                            )
                        ) AS median_change_rate,
-                       SUM(ranked_returns.change_rate * ranked_returns.avg_turnover)
-                           / NULLIF(SUM(ranked_returns.avg_turnover), 0)
-                           AS turnover_weighted_change_rate,
+                       ROUND(
+                           SUM(ranked_returns.change_rate * ranked_returns.avg_turnover)
+                               / NULLIF(SUM(ranked_returns.avg_turnover), 0),
+                           10
+                       ) AS turnover_weighted_change_rate,
                        COALESCE(SUM(ranked_returns.avg_turnover), 0::numeric)
                            AS total_avg_turnover
                 FROM axis_groups
