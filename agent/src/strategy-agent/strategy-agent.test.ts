@@ -9,6 +9,7 @@ import {
 } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
+import { convertToOpenAITool } from '@langchain/core/utils/function_calling'
 import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, createMiddleware } from 'langchain'
 import { errAsync, okAsync } from 'neverthrow'
@@ -162,6 +163,7 @@ interface BuildDepsOptions {
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
   readonly fetchSubagentDefinition?: FetchSubagentDefinition
+  readonly onBuildPhaseAgentOptions?: (options: BuildPhaseAgentOptions) => void
   readonly buildPhaseAgentInvoke?: (
     input: Parameters<CompiledPhaseAgent['invoke']>[0],
     calls: Calls,
@@ -237,6 +239,7 @@ const buildDeps = (
     buildPhaseAgent: (buildOptions) => {
       calls.capturedDeadlineSignal = buildOptions.deadlineSignal
       calls.capturedAgentSignal = buildOptions.agentSignal
+      options.onBuildPhaseAgentOptions?.(buildOptions)
       return {
         invoke: (input) =>
           options.buildPhaseAgentInvoke !== undefined
@@ -381,6 +384,29 @@ describe('runStrategyAgent', () => {
       status: 'completed',
       message: '1フェーズの実行が完了しました (Work)',
     })
+  })
+
+  it('passes phase MCP tools to the compiled-agent builder', async () => {
+    const mcpTools = [buildFakeTool('query_data'), buildFakeTool('write_note')]
+    const buildOptions: BuildPhaseAgentOptions[] = []
+    const { deps } = buildDeps({
+      tools: mcpTools,
+      onBuildPhaseAgentOptions: (options) => buildOptions.push(options),
+    })
+
+    await runStrategyAgent(deps, buildRunInput())
+
+    expect(
+      buildOptions.map((options) => ({
+        toolNames: options.tools.map((tool) => tool.name),
+        mcpToolNames: options.mcpTools?.map((tool) => tool.name),
+      })),
+    ).toEqual([
+      {
+        toolNames: ['query_data', 'write_note'],
+        mcpToolNames: ['query_data', 'write_note'],
+      },
+    ])
   })
 
   it.each([
@@ -1436,6 +1462,115 @@ describe('createStrategyAgentDeps', () => {
           },
         ],
       ],
+    })
+  }, 15_000)
+
+  it('envelopes MCP tools while preserving structured output on the compiled-agent path', async () => {
+    const receivedArgs: unknown[] = []
+    const mcpTool = new DynamicStructuredTool({
+      name: 'search',
+      description: 'Returns a demo result.',
+      schema: z.object({
+        query: z.string(),
+        nullable: z.string().nullable(),
+        omitted: z.string().optional(),
+      }),
+      responseFormat: 'content_and_artifact',
+      func: (args) => {
+        receivedArgs.push(args)
+        return Promise.resolve(['search completed', { marker: 'retained' }])
+      },
+    })
+    const inputArgs = { query: 'sample query', nullable: null }
+    const requestBodies: string[] = []
+    const fetchImpl: ChatOpenAIFetch = (_url, init) => {
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      return Promise.resolve(
+        requestBodies.length === 1
+          ? buildToolCallResponse('call-1', {
+              name: 'search',
+              arguments: JSON.stringify({
+                args_json: JSON.stringify(inputArgs),
+              }),
+            })
+          : buildStructuredOutputResponse(
+              `response-${String(requestBodies.length)}`,
+              body,
+            ),
+      )
+    }
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model: buildStubModel(fetchImpl),
+      tools: [mcpTool],
+      mcpTools: [mcpTool],
+      systemPrompt: 'test system prompt',
+    })
+    const result = await agent.invoke({
+      messages: [new HumanMessage('continue')],
+    })
+    const requestTools = requestBodies.map(
+      (body) =>
+        z
+          .object({
+            tools: z.array(
+              z.object({
+                function: z.object({
+                  name: z.string(),
+                  description: z.string(),
+                  parameters: z.record(z.string(), z.unknown()),
+                }),
+              }),
+            ),
+          })
+          .parse(JSON.parse(body)).tools,
+    )
+    const originalSchema = convertToOpenAITool(mcpTool).function.parameters
+    const envelopeParameters = {
+      type: 'object',
+      properties: {
+        args_json: {
+          type: 'string',
+          description: 'The complete tool arguments encoded as a JSON object.',
+        },
+      },
+      required: ['args_json'],
+      additionalProperties: false,
+    }
+
+    const normalizeResult = () => ({
+      toolNames: requestTools.map((tools) =>
+        tools.map((tool) =>
+          tool.function.name === 'search'
+            ? 'search'
+            : '<structured-output-tool>',
+        ),
+      ),
+      envelopeParameters: requestTools.map(
+        (tools) =>
+          tools.find((tool) => tool.function.name === 'search')?.function
+            .parameters,
+      ),
+      description: requestTools[0]?.find(
+        (tool) => tool.function.name === 'search',
+      )?.function.description,
+      receivedArgs,
+      structuredResponse: result.structuredResponse,
+    })
+    expect(normalizeResult()).toEqual({
+      toolNames: [
+        ['search', '<structured-output-tool>'],
+        ['search', '<structured-output-tool>'],
+      ],
+      envelopeParameters: [envelopeParameters, envelopeParameters],
+      description: [
+        mcpTool.description,
+        'Pass the complete tool arguments as a JSON object string in args_json.',
+        `Original input JSON Schema: ${JSON.stringify(originalSchema)}`,
+      ].join('\n\n'),
+      receivedArgs: [inputArgs],
+      structuredResponse: { status: 'completed', message: 'done' },
     })
   }, 15_000)
 

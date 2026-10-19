@@ -35,6 +35,7 @@ import {
   type ModelCallBudget,
 } from '#strategy-agent/final-turn-middleware'
 import { malformedToolCallResponseMiddleware } from '#strategy-agent/malformed-tool-call-response-middleware'
+import { createMcpToolJsonEnvelopeMiddleware } from '#strategy-agent/mcp-tool-json-envelope-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
 import { nonAssistantModelResponseMiddleware } from '#strategy-agent/non-assistant-model-response-middleware'
@@ -119,6 +120,7 @@ const buildCompiledAgent = (
   options: {
     model: BaseChatModel
     tools: readonly DynamicStructuredTool[]
+    mcpTools?: readonly DynamicStructuredTool[]
     systemPrompt: string
     responseFormat: ReturnType<typeof toolStrategy>
     deadlineSignal?: AbortSignal
@@ -150,6 +152,9 @@ const buildCompiledAgent = (
       // finalTurnMiddleware より内側に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
+      ...(options.mcpTools !== undefined && options.mcpTools.length > 0
+        ? [createMcpToolJsonEnvelopeMiddleware(options.mcpTools)]
+        : []),
       stripMessageNameMiddleware,
       // 再試行ごとに呼び出し時間上限と tool 呼び出し上限の状態を作り直す。
       createModelCallRetryMiddleware(),
