@@ -8,6 +8,7 @@ import {
   type DashboardWidgetPageState,
 } from '#components/dashboard-pages/dashboard-page-view'
 import type { components } from '#lib/api/schema.gen'
+import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 import { createStoryRouter } from '#storybook/story-router'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
@@ -43,12 +44,12 @@ const stockResults: WidgetQueryResponse = {
     {
       key: 'stock:DEMO-A',
       name: '架空銘柄 A',
-      values: { movement: 2.4, size: 40 },
+      values: { movement: 0.0042, size: 40 },
     },
     {
       key: 'stock:DEMO-B',
       name: '架空銘柄 B',
-      values: { movement: -1.3, size: 25 },
+      values: { movement: -0.009, size: 25 },
     },
   ],
 }
@@ -59,23 +60,30 @@ const groupResults: WidgetQueryResponse = {
     {
       key: 'group:sample-axis/sample-group-a',
       name: '分類 A',
-      values: { movement: 2.4, size: 40 },
+      values: { movement: 0.0042, size: 40 },
     },
     {
       key: 'group:sample-axis/sample-group-b',
       name: '分類 B',
-      values: { movement: -1.3, size: 25 },
+      values: { movement: -0.009, size: 25 },
     },
   ],
 }
 
 type ReadyDashboardPageState = Extract<DashboardPageState, { status: 'ready' }>
+const queries: WidgetQueryDefinitions = {
+  movement: { metric: 'change', by: 'stock' },
+}
+const groupQueries: WidgetQueryDefinitions = {
+  movement: { metric: 'change', by: 'group' },
+}
 
 const movementList: DashboardWidgetPageState = {
   key: 'movement-list',
   title: '値動きの一覧',
   width: 'half',
   definition: {
+    queries,
     viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
   },
   isPending: false,
@@ -95,6 +103,7 @@ const readyState: ReadyDashboardPageState = {
       title: '分類ごとの動き',
       width: 'full',
       definition: {
+        queries: groupQueries,
         viz: { type: 'treemap', size: 'size', color: 'movement' },
       },
       isPending: false,
