@@ -1,9 +1,6 @@
+import { formatPercentValue } from '#lib/percent-format'
+
 const intFmt = new Intl.NumberFormat('en-US')
-const percentFormatter = new Intl.NumberFormat('ja-JP', {
-  style: 'percent',
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-})
 
 export function formatYen(value: number, signed = false): string {
   const rounded = Math.round(value)
@@ -28,9 +25,7 @@ export function formatOptionalPercent(
 ): string {
   if (value == null) return '—'
 
-  const formatted = percentFormatter.format(Math.abs(value))
-  if (!signed || value === 0) return formatted
-  return (value > 0 ? '+' : '−') + formatted
+  return formatPercentValue(value, { signed })
 }
 
 export function optionalPnlColorClass(

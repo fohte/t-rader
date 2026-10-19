@@ -30,6 +30,10 @@ const VALID_WIDGET_SOURCE = [
   '  as_of: 2099-01-05',
   '```',
 ].join('\n')
+const CHANGE_WIDGET_SOURCE = VALID_WIDGET_SOURCE.replace(
+  '  value: doubled',
+  '  value: daily',
+)
 
 const WIDGET_SOURCES_WITHOUT_AS_OF = [
   {
@@ -123,6 +127,30 @@ describe('MarkdownBody widget blocks', () => {
     expect(renderedWidget).toEqual(
       'ウィジェット基準日 2099-01-051デモグループ2.1\noutside <pre>',
     )
+  })
+
+  it('renders direct change query values as signed percentages', () => {
+    useApiQuery.mockReturnValue({
+      data: {
+        as_of: '2099-01-05',
+        rows: [
+          {
+            key: 'group:demo-axis/demo-group',
+            name: 'デモグループ',
+            values: { daily: 0.0042 },
+          },
+        ],
+      },
+      isPending: false,
+      isError: false,
+      error: undefined,
+    })
+    render(<MarkdownBody source={CHANGE_WIDGET_SOURCE} />)
+
+    const row = screen.getByRole('listitem', {
+      name: '1 位: デモグループ +0.42%',
+    })
+    expect(row.lastElementChild?.textContent).toBe('+0.42%')
   })
 
   it.each(WIDGET_SOURCES_WITHOUT_AS_OF)(
