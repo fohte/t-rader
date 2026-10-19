@@ -12,7 +12,7 @@ import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 export interface BuildPhaseAgentOptions {
   readonly model: BaseChatModel
   readonly tools: readonly DynamicStructuredTool[]
-  readonly mcpTools?: readonly DynamicStructuredTool[]
+  readonly mcpTools: readonly DynamicStructuredTool[]
   readonly systemPrompt: string
   readonly responseSchema: ObjectJsonSchema
   readonly deadlineSignal?: AbortSignal

@@ -254,10 +254,13 @@ const buildDeps = (
 
 const buildPhaseAgentUnderTest = (
   deps: StrategyAgentDeps,
-  options: Omit<BuildPhaseAgentOptions, 'responseSchema'>,
+  options: Omit<BuildPhaseAgentOptions, 'mcpTools' | 'responseSchema'> & {
+    readonly mcpTools?: BuildPhaseAgentOptions['mcpTools']
+  },
 ): CompiledPhaseAgent =>
   deps.buildPhaseAgent({
     ...options,
+    mcpTools: options.mcpTools ?? [],
     responseSchema: {
       type: 'object',
       properties: {
@@ -399,7 +402,7 @@ describe('runStrategyAgent', () => {
     expect(
       buildOptions.map((options) => ({
         toolNames: options.tools.map((tool) => tool.name),
-        mcpToolNames: options.mcpTools?.map((tool) => tool.name),
+        mcpToolNames: options.mcpTools.map((tool) => tool.name),
       })),
     ).toEqual([
       {

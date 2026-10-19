@@ -120,7 +120,7 @@ const buildCompiledAgent = (
   options: {
     model: BaseChatModel
     tools: readonly DynamicStructuredTool[]
-    mcpTools?: readonly DynamicStructuredTool[]
+    mcpTools: readonly DynamicStructuredTool[]
     systemPrompt: string
     responseFormat: ReturnType<typeof toolStrategy>
     deadlineSignal?: AbortSignal
@@ -152,7 +152,7 @@ const buildCompiledAgent = (
       // finalTurnMiddleware より内側に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
-      ...(options.mcpTools !== undefined && options.mcpTools.length > 0
+      ...(options.mcpTools.length > 0
         ? [createMcpToolJsonEnvelopeMiddleware(options.mcpTools)]
         : []),
       stripMessageNameMiddleware,

@@ -65,7 +65,6 @@ const parseEnvelope = (
 export const createMcpToolJsonEnvelopeMiddleware = (
   mcpTools: readonly DynamicStructuredTool[],
 ) => {
-  const mcpToolNames = new Set(mcpTools.map((tool) => tool.name))
   const mcpToolsByName = new Map(mcpTools.map((tool) => [tool.name, tool]))
 
   return createMiddleware({
@@ -80,7 +79,7 @@ export const createMcpToolJsonEnvelopeMiddleware = (
       return handler({ ...request, tools })
     },
     wrapToolCall: async (request, handler) => {
-      if (!mcpToolNames.has(request.toolCall.name)) return handler(request)
+      if (!mcpToolsByName.has(request.toolCall.name)) return handler(request)
 
       const parsedArgs = parseEnvelope(request.toolCall.args)
       if (parsedArgs.isErr()) {
