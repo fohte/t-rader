@@ -50,6 +50,7 @@ export const buildSubagentAgent = (
         : {}),
     }),
     tools,
+    mcpTools: tools,
     systemPrompt: options.systemPrompt ?? definition.prompt,
     responseSchema: buildOutputJsonSchema(definition.output),
     modelCallBudget: options.modelCallBudget,

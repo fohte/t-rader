@@ -1048,6 +1048,7 @@ describe('runAgentGraph', () => {
     expect(capturedOptions).toEqual({
       model: chatModelReturnValue,
       tools: [toolA],
+      mcpTools: [toolA],
       systemPrompt: 'AGENTS\n\n# Skill: skill-a\n\nbody a',
       responseSchema: {
         type: 'object',
@@ -1097,6 +1098,7 @@ describe('runAgentGraph', () => {
     expect(capturedOptions).toEqual({
       model: chatModelReturnValue,
       tools: [toolA, toolB],
+      mcpTools: [toolA, toolB],
       systemPrompt: 'AGENTS',
       responseSchema: {
         type: 'object',

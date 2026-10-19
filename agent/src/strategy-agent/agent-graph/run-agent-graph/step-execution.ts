@@ -116,6 +116,7 @@ const createPhaseAgent = (
         : {}),
     }),
     tools: filteredTools,
+    mcpTools: filteredMcpTools,
     systemPrompt: buildSystemPrompt({
       agentsMd: context.agentsMd,
       skills: filteredSkills,

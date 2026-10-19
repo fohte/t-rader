@@ -141,6 +141,7 @@ describe('createRunSubagentTool', () => {
       buildOptions.map((options) => ({
         model: options.model instanceof FakeChatModel,
         tools: options.tools.map((toolItem) => toolItem.name),
+        mcpTools: options.mcpTools.map((toolItem) => toolItem.name),
         systemPrompt: options.systemPrompt,
         responseSchema: options.responseSchema,
         modelCallBudget: options.modelCallBudget,
@@ -161,6 +162,7 @@ describe('createRunSubagentTool', () => {
         {
           model: true,
           tools: ['search_web'],
+          mcpTools: ['search_web'],
           systemPrompt: 'Investigate the question and return evidence.',
           responseSchema: {
             type: 'object',
