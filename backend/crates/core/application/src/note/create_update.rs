@@ -2,6 +2,8 @@ use chrono::Utc;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
+use core_domain::note_price_reference::NotePriceReferencePolicy;
+
 use crate::change_history::{Actor, Op};
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{NoteMetadataUpdate, NoteSnapshot, UpdateNoteCommand};
@@ -16,11 +18,6 @@ impl NoteUseCases {
         note_id: Uuid,
         command: UpdateNoteCommand,
     ) -> Result<NoteSnapshot, NoteUseCaseError> {
-        let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
-            Some(self.resolve_market_data_references(body_md).await)
-        } else {
-            None
-        };
         let transaction = self.unit_of_work.begin().await?;
         let current_note = self.require_note(&transaction, note_id).await?;
         let current_version = self
@@ -30,6 +27,22 @@ impl NoteUseCases {
             .ok_or_else(|| {
                 NoteUseCaseError::NotFound(format!("current version for note {note_id} not found"))
             })?;
+        let body_unchanged = command
+            .body_md
+            .as_deref()
+            .is_none_or(|body_md| body_md == current_version.body_md.as_str());
+        let reference_policy = if body_unchanged {
+            NotePriceReferencePolicy::AllowIndicatorChanges
+        } else {
+            NotePriceReferencePolicy::Standard
+        };
+        let resolved_market_data = match command.body_md.as_deref() {
+            Some(body_md) if body_md != current_version.body_md.as_str() => Some(
+                self.resolve_market_data_references(body_md, NotePriceReferencePolicy::Standard)
+                    .await,
+            ),
+            _ => None,
+        };
         let mut diff = Map::new();
         let mut title = current_version.title.clone();
         let mut body_md = current_version.body_md.clone();
@@ -123,6 +136,7 @@ impl NoteUseCases {
                     change_diff: Some(Value::Object(diff)),
                     actor: Actor::Human,
                     resolved_market_data,
+                    reference_policy,
                 },
             )
             .await?;

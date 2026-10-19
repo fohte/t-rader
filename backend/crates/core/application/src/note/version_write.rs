@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use chrono::Utc;
+use core_domain::note_price_reference::NotePriceReferencePolicy;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
@@ -10,7 +11,7 @@ use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 mod references;
-use references::has_resolutions;
+use references::{extract_note_price_references, has_resolutions};
 
 const APPROVED_NOTE_STATUS: &str = "approved";
 const HUMAN_CREATED_BY_KIND: &str = "human";
@@ -26,6 +27,7 @@ pub(super) struct AppendVersionCommand {
     pub change_diff: Option<Value>,
     pub actor: Actor,
     pub resolved_market_data: Option<Result<Map<String, Value>, NoteUseCaseError>>,
+    pub reference_policy: NotePriceReferencePolicy,
 }
 
 impl NoteUseCases {
@@ -67,13 +69,7 @@ impl NoteUseCases {
             ));
         }
 
-        let references =
-            core_domain::note_price_reference::extract_note_price_references(&content.body_md)
-                .map_err(|errors| {
-                    NoteUseCaseError::Validation(
-                        core_domain::note_reference::format_note_token_errors(&errors),
-                    )
-                })?;
+        let references = extract_note_price_references(&content.body_md, content.reference_policy)?;
         let body_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.body_md != content.body_md);

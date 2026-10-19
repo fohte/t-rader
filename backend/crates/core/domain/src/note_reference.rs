@@ -3,7 +3,7 @@ use std::ops::Range;
 use uuid::Uuid;
 
 use super::note_graph::GraphDef;
-use super::note_price_reference::is_value_reference_kind;
+use super::note_price_reference::{NotePriceReferencePolicy, is_value_reference_kind};
 
 mod markdown;
 
@@ -334,17 +334,32 @@ fn is_standalone_graph_token(body: &str, token: NoteToken<'_>, blocks: &[Range<u
 }
 
 pub fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
+    format_note_token_errors_with_policy(errors, NotePriceReferencePolicy::Standard)
+}
+
+pub fn format_note_token_errors_with_policy(
+    errors: &[NoteTokenValidationError],
+    policy: NotePriceReferencePolicy,
+) -> String {
     let details = errors
         .iter()
         .map(|error| format!("- {error}"))
         .collect::<Vec<_>>()
         .join("\n");
+    let indicator_change_format = if policy == NotePriceReferencePolicy::AllowIndicatorChanges {
+        "`[[change:indicator:<id>@<start>..<end>]]`, "
+    } else {
+        ""
+    };
+    let allowed_formats = format!(
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, {indicator_change_format}`[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。"
+    );
     let mut message = String::new();
     message.push_str("ノートのトークンに問題があります:");
     message.push('\n');
     message.push_str(&details);
     message.push('\n');
-    message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。");
+    message.push_str(&allowed_formats);
     message
 }
 
