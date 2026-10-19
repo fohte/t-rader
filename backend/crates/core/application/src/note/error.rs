@@ -4,9 +4,11 @@ use crate::bars::BarsUseCaseError;
 use crate::change_history::ChangeHistoryError;
 use crate::custom_indicator_evaluation::CustomIndicatorEvaluationUseCaseError;
 use crate::indicator_observation::IndicatorObservationUseCaseError;
+use crate::markdown_lint::MarkdownLintServiceError;
 use crate::note::repository::NoteRepositoryError;
 use crate::unit_of_work::UnitOfWorkError;
 use crate::valuation::ValuationUseCaseError;
+use core_domain::markdown_lint::LintDiagnostic;
 use core_domain::note_body_warning::NoteBodyWarning;
 
 #[derive(Debug, Error)]
@@ -15,6 +17,11 @@ pub enum NoteUseCaseError {
     Validation(String),
     #[error("note body contains unresolved warnings")]
     UnresolvedBodyWarnings { warnings: Vec<NoteBodyWarning> },
+    #[error("note body has lint errors or unresolved warnings")]
+    BodyLintRejected {
+        diagnostics: Vec<LintDiagnostic>,
+        warnings: Vec<NoteBodyWarning>,
+    },
     #[error("unknown note kind: {0}")]
     UnknownNoteKind(String),
     #[error("{0}")]
@@ -39,4 +46,6 @@ pub enum NoteUseCaseError {
     CustomIndicatorEvaluation(#[from] CustomIndicatorEvaluationUseCaseError),
     #[error(transparent)]
     Serialization(#[from] serde_json::Error),
+    #[error(transparent)]
+    MarkdownLint(#[from] MarkdownLintServiceError),
 }

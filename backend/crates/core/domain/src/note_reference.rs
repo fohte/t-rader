@@ -7,7 +7,7 @@ use super::note_price_reference::{NotePriceReferencePolicy, is_value_reference_k
 
 mod markdown;
 
-pub(crate) use markdown::prose_segments;
+pub(crate) use markdown::prose_segment_ranges;
 pub(crate) use markdown::tokens_outside_code;
 pub use markdown::{FencedCodeBlock, NoteToken, extract_tokens, fenced_code_blocks};
 
@@ -150,6 +150,22 @@ fn classify_token(inner: &str) -> TokenClassification<'_> {
     }
 
     TokenClassification::Invalid(format!("未知の prefix `{kind}` です"))
+}
+
+pub(crate) fn valid_token_ranges(body: &str) -> Vec<Range<usize>> {
+    markdown::extract_tokens(body)
+        .into_iter()
+        .filter(|token| !matches!(classify_token(token.inner), TokenClassification::Invalid(_)))
+        .map(|token| token.start..token.end)
+        .collect()
+}
+
+pub fn validated_token_ranges(body: &str) -> Vec<Range<usize>> {
+    valid_token_ranges(body)
+}
+
+pub fn markdown_url_ranges(body: &str) -> Vec<Range<usize>> {
+    markdown::url_ranges(body)
 }
 
 pub fn extract_note_link_tokens(body: &str) -> Vec<NoteLinkToken> {

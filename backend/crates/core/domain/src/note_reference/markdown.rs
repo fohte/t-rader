@@ -327,7 +327,7 @@ fn markdown_link_destination_range(
     (end > start).then_some(start..end)
 }
 
-fn url_ranges(body: &str) -> Vec<Range<usize>> {
+pub(crate) fn url_ranges(body: &str) -> Vec<Range<usize>> {
     let mut ranges = Vec::new();
     let mut search_from = 0;
 
@@ -420,7 +420,7 @@ pub(crate) fn tokens_outside_code(body: &str) -> Vec<NoteToken<'_>> {
         .collect()
 }
 
-pub(crate) fn prose_segments(body: &str) -> Vec<&str> {
+pub(crate) fn prose_segment_ranges(body: &str) -> Vec<Range<usize>> {
     let code_ranges = markdown_code_ranges(body);
     let mut excluded_ranges = code_ranges.clone();
     excluded_ranges.extend(markdown_link_destination_ranges(body, &code_ranges));
@@ -437,12 +437,12 @@ pub(crate) fn prose_segments(body: &str) -> Vec<&str> {
     for range in excluded_ranges {
         let start = cursor.max(range.start);
         if cursor < start {
-            segments.push(&body[cursor..start]);
+            segments.push(cursor..start);
         }
         cursor = cursor.max(range.end);
     }
     if cursor < body.len() {
-        segments.push(&body[cursor..]);
+        segments.push(cursor..body.len());
     }
 
     segments

@@ -8,8 +8,8 @@ mod tests {
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
     use super::super::dto::{
-        ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
-        WriteNoteWarning,
+        ListNotesParams, NoteDto, ReadNoteParams, WriteNoteDiagnostic, WriteNoteDiagnosticSeverity,
+        WriteNoteParams, WriteNoteRange, WriteNoteResult, WriteNoteWarning,
     };
     use super::super::graph_dto::{GraphDef, GraphEdge, GraphNode, Layout};
     use super::super::tests_common::{
@@ -52,6 +52,35 @@ mod tests {
         format!(
             "ローソク足の本数「{value}」があります。本数ではなく、開始日と終了日で対象期間を記載してください。"
         )
+    }
+
+    fn numeric_body_diagnostics() -> Vec<WriteNoteDiagnostic> {
+        vec![
+            WriteNoteDiagnostic {
+                rule_id: "price".into(),
+                id: "price:67%2C890%E5%86%86:1".into(),
+                severity: WriteNoteDiagnosticSeverity::Warning,
+                range: WriteNoteRange { start: 6, end: 15 },
+                message: price_warning_message("67,890円"),
+                fix: None,
+            },
+            WriteNoteDiagnostic {
+                rule_id: "relative".into(),
+                id: "relative:-4.5%25:1".into(),
+                severity: WriteNoteDiagnosticSeverity::Warning,
+                range: WriteNoteRange { start: 22, end: 27 },
+                message: relative_warning_message("-4.5%"),
+                fix: None,
+            },
+            WriteNoteDiagnostic {
+                rule_id: "bar-count".into(),
+                id: "bar-count:73%E8%B6%B3:1".into(),
+                severity: WriteNoteDiagnosticSeverity::Warning,
+                range: WriteNoteRange { start: 34, end: 39 },
+                message: bar_count_warning_message("73足"),
+                fix: None,
+            },
+        ]
     }
 
     fn widget_write_note_params(note_id: Option<Uuid>, body_md: &str) -> WriteNoteParams {
@@ -626,6 +655,7 @@ mod tests {
                             ),
                         },
                     ],
+                    diagnostics: numeric_body_diagnostics(),
                 },
                 1,
             ),
@@ -857,6 +887,7 @@ mod tests {
                     note_id: created.note_id,
                     created: false,
                     warnings: vec![],
+                    diagnostics: vec![],
                 },
                 "case {label}",
             );
@@ -922,6 +953,7 @@ mod tests {
                 note_id,
                 created: false,
                 warnings: vec![],
+                diagnostics: vec![],
             },
         );
 
@@ -2350,6 +2382,7 @@ mod tests {
                 note_id: first.note_id,
                 created: false,
                 warnings: vec![],
+                diagnostics: vec![],
             },
         );
 
@@ -2568,6 +2601,7 @@ mod tests {
                 note_id: note_a.note_id,
                 created: false,
                 warnings: vec![],
+                diagnostics: vec![],
             },
         );
 
@@ -2646,6 +2680,7 @@ mod tests {
                     "note_id": note_id,
                     "created": false,
                     "warnings": [],
+                    "diagnostics": [],
                 }),
                 "revised title".into(),
                 "revised body".into(),

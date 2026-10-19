@@ -30,6 +30,7 @@ pub mod kata_exec;
 pub mod llm_client;
 pub mod margin;
 pub mod margin_source;
+pub mod markdown_lint;
 pub mod market_daily_bar_source;
 pub mod market_movers;
 pub mod mcp_tool_call_count;

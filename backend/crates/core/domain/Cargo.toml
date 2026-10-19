@@ -10,6 +10,7 @@ rust_decimal = { workspace = true, features = ["serde-float", "serde-arbitrary-p
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
+unicode-normalization = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }
