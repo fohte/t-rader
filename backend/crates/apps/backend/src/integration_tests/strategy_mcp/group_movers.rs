@@ -30,6 +30,21 @@ fn bar(instrument_id: &str, date: NaiveDate, close: i64, volume: i64) -> Bar {
     }
 }
 
+fn decimal_bar(instrument_id: &str, date: NaiveDate, close: Decimal, volume: i64) -> Bar {
+    let timestamp = Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).expect("valid fixture time"));
+    Bar {
+        instrument_id: instrument_id.to_string(),
+        timeframe: Timeframe::Daily,
+        timestamp,
+        open: close,
+        high: close + Decimal::ONE,
+        low: close - Decimal::ONE,
+        close,
+        volume,
+        adjustment_factor: Decimal::ONE,
+    }
+}
+
 async fn insert_axis(db: &impl sea_orm::ConnectionTrait, key: &str) -> Uuid {
     let id = Uuid::new_v4();
     group_axis::ActiveModel {
@@ -311,7 +326,7 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
                         "name": "Sample group alpha",
                         "constituent_count": 2,
                         "median_change_rate": -0.05,
-                        "turnover_weighted_change_rate": -0.049999999999999996,
+                        "turnover_weighted_change_rate": -0.05,
                         "total_avg_turnover": 400.0,
                         "top_stocks": [
                             {
@@ -357,6 +372,111 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
                 }],
             }),
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn list_group_movers_rounds_high_precision_weighted_return(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let axis_id = insert_axis(&db, "sample-decimal-axis").await;
+    let group_id = insert_group(&db, axis_id, "sample-decimal-group", "Sample decimal group").await;
+    insert_stock(&db, "demo-stock-decimal-a", "Sample stock A").await;
+    insert_stock(&db, "demo-stock-decimal-b", "Sample stock B").await;
+    add_member(&db, "demo-stock-decimal-a", group_id).await;
+    add_member(&db, "demo-stock-decimal-b", group_id).await;
+
+    upsert_bars(
+        &db,
+        vec![
+            bar("demo-stock-decimal-a", date(2025, 2, 2), 100, 1),
+            decimal_bar(
+                "demo-stock-decimal-a",
+                date(2025, 2, 3),
+                Decimal::new(10_234, 2),
+                103,
+            ),
+            decimal_bar(
+                "demo-stock-decimal-a",
+                date(2025, 2, 4),
+                Decimal::new(9_987, 2),
+                97,
+            ),
+            decimal_bar(
+                "demo-stock-decimal-a",
+                date(2025, 2, 5),
+                Decimal::new(10_123, 2),
+                101,
+            ),
+            bar("demo-stock-decimal-b", date(2025, 2, 2), 200, 1),
+            decimal_bar(
+                "demo-stock-decimal-b",
+                date(2025, 2, 3),
+                Decimal::new(20_246, 2),
+                201,
+            ),
+            decimal_bar(
+                "demo-stock-decimal-b",
+                date(2025, 2, 4),
+                Decimal::new(1_975_682, 4),
+                200,
+            ),
+            decimal_bar(
+                "demo-stock-decimal-b",
+                date(2025, 2, 5),
+                Decimal::from(207),
+                200,
+            ),
+        ],
+    )
+    .await
+    .expect("insert high-precision sample daily bars");
+
+    let (server, strategy_id) = build_test_server(db).await;
+    let result = server
+        .invoke::<_, Value>(
+            "list_group_movers",
+            strategy_id,
+            json!({
+                "axis_key": "sample-decimal-axis",
+                "from": "2025-02-03",
+                "to": "2025-02-05",
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("list group movers with a high-precision weighted return")
+        .as_json()
+        .clone();
+
+    assert_eq!(
+        result,
+        json!({
+            "axis_key": "sample-decimal-axis",
+            "groups": [{
+                "group_key": "sample-decimal-group",
+                "name": "Sample decimal group",
+                "constituent_count": 2,
+                "median_change_rate": 0.02365,
+                "turnover_weighted_change_rate": 0.0304539553,
+                "total_avg_turnover": 50686.91333333333,
+                "top_stocks": [
+                    {
+                        "stock_id": "demo-stock-decimal-b",
+                        "name": "Sample stock B",
+                        "change_rate": 0.035,
+                        "avg_turnover": 40536.03333333333,
+                    },
+                    {
+                        "stock_id": "demo-stock-decimal-a",
+                        "name": "Sample stock A",
+                        "change_rate": 0.0123,
+                        "avg_turnover": 10150.88,
+                    },
+                ],
+            }],
+        }),
     );
 }
 
