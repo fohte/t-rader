@@ -72,6 +72,15 @@ impl CustomIndicatorRepository for FakeCustomIndicatorRepository {
         self.find_by_id(indicator_id).await
     }
 
+    async fn find_by_id_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        indicator_id: Uuid,
+    ) -> Result<Option<CustomIndicator>, CustomIndicatorRepositoryError> {
+        self.record_transaction(transaction).await?;
+        self.find_by_id(indicator_id).await
+    }
+
     async fn resolve_for_strategy(
         &self,
         strategy_id: Uuid,

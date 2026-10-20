@@ -32,6 +32,11 @@ pub trait CustomIndicatorRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         indicator_id: Uuid,
     ) -> Result<Option<CustomIndicator>, CustomIndicatorRepositoryError>;
+    async fn find_by_id_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        indicator_id: Uuid,
+    ) -> Result<Option<CustomIndicator>, CustomIndicatorRepositoryError>;
     async fn resolve_for_strategy(
         &self,
         strategy_id: Uuid,

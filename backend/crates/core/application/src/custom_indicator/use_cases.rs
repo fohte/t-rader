@@ -1,5 +1,5 @@
 use chrono::Utc;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
@@ -140,11 +140,7 @@ impl CustomIndicatorUseCases {
                     target_kind: TargetKind::CustomIndicator,
                     target_id: indicator_id,
                     op: Op::Create,
-                    diff: json!({
-                        "name": name,
-                        "scope": scope,
-                        "strategy_id": command.strategy_id,
-                    }),
+                    diff: definition_snapshot(None, Some(&indicator)),
                     summary: None,
                 },
             )
@@ -159,53 +155,40 @@ impl CustomIndicatorUseCases {
         command: UpdateCustomIndicatorCommand,
     ) -> Result<CustomIndicator, CustomIndicatorUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
+        let has_changes = command.name.is_some()
+            || command.code.is_some()
+            || command.input_schema.is_some()
+            || command.output_schema.is_some()
+            || command.description.is_some();
         let current = self
             .repository
-            .find_by_id_in_transaction(&transaction, indicator_id)
+            .find_by_id_for_update_in_transaction(&transaction, indicator_id)
             .await?
             .ok_or(CustomIndicatorUseCaseError::NotFound(indicator_id))?;
         let mut next = current.clone();
-        let mut diff = Map::new();
 
         if let Some(name) = command.name {
             let name = validate_name(&name)?;
-            diff.insert("name".into(), json!({ "from": current.name, "to": name }));
             next.name = name;
         }
         if let Some(code) = command.code {
-            diff.insert(
-                "code".into(),
-                json!({ "len_from": current.code.len(), "len_to": code.len() }),
-            );
             next.code = code;
         }
         if let Some(input_schema) = command.input_schema {
             ensure_json_object("input_schema", &input_schema)?;
-            diff.insert(
-                "input_schema".into(),
-                json!({ "from": current.input_schema, "to": input_schema }),
-            );
             next.input_schema = input_schema;
         }
         if let Some(output_schema) = command.output_schema {
             ensure_json_object("output_schema", &output_schema)?;
-            diff.insert(
-                "output_schema".into(),
-                json!({ "from": current.output_schema, "to": output_schema }),
-            );
             next.output_schema = output_schema;
         }
         if let Some(description) = command.description {
-            diff.insert(
-                "description".into(),
-                json!({ "from": current.description, "to": description }),
-            );
             next.description = description;
         }
         next.updated_at = Utc::now().fixed_offset();
 
         let updated = self.repository.update(&transaction, next).await?;
-        if !diff.is_empty() {
+        if has_changes {
             self.change_history
                 .record(
                     &transaction,
@@ -214,7 +197,7 @@ impl CustomIndicatorUseCases {
                         target_kind: TargetKind::CustomIndicator,
                         target_id: indicator_id,
                         op: Op::Update,
-                        diff: Value::Object(diff),
+                        diff: definition_snapshot(Some(&current), Some(&updated)),
                         summary: None,
                     },
                 )
@@ -226,6 +209,11 @@ impl CustomIndicatorUseCases {
 
     pub async fn delete(&self, indicator_id: Uuid) -> Result<(), CustomIndicatorUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
+        let current = self
+            .repository
+            .find_by_id_for_update_in_transaction(&transaction, indicator_id)
+            .await?
+            .ok_or(CustomIndicatorUseCaseError::NotFound(indicator_id))?;
         if !self.repository.delete(&transaction, indicator_id).await? {
             return Err(CustomIndicatorUseCaseError::NotFound(indicator_id));
         }
@@ -237,7 +225,7 @@ impl CustomIndicatorUseCases {
                     target_kind: TargetKind::CustomIndicator,
                     target_id: indicator_id,
                     op: Op::Delete,
-                    diff: json!({}),
+                    diff: definition_snapshot(Some(&current), None),
                     summary: None,
                 },
             )
@@ -262,6 +250,28 @@ impl CustomIndicatorUseCases {
         }
         Ok(())
     }
+}
+
+fn definition_snapshot(before: Option<&CustomIndicator>, after: Option<&CustomIndicator>) -> Value {
+    json!({
+        "format": "definition_snapshot",
+        "version": 1,
+        "before": before.map(custom_indicator_definition),
+        "after": after.map(custom_indicator_definition),
+    })
+}
+
+fn custom_indicator_definition(indicator: &CustomIndicator) -> Value {
+    json!({
+        "indicator_id": indicator.indicator_id,
+        "name": indicator.name,
+        "scope": indicator.scope,
+        "strategy_id": indicator.strategy_id,
+        "code": indicator.code,
+        "input_schema": indicator.input_schema,
+        "output_schema": indicator.output_schema,
+        "description": indicator.description,
+    })
 }
 
 fn validate_name(value: &str) -> Result<String, CustomIndicatorUseCaseError> {
@@ -370,7 +380,21 @@ mod tests {
                     TargetKind::CustomIndicator,
                     indicator.indicator_id,
                     Op::Create,
-                    json!({ "name": "sample", "scope": "strategy", "strategy_id": strategy_id }),
+                    json!({
+                        "format": "definition_snapshot",
+                        "version": 1,
+                        "before": null,
+                        "after": {
+                            "indicator_id": indicator.indicator_id,
+                            "name": "sample",
+                            "scope": "strategy",
+                            "strategy_id": strategy_id,
+                            "code": "return {}",
+                            "input_schema": { "type": "object" },
+                            "output_schema": { "type": "object" },
+                            "description": null,
+                        },
+                    }),
                     None,
                 )],
             ),
