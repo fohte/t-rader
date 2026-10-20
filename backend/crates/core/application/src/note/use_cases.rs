@@ -35,6 +35,10 @@ pub struct NoteUseCases {
 }
 
 impl NoteUseCases {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "依存を composition root から明示注入するため"
+    )]
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         repository: SharedNoteRepository,
@@ -43,6 +47,7 @@ impl NoteUseCases {
         valuations: ValuationUseCases,
         indicator_observations: IndicatorObservationUseCases,
         custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
+        markdown_lint: MarkdownLintService,
     ) -> Self {
         Self {
             unit_of_work,
@@ -52,13 +57,8 @@ impl NoteUseCases {
             valuations,
             indicator_observations,
             custom_indicator_evaluations,
-            markdown_lint: MarkdownLintService::default(),
+            markdown_lint,
         }
-    }
-
-    pub fn with_markdown_lint_service(mut self, markdown_lint: MarkdownLintService) -> Self {
-        self.markdown_lint = markdown_lint;
-        self
     }
 
     pub(super) async fn require_note(

@@ -447,11 +447,7 @@ mod tests {
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
         NoteVersionUpdate, UpdateNoteCommand,
     };
-    use crate::persistence::PersistenceError;
-    use crate::refs::{
-        IndicatorRef, RefRepository, RefRepositoryError, RefSearchMatch, RefTerm, RefUseCases,
-        StockRef,
-    };
+    use crate::refs::{RefUseCases, test_support::FakeRefRepository};
     use crate::unit_of_work::FakeUnitOfWork;
     use crate::valuation::{FakeValuationRepository, ValuationUseCases};
 
@@ -462,96 +458,6 @@ mod tests {
     const EXECUTION_STEP_ID: Uuid = Uuid::from_u128(5);
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
     const EVALUATION_ID: Uuid = Uuid::from_u128(0x101);
-
-    struct FailingStockNamesRepository;
-
-    #[async_trait]
-    impl RefRepository for FailingStockNamesRepository {
-        async fn list_stocks(&self, _: Option<&str>) -> Result<Vec<StockRef>, RefRepositoryError> {
-            Ok(Vec::new())
-        }
-
-        async fn find_stock(&self, _: &str) -> Result<Option<StockRef>, RefRepositoryError> {
-            Ok(None)
-        }
-
-        async fn stock_sectors(
-            &self,
-            _: &[String],
-        ) -> Result<std::collections::HashMap<String, Option<String>>, RefRepositoryError> {
-            Ok(std::collections::HashMap::new())
-        }
-
-        async fn list_indicators(
-            &self,
-            _: Option<&str>,
-        ) -> Result<Vec<IndicatorRef>, RefRepositoryError> {
-            Ok(Vec::new())
-        }
-
-        async fn find_indicator(
-            &self,
-            _: &str,
-        ) -> Result<Option<IndicatorRef>, RefRepositoryError> {
-            Ok(None)
-        }
-
-        async fn search_all(
-            &self,
-            _: &str,
-            _: u64,
-        ) -> Result<Vec<RefSearchMatch>, RefRepositoryError> {
-            Ok(Vec::new())
-        }
-
-        async fn stock_names(
-            &self,
-            _: &[String],
-        ) -> Result<std::collections::HashMap<String, String>, RefRepositoryError> {
-            Err(RefRepositoryError::Database(PersistenceError::Database(
-                "reference lookup failed".into(),
-            )))
-        }
-
-        async fn indicator_names(
-            &self,
-            _: &[String],
-        ) -> Result<std::collections::HashMap<String, String>, RefRepositoryError> {
-            Ok(std::collections::HashMap::new())
-        }
-
-        async fn group_names(
-            &self,
-            _: &[String],
-        ) -> Result<std::collections::HashMap<String, String>, RefRepositoryError> {
-            Ok(std::collections::HashMap::new())
-        }
-
-        async fn list_terms(&self, _: &str) -> Result<Vec<RefTerm>, RefRepositoryError> {
-            Ok(Vec::new())
-        }
-
-        async fn insert_term(
-            &self,
-            _: &UnitOfWorkTransaction,
-            _: &str,
-            _: &str,
-            _: &str,
-            _: &str,
-        ) -> Result<bool, RefRepositoryError> {
-            Ok(false)
-        }
-
-        async fn delete_term(
-            &self,
-            _: &UnitOfWorkTransaction,
-            _: &str,
-            _: &str,
-            _: &str,
-        ) -> Result<bool, RefRepositoryError> {
-            Ok(false)
-        }
-    }
 
     fn custom_indicator_evaluation_use_cases(
         evaluations: impl IntoIterator<Item = CustomIndicatorEvaluation>,
@@ -928,9 +834,14 @@ mod tests {
             valuations,
             indicator_observations,
             custom_indicator_evaluation_use_cases([]),
+            MarkdownLintService::default(),
         )
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "テスト対象の依存を個別に構成するため"
+    )]
     fn make_note_use_cases_with_all_services(
         source_version: NoteVersion,
         latest_version: NoteVersion,
@@ -939,6 +850,7 @@ mod tests {
         valuations: ValuationUseCases,
         indicator_observations: IndicatorObservationUseCases,
         custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
+        markdown_lint: MarkdownLintService,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
         let repository = Arc::new(LinkNoteRepository {
             source_note: source_note_with_kind(requires_approval.then(|| "sample-kind".into())),
@@ -963,6 +875,7 @@ mod tests {
             valuations,
             indicator_observations,
             custom_indicator_evaluations,
+            markdown_lint,
         );
         (use_cases, repository)
     }
@@ -1443,6 +1356,7 @@ mod tests {
             custom_indicator_evaluation_use_cases([custom_indicator_evaluation(
                 json!({ "result": 256.75 }),
             )]),
+            MarkdownLintService::default(),
         );
         let body = concat!(
             "[[valuation:fictional-code@2030-01-02:per]] ",
@@ -1534,6 +1448,7 @@ mod tests {
             ),
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
             evaluation_use_cases,
+            MarkdownLintService::default(),
         );
         let token = "[[eval:00000000-0000-0000-0000-000000000101:result]]";
 
@@ -2263,12 +2178,27 @@ mod tests {
 
     #[tokio::test]
     async fn gated_write_does_not_save_when_stock_name_resolution_fails() {
-        let (use_cases, repository) = make_note_use_cases(source_version());
+        let bars_repository = Arc::new(FakeBarsRepository::new());
         let refs = RefUseCases::new(
             Arc::new(FakeUnitOfWork::new()),
-            Arc::new(FailingStockNamesRepository),
+            Arc::new(FakeRefRepository::new(
+                std::collections::HashMap::new(),
+                true,
+            )),
         );
-        let use_cases = use_cases.with_markdown_lint_service(MarkdownLintService::new(refs));
+        let (use_cases, repository) = make_note_use_cases_with_all_services(
+            source_version(),
+            source_version(),
+            false,
+            bars_repository.clone(),
+            ValuationUseCases::new(
+                Arc::new(FakeValuationRepository::default()),
+                bars_repository,
+            ),
+            IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+            custom_indicator_evaluation_use_cases([]),
+            MarkdownLintService::new(refs),
+        );
         let result = use_cases
             .write_with_warning_dispositions(
                 write_body_command("[[stock:DEMO-A]] 架空工業"),

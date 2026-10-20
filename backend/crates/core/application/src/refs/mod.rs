@@ -3,6 +3,9 @@ mod repository;
 mod types;
 mod use_cases;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub use error::{RefRepositoryError, RefUseCaseError};
 pub use repository::{RefRepository, SharedRefRepository};
 pub use types::{IndicatorRef, RefKind, RefSearchMatch, RefTerm, ResolvedRef, StockRef};

@@ -2,7 +2,6 @@ use std::ops::Range;
 
 use unicode_normalization::char::{canonical_combining_class, is_combining_mark};
 
-use super::super::document::TextRunKind;
 use super::super::normalization::nfkc_lowercase;
 use super::super::{
     MarkdownLintContext, RuleDefinition, RuleFinding, RuleRequirements, Severity, TextEdit,
@@ -37,18 +36,18 @@ fn check(context: &MarkdownLintContext<'_>) -> Vec<RuleFinding> {
         else {
             continue;
         };
-        if !token_inner.starts_with("stock:") || token_is_in_url(context, &token.range) {
+        if !token_inner.starts_with("stock:") {
             continue;
         }
         let Some(Some(reference_name)) = reference_names.get(token_inner) else {
             continue;
         };
-        let Some(run_range) = normal_text_run(context, &token.range) else {
+        let Some(run) = context.document.plain_text_run_containing(&token.range) else {
             continue;
         };
 
         let line_end = line_end(source, token.range.end, source.len());
-        let run_end = run_range.end.min(line_end);
+        let run_end = run.range.end.min(line_end);
         let Some(first_name_start) = skip_spaces_and_tabs(source, token.range.end, run_end) else {
             continue;
         };
@@ -86,27 +85,6 @@ fn check(context: &MarkdownLintContext<'_>) -> Vec<RuleFinding> {
     }
 
     findings
-}
-
-fn normal_text_run(
-    context: &MarkdownLintContext<'_>,
-    token_range: &Range<usize>,
-) -> Option<Range<usize>> {
-    context
-        .document
-        .runs()
-        .iter()
-        .find(|run| {
-            run.kind == TextRunKind::Text
-                && run.formatting_depth == 0
-                && run.range.start <= token_range.start
-                && token_range.end <= run.range.end
-        })
-        .map(|run| run.range.clone())
-}
-
-fn token_is_in_url(context: &MarkdownLintContext<'_>, token_range: &Range<usize>) -> bool {
-    range_overlaps_url(context, token_range)
 }
 
 fn range_overlaps_url(context: &MarkdownLintContext<'_>, range: &Range<usize>) -> bool {

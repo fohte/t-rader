@@ -20,7 +20,7 @@ impl UseCases {
             self.valuations(),
             self.indicator_observations(),
             self.custom_indicator_evaluations(),
+            MarkdownLintService::new(self.refs()),
         )
-        .with_markdown_lint_service(MarkdownLintService::new(self.refs()))
     }
 }
