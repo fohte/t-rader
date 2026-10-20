@@ -1,11 +1,10 @@
 use chrono::Utc;
 use serde_json::{Map, json};
-use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use core_domain::note_body_warning::{NoteBodyWarning, warning_id_group};
 use core_domain::note_price_reference::NotePriceReferencePolicy;
 
+use super::markdown_lint_gate::apply_lint_outcome;
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{
     NewNote, NoteBodyWarningDisposition, NoteSnapshot, NoteVersion, NoteVersionUpdate,
@@ -14,7 +13,7 @@ use crate::note::types::{
 use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
 use crate::note::widget_blocks::validate_note_widget_blocks;
-use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases, scan_note_warnings};
+use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
@@ -142,7 +141,7 @@ impl NoteUseCases {
             self.ensure_note_kind_exists(&transaction, kind).await?;
         }
         let graphs_json = command.graphs_json.clone().unwrap_or_else(|| json!([]));
-        validate_warning_dispositions(
+        let lint_outcome = self.inspect_checked_body(
             command.body_md.as_deref().unwrap_or_default(),
             &graphs_json,
             warning_dispositions.as_deref(),
@@ -241,9 +240,10 @@ impl NoteUseCases {
                 .await?;
         }
 
-        let result = self
+        let mut result = self
             .write_result(&transaction, note_id, version, true)
             .await?;
+        apply_lint_outcome(&mut result, lint_outcome);
         self.unit_of_work.commit(transaction).await?;
         Ok(result)
     }
@@ -336,7 +336,8 @@ impl NoteUseCases {
             graphs_json = graphs;
             touched = true;
         }
-        validate_warning_dispositions(&body_md, &graphs_json, warning_dispositions)?;
+        let lint_outcome =
+            self.inspect_checked_body(&body_md, &graphs_json, warning_dispositions)?;
         if !touched {
             return Err(NoteUseCaseError::Validation(
                 "at least one of title / body_md / frontmatter_json / graphs must be provided"
@@ -348,9 +349,13 @@ impl NoteUseCases {
             && frontmatter_json == current_version.frontmatter_json
             && graphs_json == current_version.graphs_json
         {
-            return self
+            let mut result = self
                 .write_result(transaction, note.id, current_version, false)
                 .await;
+            if let Ok(result) = &mut result {
+                apply_lint_outcome(result, lint_outcome);
+            }
+            return result;
         }
 
         let version = self
@@ -372,8 +377,11 @@ impl NoteUseCases {
                 },
             )
             .await?;
-        self.write_result(transaction, note.id, version, false)
-            .await
+        let mut result = self
+            .write_result(transaction, note.id, version, false)
+            .await?;
+        apply_lint_outcome(&mut result, lint_outcome);
+        Ok(result)
     }
 
     async fn write_result(
@@ -399,62 +407,8 @@ impl NoteUseCases {
                 version,
                 created_by_kind,
             },
-        })
-    }
-}
-
-fn validate_warning_dispositions(
-    body_md: &str,
-    graphs_json: &serde_json::Value,
-    warning_dispositions: Option<&[NoteBodyWarningDisposition]>,
-) -> Result<(), NoteUseCaseError> {
-    let Some(warning_dispositions) = warning_dispositions else {
-        return Ok(());
-    };
-    let warnings = scan_note_warnings(body_md, graphs_json)
-        .map_err(|error| NoteUseCaseError::Validation(format!("invalid graphs_json: {error}")))?;
-    let warning_counts = warnings.iter().fold(HashMap::new(), |mut counts, warning| {
-        if let Some(group_id) = warning_id_group(&warning.id) {
-            *counts.entry(group_id.to_string()).or_insert(0_usize) += 1;
-        }
-        counts
-    });
-    let disposition_ids = warning_dispositions
-        .iter()
-        .filter(|disposition| !disposition.reason.trim().is_empty())
-        .filter_map(|disposition| {
-            warning_id_group(&disposition.id)
-                .filter(|group_id| warning_counts.contains_key(*group_id))
-                .map(|group_id| (group_id.to_string(), disposition.id.clone()))
-        })
-        .fold(
-            HashMap::<String, HashSet<String>>::new(),
-            |mut groups, (group_id, id)| {
-                groups.entry(group_id).or_default().insert(id);
-                groups
-            },
-        );
-    let unresolved_warnings = warnings
-        .into_iter()
-        .filter(|warning| {
-            let Some(group_id) = warning_id_group(&warning.id) else {
-                return true;
-            };
-            let Some(group_dispositions) = disposition_ids.get(group_id) else {
-                return true;
-            };
-            if group_dispositions.contains(&warning.id) {
-                return false;
-            }
-            // 同一警告の先行出現が削除されると番号がずれるため、同じ警告群の理由数で照合する。
-            group_dispositions.len() < warning_counts[group_id]
-        })
-        .collect::<Vec<NoteBodyWarning>>();
-    if unresolved_warnings.is_empty() {
-        Ok(())
-    } else {
-        Err(NoteUseCaseError::UnresolvedBodyWarnings {
-            warnings: unresolved_warnings,
+            lint_report: None,
+            warnings: Vec::new(),
         })
     }
 }
@@ -466,7 +420,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
     use core_domain::bar::{Bar, Timeframe};
-    use core_domain::note_body_warning::scan_note_warnings_with_ids;
+    use core_domain::note_body_warning::{NoteBodyWarning, scan_note_warnings_with_ids};
     use core_domain::valuation::Valuation;
     use indoc::indoc;
     use rstest::{fixture, rstest};
@@ -529,6 +483,7 @@ mod tests {
         requires_approval: bool,
         target: NoteLinkTarget,
         inserted_links: Mutex<Vec<NewNoteLink>>,
+        inserted_note_ids: Mutex<Vec<Uuid>>,
         inserted_versions: Mutex<Vec<NewNoteVersion>>,
         reference_replacements: Mutex<Vec<Vec<(String, String)>>>,
     }
@@ -612,8 +567,9 @@ mod tests {
         async fn insert_note(
             &self,
             _transaction: &UnitOfWorkTransaction,
-            _note: NewNote,
+            note: NewNote,
         ) -> Result<Option<Note>, NoteRepositoryError> {
+            self.inserted_note_ids.lock().await.push(note.id);
             Ok(None)
         }
 
@@ -895,6 +851,7 @@ mod tests {
                 current_version_id: Some(TARGET_VERSION_ID),
             },
             inserted_links: Mutex::new(Vec::new()),
+            inserted_note_ids: Mutex::new(Vec::new()),
             inserted_versions: Mutex::new(Vec::new()),
             reference_replacements: Mutex::new(Vec::new()),
         });
@@ -947,6 +904,7 @@ mod tests {
         title: &str,
         body: &str,
         resolved_price_references_json: serde_json::Value,
+        lint_report: Option<core_domain::markdown_lint::LintReport>,
     ) -> NoteWriteResult {
         NoteWriteResult {
             note_id: SOURCE_NOTE_ID,
@@ -972,6 +930,8 @@ mod tests {
                 },
                 created_by_kind: "human".into(),
             },
+            lint_report,
+            warnings: Vec::new(),
         }
     }
 
@@ -1038,6 +998,8 @@ mod tests {
                         },
                         created_by_kind: "human".into(),
                     },
+                    lint_report: None,
+                    warnings: Vec::new(),
                 },
                 vec![NewNoteLink {
                     from_version_id: NORMALIZED_VERSION_ID,
@@ -1106,6 +1068,7 @@ mod tests {
                     "[[price:fictional-code@2030-01-02:volume]]": { "value": 100 },
                     "[[price:US:FICTIONAL-A@2030-01-02:close]]": { "value": 15 },
                 }),
+                None,
             ),
         );
     }
@@ -1132,6 +1095,7 @@ mod tests {
                         "value": 20,
                     },
                 }),
+                None,
             ),
         );
     }
@@ -1184,6 +1148,7 @@ mod tests {
                         "value": 25,
                     },
                 }),
+                Some(core_domain::markdown_lint::LintReport::default()),
             ),
         );
     }
@@ -2169,6 +2134,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gated_write_checks_the_existing_body_before_a_noop_result() {
+        let body = "close 12,347円";
+        let mut current_version = source_version();
+        current_version.body_md = body.into();
+        let (use_cases, repository) = make_note_use_cases(current_version);
+        let mut command = write_body_command(body);
+        command.title = Some("Previous title".into());
+        command.body_md = None;
+        let result = use_cases
+            .write_with_warning_dispositions(command, vec![])
+            .await;
+
+        assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
+    }
+
+    #[tokio::test]
+    async fn gated_write_rejects_a_new_note_before_note_or_version_insert() {
+        let body = "close 12,347円";
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let mut command = write_body_command(body);
+        command.note_id = None;
+        let result = use_cases
+            .write_with_warning_dispositions(command, vec![])
+            .await;
+
+        assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
+    }
+
+    #[tokio::test]
     async fn gated_write_accepts_a_reason_for_each_warning() {
         let body = "close 45,678円 and -3.5%";
         let (use_cases, repository) = make_note_use_cases(source_version());
@@ -2277,14 +2271,19 @@ mod tests {
         expected_warnings: Vec<NoteBodyWarning>,
     ) {
         let unresolved_warnings = result.err().and_then(|error| match error {
-            NoteUseCaseError::UnresolvedBodyWarnings { warnings } => Some(warnings),
+            NoteUseCaseError::BodyLintRejected { warnings, .. } => Some(warnings),
             _ => None,
         });
+        let inserted_note_count = repository.inserted_note_ids.lock().await.len();
         let inserted_version_count = repository.inserted_versions.lock().await.len();
 
         assert_eq!(
-            (unresolved_warnings, inserted_version_count),
-            (Some(expected_warnings), 0),
+            (
+                unresolved_warnings,
+                inserted_note_count,
+                inserted_version_count,
+            ),
+            (Some(expected_warnings), 0, 0),
         );
     }
 

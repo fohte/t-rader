@@ -89,8 +89,41 @@ pub struct WriteNoteWarning {
 pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
-    /// 警告 ID は種類・該当文字列・出現順で決まる。同じ警告の先行出現を削除した場合は、旧 ID も理由数に含める。
     pub warnings: Vec<WriteNoteWarning>,
+    pub diagnostics: Vec<WriteNoteDiagnostic>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(test, derive(serde::Deserialize))]
+pub enum WriteNoteDiagnosticSeverity {
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+pub struct WriteNoteRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+pub struct WriteNoteTextEdit {
+    pub range: WriteNoteRange,
+    pub replacement: String,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+pub struct WriteNoteDiagnostic {
+    pub rule_id: String,
+    pub id: String,
+    pub severity: WriteNoteDiagnosticSeverity,
+    pub range: WriteNoteRange,
+    pub message: String,
+    pub fix: Option<WriteNoteTextEdit>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

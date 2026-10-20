@@ -1,4 +1,6 @@
 use chrono::{DateTime, FixedOffset};
+use core_domain::markdown_lint::LintReport;
+use core_domain::note_body_warning::NoteBodyWarning;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -188,4 +190,6 @@ pub struct NoteWriteResult {
     pub note_id: Uuid,
     pub created: bool,
     pub snapshot: NoteSnapshot,
+    pub lint_report: Option<LintReport>,
+    pub warnings: Vec<NoteBodyWarning>,
 }

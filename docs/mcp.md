@@ -152,6 +152,8 @@ time:
 
 `write_note` は本文および図のノード/エッジラベルにある未リンク数値を警告として返します。各警告を修正するか、`warning_dispositions` に警告 ID と空でない理由を指定するまで書き込みを拒否します。図の警告には図とラベルの位置が含まれます。株価・株価騰落率以外の数値は元の場所に残して理由付きで dismiss し、ローソク本数の警告は開始日と終了日に置き換えます。
 
+成功時は `diagnostics` に本文 lint の全 finding、`warnings` に全 Warning を返します。拒否時は `diagnostics` に全 Error と未対応 Warning、`warnings` に未対応 Warning のみを含めます。`diagnostics[].range` と任意の `fix.range` は本文の UTF-8 byte 半開区間です。
+
 ## session 管理方針
 
 `/mcp/mgmt` の session は `LocalSessionManager` の in-memory state のみで管理し、永続化しない。

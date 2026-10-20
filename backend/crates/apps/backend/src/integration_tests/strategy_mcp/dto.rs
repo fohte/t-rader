@@ -145,12 +145,42 @@ pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
     pub warnings: Vec<WriteNoteWarning>,
+    pub diagnostics: Vec<WriteNoteDiagnostic>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WriteNoteWarning {
     pub id: String,
     pub message: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct WriteNoteDiagnostic {
+    pub rule_id: String,
+    pub id: String,
+    pub severity: WriteNoteDiagnosticSeverity,
+    pub range: WriteNoteRange,
+    pub message: String,
+    pub fix: Option<WriteNoteTextEdit>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WriteNoteDiagnosticSeverity {
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct WriteNoteRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct WriteNoteTextEdit {
+    pub range: WriteNoteRange,
+    pub replacement: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

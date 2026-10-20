@@ -155,6 +155,9 @@ impl From<StockGroupUseCaseError> for AppError {
 fn map_note_use_case_error(error: NoteUseCaseError) -> AppError {
     match error {
         NoteUseCaseError::Validation(message) => AppError::Validation(message),
+        NoteUseCaseError::BodyLintRejected { .. } => {
+            AppError::Validation("note body has lint errors or unresolved warnings".into())
+        }
         NoteUseCaseError::UnknownNoteKind(kind) => {
             AppError::Validation(format!("unknown note kind: {kind}"))
         }
@@ -330,6 +333,22 @@ mod tests {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": "internal server error" }),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn body_lint_rejection_maps_to_http_validation_response() {
+        let error = map_note_use_case_error(NoteUseCaseError::BodyLintRejected {
+            diagnostics: Vec::new(),
+            warnings: Vec::new(),
+        });
+
+        assert_eq!(
+            response_parts(error).await,
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": "note body has lint errors or unresolved warnings"}),
             ),
         );
     }

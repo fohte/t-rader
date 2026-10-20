@@ -4,14 +4,15 @@
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::note::{
     NoteBodyWarningDisposition, NoteRepositoryError, NoteUseCaseError, NoteWriteCommand,
-    scan_note_warnings,
 };
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::unit_of_work::UnitOfWorkError;
+use core_domain::markdown_lint::{LintDiagnostic, Severity};
 use rmcp::ErrorData as McpError;
 
 use super::dto::{
-    ListNoteKindsResult, NoteKindDto, WriteNoteParams, WriteNoteResult, WriteNoteWarning,
+    ListNoteKindsResult, NoteKindDto, WriteNoteDiagnostic, WriteNoteDiagnosticSeverity,
+    WriteNoteParams, WriteNoteRange, WriteNoteResult, WriteNoteTextEdit, WriteNoteWarning,
 };
 use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, internal_error, internal_failure, invalid_params,
@@ -24,17 +25,33 @@ pub(crate) use read::note_read_error_to_mcp;
 fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
     match error {
         NoteUseCaseError::Validation(message) => invalid_params(message),
-        NoteUseCaseError::UnresolvedBodyWarnings { warnings } => {
-            let warning_details = warnings
+        NoteUseCaseError::BodyLintRejected {
+            diagnostics,
+            warnings,
+        } => {
+            let has_error = diagnostics
                 .iter()
-                .map(|warning| format!("{}: {}", warning.id, warning.message))
+                .any(|diagnostic| diagnostic.severity == Severity::Error);
+            let details = diagnostics
+                .iter()
+                .map(|diagnostic| format!("{}: {}", diagnostic.id, diagnostic.message))
                 .collect::<Vec<_>>()
                 .join("\n");
-            McpError::invalid_params(
+            let message = if has_error {
+                format!("note body contains blocking lint diagnostics:\n{details}")
+            } else {
+                let warning_details = warnings
+                    .iter()
+                    .map(|warning| format!("{}: {}", warning.id, warning.message))
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 format!(
                     "note warnings must be fixed or dismissed with a reason:\n{warning_details}"
-                ),
-                Some(serde_json::json!({"warnings": warnings})),
+                )
+            };
+            McpError::invalid_params(
+                message,
+                Some(serde_json::json!({"warnings": warnings, "diagnostics": diagnostics})),
             )
         }
         NoteUseCaseError::UnknownNoteKind(kind) => {
@@ -153,23 +170,49 @@ impl StrategyServer {
             )
             .await
             .map_err(note_use_case_to_mcp)?;
-        let warnings = scan_note_warnings(
-            &result.snapshot.version.body_md,
-            &result.snapshot.version.graphs_json,
-        )
-        .map_err(|error| internal_error(format!("failed to deserialize saved graphs: {error}")))?;
-        let warnings = warnings
+        let warnings = result
+            .warnings
             .into_iter()
             .map(|warning| WriteNoteWarning {
                 id: warning.id,
                 message: warning.message,
             })
             .collect();
+        let diagnostics = result
+            .lint_report
+            .map_or_else(Vec::new, |report| report.diagnostics)
+            .into_iter()
+            .map(write_note_diagnostic)
+            .collect();
         Ok(WriteNoteResult {
             note_id: result.note_id,
             created: result.created,
             warnings,
+            diagnostics,
         })
+    }
+}
+
+fn write_note_diagnostic(diagnostic: LintDiagnostic) -> WriteNoteDiagnostic {
+    WriteNoteDiagnostic {
+        rule_id: diagnostic.rule_id.into(),
+        id: diagnostic.id,
+        severity: match diagnostic.severity {
+            Severity::Warning => WriteNoteDiagnosticSeverity::Warning,
+            Severity::Error => WriteNoteDiagnosticSeverity::Error,
+        },
+        range: WriteNoteRange {
+            start: diagnostic.range.start,
+            end: diagnostic.range.end,
+        },
+        message: diagnostic.message,
+        fix: diagnostic.fix.map(|fix| WriteNoteTextEdit {
+            range: WriteNoteRange {
+                start: fix.range.start,
+                end: fix.range.end,
+            },
+            replacement: fix.replacement,
+        }),
     }
 }
 
@@ -180,14 +223,38 @@ mod tests {
 
     use super::note_use_case_to_mcp;
     use core_application::note::NoteUseCaseError;
+    use core_domain::markdown_lint::{LintDiagnostic, Severity};
     use core_domain::note_body_warning::NoteBodyWarning;
 
-    #[test]
-    fn unresolved_warning_errors_include_warning_ids_in_data() {
-        let error = note_use_case_to_mcp(NoteUseCaseError::UnresolvedBodyWarnings {
+    #[rstest::rstest]
+    #[case::warning_only(false)]
+    #[case::error_with_warning(true)]
+    fn lint_rejections_return_error_diagnostics_and_warning_subset(#[case] has_error: bool) {
+        let warning = LintDiagnostic {
+            rule_id: "price",
+            id: "price:12%2C345%E5%86%86:1".into(),
+            severity: Severity::Warning,
+            range: 0..9,
+            message: "sample price warning".into(),
+            fix: None,
+        };
+        let error_diagnostic = LintDiagnostic {
+            rule_id: "sample-rule",
+            id: "sample-rule:sample-key:1".into(),
+            severity: Severity::Error,
+            range: 10..15,
+            message: "sample blocking diagnostic".into(),
+            fix: None,
+        };
+        let mut diagnostics = vec![warning.clone()];
+        if has_error {
+            diagnostics.push(error_diagnostic);
+        }
+        let error = note_use_case_to_mcp(NoteUseCaseError::BodyLintRejected {
+            diagnostics,
             warnings: vec![NoteBodyWarning {
-                id: "price:45%2C678%E5%86%86:1".into(),
-                message: "価格候補の数値「45,678円」がリンク外にあります。".into(),
+                id: warning.id.clone(),
+                message: warning.message.clone(),
             }],
         });
 
@@ -195,16 +262,52 @@ mod tests {
             (error.code, error.message.to_string(), error.data),
             (
                 ErrorCode::INVALID_PARAMS,
-                concat!(
-                    "note warnings must be fixed or dismissed with a reason:\n",
-                    "price:45%2C678%E5%86%86:1: 価格候補の数値「45,678円」がリンク外にあります。"
-                )
+                if has_error {
+                    concat!(
+                        "note body contains blocking lint diagnostics:\n",
+                        "price:12%2C345%E5%86%86:1: sample price warning\n",
+                        "sample-rule:sample-key:1: sample blocking diagnostic"
+                    )
+                } else {
+                    "note warnings must be fixed or dismissed with a reason:\nprice:12%2C345%E5%86%86:1: sample price warning"
+                }
                 .into(),
                 Some(json!({
                     "warnings": [{
-                        "id": "price:45%2C678%E5%86%86:1",
-                        "message": "価格候補の数値「45,678円」がリンク外にあります。",
+                        "id": "price:12%2C345%E5%86%86:1",
+                        "message": "sample price warning",
                     }],
+                    "diagnostics": if has_error {
+                        json!([
+                            {
+                                "rule_id": "price",
+                                "id": "price:12%2C345%E5%86%86:1",
+                                "severity": "warning",
+                                "range": {"start": 0, "end": 9},
+                                "message": "sample price warning",
+                                "fix": null,
+                            },
+                            {
+                                "rule_id": "sample-rule",
+                                "id": "sample-rule:sample-key:1",
+                                "severity": "error",
+                                "range": {"start": 10, "end": 15},
+                                "message": "sample blocking diagnostic",
+                                "fix": null,
+                            },
+                        ])
+                    } else {
+                        json!([
+                            {
+                                "rule_id": "price",
+                                "id": "price:12%2C345%E5%86%86:1",
+                                "severity": "warning",
+                                "range": {"start": 0, "end": 9},
+                                "message": "sample price warning",
+                                "fix": null,
+                            },
+                        ])
+                    }
                 })),
             ),
         );
