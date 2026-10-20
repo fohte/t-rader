@@ -17,17 +17,25 @@ const changeFormat = new Intl.NumberFormat('ja-JP', {
   signDisplay: 'never',
 })
 
+export function usesWidgetPercentFormat(
+  name: string,
+  queries: WidgetQueryDefinitions,
+  display: WidgetDisplayDefinitions = {},
+): boolean {
+  const format = display[name]?.format
+  return (
+    format === 'percent' ||
+    (format == null && queries[name]?.metric === 'change')
+  )
+}
+
 export function formatWidgetValue(
   name: string,
   value: number,
   queries: WidgetQueryDefinitions,
   display: WidgetDisplayDefinitions = {},
 ): string {
-  const format = display[name]?.format
-  const usesPercentFormat =
-    format === 'percent' ||
-    (format == null && queries[name]?.metric === 'change')
-  if (!usesPercentFormat) {
+  if (!usesWidgetPercentFormat(name, queries, display)) {
     return numberFormat.format(value)
   }
 

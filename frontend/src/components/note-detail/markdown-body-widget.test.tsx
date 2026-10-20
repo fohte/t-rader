@@ -10,6 +10,21 @@ const { useApiQuery } = vi.hoisted(() => ({ useApiQuery: vi.fn() }))
 
 vi.mock('#lib/api/client', () => ({ $api: { useQuery: useApiQuery } }))
 
+vi.mock('#lib/echarts/use-echarts-chart', async () => {
+  const React = await import('react')
+  const { testEChartsPalette } =
+    await import('../../test/echarts-palette.test-helper')
+  return {
+    useEChartsChart: () => ({
+      containerRef: React.useRef<HTMLDivElement>(null),
+      palette: testEChartsPalette,
+      error: null,
+      updateOption: () => undefined,
+      dispatchAction: () => undefined,
+    }),
+  }
+})
+
 const VALID_WIDGET_SOURCE = [
   '```widget',
   'queries:',
@@ -163,12 +178,14 @@ describe('MarkdownBody widget blocks', () => {
       widget.textContent.replace(/\s+/g, ' ').trim(),
       widget.closest('pre') === null ? 'outside <pre>' : 'inside <pre>',
     ].join('\n')
-    expect(renderedWidget).toEqual(
-      'ウィジェット基準日 2099-01-051デモグループ2.1\noutside <pre>',
-    )
+    const expectedWidget = [
+      'ウィジェット基準日 2099-01-05doubled2099-01-05自動尺度: 0 / 0 / 2.311デモグループdemo-axis/demo-group+2.1順位一覧から詳細を選ぶ (1)1デモグループdemo-axis/demo-group+2.1',
+      'outside <pre>',
+    ].join('\n')
+    expect(renderedWidget).toEqual(expectedWidget)
   })
 
-  it('renders direct change query values as signed percentages', () => {
+  it('renders direct change query values as signed percentages', async () => {
     useApiQuery.mockReturnValue({
       data: {
         as_of: '2099-01-05',
@@ -186,10 +203,10 @@ describe('MarkdownBody widget blocks', () => {
     })
     render(<MarkdownBody source={CHANGE_WIDGET_SOURCE} />)
 
-    const row = screen.getByRole('listitem', {
-      name: '1 位: デモグループ +0.42%',
-    })
-    expect(row.lastElementChild?.textContent).toBe('+0.42%')
+    expect(await screen.findByRole('img')).toHaveAttribute(
+      'aria-label',
+      'change の toplist。基準日 2099-01-05。1 件を降順で表示。1 位 デモグループ、demo-axis/demo-group、+0.42%',
+    )
   })
 
   it.each(WIDGET_SOURCES_WITHOUT_AS_OF)(
