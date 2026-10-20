@@ -4,11 +4,68 @@ mod tests {
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use gateway_postgres::entities::{agent_config, change_history};
+    use rstest::{fixture, rstest};
     use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, SqlxPostgresConnector};
     use serde_json::{Value, json};
     use std::sync::Arc;
     use tokio::sync::Barrier;
     use uuid::Uuid;
+
+    struct AgentConfigHistoryTestContext {
+        server: axum_test::TestServer,
+        db: gateway_postgres::DatabaseHandle,
+        _database_test_lock: Option<gateway_postgres::DatabaseHandle>,
+        purpose: String,
+        id: String,
+        created_status: StatusCode,
+    }
+
+    async fn create_agent_config_history_test_context(
+        db: gateway_postgres::DatabaseHandle,
+        database_test_lock: Option<gateway_postgres::DatabaseHandle>,
+        purpose: String,
+    ) -> AgentConfigHistoryTestContext {
+        let server = create_test_server(db.clone()).await;
+        let created = server
+            .post("/api/agent-configs")
+            .json(&json!({ "purpose": purpose.clone() }))
+            .await;
+        let created_status = created.status_code();
+        let created_body = created.json::<Value>();
+        let id = created_body["id"]
+            .as_str()
+            .expect("created config id")
+            .to_string();
+        AgentConfigHistoryTestContext {
+            server,
+            db,
+            _database_test_lock: database_test_lock,
+            purpose,
+            id,
+            created_status,
+        }
+    }
+
+    #[fixture]
+    async fn agent_config_history_context() -> AgentConfigHistoryTestContext {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
+        create_agent_config_history_test_context(db, None, "example-purpose".to_string()).await
+    }
+
+    #[fixture]
+    async fn concurrent_agent_config_history_context() -> AgentConfigHistoryTestContext {
+        let database_test_lock = gateway_postgres::test_support::create_test_transaction().await;
+        let pool = gateway_postgres::test_support::create_test_pool_with_max_connections(4).await;
+        let db = gateway_postgres::DatabaseHandle::from(
+            SqlxPostgresConnector::from_sqlx_postgres_pool(pool),
+        );
+        create_agent_config_history_test_context(
+            db,
+            Some(database_test_lock),
+            format!("test-{}", Uuid::new_v4().simple()),
+        )
+        .await
+    }
 
     fn normalize(mut value: Value) -> Value {
         for key in ["id", "created_at", "updated_at"] {
@@ -112,20 +169,14 @@ mod tests {
         );
     }
 
-    #[backend_test_macros::database_test]
+    #[rstest]
+    #[tokio::test]
     async fn create_updates_and_delete_return_full_definition_snapshots(
-        db: gateway_postgres::DatabaseHandle,
+        #[future] agent_config_history_context: AgentConfigHistoryTestContext,
     ) {
-        let server = create_test_server(db).await;
-        let created = server
-            .post("/api/agent-configs")
-            .json(&json!({ "purpose": "example-purpose" }))
-            .await;
-        let created_body = created.json::<Value>();
-        let id = created_body["id"]
-            .as_str()
-            .expect("created config id")
-            .to_string();
+        let context = agent_config_history_context.await;
+        let server = &context.server;
+        let id = context.id.clone();
         let initial = snapshot(&id, "example-purpose", "", json!({}), "");
 
         let agents_md = indoc::indoc! {"
@@ -186,7 +237,7 @@ mod tests {
 
         assert_eq!(
             (
-                created.status_code(),
+                context.created_status,
                 agents_md_put.status_code(),
                 skills_put.status_code(),
                 graph_put.status_code(),
@@ -206,20 +257,14 @@ mod tests {
         );
     }
 
-    #[backend_test_macros::database_test]
+    #[rstest]
+    #[tokio::test]
     async fn history_snapshot_can_restore_definition_through_existing_puts(
-        db: gateway_postgres::DatabaseHandle,
+        #[future] agent_config_history_context: AgentConfigHistoryTestContext,
     ) {
-        let server = create_test_server(db).await;
-        let created = server
-            .post("/api/agent-configs")
-            .json(&json!({ "purpose": "example-purpose" }))
-            .await;
-        let created_body = created.json::<Value>();
-        let id = created_body["id"]
-            .as_str()
-            .expect("created config id")
-            .to_string();
+        let context = agent_config_history_context.await;
+        let server = &context.server;
+        let id = context.id.clone();
 
         let original_agents_md = indoc::indoc! {"
             Original fabricated guidance.
@@ -372,7 +417,7 @@ mod tests {
         assert_eq!(
             (
                 [
-                    created.status_code(),
+                    context.created_status,
                     baseline_agents_md_put.status_code(),
                     baseline_skills_put.status_code(),
                     baseline_graph_put.status_code(),
@@ -465,20 +510,15 @@ mod tests {
         row
     }
 
-    #[backend_test_macros::database_test]
+    #[rstest]
+    #[tokio::test]
     async fn failed_history_insert_rolls_back_agent_config_update(
-        db: gateway_postgres::DatabaseHandle,
+        #[future] agent_config_history_context: AgentConfigHistoryTestContext,
     ) {
-        let server = create_test_server(db.clone()).await;
-        let created = server
-            .post("/api/agent-configs")
-            .json(&json!({ "purpose": "example-purpose" }))
-            .await;
-        let created_body = created.json::<Value>();
-        let id = created_body["id"]
-            .as_str()
-            .expect("created config id")
-            .to_string();
+        let context = agent_config_history_context.await;
+        let server = &context.server;
+        let db = &context.db;
+        let id = context.id.clone();
 
         db.execute_unprepared(
             "CREATE FUNCTION reject_agent_config_history_for_test() RETURNS trigger \
@@ -522,7 +562,7 @@ mod tests {
 
         assert_eq!(
             (
-                created.status_code(),
+                context.created_status,
                 failed_put.status_code(),
                 current.status_code(),
                 normalize(current.json::<Value>()),
@@ -553,27 +593,23 @@ mod tests {
         );
     }
 
-    #[backend_test_macros::database_test]
+    #[rstest]
+    #[tokio::test]
     async fn concurrent_updates_record_the_actual_previous_definition(
-        _database_test_lock: gateway_postgres::DatabaseHandle,
+        #[future] concurrent_agent_config_history_context: AgentConfigHistoryTestContext,
     ) {
-        let pool = gateway_postgres::test_support::create_test_pool_with_max_connections(4).await;
-        let db = gateway_postgres::DatabaseHandle::from(
-            SqlxPostgresConnector::from_sqlx_postgres_pool(pool),
-        );
-        let server = Arc::new(create_test_server(db.clone()).await);
-        let purpose = format!("test-{}", Uuid::new_v4().simple());
+        let context = concurrent_agent_config_history_context.await;
+        let AgentConfigHistoryTestContext {
+            server,
+            db,
+            _database_test_lock,
+            purpose,
+            id,
+            created_status,
+        } = context;
+        let server = Arc::new(server);
         let config_path = format!("/api/agent-configs/{purpose}");
         let agents_md_path = format!("{config_path}/agents-md");
-        let created = server
-            .post("/api/agent-configs")
-            .json(&json!({ "purpose": purpose }))
-            .await;
-        let created_body = created.json::<Value>();
-        let id = created_body["id"]
-            .as_str()
-            .expect("created config id")
-            .to_string();
         let initial_content = "starting fabricated content";
         let initial_put = server
             .put(&agents_md_path)
@@ -606,6 +642,33 @@ mod tests {
             }
         );
 
+        let skills_path = format!("{config_path}/skills");
+        let first_skill_content = "first concurrent fabricated skill";
+        let second_skill_content = "second concurrent fabricated skill";
+        let skill_barrier = Arc::new(Barrier::new(2));
+        let first_skill_barrier = skill_barrier.clone();
+        let second_skill_barrier = skill_barrier.clone();
+        let first_skill_server = server.clone();
+        let second_skill_server = server.clone();
+        let first_skill_path = format!("{skills_path}/first_skill");
+        let second_skill_path = format!("{skills_path}/second_skill");
+        let (first_skill_update, second_skill_update) = tokio::join!(
+            async move {
+                first_skill_barrier.wait().await;
+                first_skill_server
+                    .put(&first_skill_path)
+                    .json(&json!({ "content": first_skill_content }))
+                    .await
+            },
+            async move {
+                second_skill_barrier.wait().await;
+                second_skill_server
+                    .put(&second_skill_path)
+                    .json(&json!({ "content": second_skill_content }))
+                    .await
+            }
+        );
+
         let current = server.get(&config_path).await;
         let current_body = current.json::<Value>();
         let final_content = current_body["agents_md"]
@@ -617,14 +680,13 @@ mod tests {
                 "/api/history?target_kind=agent_config&target_id={id}"
             ))
             .await;
-        let transitions = history
-            .json::<Vec<Value>>()
-            .into_iter()
+        let history_rows = history.json::<Vec<Value>>();
+        let transitions = history_rows
+            .iter()
             .filter_map(|row| {
                 let before = row["diff_json"]["before"]["agents_md"].as_str()?;
                 let after = row["diff_json"]["after"]["agents_md"].as_str()?;
-                [first_content, second_content]
-                    .contains(&after)
+                (before != after && [first_content, second_content].contains(&after))
                     .then(|| (before.to_string(), after.to_string()))
             })
             .collect::<Vec<_>>();
@@ -649,6 +711,40 @@ mod tests {
         };
         expected_transitions.sort();
 
+        let final_skills = json!({
+            "first_skill": first_skill_content,
+            "second_skill": second_skill_content,
+        });
+        let mut skill_transitions = history_rows
+            .iter()
+            .filter_map(|row| {
+                let before = row["diff_json"]["before"]["skills"].as_object()?;
+                let after = row["diff_json"]["after"]["skills"].as_object()?;
+                after
+                    .values()
+                    .any(|value| {
+                        value.as_str().is_some_and(|content| {
+                            [first_skill_content, second_skill_content].contains(&content)
+                        })
+                    })
+                    .then(|| (Value::Object(before.clone()), Value::Object(after.clone())))
+            })
+            .collect::<Vec<_>>();
+        skill_transitions.sort_by_key(|(before, after)| (before.to_string(), after.to_string()));
+        let intermediate_skills = skill_transitions
+            .iter()
+            .map(|(_, after)| after)
+            .find(|after| after.as_object().is_some_and(|skills| skills.len() == 1))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let mut expected_skill_transitions = vec![
+            (json!({}), intermediate_skills.clone()),
+            (intermediate_skills, final_skills.clone()),
+        ];
+        expected_skill_transitions
+            .sort_by_key(|(before, after)| (before.to_string(), after.to_string()));
+        let current_body = normalize(current_body);
+
         let target_id = Uuid::parse_str(&id).expect("created config id is a UUID");
         change_history::Entity::delete_many()
             .filter(change_history::Column::TargetKind.eq("agent_config"))
@@ -664,14 +760,18 @@ mod tests {
 
         assert_eq!(
             (
-                created.status_code(),
+                created_status,
                 initial_put.status_code(),
                 first_update.status_code(),
                 second_update.status_code(),
+                first_skill_update.status_code(),
+                second_skill_update.status_code(),
                 current.status_code(),
                 history.status_code(),
+                current_body,
                 final_content,
                 transitions,
+                skill_transitions,
             ),
             (
                 StatusCode::CREATED,
@@ -680,8 +780,20 @@ mod tests {
                 StatusCode::OK,
                 StatusCode::OK,
                 StatusCode::OK,
+                StatusCode::OK,
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "purpose": purpose,
+                    "agents_md": expected_final,
+                    "skills": final_skills,
+                    "agent_graph": "",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
                 expected_final.to_string(),
                 expected_transitions,
+                expected_skill_transitions,
             ),
         );
     }

@@ -121,21 +121,12 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
         Ok(self.configs().get(purpose).cloned())
     }
 
-    async fn find_by_purpose_in_transaction(
+    async fn find_by_purpose_for_update_in_transaction(
         &self,
         _transaction: &UnitOfWorkTransaction,
         purpose: &str,
     ) -> Result<Option<AgentConfig>, AgentConfigRepositoryError> {
         self.find_by_purpose(purpose).await
-    }
-
-    async fn find_by_purpose_for_update_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        purpose: &str,
-    ) -> Result<Option<AgentConfig>, AgentConfigRepositoryError> {
-        self.find_by_purpose_in_transaction(transaction, purpose)
-            .await
     }
 
     async fn insert(
