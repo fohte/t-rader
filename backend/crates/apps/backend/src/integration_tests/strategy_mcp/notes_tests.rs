@@ -252,6 +252,11 @@ mod tests {
                     version_no: 1,
                     title: "widget note".into(),
                     body_md: Some("original body".into()),
+                    body_reference: Some(format!(
+                        "[widget note (v1)](/notes/{}?version_id={})",
+                        created.note_id,
+                        current_note_version_id(&db, created.note_id).await
+                    )),
                     frontmatter_json: serde_json::Map::new(),
                     tags: vec![],
                     kind: None,
@@ -314,6 +319,11 @@ mod tests {
                 version_no: 1,
                 title: "widget note".into(),
                 body_md: Some(body_md.to_string()),
+                body_reference: Some(format!(
+                    "[widget note (v1)](/notes/{}?version_id={})",
+                    created.note_id,
+                    current_note_version_id(&db, created.note_id).await
+                )),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: None,
@@ -372,6 +382,11 @@ mod tests {
                 version_no: 1,
                 title: "widget note".into(),
                 body_md: Some(body_md.to_string()),
+                body_reference: Some(format!(
+                    "[widget note (v1)](/notes/{}?version_id={})",
+                    created.note_id,
+                    current_note_version_id(&db, created.note_id).await
+                )),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: None,
@@ -469,6 +484,7 @@ mod tests {
             version_no: 1,
             title: "current".into(),
             body_md: Some("current body".into()),
+            body_reference: None,
             frontmatter_json: serde_json::Map::new(),
             tags: vec![],
             kind: None,
@@ -488,6 +504,7 @@ mod tests {
             version_no: 2,
             title: "pending latest".into(),
             body_md: Some("[[stock:demo-code]]".into()),
+            body_reference: None,
             frontmatter_json: serde_json::Map::new(),
             tags: vec![],
             kind: Some("sample-kind".into()),
@@ -910,6 +927,11 @@ mod tests {
                     version_no: 2,
                     title: "original".into(),
                     body_md: Some("v2".into()),
+                    body_reference: Some(format!(
+                        "[original (v2)](/notes/{}?version_id={})",
+                        created.note_id,
+                        current_note_version_id(&db, created.note_id).await
+                    )),
                     frontmatter_json: serde_json::Map::new(),
                     tags: vec![],
                     kind: None,
@@ -975,6 +997,10 @@ mod tests {
                 version_no: 2,
                 title: "revised note".into(),
                 body_md: Some("revised body".into()),
+                body_reference: Some(format!(
+                    "[revised note (v2)](/notes/{note_id}?version_id={})",
+                    current_note_version_id(&db, note_id).await
+                )),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: None,
@@ -1012,6 +1038,105 @@ mod tests {
                 version_no: 1,
                 title: "sample note".into(),
                 body_md: Some("body".into()),
+                body_reference: Some(format!(
+                    "[sample note (v1)](/notes/{note_id}?version_id={})",
+                    current_note_version_id(&db, note_id).await
+                )),
+                frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
+                kind: None,
+                status: "unread".into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: Some(vec![]),
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn read_note_body_reference_tracks_the_selected_version_and_escapes_title(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "note-reference").await;
+        let server = build_server(db.clone());
+        let historical_title = r#"架空 [比較] *案* _補足_ `値` \"#;
+        let note_id = seed_note(&db, historical_title).await;
+        let historical_version_id = current_note_version_id(&db, note_id).await;
+
+        server
+            .write_note(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: Some(note_id),
+                    title: Some("現行ノート".into()),
+                    body_md: Some("現行本文".into()),
+                    kind: None,
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write a current version");
+        let current_version_id = current_note_version_id(&db, note_id).await;
+
+        let current = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read the current version");
+        let historical = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id,
+                    version_id: Some(historical_version_id),
+                },
+            )
+            .await
+            .expect("read the selected historical version");
+
+        assert_eq!(
+            normalize_note(current),
+            NoteDto {
+                note_id,
+                version_id: Uuid::nil(),
+                version_no: 2,
+                title: "現行ノート".into(),
+                body_md: Some("現行本文".into()),
+                body_reference: Some(format!(
+                    "[現行ノート (v2)](/notes/{note_id}?version_id={current_version_id})"
+                )),
+                frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
+                kind: None,
+                status: "unread".into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: Some(vec![]),
+            },
+        );
+        assert_eq!(
+            normalize_note(historical),
+            NoteDto {
+                note_id,
+                version_id: Uuid::nil(),
+                version_no: 1,
+                title: historical_title.into(),
+                body_md: Some("body".into()),
+                body_reference: Some(format!(
+                    "[架空 \\[比較\\] \\*案\\* \\_補足\\_ \\`値\\` \\\\ (v1)](/notes/{note_id}?version_id={historical_version_id})"
+                )),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: None,
@@ -1137,6 +1262,7 @@ mod tests {
                     version_no: 1,
                     title: "matching".into(),
                     body_md: Some("[[stock:demo-code]]".into()),
+                    body_reference: None,
                     frontmatter_json: serde_json::Map::new(),
                     tags: vec![],
                     kind: Some("sample-kind".into()),
@@ -1220,6 +1346,7 @@ mod tests {
                     version_no: 1,
                     title: "tagged note".into(),
                     body_md: Some("body".into()),
+                    body_reference: None,
                     frontmatter_json: serde_json::json!({
                         "tags": ["demo-focus", "demo-review"]
                     })
@@ -1691,7 +1818,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
 
         let graph = sample_graph("g1");
         let written = server
@@ -1730,6 +1857,11 @@ mod tests {
                 version_no: 1,
                 title: "note with graph".into(),
                 body_md: Some("[[graph:g1]]".into()),
+                body_reference: Some(format!(
+                    "[note with graph (v1)](/notes/{}?version_id={})",
+                    written.note_id,
+                    current_note_version_id(&db, written.note_id).await
+                )),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: None,
@@ -1881,7 +2013,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
 
         for (label, update_body, update_graphs, expected_body, expected_graphs) in [
             (
@@ -1951,6 +2083,11 @@ mod tests {
                     version_no: 2,
                     title: "t".into(),
                     body_md: Some(expected_body),
+                    body_reference: Some(format!(
+                        "[t (v2)](/notes/{}?version_id={})",
+                        created.note_id,
+                        current_note_version_id(&db, created.note_id).await
+                    )),
                     frontmatter_json: serde_json::Map::new(),
                     tags: vec![],
                     kind: None,
@@ -2109,7 +2246,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
 
         let graph = sample_graph("g1");
         let created = server
@@ -2165,6 +2302,11 @@ mod tests {
                 version_no: 1,
                 title: "t".into(),
                 body_md: Some("orig".into()),
+                body_reference: Some(format!(
+                    "[t (v1)](/notes/{}?version_id={})",
+                    created.note_id,
+                    current_note_version_id(&db, created.note_id).await
+                )),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: None,
@@ -2340,7 +2482,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
 
         let first = server
             .write_note(
@@ -2404,6 +2546,11 @@ mod tests {
                 version_no: 2,
                 title: "second".into(),
                 body_md: Some("v2".into()),
+                body_reference: Some(format!(
+                    "[second (v2)](/notes/{}?version_id={})",
+                    first.note_id,
+                    current_note_version_id(&db, first.note_id).await
+                )),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: None,

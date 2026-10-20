@@ -45,6 +45,7 @@ fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, Mc
         version_no: snapshot.version.version_no,
         title: snapshot.version.title,
         body_md: include_body.then_some(snapshot.version.body_md),
+        body_reference: None,
         frontmatter_json,
         tags,
         kind: snapshot.note.kind,
@@ -55,6 +56,22 @@ fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, Mc
         graphs,
         links: None,
     })
+}
+
+fn note_body_reference(
+    note_id: uuid::Uuid,
+    version_id: uuid::Uuid,
+    version_no: i32,
+    title: &str,
+) -> String {
+    let mut escaped_title = String::with_capacity(title.len());
+    for character in title.chars() {
+        if character.is_ascii_punctuation() {
+            escaped_title.push('\\');
+        }
+        escaped_title.push(character);
+    }
+    format!("[{escaped_title} (v{version_no})](/notes/{note_id}?version_id={version_id})")
 }
 
 pub(crate) fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
@@ -110,7 +127,14 @@ impl StrategyServer {
                 to_version_id: link.to_version_id,
             })
             .collect();
+        let body_reference = note_body_reference(
+            snapshot.note.id,
+            snapshot.version.id,
+            snapshot.version.version_no,
+            &snapshot.version.title,
+        );
         let mut dto = note_to_dto(snapshot, true)?;
+        dto.body_reference = Some(body_reference);
         dto.links = Some(links);
         Ok(dto)
     }
@@ -286,6 +310,7 @@ mod tests {
                 version_no: 1,
                 title: "Example note".into(),
                 body_md: Some("Example body".into()),
+                body_reference: None,
                 frontmatter_json: json!({ "tags": ["demo-focus"] })
                     .as_object()
                     .cloned()
