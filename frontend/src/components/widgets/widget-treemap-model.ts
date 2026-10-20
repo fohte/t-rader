@@ -22,10 +22,7 @@ type WidgetGroup = NonNullable<
 >
 type WidgetScale = NonNullable<WidgetTreemapDefinition['color_scale']>
 
-export type {
-  TreemapLabelMode,
-  TreemapRect,
-} from '#components/widgets/widget-treemap-label'
+export type { TreemapRect } from '#components/widgets/widget-treemap-label'
 export { getTreemapLabelMode } from '#components/widgets/widget-treemap-label'
 
 export type WidgetTreemapOption = ComposeOption<
@@ -48,7 +45,7 @@ export interface TreemapRowModel {
   formattedColor: string
 }
 
-export interface TreemapGroupModel {
+interface TreemapGroupModel {
   id: string
   key: string | null
   name: string
