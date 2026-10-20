@@ -5,7 +5,8 @@ use core_application::custom_indicator::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::sea_query::LockType;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
@@ -70,6 +71,20 @@ impl CustomIndicatorRepository for PostgresCustomIndicatorRepository {
     ) -> Result<Option<CustomIndicator>, CustomIndicatorRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         custom_indicator::Entity::find_by_id(indicator_id)
+            .one(transaction)
+            .await
+            .map(|row| row.map(to_domain))
+            .map_err(repository_error)
+    }
+
+    async fn find_by_id_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        indicator_id: Uuid,
+    ) -> Result<Option<CustomIndicator>, CustomIndicatorRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        custom_indicator::Entity::find_by_id(indicator_id)
+            .lock(LockType::Update)
             .one(transaction)
             .await
             .map(|row| row.map(to_domain))
