@@ -22,37 +22,15 @@ type WidgetGroup = NonNullable<
 >
 type WidgetScale = NonNullable<WidgetTreemapDefinition['color_scale']>
 
+export type {
+  TreemapLabelMode,
+  TreemapRect,
+} from '#components/widgets/widget-treemap-label'
+export { getTreemapLabelMode } from '#components/widgets/widget-treemap-label'
+
 export type WidgetTreemapOption = ComposeOption<
   TreemapSeriesOption | AriaComponentOption
 >
-
-export interface TreemapRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-export type TreemapLabelMode = 'both' | 'value' | null
-
-export function getTreemapLabelMode(
-  rect: TreemapRect,
-  name: string,
-  value: string,
-): TreemapLabelMode {
-  const availableWidth = rect.width - 8
-  const availableHeight = rect.height - 8
-  const valueWidth = value.length * 7
-  const nameWidth = Array.from(name).reduce(
-    (width, character) =>
-      width + (/^[\u0000-\u00ff]$/u.test(character) ? 7 : 12),
-    0,
-  )
-  if (availableWidth < valueWidth) return null
-  if (availableHeight >= 32 && availableWidth >= nameWidth) return 'both'
-  if (availableHeight >= 18) return 'value'
-  return null
-}
 
 type TreemapSeriesNode = NonNullable<TreemapSeriesOption['data']>[number]
 
@@ -223,7 +201,6 @@ function createRowNode(row: TreemapRowModel): TreemapDataNode {
     rowKey: row.key,
     name: row.name,
     value: row.area,
-    label: { show: true },
   }
 }
 
@@ -318,7 +295,6 @@ export function createWidgetTreemapModel({
               name: group.name,
               value: group.area,
               children,
-              label: { show: false },
             },
           ]
         })
@@ -381,6 +357,10 @@ export function createWidgetTreemapOption(
         }
       : styleRowNode(node),
   )
+  const groupItemStyle = {
+    color: palette.neutral,
+    borderColor: palette.border,
+  }
 
   return {
     aria: {
@@ -440,8 +420,7 @@ export function createWidgetTreemapOption(
             : [
                 {
                   itemStyle: {
-                    color: palette.neutral,
-                    borderColor: palette.border,
+                    ...groupItemStyle,
                     borderWidth: 0,
                     gapWidth: 0,
                   },
@@ -449,8 +428,7 @@ export function createWidgetTreemapOption(
                 {
                   label: { show: false },
                   itemStyle: {
-                    color: palette.neutral,
-                    borderColor: palette.border,
+                    ...groupItemStyle,
                     borderWidth: 1,
                     gapWidth: 4,
                   },
@@ -472,7 +450,6 @@ export function createWidgetTreemapOption(
                     borderWidth: 1,
                     gapWidth: 2,
                   },
-                  label: { show: true },
                 },
               ],
         data: chartData,
