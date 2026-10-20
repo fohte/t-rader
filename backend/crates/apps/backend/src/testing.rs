@@ -14,6 +14,7 @@ use crate::{
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_application::kata_exec::SharedKataExecutor;
+use core_application::note::NoteReadUseCases;
 use core_application::persistence::PersistenceError;
 use core_application::strategy_task::{
     StrategyTaskReconcileLock, StrategyTaskReconcileLockGuard, StrategyTaskReconcileLockUseCases,
@@ -128,6 +129,16 @@ fn create_test_router(states: TestRouterState, db: DatabaseHandle) -> axum::Rout
 /// `#[backend_test_macros::database_test]` から注入された transaction を使って TestServer を作成する。
 pub async fn create_test_server(db: DatabaseHandle) -> TestServer {
     let states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
+    let router = create_test_router(states, db);
+    TestServer::new(router).expect("failed to create test server")
+}
+
+pub async fn create_test_server_with_note_reads(
+    db: DatabaseHandle,
+    note_read_use_cases: NoteReadUseCases,
+) -> TestServer {
+    let mut states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
+    states.app_state.note_read_use_cases = note_read_use_cases;
     let router = create_test_router(states, db);
     TestServer::new(router).expect("failed to create test server")
 }

@@ -3,10 +3,13 @@ use std::collections::HashMap;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::markdown_lint::{MarkdownLintService, MarkdownLintServiceError, NOTE_DISPLAY};
+use core_domain::markdown_lint::{FixError, apply_safe_edits};
+
 use super::query::{NoteReadQueryError, SharedNoteReadQuery};
 use super::types::{
-    Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot, NoteVersion,
-    PendingNoteVersion,
+    Note, NoteDisplaySnapshot, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot,
+    NoteVersion, PendingNoteVersion,
 };
 
 #[derive(Debug, Error)]
@@ -27,14 +30,37 @@ pub enum NoteReadUseCaseError {
     Query(#[from] NoteReadQueryError),
 }
 
+#[derive(Debug, Error)]
+enum NoteDisplayBodyError {
+    #[error(transparent)]
+    Inspect(#[from] MarkdownLintServiceError),
+    #[error(transparent)]
+    ApplyEdits(#[from] FixError),
+}
+
 #[derive(Clone)]
 pub struct NoteReadUseCases {
     query: SharedNoteReadQuery,
+    markdown_lint: MarkdownLintService,
 }
 
 impl NoteReadUseCases {
+    #[cfg(test)]
     pub fn new(query: SharedNoteReadQuery) -> Self {
-        Self { query }
+        Self {
+            query,
+            markdown_lint: MarkdownLintService::default(),
+        }
+    }
+
+    pub fn with_markdown_lint(
+        query: SharedNoteReadQuery,
+        markdown_lint: MarkdownLintService,
+    ) -> Self {
+        Self {
+            query,
+            markdown_lint,
+        }
     }
 
     pub async fn list_notes(
@@ -82,6 +108,45 @@ impl NoteReadUseCases {
             version,
             created_by_kind,
         })
+    }
+
+    pub async fn get_note_for_display(
+        &self,
+        note_id: Uuid,
+        version_id: Option<Uuid>,
+        use_latest_if_no_current: bool,
+    ) -> Result<NoteDisplaySnapshot, NoteReadUseCaseError> {
+        let snapshot = self
+            .get_note(note_id, version_id, use_latest_if_no_current)
+            .await?;
+        let source = snapshot.version.body_md.clone();
+        let display_body_md = match self.correct_display_body(&source).await {
+            Ok(display_body_md) => display_body_md,
+            Err(error) => {
+                tracing::error!(
+                    note_id = %note_id,
+                    version_id = %snapshot.version.id,
+                    error = %error,
+                    "ノート表示本文の補正に失敗したため原文を返します"
+                );
+                source.clone()
+            }
+        };
+
+        Ok(NoteDisplaySnapshot {
+            snapshot,
+            display_body_md,
+        })
+    }
+
+    async fn correct_display_body(&self, source: &str) -> Result<String, NoteDisplayBodyError> {
+        let report = self.markdown_lint.inspect(source, NOTE_DISPLAY).await?;
+        let edits = report
+            .diagnostics
+            .into_iter()
+            .filter_map(|diagnostic| diagnostic.fix)
+            .collect::<Vec<_>>();
+        Ok(apply_safe_edits(source, &edits)?)
     }
 
     pub async fn list_note_versions(
@@ -174,8 +239,14 @@ impl NoteReadUseCases {
 mod tests {
     use std::sync::Arc;
 
+    use async_trait::async_trait;
+    use rstest::rstest;
+
     use super::*;
+    use crate::markdown_lint::MarkdownLintService;
     use crate::note::FakeNoteReadQuery;
+    use crate::refs::{RefUseCases, SharedRefRepository, test_support::FakeRefRepository};
+    use crate::unit_of_work::{UnitOfWork, UnitOfWorkError, UnitOfWorkTransaction};
 
     const NOTE_ID: Uuid = Uuid::from_u128(1);
     const VERSION_ID: Uuid = Uuid::from_u128(2);
@@ -183,6 +254,43 @@ mod tests {
     fn build_use_cases() -> (NoteReadUseCases, Arc<FakeNoteReadQuery>) {
         let query = Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID));
         (NoteReadUseCases::new(query.clone()), query)
+    }
+
+    struct ReadTestUnitOfWork;
+
+    #[async_trait]
+    impl UnitOfWork for ReadTestUnitOfWork {
+        async fn begin(&self) -> Result<UnitOfWorkTransaction, UnitOfWorkError> {
+            Ok(UnitOfWorkTransaction::new(()))
+        }
+
+        async fn commit(&self, _: UnitOfWorkTransaction) -> Result<(), UnitOfWorkError> {
+            Ok(())
+        }
+    }
+
+    fn lint_service(names: &[(&str, &str)], fail_stock_lookup: bool) -> MarkdownLintService {
+        let repository = Arc::new(FakeRefRepository::new(
+            names
+                .iter()
+                .map(|(id, name)| ((*id).into(), (*name).into()))
+                .collect(),
+            fail_stock_lookup,
+        ));
+        let shared_repository: SharedRefRepository = repository;
+        let refs = RefUseCases::new(Arc::new(ReadTestUnitOfWork), shared_repository);
+        MarkdownLintService::new(refs)
+    }
+
+    fn display_snapshot(query: &FakeNoteReadQuery, display_body_md: &str) -> NoteDisplaySnapshot {
+        NoteDisplaySnapshot {
+            snapshot: NoteSnapshot {
+                note: query.note(),
+                version: query.version(),
+                created_by_kind: "human".into(),
+            },
+            display_body_md: display_body_md.into(),
+        }
     }
 
     #[tokio::test]
@@ -222,6 +330,60 @@ mod tests {
                 created_by_kind: "human".into(),
             },
         );
+    }
+
+    #[tokio::test]
+    async fn get_note_for_display_fixes_only_resolved_duplicate_names_without_changing_raw_version()
+    {
+        let source = indoc::indoc! {"
+            [[stock:DEMO-A]] 架空工業: 一つ目
+            [[stock:DEMO-B]] 架空商事: 二つ目
+            続く行
+        "};
+        let display_source = indoc::indoc! {"
+            [[stock:DEMO-A]]: 一つ目
+            [[stock:DEMO-B]]: 二つ目
+            続く行
+        "};
+        let query = Arc::new(FakeNoteReadQuery::with_body(NOTE_ID, VERSION_ID, source));
+        let use_cases = NoteReadUseCases::with_markdown_lint(
+            query.clone(),
+            lint_service(&[("DEMO-A", "架空工業"), ("DEMO-B", "架空商事")], false),
+        );
+
+        let first = use_cases
+            .get_note_for_display(NOTE_ID, Some(VERSION_ID), false)
+            .await
+            .expect("historical version is readable");
+        let second = use_cases
+            .get_note_for_display(NOTE_ID, Some(VERSION_ID), false)
+            .await
+            .expect("repeated read succeeds");
+
+        let expected = display_snapshot(&query, display_source);
+        assert_eq!((first, second), (expected.clone(), expected));
+    }
+
+    #[rstest]
+    #[case::unresolved_name(false)]
+    #[case::resolver_failure(true)]
+    #[tokio::test]
+    async fn get_note_for_display_returns_raw_body_when_a_name_cannot_be_resolved(
+        #[case] fail_stock_lookup: bool,
+    ) {
+        let source = "[[stock:DEMO-UNKNOWN]] 架空銘柄";
+        let query = Arc::new(FakeNoteReadQuery::with_body(NOTE_ID, VERSION_ID, source));
+        let use_cases = NoteReadUseCases::with_markdown_lint(
+            query.clone(),
+            lint_service(&[], fail_stock_lookup),
+        );
+
+        let result = use_cases
+            .get_note_for_display(NOTE_ID, Some(VERSION_ID), false)
+            .await
+            .expect("display reads keep working when no display name is available");
+
+        assert_eq!(result, display_snapshot(&query, source));
     }
 
     #[tokio::test]

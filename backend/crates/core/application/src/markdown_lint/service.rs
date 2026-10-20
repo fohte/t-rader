@@ -216,7 +216,6 @@ mod tests {
 
     #[rstest]
     #[case::empty_profile(&[])]
-    #[case::display_profile(NOTE_DISPLAY)]
     #[tokio::test]
     async fn does_not_resolve_stocks_for_profiles_without_reference_name_requirements(
         #[case] profile: &[&core_domain::markdown_lint::RuleDefinition],
@@ -228,6 +227,35 @@ mod tests {
             .map_err(|error| matches!(error, MarkdownLintServiceError::MissingReferenceResolver));
 
         assert_eq!(result, Ok(LintReport::default()));
+    }
+
+    #[tokio::test]
+    async fn note_display_resolves_names_for_duplicate_diagnostics() {
+        let (service, repository) = service_with_names(&[("DEMO-A", "架空工業")], false);
+        let result = service
+            .inspect("[[stock:DEMO-A]] 架空工業", NOTE_DISPLAY)
+            .await
+            .expect("reference names are available");
+
+        assert_eq!(
+            (result, repository.stock_requests().await),
+            (
+                LintReport {
+                    diagnostics: vec![LintDiagnostic {
+                        rule_id: "duplicate-stock-name",
+                        id: "duplicate-stock-name:stock%3ADEMO-A:1".into(),
+                        severity: Severity::Error,
+                        range: 17..29,
+                        message: "銘柄リンク直後の同名を削除してください。".into(),
+                        fix: Some(TextEdit {
+                            range: 16..29,
+                            replacement: String::new(),
+                        }),
+                    }],
+                },
+                vec![vec!["DEMO-A".into()]],
+            ),
+        );
     }
 
     #[tokio::test]

@@ -476,15 +476,17 @@ export function MarkdownBody({
         </p>
       )}
       <MarkdownBodyRangeCommentContext.Provider value={commentContextValue}>
-        <Markdown
-          remarkPlugins={[
-            remarkGfm,
-            [remarkNoteTokens, resolvedPriceReferences],
-          ]}
-          components={components}
-        >
-          {source}
-        </Markdown>
+        <section aria-label="ノート本文">
+          <Markdown
+            remarkPlugins={[
+              remarkGfm,
+              [remarkNoteTokens, resolvedPriceReferences],
+            ]}
+            components={components}
+          >
+            {source}
+          </Markdown>
+        </section>
       </MarkdownBodyRangeCommentContext.Provider>
       <MarkdownBodyTextSelectionAction
         selection={selection.textSelectionAction}

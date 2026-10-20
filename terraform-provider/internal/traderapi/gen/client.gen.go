@@ -394,6 +394,7 @@ type Note struct {
 	BodyMd          string                    `json:"body_md"`
 	CreatedAt       time.Time                 `json:"created_at"`
 	CreatedByKind   string                    `json:"created_by_kind"`
+	DisplayBodyMd   nullable.Nullable[string] `json:"display_body_md,omitempty"`
 	ExecutionId     nullable.Nullable[string] `json:"execution_id,omitempty"`
 	FrontmatterJson Value                     `json:"frontmatter_json"`
 	GraphsJson      []GraphDef                `json:"graphs_json"`

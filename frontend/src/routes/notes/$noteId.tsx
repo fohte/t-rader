@@ -175,18 +175,23 @@ function NoteDetailPage() {
   const onSelectContentTab = (tab: NoteVersionContentTab): void => {
     setContentTab({ versionId: selectedVersion.id, tab })
   }
-  const fullBody = (
-    <NoteVersionBodyComments
-      key={selectedVersion.id}
-      versionId={selectedVersion.id}
-      source={selectedVersion.body_md}
-      graphs={selectedVersion.graphs_json}
-      noteLinks={noteLinks?.outgoing}
-      resolvedPriceReferences={selectedVersion.resolved_price_references_json}
-      onRef={noteBodyNavigation.onRef}
-      onAnno={noteBodyNavigation.onAnno}
-    />
-  )
+  const displayBody =
+    note?.version_id === selectedVersion.id ? note.display_body_md : undefined
+  const fullBody =
+    displayBody == null ? (
+      <NoteVersionFallback state={hasNoteError ? 'error' : 'loading'} />
+    ) : (
+      <NoteVersionBodyComments
+        key={selectedVersion.id}
+        versionId={selectedVersion.id}
+        source={displayBody}
+        graphs={selectedVersion.graphs_json}
+        noteLinks={noteLinks?.outgoing}
+        resolvedPriceReferences={selectedVersion.resolved_price_references_json}
+        onRef={noteBodyNavigation.onRef}
+        onAnno={noteBodyNavigation.onAnno}
+      />
+    )
   const screenId = getScreenerIdFromFrontmatter(
     selectedVersion.frontmatter_json,
   )

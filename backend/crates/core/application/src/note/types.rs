@@ -50,6 +50,12 @@ pub struct NoteSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NoteDisplaySnapshot {
+    pub snapshot: NoteSnapshot,
+    pub display_body_md: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NewNote {
     pub id: Uuid,
     pub kind: Option<String>,
