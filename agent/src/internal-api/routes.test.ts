@@ -364,7 +364,7 @@ describe('GET /internal/tasks/:taskId', () => {
                           {
                             phase_key: 'plan',
                             label: '調査計画',
-                            model: 'claude-opus-4',
+                            model: 'demo-model-a',
                             status: 'running',
                             started_at: '2026-01-01T00:00:00.000Z',
                             trace_id: 'trace-1',
@@ -388,7 +388,7 @@ describe('GET /internal/tasks/:taskId', () => {
         {
           phase_key: 'plan',
           label: '調査計画',
-          model: 'claude-opus-4',
+          model: 'demo-model-a',
           status: 'running',
           started_at: '2026-01-01T00:00:00.000Z',
           trace_id: 'trace-1',

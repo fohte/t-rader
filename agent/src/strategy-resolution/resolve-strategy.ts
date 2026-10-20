@@ -18,11 +18,9 @@ export type StrategyResolution =
 // contiguous run of shared characters) to be considered a plausible match at
 // all.
 const MIN_MATCH_SCORE = 0.5
-// Among plausible candidates, the top match must beat the runner-up by this
-// much to be treated as unambiguous. Strategy names sharing a common suffix
-// (e.g. "長期投資" / "中期投資") otherwise both clear MIN_MATCH_SCORE whenever
-// the text names only one of them, so a fixed threshold alone can't tell
-// "the user picked one of these" from "the user picked the other one".
+// 曖昧でないと判定するには、妥当な候補の最上位スコアが次点をこの値以上上回る必要がある。
+// 候補名が共通の末尾を持つ場合 (例: "NorthGroup" / "SouthGroup")、片方だけが入力文に
+// 含まれていても両候補が MIN_MATCH_SCORE を超えることがあり、固定閾値だけでは選択を判別できない。
 const MATCH_MARGIN = 0.15
 
 const longestCommonSubstringLength = (a: string, b: string): number => {

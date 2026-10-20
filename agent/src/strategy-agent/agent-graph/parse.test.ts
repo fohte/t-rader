@@ -28,7 +28,7 @@ describe('parseAgentGraph', () => {
   ])('rejects a task tool limit that is $name', ({ value }) => {
     const result = parseAgentGraph(
       `tool_limits:
-  search_web: ${value}
+  tool_a: ${value}
 phases: []`,
     ).mapErr(
       (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
@@ -47,71 +47,71 @@ phases: []`,
     const yaml = `
 timeout_minutes: 30
 tool_limits:
-  search_web: 4
+  tool_a: 4
 tool_models:
-  search_web: example-model-search
-  query_youtube: example-model-youtube
+  tool_a: demo-model-tool-a
+  tool_b: demo-model-tool-b
 phases:
-  - key: plan
-    label: 調査計画
-    model: example-model-plan
+  - key: stage_a
+    label: 項目の作成
+    model: demo-model-a
     reasoning_effort: high
-    prompt: 仮説を立てよ
+    prompt: 架空の項目を作成してください
     output:
-      hypotheses:
+      entries:
         type: array
         items:
-          title: { type: string }
-  - key: investigate
-    label: 仮説の調査
-    model: example-model-investigate
+          label: { type: string }
+  - key: stage_b
+    label: 項目の処理
+    model: demo-model-b
     timeout_minutes: 15
-    for_each: plan.hypotheses
-    label_field: title
+    for_each: stage_a.entries
+    label_field: label
     max_parallel: 4
-    subagents: [researcher, reviewer]
+    subagents: [helper_a, helper_b]
     max_subagent_runs: 3
-    prompt: 割り当てられた仮説を検証せよ
-    tools: [query_data, write_note]
+    prompt: 受け取った項目を文章にしてください
+    tools: [read_records, write_record]
 `
 
     expect(parseAgentGraph(yaml)).toEqual(
       ok({
         timeoutMinutes: 30,
-        toolLimits: { search_web: 4 },
+        toolLimits: { tool_a: 4 },
         toolModels: {
-          search_web: 'example-model-search',
-          query_youtube: 'example-model-youtube',
+          tool_a: 'demo-model-tool-a',
+          tool_b: 'demo-model-tool-b',
         },
         phases: [
           {
-            key: 'plan',
-            label: '調査計画',
-            model: 'example-model-plan',
+            key: 'stage_a',
+            label: '項目の作成',
+            model: 'demo-model-a',
             reasoningEffort: 'high',
-            prompt: '仮説を立てよ',
+            prompt: '架空の項目を作成してください',
             skills: [],
             subagents: [],
             output: {
-              hypotheses: {
+              entries: {
                 type: 'array',
-                items: { title: { type: 'string' } },
+                items: { label: { type: 'string' } },
               },
             },
           },
           {
-            key: 'investigate',
-            label: '仮説の調査',
-            model: 'example-model-investigate',
+            key: 'stage_b',
+            label: '項目の処理',
+            model: 'demo-model-b',
             timeoutMinutes: 15,
-            prompt: '割り当てられた仮説を検証せよ',
-            forEach: 'plan.hypotheses',
-            labelField: 'title',
+            prompt: '受け取った項目を文章にしてください',
+            forEach: 'stage_a.entries',
+            labelField: 'label',
             maxParallel: 4,
             skills: [],
-            subagents: ['researcher', 'reviewer'],
+            subagents: ['helper_a', 'helper_b'],
             maxSubagentRuns: 3,
-            tools: ['query_data', 'write_note'],
+            tools: ['read_records', 'write_record'],
             output: {},
           },
         ],
@@ -130,10 +130,10 @@ phases:
     const timeoutConfig =
       target === 'graph'
         ? `timeout_minutes: ${value}`
-        : `phases:\n  - key: sample\n    label: Sample\n    model: example-model-sample\n    prompt: sample\n    timeout_minutes: ${value}`
+        : `phases:\n  - key: sample\n    label: Sample\n    model: demo-model-a\n    prompt: sample\n    timeout_minutes: ${value}`
     const yaml =
       target === 'graph'
-        ? `${timeoutConfig}\nphases:\n  - key: sample\n    label: Sample\n    model: example-model-sample\n    prompt: sample`
+        ? `${timeoutConfig}\nphases:\n  - key: sample\n    label: Sample\n    model: demo-model-a\n    prompt: sample`
         : timeoutConfig
 
     const normalized = parseAgentGraph(yaml).mapErr(
@@ -151,14 +151,14 @@ phases:
   it('leaves tools undefined when omitted, distinct from an explicit empty list', () => {
     const yaml = `
 phases:
-  - key: plan
-    label: 調査計画
-    model: example-model-plan
-    prompt: 仮説を立てよ
-  - key: synthesize
-    label: 統合
-    model: example-model-synthesize
-    prompt: まとめよ
+  - key: stage_a
+    label: 項目の作成
+    model: demo-model-a
+    prompt: 架空の項目を作成してください
+  - key: stage_b
+    label: 項目の整理
+    model: demo-model-b
+    prompt: 項目を整理してください
     tools: []
 `
 
@@ -166,19 +166,19 @@ phases:
       ok({
         phases: [
           {
-            key: 'plan',
-            label: '調査計画',
-            model: 'example-model-plan',
-            prompt: '仮説を立てよ',
+            key: 'stage_a',
+            label: '項目の作成',
+            model: 'demo-model-a',
+            prompt: '架空の項目を作成してください',
             skills: [],
             subagents: [],
             output: {},
           },
           {
-            key: 'synthesize',
-            label: '統合',
-            model: 'example-model-synthesize',
-            prompt: 'まとめよ',
+            key: 'stage_b',
+            label: '項目の整理',
+            model: 'demo-model-b',
+            prompt: '項目を整理してください',
             skills: [],
             subagents: [],
             tools: [],
@@ -196,10 +196,10 @@ phases:
   ])('rejects a $name max_subagent_runs value', ({ value }) => {
     const yaml = `
 phases:
-  - key: research
-    label: Research
-    model: example-model-research
-    prompt: Investigate
+  - key: stage_a
+    label: 項目の処理
+    model: demo-model-a
+    prompt: 項目を処理してください
     max_subagent_runs: ${value}
 `
 
@@ -218,11 +218,11 @@ phases:
   it('rejects subagents when max_subagent_runs is omitted', () => {
     const normalized = parseAgentGraph(`
 phases:
-  - key: research
-    label: Research
-    model: example-model-research
-    prompt: Investigate
-    subagents: [helper]
+  - key: stage_a
+    label: 項目の処理
+    model: demo-model-a
+    prompt: 項目を処理してください
+    subagents: [helper_a]
 `).mapErr(
       (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
     )
@@ -249,9 +249,9 @@ phases:
   it('returns an AgentGraphParseError when a phase is missing a required field', () => {
     const result = parseAgentGraph(`
 phases:
-  - key: plan
-    label: 調査計画
-    model: example-model-plan
+  - key: stage_a
+    label: 項目の作成
+    model: demo-model-a
 `)
 
     expect(result.isErr()).toBe(true)
