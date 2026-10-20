@@ -114,6 +114,14 @@ function getScale(
   }
 }
 
+export function getWidgetToplistColor(
+  value: number,
+  palette: EChartsPalette,
+  zeroColor: string,
+): string {
+  return value > 0 ? palette.up : value < 0 ? palette.down : zeroColor
+}
+
 export function createWidgetToplistModel({
   result,
   viz,
@@ -225,24 +233,17 @@ export function createWidgetToplistOption(
           lineStyle: { color: palette.foreground, opacity: 0.35, width: 1 },
           data: [{ xAxis: 0 }],
         },
-        data: model.rows.map((row) => {
-          return {
-            name: row.name,
-            value: Math.min(
-              model.scale.max,
-              Math.max(model.scale.min, row.value),
-            ),
-            cursor: 'pointer',
-            itemStyle: {
-              color:
-                row.value > 0
-                  ? palette.up
-                  : row.value < 0
-                    ? palette.down
-                    : palette.neutral,
-            },
-          }
-        }),
+        data: model.rows.map((row) => ({
+          name: row.name,
+          value: Math.min(
+            model.scale.max,
+            Math.max(model.scale.min, row.value),
+          ),
+          cursor: 'pointer',
+          itemStyle: {
+            color: getWidgetToplistColor(row.value, palette, palette.neutral),
+          },
+        })),
       },
     ],
   }

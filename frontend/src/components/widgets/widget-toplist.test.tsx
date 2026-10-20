@@ -233,14 +233,13 @@ function readChartTransitionOutput(
   initialContainer: Element | null,
   initiallyHidden: boolean | null,
   populatedContainer: Element | null,
+  populatedVisibilityContainer: Element | null,
 ) {
   return {
     retainedNode: initialContainer === populatedContainer,
     initiallyHidden,
     populatedHidden:
-      populatedContainer instanceof HTMLElement
-        ? populatedContainer.hasAttribute('hidden')
-        : null,
+      populatedVisibilityContainer?.hasAttribute('hidden') ?? null,
     categories: readChartOutput()?.categories,
   }
 }
@@ -700,18 +699,24 @@ describe('WidgetToplist', () => {
       <WidgetToplist queries={queries} result={emptyResult} viz={viz} />,
     )
     const initialContainer = rendered.container.querySelector('[role="img"]')
-    const initiallyHidden = initialContainer?.hasAttribute('hidden') ?? null
+    const initialVisibilityContainer =
+      initialContainer?.parentElement?.parentElement ?? null
+    const initiallyHidden =
+      initialVisibilityContainer?.hasAttribute('hidden') ?? null
 
     rendered.rerender(
       <WidgetToplist queries={queries} result={result} viz={viz} />,
     )
     const populatedContainer = rendered.container.querySelector('[role="img"]')
+    const populatedVisibilityContainer =
+      populatedContainer?.parentElement?.parentElement ?? null
 
     expect(
       readChartTransitionOutput(
         initialContainer,
         initiallyHidden,
         populatedContainer,
+        populatedVisibilityContainer,
       ),
     ).toEqual({
       retainedNode: true,

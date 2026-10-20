@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   createWidgetToplistModel,
   createWidgetToplistOption,
+  getWidgetToplistColor,
 } from '#components/widgets/widget-toplist-model'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -143,7 +144,7 @@ export function WidgetToplist({
         >
           <ol
             aria-hidden="true"
-            className="m-0 grid min-w-0 list-none p-0"
+            className="relative z-10 m-0 grid min-w-0 list-none bg-card p-0"
             data-column="identity"
             style={{ gridTemplateRows: chartRows }}
           >
@@ -172,7 +173,6 @@ export function WidgetToplist({
             aria-label={model.ariaDescription}
             className="min-w-0"
             data-column="bars"
-            hidden={isEmpty}
             ref={containerRef}
             role="img"
             style={{ height: chartHeight }}
@@ -188,12 +188,11 @@ export function WidgetToplist({
                 className="flex min-h-0 items-center justify-end whitespace-nowrap border-b border-border px-2 text-right font-mono tabular-nums text-xs last:border-b-0"
                 key={row.key}
                 style={{
-                  color:
-                    row.value > 0
-                      ? palette.up
-                      : row.value < 0
-                        ? palette.down
-                        : palette.foreground,
+                  color: getWidgetToplistColor(
+                    row.value,
+                    palette,
+                    palette.foreground,
+                  ),
                 }}
               >
                 {row.formattedValue}
