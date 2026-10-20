@@ -141,11 +141,13 @@ impl NoteUseCases {
             self.ensure_note_kind_exists(&transaction, kind).await?;
         }
         let graphs_json = command.graphs_json.clone().unwrap_or_else(|| json!([]));
-        let lint_outcome = self.inspect_checked_body(
-            command.body_md.as_deref().unwrap_or_default(),
-            &graphs_json,
-            warning_dispositions.as_deref(),
-        )?;
+        let lint_outcome = self
+            .inspect_checked_body(
+                command.body_md.as_deref().unwrap_or_default(),
+                &graphs_json,
+                warning_dispositions.as_deref(),
+            )
+            .await?;
 
         let note_id = Uuid::new_v4();
         let inserted = self
@@ -336,8 +338,9 @@ impl NoteUseCases {
             graphs_json = graphs;
             touched = true;
         }
-        let lint_outcome =
-            self.inspect_checked_body(&body_md, &graphs_json, warning_dispositions)?;
+        let lint_outcome = self
+            .inspect_checked_body(&body_md, &graphs_json, warning_dispositions)
+            .await?;
         if !touched {
             return Err(NoteUseCaseError::Validation(
                 "at least one of title / body_md / frontmatter_json / graphs must be provided"
@@ -438,10 +441,16 @@ mod tests {
     use crate::indicator_observation::{
         FakeIndicatorObservationRepository, IndicatorObservationUseCases,
     };
+    use crate::markdown_lint::{MarkdownLintService, MarkdownLintServiceError};
     use crate::note::repository::{NoteRepository, NoteRepositoryError};
     use crate::note::types::{
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
         NoteVersionUpdate, UpdateNoteCommand,
+    };
+    use crate::persistence::PersistenceError;
+    use crate::refs::{
+        IndicatorRef, RefRepository, RefRepositoryError, RefSearchMatch, RefTerm, RefUseCases,
+        StockRef,
     };
     use crate::unit_of_work::FakeUnitOfWork;
     use crate::valuation::{FakeValuationRepository, ValuationUseCases};
@@ -453,6 +462,96 @@ mod tests {
     const EXECUTION_STEP_ID: Uuid = Uuid::from_u128(5);
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
     const EVALUATION_ID: Uuid = Uuid::from_u128(0x101);
+
+    struct FailingStockNamesRepository;
+
+    #[async_trait]
+    impl RefRepository for FailingStockNamesRepository {
+        async fn list_stocks(&self, _: Option<&str>) -> Result<Vec<StockRef>, RefRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn find_stock(&self, _: &str) -> Result<Option<StockRef>, RefRepositoryError> {
+            Ok(None)
+        }
+
+        async fn stock_sectors(
+            &self,
+            _: &[String],
+        ) -> Result<std::collections::HashMap<String, Option<String>>, RefRepositoryError> {
+            Ok(std::collections::HashMap::new())
+        }
+
+        async fn list_indicators(
+            &self,
+            _: Option<&str>,
+        ) -> Result<Vec<IndicatorRef>, RefRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn find_indicator(
+            &self,
+            _: &str,
+        ) -> Result<Option<IndicatorRef>, RefRepositoryError> {
+            Ok(None)
+        }
+
+        async fn search_all(
+            &self,
+            _: &str,
+            _: u64,
+        ) -> Result<Vec<RefSearchMatch>, RefRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn stock_names(
+            &self,
+            _: &[String],
+        ) -> Result<std::collections::HashMap<String, String>, RefRepositoryError> {
+            Err(RefRepositoryError::Database(PersistenceError::Database(
+                "reference lookup failed".into(),
+            )))
+        }
+
+        async fn indicator_names(
+            &self,
+            _: &[String],
+        ) -> Result<std::collections::HashMap<String, String>, RefRepositoryError> {
+            Ok(std::collections::HashMap::new())
+        }
+
+        async fn group_names(
+            &self,
+            _: &[String],
+        ) -> Result<std::collections::HashMap<String, String>, RefRepositoryError> {
+            Ok(std::collections::HashMap::new())
+        }
+
+        async fn list_terms(&self, _: &str) -> Result<Vec<RefTerm>, RefRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn insert_term(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<bool, RefRepositoryError> {
+            Ok(false)
+        }
+
+        async fn delete_term(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<bool, RefRepositoryError> {
+            Ok(false)
+        }
+    }
 
     fn custom_indicator_evaluation_use_cases(
         evaluations: impl IntoIterator<Item = CustomIndicatorEvaluation>,
@@ -2160,6 +2259,38 @@ mod tests {
             .await;
 
         assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
+    }
+
+    #[tokio::test]
+    async fn gated_write_does_not_save_when_stock_name_resolution_fails() {
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let refs = RefUseCases::new(
+            Arc::new(FakeUnitOfWork::new()),
+            Arc::new(FailingStockNamesRepository),
+        );
+        let use_cases = use_cases.with_markdown_lint_service(MarkdownLintService::new(refs));
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command("[[stock:DEMO-A]] 架空工業"),
+                vec![],
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| {
+                matches!(
+                    error,
+                    NoteUseCaseError::MarkdownLint(MarkdownLintServiceError::ReferenceResolution(
+                        _
+                    ))
+                )
+            });
+        let inserted_note_count = repository.inserted_note_ids.lock().await.len();
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (result, inserted_note_count, inserted_version_count),
+            (Err(true), 0, 0)
+        );
     }
 
     #[tokio::test]

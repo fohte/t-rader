@@ -5,6 +5,7 @@ use crate::bars::BarsUseCases;
 use crate::change_history::{ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
 use crate::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
 use crate::indicator_observation::IndicatorObservationUseCases;
+use crate::markdown_lint::MarkdownLintService;
 use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
 use crate::note::types::{Note, NoteSnapshot};
@@ -30,6 +31,7 @@ pub struct NoteUseCases {
     pub(super) valuations: ValuationUseCases,
     pub(super) indicator_observations: IndicatorObservationUseCases,
     pub(super) custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
+    pub(super) markdown_lint: MarkdownLintService,
 }
 
 impl NoteUseCases {
@@ -50,7 +52,13 @@ impl NoteUseCases {
             valuations,
             indicator_observations,
             custom_indicator_evaluations,
+            markdown_lint: MarkdownLintService::default(),
         }
+    }
+
+    pub fn with_markdown_lint_service(mut self, markdown_lint: MarkdownLintService) -> Self {
+        self.markdown_lint = markdown_lint;
+        self
     }
 
     pub(super) async fn require_note(

@@ -4,7 +4,7 @@ mod tests {
     use uuid::Uuid;
 
     use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
+    use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
     use super::super::dto::{
@@ -19,7 +19,7 @@ mod tests {
     };
     use super::super::{MAX_LIST_LIMIT, STRATEGY_AGENT_ACTOR};
     use crate::testing::find_current_note_version;
-    use gateway_postgres::entities::{comment, note, note_ref, note_version};
+    use gateway_postgres::entities::{comment, note, note_ref, note_version, stock};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
@@ -81,6 +81,47 @@ mod tests {
                 fix: None,
             },
         ]
+    }
+
+    const DUPLICATE_STOCK_NAME_BODY: &str = "[[stock:DEMO-A]] 架空工業: メモ";
+    const DUPLICATE_STOCK_NAME_ID: &str = "duplicate-stock-name:stock%3ADEMO-A:1";
+    const DUPLICATE_STOCK_NAME_MESSAGE: &str = "銘柄リンク直後の同名を削除してください。";
+
+    async fn seed_lint_stock(db: &impl sea_orm::ConnectionTrait) {
+        stock::ActiveModel {
+            id: Set("DEMO-A".into()),
+            name: Set("架空工業".into()),
+            market: Set(None),
+            product_category: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("seed lint stock");
+    }
+
+    fn duplicate_stock_name_diagnostic() -> WriteNoteDiagnostic {
+        WriteNoteDiagnostic {
+            rule_id: "duplicate-stock-name".into(),
+            id: DUPLICATE_STOCK_NAME_ID.into(),
+            severity: WriteNoteDiagnosticSeverity::Error,
+            range: WriteNoteRange { start: 17, end: 29 },
+            message: DUPLICATE_STOCK_NAME_MESSAGE.into(),
+            fix: Some(super::super::dto::WriteNoteTextEdit {
+                range: WriteNoteRange { start: 16, end: 29 },
+                replacement: String::new(),
+            }),
+        }
+    }
+
+    fn duplicate_stock_name_error_message() -> String {
+        format!(
+            indoc! {"
+                note body contains blocking lint diagnostics:
+                {}: {}"},
+            DUPLICATE_STOCK_NAME_ID, DUPLICATE_STOCK_NAME_MESSAGE,
+        )
     }
 
     fn widget_write_note_params(note_id: Option<Uuid>, body_md: &str) -> WriteNoteParams {
@@ -658,6 +699,229 @@ mod tests {
                     diagnostics: numeric_body_diagnostics(),
                 },
                 1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_duplicate_stock_name_even_with_warning_disposition(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        seed_lint_stock(&db).await;
+        let strategy_id = insert_strategy(&db, "duplicate-name-write").await;
+        let server = build_server(db.clone());
+
+        let error = server
+            .invoke::<_, serde_json::Value>(
+                "write_note",
+                strategy_id,
+                serde_json::json!({
+                    "title": "duplicate name",
+                    "body_md": DUPLICATE_STOCK_NAME_BODY,
+                    "warning_dispositions": [{
+                        "id": DUPLICATE_STOCK_NAME_ID,
+                        "reason": "本文に残す理由",
+                    }],
+                }),
+                None,
+                None,
+            )
+            .await
+            .expect_err("duplicate stock names must reject the write");
+        let saved_note_count = note::Entity::find()
+            .all(&db)
+            .await
+            .expect("list notes")
+            .len();
+        let saved_version_count = note_version::Entity::find()
+            .all(&db)
+            .await
+            .expect("list note versions")
+            .len();
+
+        assert_eq!(
+            (
+                error.code,
+                error.message.to_string(),
+                error.data,
+                saved_note_count,
+                saved_version_count,
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                duplicate_stock_name_error_message(),
+                Some(serde_json::json!({
+                    "warnings": [],
+                    "diagnostics": [duplicate_stock_name_diagnostic()],
+                })),
+                0,
+                0,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_duplicate_latest_body_when_body_is_omitted(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        seed_lint_stock(&db).await;
+        let strategy_id = insert_strategy(&db, "duplicate-name-update").await;
+        let server = build_server(db.clone());
+        let created = server
+            .write_note(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("legacy note".into()),
+                    body_md: Some("本文".into()),
+                    kind: None,
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("create initial note");
+        let current_version = crate::testing::find_current_note_version(&db, created.note_id)
+            .await
+            .expect("find current note version")
+            .expect("current note version exists");
+        note_version::ActiveModel {
+            id: Set(current_version.id),
+            body_md: Set(DUPLICATE_STOCK_NAME_BODY.into()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("seed legacy duplicate body");
+
+        let error = server
+            .invoke::<_, serde_json::Value>(
+                "write_note",
+                strategy_id,
+                serde_json::json!({
+                    "note_id": created.note_id,
+                    "title": "revised title",
+                }),
+                None,
+                None,
+            )
+            .await
+            .expect_err("an omitted body still uses and checks the latest body");
+        let saved_note_count = note::Entity::find()
+            .all(&db)
+            .await
+            .expect("list notes")
+            .len();
+        let saved_versions = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(created.note_id))
+            .order_by_desc(note_version::Column::VersionNo)
+            .all(&db)
+            .await
+            .expect("list note versions");
+        let latest_version = saved_versions.first().map(|version| {
+            (
+                version.version_no,
+                version.title.clone(),
+                version.body_md.clone(),
+            )
+        });
+
+        assert_eq!(
+            (
+                error.code,
+                error.message.to_string(),
+                error.data,
+                saved_note_count,
+                saved_versions.len(),
+                latest_version,
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                duplicate_stock_name_error_message(),
+                Some(serde_json::json!({
+                    "warnings": [],
+                    "diagnostics": [duplicate_stock_name_diagnostic()],
+                })),
+                1,
+                1,
+                Some((1, "legacy note".into(), DUPLICATE_STOCK_NAME_BODY.into())),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_saves_corrected_duplicate_with_legacy_warning_diagnostics(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        seed_lint_stock(&db).await;
+        let strategy_id = insert_strategy(&db, "corrected-name-write").await;
+        let server = build_server(db.clone());
+        let body_md = "[[stock:DEMO-A]]: 7,890円";
+        let warning_message = price_warning_message("7,890円");
+        let written = server
+            .invoke::<_, WriteNoteResult>(
+                "write_note",
+                strategy_id,
+                serde_json::json!({
+                    "title": "corrected name",
+                    "body_md": body_md,
+                    "warning_dispositions": [{
+                        "id": "price:7%2C890%E5%86%86:1",
+                        "reason": "参考値として記載",
+                    }],
+                }),
+                None,
+                None,
+            )
+            .await
+            .expect("corrected stock name should be saved")
+            .into_value();
+        let written_note_id = written.note_id;
+        let mut normalized_written = written;
+        normalized_written.note_id = Uuid::nil();
+        let saved_note_count = note::Entity::find()
+            .all(&db)
+            .await
+            .expect("list notes")
+            .len();
+        let saved_versions = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(written_note_id))
+            .all(&db)
+            .await
+            .expect("list note versions");
+        let saved_body = saved_versions
+            .first()
+            .map(|version| version.body_md.clone());
+
+        assert_eq!(
+            (
+                normalized_written,
+                saved_note_count,
+                saved_versions.len(),
+                saved_body,
+            ),
+            (
+                WriteNoteResult {
+                    note_id: Uuid::nil(),
+                    created: true,
+                    warnings: vec![WriteNoteWarning {
+                        id: "price:7%2C890%E5%86%86:1".into(),
+                        message: warning_message.clone(),
+                    }],
+                    diagnostics: vec![WriteNoteDiagnostic {
+                        rule_id: "price".into(),
+                        id: "price:7%2C890%E5%86%86:1".into(),
+                        severity: WriteNoteDiagnosticSeverity::Warning,
+                        range: WriteNoteRange { start: 18, end: 26 },
+                        message: warning_message,
+                        fix: None,
+                    }],
+                },
+                1,
+                1,
+                Some(body_md.into()),
             ),
         );
     }

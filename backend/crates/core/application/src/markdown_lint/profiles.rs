@@ -4,6 +4,7 @@ pub const AGENT_NOTE_WRITE: &[&RuleDefinition] = &[
     &rules::bar_count::RULE,
     &rules::price::RULE,
     &rules::relative::RULE,
+    &rules::duplicate_stock_name::RULE,
 ];
 
 pub const NOTE_DISPLAY: &[&RuleDefinition] = &[];
