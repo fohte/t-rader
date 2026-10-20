@@ -5,7 +5,7 @@ mod tests {
 
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
     use super::super::dto::{
         ListNotesParams, NoteDto, ReadNoteParams, WriteNoteDiagnostic, WriteNoteDiagnosticSeverity,
@@ -22,6 +22,11 @@ mod tests {
     use gateway_postgres::entities::{comment, note, note_ref, note_version};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
+    const BARE_UUID: &str = "4d7a2c91-6e30-4b8f-9c52-0a31d6e7f284";
+    const LINK_NOTE_UUID: &str = "6e8b1d24-a730-4c5f-9a62-3d4e5f607182";
+    const LINK_VERSION_UUID: &str = "7f9c2e35-b841-4d60-8b73-4e5f60718293";
+    const BARE_UUID_MESSAGE: &str =
+        "UUID を本文に直接書かず、参照先のタイトル付きリンクを本文に引用してください。";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
@@ -81,6 +86,21 @@ mod tests {
                 fix: None,
             },
         ]
+    }
+
+    fn bare_uuid_diagnostic(body_md: &str, uuid: &str) -> WriteNoteDiagnostic {
+        let start = body_md.find(uuid).expect("UUID is in the body");
+        WriteNoteDiagnostic {
+            rule_id: "no-bare-uuid".into(),
+            id: format!("no-bare-uuid:{uuid}:1"),
+            severity: WriteNoteDiagnosticSeverity::Error,
+            range: WriteNoteRange {
+                start,
+                end: start + uuid.len(),
+            },
+            message: BARE_UUID_MESSAGE.into(),
+            fix: None,
+        }
     }
 
     fn widget_write_note_params(note_id: Option<Uuid>, body_md: &str) -> WriteNoteParams {
@@ -675,6 +695,246 @@ mod tests {
                     diagnostics: numeric_body_diagnostics(),
                 },
                 1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_bare_uuid_and_accepts_a_title_link(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "bare-uuid-create").await;
+        let server = build_server(db.clone());
+        let note_count_before = note::Entity::find().count(&db).await.unwrap();
+        let body_md = format!("参照先 {BARE_UUID}");
+        let diagnostic = bare_uuid_diagnostic(&body_md, BARE_UUID);
+        let error = server
+            .invoke::<_, WriteNoteResult>(
+                "write_note",
+                strategy_id,
+                serde_json::json!({
+                    "title": "架空ノートの調査",
+                    "body_md": body_md,
+                    "warning_dispositions": [{
+                        "id": diagnostic.id.clone(),
+                        "reason": "参照先を記録するため",
+                    }],
+                }),
+                None,
+                None,
+            )
+            .await
+            .expect_err("a reason must not bypass a blocking diagnostic");
+        let note_count_after_rejection = note::Entity::find().count(&db).await.unwrap();
+        let corrected_body =
+            format!("[架空ノート (v2)](/notes/{LINK_NOTE_UUID}?version_id={LINK_VERSION_UUID})");
+        let accepted = server
+            .write_note(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("架空ノートの調査".into()),
+                    body_md: Some(corrected_body),
+                    kind: None,
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("a title link can be saved")
+            .into_value();
+        let accepted_note_id = accepted.note_id;
+        let note_count_after_acceptance = note::Entity::find().count(&db).await.unwrap();
+        let version_count_after_acceptance = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(accepted_note_id))
+            .count(&db)
+            .await
+            .unwrap();
+        let mut normalized_accepted = accepted;
+        normalized_accepted.note_id = Uuid::nil();
+
+        assert_eq!(
+            (
+                error.code,
+                error.message.to_string(),
+                error.data,
+                note_count_after_rejection,
+                normalized_accepted,
+                note_count_after_acceptance,
+                version_count_after_acceptance,
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                format!(
+                    "note body contains blocking lint diagnostics:\n{}: {}",
+                    diagnostic.id, diagnostic.message
+                ),
+                Some(serde_json::json!({
+                    "warnings": [],
+                    "diagnostics": [diagnostic],
+                })),
+                note_count_before,
+                WriteNoteResult {
+                    note_id: Uuid::nil(),
+                    created: true,
+                    warnings: vec![],
+                    diagnostics: vec![],
+                },
+                note_count_before + 1,
+                1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_bare_uuid_body_update_without_appending_a_version(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "bare-uuid-update").await;
+        let server = build_server(db.clone());
+        let created = server
+            .write_note(
+                strategy_id,
+                None,
+                widget_write_note_params(None, "safe body"),
+            )
+            .await
+            .expect("create note");
+        let body_md = format!("更新先 {BARE_UUID}");
+        let diagnostic = bare_uuid_diagnostic(&body_md, BARE_UUID);
+        let error = server
+            .invoke::<_, WriteNoteResult>(
+                "write_note",
+                strategy_id,
+                serde_json::json!({
+                    "note_id": created.note_id,
+                    "body_md": body_md,
+                    "warning_dispositions": [{
+                        "id": diagnostic.id.clone(),
+                        "reason": "参照先を記録するため",
+                    }],
+                }),
+                None,
+                None,
+            )
+            .await
+            .expect_err("a reason must not bypass a blocking diagnostic");
+        let version_count = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(created.note_id))
+            .count(&db)
+            .await
+            .unwrap();
+        let read = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: created.note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read the existing note");
+
+        assert_eq!(
+            (
+                error.code,
+                error.message.to_string(),
+                error.data,
+                version_count,
+                normalize_note(read).body_md.clone(),
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                format!(
+                    "note body contains blocking lint diagnostics:\n{}: {}",
+                    diagnostic.id, diagnostic.message
+                ),
+                Some(serde_json::json!({
+                    "warnings": [],
+                    "diagnostics": [diagnostic],
+                })),
+                1,
+                Some("safe body".into()),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_checks_a_human_authored_uuid_body_when_body_is_omitted(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "bare-uuid-omitted-body").await;
+        let server = build_server(db.clone());
+        let body_md = format!("既存本文 {BARE_UUID}");
+        let note_id = crate::testing::insert_test_note(&db, "既存ノート", &body_md).await;
+        let read_before_update = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read the existing note with a bare UUID");
+        let diagnostic = bare_uuid_diagnostic(&body_md, BARE_UUID);
+        let error = server
+            .invoke::<_, WriteNoteResult>(
+                "write_note",
+                strategy_id,
+                serde_json::json!({
+                    "note_id": note_id,
+                    "title": "変更後のタイトル",
+                    "warning_dispositions": [{
+                        "id": diagnostic.id.clone(),
+                        "reason": "参照先を記録するため",
+                    }],
+                }),
+                None,
+                None,
+            )
+            .await
+            .expect_err("the current body must be linted when the update omits it");
+        let version_count = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .count(&db)
+            .await
+            .unwrap();
+        let read_after_update = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read the existing note after the rejected update");
+
+        assert_eq!(
+            (
+                error.code,
+                error.message.to_string(),
+                error.data,
+                version_count,
+                normalize_note(read_before_update).body_md.clone(),
+                normalize_note(read_after_update).body_md.clone(),
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                format!(
+                    "note body contains blocking lint diagnostics:\n{}: {}",
+                    diagnostic.id, diagnostic.message
+                ),
+                Some(serde_json::json!({
+                    "warnings": [],
+                    "diagnostics": [diagnostic],
+                })),
+                1,
+                Some(body_md.clone()),
+                Some(body_md),
             ),
         );
     }

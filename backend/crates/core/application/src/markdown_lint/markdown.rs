@@ -137,10 +137,12 @@ fn push_run(runs: &mut Vec<TextRun>, next: TextRun) {
 #[cfg(test)]
 mod tests {
     use core_domain::markdown_lint::TextRunKind;
+    use core_domain::markdown_lint::{LintDiagnostic, LintReport, Severity};
     use indoc::indoc;
     use rstest::rstest;
 
     use super::parse_markdown;
+    use crate::markdown_lint::{AGENT_NOTE_WRITE, MarkdownLintService, NOTE_DISPLAY};
 
     #[test]
     fn keeps_source_ranges_separate_across_escaped_bytes() {
@@ -269,6 +271,82 @@ mod tests {
                 document.runs().iter().any(|run| run.formatting_depth > 0),
             ),
             (true, true),
+        );
+    }
+
+    #[test]
+    fn agent_note_profile_reports_visible_bare_uuids_at_source_byte_ranges() {
+        const UUID_A: &str = "3e9b7f12-c840-4a6d-9e21-5b6c7d8e9f01";
+        const UUID_B: &str = "ABCDEF12-ABCD-4EF0-8ABC-DEFABCDEFABC";
+        const UUID_C: &str = "bcdefabc-defa-4abc-8def-abcdefabcdef";
+        const UUID_D: &str = "cdefabcd-efab-4cde-8fab-cdefabcdefab";
+        const UUID_E: &str = "defabcde-fabc-4def-8abc-defabcdefabc";
+        const UUID_F: &str = "efabcdef-abcd-4efa-8bcd-efabcdefabcd";
+        const MESSAGE: &str =
+            "UUID を本文に直接書かず、参照先のタイトル付きリンクを本文に引用してください。";
+        let source = format!(
+            indoc! {"
+                調査記録: {uuid_a} and {uuid_a}
+
+                inline `{uuid_b}` and [表示 {uuid_c}](https://example.invalid/{uuid_d})
+
+                > | 種別 | 内容 |
+                > | --- | --- |
+                > | 引用 | {uuid_e} |
+                > | token | [[note:{uuid_f}]] |
+
+                https://example.invalid/{uuid_d}
+                <https://example.invalid/{uuid_d}>
+
+                ```text
+                {uuid_d}
+                ```
+            "},
+            uuid_a = UUID_A,
+            uuid_b = UUID_B,
+            uuid_c = UUID_C,
+            uuid_d = UUID_D,
+            uuid_e = UUID_E,
+            uuid_f = UUID_F,
+        );
+        let diagnostic = |uuid: &str, occurrence: usize| {
+            let start = source
+                .match_indices(uuid)
+                .nth(occurrence - 1)
+                .map(|(start, _)| start)
+                .expect("UUID occurrence is in the source");
+            LintDiagnostic {
+                rule_id: "no-bare-uuid",
+                id: format!("no-bare-uuid:{uuid}:{occurrence}"),
+                severity: Severity::Error,
+                range: start..start + uuid.len(),
+                message: MESSAGE.into(),
+                fix: None,
+            }
+        };
+        let service = MarkdownLintService;
+
+        assert_eq!(
+            (
+                service
+                    .inspect(&source, AGENT_NOTE_WRITE)
+                    .expect("agent note Markdown parses"),
+                service
+                    .inspect(&source, NOTE_DISPLAY)
+                    .expect("note display Markdown parses"),
+            ),
+            (
+                LintReport {
+                    diagnostics: vec![
+                        diagnostic(UUID_A, 1),
+                        diagnostic(UUID_A, 2),
+                        diagnostic(UUID_B, 1),
+                        diagnostic(UUID_C, 1),
+                        diagnostic(UUID_E, 1),
+                    ],
+                },
+                LintReport::default(),
+            ),
         );
     }
 }
