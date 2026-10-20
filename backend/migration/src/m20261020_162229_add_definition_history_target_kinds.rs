@@ -1,12 +1,7 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261020_162229_add_definition_history_target_kinds"
-    }
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
