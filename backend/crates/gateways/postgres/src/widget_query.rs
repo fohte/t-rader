@@ -355,6 +355,30 @@ mod tests {
         .expect("upsert widget bar");
     }
 
+    async fn insert_hourly_bar(db: &DatabaseHandle, id: &str, day: u32) {
+        let timestamp = date(day)
+            .and_hms_opt(12, 0, 0)
+            .map(|timestamp| chrono::Utc.from_utc_datetime(&timestamp))
+            .expect("valid timestamp");
+        let close = Decimal::from(100);
+        crate::repositories::bars::upsert_bars(
+            db,
+            vec![Bar {
+                instrument_id: id.to_string(),
+                timeframe: Timeframe::Hourly,
+                timestamp,
+                open: close,
+                high: close,
+                low: close,
+                close,
+                volume: 100,
+                adjustment_factor: Decimal::ONE,
+            }],
+        )
+        .await
+        .expect("upsert widget hourly bar");
+    }
+
     async fn insert_valuation(db: &DatabaseHandle, id: &str, mkt_cap: i64) {
         crate::entities::valuation::ActiveModel {
             code: Set(format!("{id}0")),
@@ -392,6 +416,7 @@ mod tests {
         for day in [1, 3, 5] {
             insert_bar(&db, "D009", day, 100).await;
         }
+        insert_hourly_bar(&db, "D009", 6).await;
 
         let source = PostgresWidgetQuerySource::new(db);
         let result = (
