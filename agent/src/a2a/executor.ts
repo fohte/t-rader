@@ -256,11 +256,8 @@ export class TraderAgentExecutor implements AgentExecutor {
       strategyId = rawStrategyId
       promptMessage = userMessage
     } else {
-      // Resolution matches against only the latest turn's text: on a
-      // resumed task, that's the user's disambiguating reply (e.g. "長期の
-      // 方で"), which names the intended strategy far more directly than
-      // the accumulated conversation. Folding in the original (already
-      // ambiguous) request would just dilute or re-tie the match.
+      // 再開時は最新ターンの文面 (例: "group-alpha の方で") だけで照合する。
+      // 元の曖昧な依頼まで含めると、候補を再び絞れなくなることがある。
       const latestText = extractMessageText(userMessage)
 
       const candidatesResult = await this.deps.fetchStrategyCandidates()

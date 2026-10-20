@@ -16,11 +16,11 @@ describe('parseListStrategiesToolResult', () => {
           strategies: [
             {
               strategy_id: '11111111-1111-1111-1111-111111111111',
-              name: '長期投資',
+              name: 'NorthGroup',
             },
             {
               strategy_id: '22222222-2222-2222-2222-222222222222',
-              name: '中期投資',
+              name: 'SouthGroup',
             },
           ],
         }),
@@ -31,11 +31,11 @@ describe('parseListStrategiesToolResult', () => {
       ok([
         {
           strategyId: '11111111-1111-1111-1111-111111111111',
-          name: '長期投資',
+          name: 'NorthGroup',
         },
         {
           strategyId: '22222222-2222-2222-2222-222222222222',
-          name: '中期投資',
+          name: 'SouthGroup',
         },
       ]),
     )
@@ -69,7 +69,7 @@ describe('parseListStrategiesToolResult', () => {
         parseListStrategiesToolResult([
           {
             type: 'text',
-            text: JSON.stringify({ strategies: [{ name: '長期投資' }] }),
+            text: JSON.stringify({ strategies: [{ name: 'NorthGroup' }] }),
           },
         ]),
       ),

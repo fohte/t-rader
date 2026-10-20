@@ -21,7 +21,7 @@ mod tests {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/strategies")
-            .json(&json!({ "name": "長期投資" }))
+            .json(&json!({ "name": "workspace-alpha" }))
             .await;
         let id = res.json::<Value>()["id"].as_str().unwrap().to_string();
         assert_eq!(
@@ -30,7 +30,7 @@ mod tests {
                 axum::http::StatusCode::CREATED,
                 json!({
                     "id": id,
-                    "name": "長期投資",
+                    "name": "workspace-alpha",
                     "description": null,
                     "sort_order": 0,
                     "created_at": "<created_at>",
@@ -52,7 +52,7 @@ mod tests {
                 axum::http::StatusCode::OK,
                 vec![json!({
                     "id": id,
-                    "name": "長期投資",
+                    "name": "workspace-alpha",
                     "description": null,
                     "sort_order": 0,
                     "created_at": "<created_at>",

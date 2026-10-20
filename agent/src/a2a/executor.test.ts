@@ -164,8 +164,8 @@ const defaultStrategyAgentResult: StrategyAgentResult = {
 }
 
 const CANDIDATES: readonly StrategyCandidate[] = [
-  { strategyId: '11111111-1111-1111-1111-111111111111', name: '長期投資' },
-  { strategyId: '22222222-2222-2222-2222-222222222222', name: '中期投資' },
+  { strategyId: '11111111-1111-1111-1111-111111111111', name: 'group-alpha' },
+  { strategyId: '22222222-2222-2222-2222-222222222222', name: 'group-beta' },
 ]
 
 type StatusEvent = {
@@ -378,7 +378,7 @@ describe('TraderAgentExecutor', () => {
             phaseKey: 'plan',
             executionStepId: 'exec-1',
             label: '調査計画',
-            model: 'claude-opus-4',
+            model: 'demo-model-a',
             status: 'running',
             startedAt: '2026-01-01T00:00:00.000Z',
             traceId: 'trace-1',
@@ -415,7 +415,7 @@ describe('TraderAgentExecutor', () => {
                   phase_key: 'plan',
                   execution_step_id: 'exec-1',
                   label: '調査計画',
-                  model: 'claude-opus-4',
+                  model: 'demo-model-a',
                   status: 'running',
                   started_at: '2026-01-01T00:00:00.000Z',
                   trace_id: 'trace-1',
@@ -437,7 +437,7 @@ describe('TraderAgentExecutor', () => {
       phaseKey: 'discover',
       executionStepId: 'exec-1',
       label: '調査',
-      model: 'claude-opus-4',
+      model: 'demo-model-a',
       traceId: 'trace-1',
       spanId: 'span-1',
       ...overrides,
@@ -769,7 +769,7 @@ describe('TraderAgentExecutor', () => {
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(
         undefined,
-        '長期投資でNVDAを分析して',
+        'group-alpha の項目を整理して',
       )
       const requestContext = new RequestContext(userMessage, 'task-7', 'ctx-7')
 
@@ -790,7 +790,7 @@ describe('TraderAgentExecutor', () => {
           strategyId: '11111111-1111-1111-1111-111111111111',
           purpose: undefined,
           taskId: 'task-7',
-          text: '長期投資でNVDAを分析して',
+          text: 'group-alpha の項目を整理して',
         },
       ])
     })
@@ -800,7 +800,7 @@ describe('TraderAgentExecutor', () => {
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(
         undefined,
-        '投資戦略でNVDAを分析して',
+        'group-alpha と group-beta の項目を整理して',
       )
       const requestContext = new RequestContext(userMessage, 'task-8', 'ctx-8')
 
@@ -823,7 +823,7 @@ describe('TraderAgentExecutor', () => {
           parts: [
             {
               kind: 'text',
-              text: '対象の戦略を一意に特定できませんでした。次のうちどれですか: 長期投資, 中期投資',
+              text: '対象の戦略を一意に特定できませんでした。次のうちどれですか: group-alpha, group-beta',
             },
           ],
         },
@@ -855,7 +855,7 @@ describe('TraderAgentExecutor', () => {
           parts: [
             {
               kind: 'text',
-              text: '対象の戦略が見つかりませんでした。次のいずれかの戦略名を含めて教えてください: 長期投資, 中期投資',
+              text: '対象の戦略が見つかりませんでした。次のいずれかの戦略名を含めて教えてください: group-alpha, group-beta',
             },
           ],
         },
@@ -867,7 +867,7 @@ describe('TraderAgentExecutor', () => {
         fetchStrategyCandidates: () => okAsync([]),
       })
       const eventBus = new FakeEventBus()
-      const userMessage = buildUserMessage(undefined, 'NVDAを分析して')
+      const userMessage = buildUserMessage(undefined, '項目を整理して')
       const requestContext = new RequestContext(
         userMessage,
         'task-12',
@@ -898,7 +898,7 @@ describe('TraderAgentExecutor', () => {
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(
         undefined,
-        '長期投資でNVDAを分析して',
+        'group-alpha の項目を整理して',
       )
       const requestContext = new RequestContext(
         userMessage,
@@ -952,14 +952,14 @@ describe('TraderAgentExecutor', () => {
 
       const firstUserMessage = buildUserMessage(
         undefined,
-        '投資戦略でNVDAを分析して',
+        'group-alpha と group-beta の項目を整理して',
       )
       const clarifyingQuestion = buildAgentMessage(
-        '対象の戦略を一意に特定できませんでした。次のうちどれですか: 長期投資, 中期投資',
+        '対象の戦略を一意に特定できませんでした。次のうちどれですか: group-alpha, group-beta',
       )
       const followUpMessage = buildUserMessage(
         undefined,
-        '長期の方でお願いします',
+        'group-alpha の方でお願いします',
       )
       // Mirrors what DefaultRequestHandler._createRequestContext does before
       // calling execute(): the incoming follow-up message is already
@@ -1000,7 +1000,7 @@ describe('TraderAgentExecutor', () => {
           strategyId: '11111111-1111-1111-1111-111111111111',
           purpose: undefined,
           taskId: 'task-11',
-          text: '投資戦略でNVDAを分析して\n長期の方でお願いします',
+          text: 'group-alpha と group-beta の項目を整理して\ngroup-alpha の方でお願いします',
         },
       ])
     })
@@ -1016,7 +1016,7 @@ describe('TraderAgentExecutor', () => {
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(
         { purpose: 'purpose-a' },
-        '長期投資でNVDAを分析して',
+        'group-alpha の項目を整理して',
       )
       const requestContext = new RequestContext(
         userMessage,

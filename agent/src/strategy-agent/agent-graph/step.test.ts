@@ -6,26 +6,26 @@ import { toStepJson } from '#strategy-agent/agent-graph/step'
 describe('toStepJson', () => {
   it('converts a running for_each step to snake_case, keeping optional fields present', () => {
     const step: StrategyTaskStep = {
-      phaseKey: 'investigate',
+      phaseKey: 'stage_b',
       executionStepId: 'exec-1',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
+      label: '項目の処理',
+      model: 'demo-model-a',
       status: 'running',
-      item: { title: 'hypothesis 1' },
-      itemLabel: 'hypothesis 1',
+      item: { label: 'item-a' },
+      itemLabel: 'item-a',
       startedAt: '2026-01-01T00:00:00.000Z',
       traceId: 'trace-1',
       spanId: 'span-1',
     }
 
     expect(toStepJson(step)).toEqual({
-      phase_key: 'investigate',
+      phase_key: 'stage_b',
       execution_step_id: 'exec-1',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
+      label: '項目の処理',
+      model: 'demo-model-a',
       status: 'running',
-      item: { title: 'hypothesis 1' },
-      item_label: 'hypothesis 1',
+      item: { label: 'item-a' },
+      item_label: 'item-a',
       started_at: '2026-01-01T00:00:00.000Z',
       trace_id: 'trace-1',
       span_id: 'span-1',
@@ -34,12 +34,12 @@ describe('toStepJson', () => {
 
   it('keeps output/finished_at and omits item/item_label/error when unset (non-for_each, completed step)', () => {
     const step: StrategyTaskStep = {
-      phaseKey: 'plan',
+      phaseKey: 'stage_a',
       executionStepId: 'exec-2',
-      label: '調査計画',
-      model: 'claude-opus-4',
+      label: '項目の作成',
+      model: 'demo-model-a',
       status: 'completed',
-      output: { hypotheses: [] },
+      output: { entries: [] },
       startedAt: '2026-01-01T00:00:00.000Z',
       finishedAt: '2026-01-01T00:00:05.000Z',
       traceId: 'trace-2',
@@ -47,12 +47,12 @@ describe('toStepJson', () => {
     }
 
     expect(toStepJson(step)).toEqual({
-      phase_key: 'plan',
+      phase_key: 'stage_a',
       execution_step_id: 'exec-2',
-      label: '調査計画',
-      model: 'claude-opus-4',
+      label: '項目の作成',
+      model: 'demo-model-a',
       status: 'completed',
-      output: { hypotheses: [] },
+      output: { entries: [] },
       started_at: '2026-01-01T00:00:00.000Z',
       finished_at: '2026-01-01T00:00:05.000Z',
       trace_id: 'trace-2',
@@ -62,24 +62,24 @@ describe('toStepJson', () => {
 
   it('keeps item but omits item_label when label_field is not configured', () => {
     const step: StrategyTaskStep = {
-      phaseKey: 'investigate',
+      phaseKey: 'stage_b',
       executionStepId: 'exec-4',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
+      label: '項目の処理',
+      model: 'demo-model-a',
       status: 'running',
-      item: { title: 'hypothesis 1' },
+      item: { label: 'item-a' },
       startedAt: '2026-01-01T00:00:00.000Z',
       traceId: 'trace-4',
       spanId: 'span-4',
     }
 
     expect(toStepJson(step)).toEqual({
-      phase_key: 'investigate',
+      phase_key: 'stage_b',
       execution_step_id: 'exec-4',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
+      label: '項目の処理',
+      model: 'demo-model-a',
       status: 'running',
-      item: { title: 'hypothesis 1' },
+      item: { label: 'item-a' },
       started_at: '2026-01-01T00:00:00.000Z',
       trace_id: 'trace-4',
       span_id: 'span-4',
@@ -88,10 +88,10 @@ describe('toStepJson', () => {
 
   it('includes error and omits output for a failed step', () => {
     const step: StrategyTaskStep = {
-      phaseKey: 'plan',
+      phaseKey: 'stage_a',
       executionStepId: 'exec-3',
-      label: '調査計画',
-      model: 'claude-opus-4',
+      label: '項目の作成',
+      model: 'demo-model-a',
       status: 'failed',
       error: 'agent did not return a structured response',
       startedAt: '2026-01-01T00:00:00.000Z',
@@ -101,10 +101,10 @@ describe('toStepJson', () => {
     }
 
     expect(toStepJson(step)).toEqual({
-      phase_key: 'plan',
+      phase_key: 'stage_a',
       execution_step_id: 'exec-3',
-      label: '調査計画',
-      model: 'claude-opus-4',
+      label: '項目の作成',
+      model: 'demo-model-a',
       status: 'failed',
       started_at: '2026-01-01T00:00:00.000Z',
       finished_at: '2026-01-01T00:00:05.000Z',
