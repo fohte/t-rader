@@ -14,11 +14,16 @@ use crate::group_query_sql::with_shared_market_ctes;
 use crate::persistence::persistence_error;
 
 const RESOLVE_AS_OF_SQL: &str = r#"
+    SELECT (MAX(latest_timestamp) AT TIME ZONE 'UTC')::date AS as_of
+    FROM bars_timestamp_coverage
+    WHERE timeframe = '1d'
+"#;
+
+const RESOLVE_REQUESTED_AS_OF_SQL: &str = r#"
     SELECT (MAX(timestamp) AT TIME ZONE 'UTC')::date AS as_of
     FROM bars
     WHERE timeframe = '1d'
-      AND ($1::date IS NULL
-           OR timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC'))
+      AND timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
 "#;
 
 static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
@@ -43,42 +48,49 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                             AND universe_member.group_key = $8::text
                       )
                   )
+                  AND (
+                      $4::text <> 'group'
+                      OR EXISTS (
+                          SELECT 1
+                          FROM group_members AS axis_member
+                          WHERE axis_member.stock_id = stock.id
+                            AND axis_member.axis_key = $6::text
+                      )
+                  )
             )
         "#,
         r#"
-            ranked_period_bars AS (
-                SELECT bars.instrument_id,
-                       bars.close,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY bars.instrument_id
-                           ORDER BY bars.timestamp DESC
-                       ) AS bar_number
-                FROM bars
-                JOIN candidate_stocks
-                  ON candidate_stocks.id = bars.instrument_id
-                WHERE bars.timeframe = '1d'
-                  AND bars.timestamp >= (
-                      (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
-                      - (($2::integer * 2 + 14) * INTERVAL '1 day')
-                  )
-                  AND bars.timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
-            ),
             stock_changes AS (
-                SELECT ranked_period_bars.instrument_id AS stock_id,
-                       MAX(ranked_period_bars.close) FILTER (
-                           WHERE ranked_period_bars.bar_number = 1
+                SELECT candidate_stocks.id AS stock_id,
+                       MAX(period_bars.close) FILTER (
+                           WHERE period_bars.bar_number = 1
                        ) / NULLIF(
-                           MAX(ranked_period_bars.close) FILTER (
-                               WHERE ranked_period_bars.bar_number = $2::bigint + 1
+                           MAX(period_bars.close) FILTER (
+                               WHERE period_bars.bar_number = $2::bigint + 1
                            ),
                            0
                        ) - 1 AS change_rate
-                FROM ranked_period_bars
-                WHERE ranked_period_bars.bar_number IN (1, $2::bigint + 1)
-                GROUP BY ranked_period_bars.instrument_id
-                HAVING COUNT(*) FILTER (WHERE ranked_period_bars.bar_number = 1) > 0
+                FROM candidate_stocks
+                JOIN LATERAL (
+                    SELECT bars.close,
+                           ROW_NUMBER() OVER (
+                               ORDER BY bars.timestamp DESC
+                           ) AS bar_number
+                    FROM bars
+                    WHERE bars.instrument_id = candidate_stocks.id
+                      AND bars.timeframe = '1d'
+                      AND bars.timestamp >= (
+                          (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+                          - (($2::integer * 2 + 14) * INTERVAL '1 day')
+                      )
+                      AND bars.timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+                    ORDER BY bars.timestamp DESC
+                    LIMIT $2::integer + 1
+                ) AS period_bars ON TRUE
+                GROUP BY candidate_stocks.id
+                HAVING COUNT(*) FILTER (WHERE period_bars.bar_number = 1) > 0
                    AND COUNT(*) FILTER (
-                       WHERE ranked_period_bars.bar_number = $2::bigint + 1
+                       WHERE period_bars.bar_number = $2::bigint + 1
                    ) > 0
             )
         "#,
@@ -176,13 +188,17 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
         &self,
         requested: Option<NaiveDate>,
     ) -> Result<Option<NaiveDate>, WidgetQueryError> {
+        let statement = match requested {
+            Some(requested) => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                RESOLVE_REQUESTED_AS_OF_SQL,
+                [requested.into()],
+            ),
+            None => Statement::from_string(DatabaseBackend::Postgres, RESOLVE_AS_OF_SQL.to_owned()),
+        };
         let rows = self
             .db
-            .query_all_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                RESOLVE_AS_OF_SQL,
-                [requested.into()],
-            ))
+            .query_all_raw(statement)
             .await
             .map_err(query_error)?;
 
@@ -278,13 +294,14 @@ mod tests {
         WidgetAggregation, WidgetBy, WidgetMetric, WidgetPeriod, WidgetQuery, WidgetQueryRow,
         WidgetQuerySource, WidgetRowKey, WidgetUniverse,
     };
+    use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
     use uuid::Uuid;
 
     use super::PostgresWidgetQuerySource;
     use crate::DatabaseHandle;
-    use crate::entities::{bars, group_axis, instruments, stock, stock_group, stock_group_member};
+    use crate::entities::{group_axis, instruments, stock, stock_group, stock_group_member};
     use crate::group_movers::PostgresGroupMoversQuerySource;
 
     fn date(day: u32) -> NaiveDate {
@@ -317,23 +334,25 @@ mod tests {
     async fn insert_bar(db: &DatabaseHandle, id: &str, day: u32, close: i64) {
         let timestamp = date(day)
             .and_hms_opt(0, 0, 0)
-            .map(|timestamp| chrono::Utc.from_utc_datetime(&timestamp).fixed_offset())
+            .map(|timestamp| chrono::Utc.from_utc_datetime(&timestamp))
             .expect("valid timestamp");
         let close = Decimal::from(close);
-        bars::Entity::insert(bars::ActiveModel {
-            instrument_id: Set(id.to_string()),
-            timeframe: Set("1d".to_string()),
-            timestamp: Set(timestamp),
-            open: Set(close),
-            high: Set(close),
-            low: Set(close),
-            close: Set(close),
-            volume: Set(100),
-            adjustment_factor: Set(Decimal::ONE),
-        })
-        .exec_without_returning(db)
+        crate::repositories::bars::upsert_bars(
+            db,
+            vec![Bar {
+                instrument_id: id.to_string(),
+                timeframe: Timeframe::Daily,
+                timestamp,
+                open: close,
+                high: close,
+                low: close,
+                close,
+                volume: 100,
+                adjustment_factor: Decimal::ONE,
+            }],
+        )
         .await
-        .expect("insert widget bar");
+        .expect("upsert widget bar");
     }
 
     async fn insert_valuation(db: &DatabaseHandle, id: &str, mkt_cap: i64) {
@@ -387,6 +406,16 @@ mod tests {
         );
 
         assert_eq!(result, (Some(date(5)), Some(date(3))));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn resolves_as_of_to_none_without_daily_bars(db: DatabaseHandle) {
+        let result = PostgresWidgetQuerySource::new(db)
+            .resolve_as_of(None)
+            .await
+            .expect("resolve missing as-of");
+
+        assert_eq!(result, None);
     }
 
     fn market_query(
@@ -608,6 +637,29 @@ mod tests {
                 },
             ],
         );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn excludes_change_when_previous_close_is_zero(db: DatabaseHandle) {
+        insert_stock(&db, "D015", "Stock Omicron").await;
+        insert_bar(&db, "D015", 19, 0).await;
+        insert_bar(&db, "D015", 20, 100).await;
+
+        let query = WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::OneDay),
+            by: WidgetBy::Stock,
+            axis: None,
+            indicator: None,
+            universe: None,
+            agg: None,
+        };
+        let result = PostgresWidgetQuerySource::new(db)
+            .query(date(20), &query)
+            .await
+            .expect("query widget stock change");
+
+        assert_eq!(result, Vec::<WidgetQueryRow>::new());
     }
 
     #[backend_test_macros::database_test]

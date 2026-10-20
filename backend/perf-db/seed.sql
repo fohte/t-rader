@@ -163,6 +163,20 @@ SELECT
     1
 FROM bar_values;
 
+INSERT INTO bars_timestamp_coverage (
+    instrument_id,
+    timeframe,
+    earliest_timestamp,
+    latest_timestamp
+)
+SELECT
+    instrument_id,
+    timeframe,
+    MIN(timestamp),
+    MAX(timestamp)
+FROM bars
+GROUP BY instrument_id, timeframe;
+
 INSERT INTO valuation (code, date, mkt_cap)
 SELECT synthetic_stocks.id || '0', latest_trading_day.latest_trading_day, 1000 + synthetic_stocks.n * 10
 FROM synthetic_stocks
