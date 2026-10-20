@@ -139,12 +139,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function isLabelFormatter(
-  value: unknown,
-): value is (params: { dataIndex: number }) => unknown {
-  return typeof value === 'function'
-}
-
 function readChartOutput() {
   const option = chartHarness.options.at(-1)
   if (!isRecord(option)) return null
@@ -154,6 +148,7 @@ function readChartOutput() {
   const yAxisValue = Array.isArray(option.yAxis)
     ? option.yAxis[0]
     : option.yAxis
+  const gridValue = isRecord(option.grid) ? option.grid : {}
   const seriesValue = Array.isArray(option.series)
     ? option.series[0]
     : option.series
@@ -167,32 +162,64 @@ function readChartOutput() {
 
   const rows = Array.isArray(seriesValue.data) ? seriesValue.data : []
   const markLine = isRecord(seriesValue.markLine) ? seriesValue.markLine : {}
-  const seriesLabel = isRecord(seriesValue.label) ? seriesValue.label : {}
-  const labelFormatter = seriesLabel.formatter
   return {
     axis: {
       minimum: xAxisValue.min,
       maximum: xAxisValue.max,
       scale: xAxisValue.scale,
     },
+    grid: {
+      left: gridValue.left,
+      right: gridValue.right,
+      top: gridValue.top,
+      bottom: gridValue.bottom,
+    },
     clip: seriesValue.clip,
     categories: yAxisValue.data,
-    bars: rows.map((row, index) => {
+    bars: rows.map((row) => {
       const data = isRecord(row) ? row : {}
       const itemStyle = isRecord(data.itemStyle) ? data.itemStyle : {}
-      const label = isRecord(data.label) ? data.label : {}
       return {
         value: data.value,
         color: itemStyle.color,
-        labelPosition: label.position,
-        labelColor: label.color ?? seriesLabel.color,
-        formattedLabel: isLabelFormatter(labelFormatter)
-          ? (labelFormatter({ dataIndex: index }) ?? null)
-          : null,
+        hasValueLabel: data.label != null,
       }
     }),
+    hasSeriesValueLabel: seriesValue.label != null,
     zeroReference: markLine.data,
   }
+}
+
+function readVisualColumnsOutput() {
+  const chart = screen.getByRole('img')
+  const layout = chart.parentElement
+  const identities = layout?.querySelector('[data-column="identity"]')
+  const values = layout?.querySelector('[data-column="values"]')
+
+  return {
+    columnTemplate: layout?.style.gridTemplateColumns ?? null,
+    columnOrder: Array.from(layout?.children ?? [], (column) =>
+      column.getAttribute('data-column'),
+    ),
+    identities: Array.from(identities?.children ?? [], (element) =>
+      element.textContent.trim(),
+    ),
+    values: Array.from(values?.children ?? [], (element) => {
+      return {
+        value: element.textContent.trim(),
+        color: element instanceof HTMLElement ? element.style.color : null,
+        rightAligned:
+          element.classList.contains('justify-end') &&
+          element.classList.contains('text-right'),
+        tabular: element.classList.contains('tabular-nums'),
+        noWrap: element.classList.contains('whitespace-nowrap'),
+      }
+    }),
+  }
+}
+
+function readChartAndVisualColumnsOutput() {
+  return { chart: readChartOutput(), columns: readVisualColumnsOutput() }
 }
 
 function readConfiguredScaleOutput() {
@@ -394,23 +421,91 @@ describe('WidgetToplist', () => {
       header: '指定尺度: 0 / 0 / 100',
       chart: {
         axis: { minimum: 0, maximum: 100, scale: false },
+        grid: { left: 0, right: 0, top: 0, bottom: 0 },
         clip: true,
         categories: ['stock:DEMO-A'],
         bars: [
           {
             value: 35,
             color: '#ef5350',
-            labelPosition: 'right',
-            labelColor: '#0a0a0a',
-            formattedLabel: '+35',
+            hasValueLabel: false,
           },
         ],
+        hasSeriesValueLabel: false,
         zeroReference: [{ xAxis: 0 }],
       },
     })
   })
 
-  it('尺度を超える棒を端で止め、値のラベルは実際の値を表示する', async () => {
+  it('値を右端の固定列に桁揃えして表示する', async () => {
+    await renderWidget()
+
+    expect(readVisualColumnsOutput()).toEqual({
+      columnTemplate: '134px minmax(24px, 1fr) 104px',
+      columnOrder: ['identity', 'bars', 'values'],
+      identities: [
+        '1架空銘柄 ADEMO-A',
+        '2架空銘柄 BDEMO-B',
+        '3架空銘柄 CDEMO-C',
+      ],
+      values: [
+        {
+          value: '+2.10%',
+          color: 'rgb(239, 83, 80)',
+          rightAligned: true,
+          tabular: true,
+          noWrap: true,
+        },
+        {
+          value: '+0.80%',
+          color: 'rgb(239, 83, 80)',
+          rightAligned: true,
+          tabular: true,
+          noWrap: true,
+        },
+        {
+          value: '-0.60%',
+          color: 'rgb(63, 159, 224)',
+          rightAligned: true,
+          tabular: true,
+          noWrap: true,
+        },
+      ],
+    })
+  })
+
+  it('ゼロの値を中立の文字色で表示する', async () => {
+    await renderWidget(
+      {
+        as_of: '2099-01-01',
+        rows: [
+          {
+            key: 'stock:DEMO-ZERO',
+            name: '架空銘柄 ゼロ',
+            values: { change: 0 },
+          },
+        ],
+      },
+      { ...viz, limit: 1 },
+    )
+
+    expect(readVisualColumnsOutput()).toEqual({
+      columnTemplate: '134px minmax(24px, 1fr) 104px',
+      columnOrder: ['identity', 'bars', 'values'],
+      identities: ['1架空銘柄 ゼロDEMO-ZERO'],
+      values: [
+        {
+          value: '0.00%',
+          color: 'rgb(10, 10, 10)',
+          rightAligned: true,
+          tabular: true,
+          noWrap: true,
+        },
+      ],
+    })
+  })
+
+  it('尺度を超える棒を端で止め、右端の値列は実値を表示する', async () => {
     await renderWidget(
       {
         as_of: '2099-01-01',
@@ -435,38 +530,68 @@ describe('WidgetToplist', () => {
       { ...viz, limit: 3, bar_scale: { min: -0.04, max: 0.04 } },
     )
 
-    expect(readChartOutput()).toEqual({
-      axis: { minimum: -0.04, maximum: 0.04, scale: false },
-      clip: true,
-      categories: [
-        'stock:DEMO-POSITIVE',
-        'stock:DEMO-INSIDE',
-        'stock:DEMO-NEGATIVE',
-      ],
-      bars: [
-        {
-          value: 0.04,
-          color: '#ef5350',
-          labelPosition: 'insideRight',
-          labelColor: '#fafafa',
-          formattedLabel: '+18.00%',
-        },
-        {
-          value: 0.03,
-          color: '#ef5350',
-          labelPosition: 'right',
-          labelColor: '#0a0a0a',
-          formattedLabel: '+3.00%',
-        },
-        {
-          value: -0.04,
-          color: '#3f9fe0',
-          labelPosition: 'insideLeft',
-          labelColor: '#fafafa',
-          formattedLabel: '-12.00%',
-        },
-      ],
-      zeroReference: [{ xAxis: 0 }],
+    expect(readChartAndVisualColumnsOutput()).toEqual({
+      chart: {
+        axis: { minimum: -0.04, maximum: 0.04, scale: false },
+        grid: { left: 0, right: 0, top: 0, bottom: 0 },
+        clip: true,
+        categories: [
+          'stock:DEMO-POSITIVE',
+          'stock:DEMO-INSIDE',
+          'stock:DEMO-NEGATIVE',
+        ],
+        bars: [
+          {
+            value: 0.04,
+            color: '#ef5350',
+            hasValueLabel: false,
+          },
+          {
+            value: 0.03,
+            color: '#ef5350',
+            hasValueLabel: false,
+          },
+          {
+            value: -0.04,
+            color: '#3f9fe0',
+            hasValueLabel: false,
+          },
+        ],
+        hasSeriesValueLabel: false,
+        zeroReference: [{ xAxis: 0 }],
+      },
+      columns: {
+        columnTemplate: '134px minmax(24px, 1fr) 104px',
+        columnOrder: ['identity', 'bars', 'values'],
+        identities: [
+          '1架空銘柄 正の外れ値DEMO-POSITIVE',
+          '2架空銘柄 尺度内DEMO-INSIDE',
+          '3架空銘柄 負の外れ値DEMO-NEGATIVE',
+        ],
+        values: [
+          {
+            value: '+18.00%',
+            color: 'rgb(239, 83, 80)',
+            rightAligned: true,
+            tabular: true,
+            noWrap: true,
+          },
+          {
+            value: '+3.00%',
+            color: 'rgb(239, 83, 80)',
+            rightAligned: true,
+            tabular: true,
+            noWrap: true,
+          },
+          {
+            value: '-12.00%',
+            color: 'rgb(63, 159, 224)',
+            rightAligned: true,
+            tabular: true,
+            noWrap: true,
+          },
+        ],
+      },
     })
   })
 

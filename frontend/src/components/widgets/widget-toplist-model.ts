@@ -173,21 +173,16 @@ export function createWidgetToplistOption(
   model: WidgetToplistModel,
   palette: EChartsPalette,
 ): WidgetToplistOption {
-  const rowByKey = new Map(model.rows.map((row) => [row.key, row]))
-  const rankByKey = new Map(
-    model.rows.map((row, index) => [row.key, index + 1]),
-  )
-
   return {
     aria: {
       enabled: true,
       label: { description: model.ariaDescription },
     },
     grid: {
-      left: 142,
-      right: 88,
-      top: 8,
-      bottom: 8,
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
       containLabel: false,
     },
     xAxis: {
@@ -209,21 +204,7 @@ export function createWidgetToplistOption(
       data: model.rows.map((row) => row.key),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: {
-        color: palette.foreground,
-        fontFamily: 'sans-serif',
-        fontSize: 11,
-        interval: 0,
-        lineHeight: 14,
-        overflow: 'truncate',
-        width: 130,
-        formatter: (value) => {
-          const row = rowByKey.get(value)
-          const rank = rankByKey.get(value)
-          if (row == null || rank == null) return value
-          return `${String(rank)}. ${row.name}\n${row.code}`
-        },
-      },
+      axisLabel: { show: false },
       splitLine: {
         show: true,
         lineStyle: { color: palette.border, opacity: 0.4 },
@@ -237,15 +218,6 @@ export function createWidgetToplistOption(
         barWidth: 12,
         clip: true,
         animation: false,
-        label: {
-          show: true,
-          color: palette.foreground,
-          fontFamily: 'monospace',
-          fontSize: 11,
-          distance: 4,
-          formatter: (params) =>
-            model.rows[params.dataIndex]?.formattedValue ?? '',
-        },
         markLine: {
           silent: true,
           symbol: 'none',
@@ -254,8 +226,6 @@ export function createWidgetToplistOption(
           data: [{ xAxis: 0 }],
         },
         data: model.rows.map((row) => {
-          const isBelowScale = row.value < model.scale.min
-          const isAboveScale = row.value > model.scale.max
           return {
             name: row.name,
             value: Math.min(
@@ -270,18 +240,6 @@ export function createWidgetToplistOption(
                   : row.value < 0
                     ? palette.down
                     : palette.neutral,
-            },
-            label: {
-              position: isBelowScale
-                ? 'insideLeft'
-                : isAboveScale
-                  ? 'insideRight'
-                  : row.value < 0
-                    ? 'left'
-                    : 'right',
-              ...(isBelowScale || isAboveScale
-                ? { color: palette.background }
-                : {}),
             },
           }
         }),

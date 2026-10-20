@@ -28,6 +28,7 @@ type WidgetToplistDefinition = Extract<
 
 const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
 const CHART_ROW_HEIGHT = 58
+const CHART_COLUMNS = '134px minmax(24px, 1fr) 104px'
 
 export function WidgetToplist({
   result,
@@ -71,7 +72,7 @@ export function WidgetToplist({
     },
     [model.rows],
   )
-  const { containerRef, error } = useEChartsChart({
+  const { containerRef, error, palette } = useEChartsChart({
     createOption: option,
     onClick: handleChartClick,
   })
@@ -110,6 +111,8 @@ export function WidgetToplist({
   )
 
   const isEmpty = model.rows.length === 0
+  const chartHeight = Math.max(112, model.rows.length * CHART_ROW_HEIGHT)
+  const chartRows = `repeat(${String(model.rows.length)}, minmax(0, 1fr))`
 
   return (
     <div className="space-y-3">
@@ -131,13 +134,74 @@ export function WidgetToplist({
         </div>
       )}
       <div
-        aria-label={model.ariaDescription}
         className="w-full overflow-hidden border border-border bg-card"
         hidden={isEmpty}
-        ref={containerRef}
-        role="img"
-        style={{ height: Math.max(112, model.rows.length * CHART_ROW_HEIGHT) }}
-      />
+      >
+        <div
+          className="grid w-full"
+          style={{ gridTemplateColumns: CHART_COLUMNS, height: chartHeight }}
+        >
+          <ol
+            aria-hidden="true"
+            className="m-0 grid min-w-0 list-none p-0"
+            data-column="identity"
+            style={{ gridTemplateRows: chartRows }}
+          >
+            {model.rows.map((row, index) => (
+              <li
+                className="flex min-h-0 min-w-0 items-center border-b border-border px-2 last:border-b-0"
+                key={row.key}
+              >
+                <div className="flex w-full min-w-0 items-center gap-2">
+                  <span className="w-4 shrink-0 text-right font-mono text-2xs text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs text-foreground">
+                      {row.name}
+                    </span>
+                    <span className="block truncate font-mono text-2xs text-muted-foreground">
+                      {row.code}
+                    </span>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div
+            aria-label={model.ariaDescription}
+            className="min-w-0"
+            data-column="bars"
+            hidden={isEmpty}
+            ref={containerRef}
+            role="img"
+            style={{ height: chartHeight }}
+          />
+          <ol
+            aria-hidden="true"
+            className="m-0 grid min-w-0 list-none p-0"
+            data-column="values"
+            style={{ gridTemplateRows: chartRows }}
+          >
+            {model.rows.map((row) => (
+              <li
+                className="flex min-h-0 items-center justify-end whitespace-nowrap border-b border-border px-2 text-right font-mono tabular-nums text-xs last:border-b-0"
+                key={row.key}
+                style={{
+                  color:
+                    row.value > 0
+                      ? palette.up
+                      : row.value < 0
+                        ? palette.down
+                        : palette.foreground,
+                }}
+              >
+                {row.formattedValue}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
       {!isEmpty && error != null && (
         <p className="text-xs text-destructive" role="alert">
           {error}
