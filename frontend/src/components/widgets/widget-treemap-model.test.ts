@@ -4,6 +4,7 @@ import {
   createWidgetTreemapModel,
   createWidgetTreemapOption,
   getTreemapFillColor,
+  getTreemapLabelMode,
 } from '#components/widgets/widget-treemap-model'
 import type { components } from '#lib/api/schema.gen'
 import type { EChartsPalette } from '#lib/echarts/use-echarts-chart'
@@ -80,6 +81,30 @@ function makeModel(input = result) {
 }
 
 describe('widget treemap model', () => {
+  it('ラベルの実寸に合わせて銘柄名・数値・非表示を切り替える', () => {
+    function readLabelModes() {
+      return [
+        getTreemapLabelMode(
+          { x: 0, y: 0, width: 180, height: 44 },
+          '架空銘柄 001',
+          '+0.10%',
+        ),
+        getTreemapLabelMode(
+          { x: 0, y: 0, width: 55, height: 44 },
+          '架空銘柄',
+          '+1%',
+        ),
+        getTreemapLabelMode(
+          { x: 0, y: 0, width: 28, height: 20 },
+          '架空銘柄',
+          '+1%',
+        ),
+      ]
+    }
+
+    expect(readLabelModes()).toEqual(['both', 'value', null])
+  })
+
   it('分類の面積・行順・欠損値・安定 data index を保持する', () => {
     const model = makeModel()
 
@@ -236,11 +261,20 @@ describe('widget treemap model', () => {
       return {
         leafDepth: series?.leafDepth ?? null,
         nodeClick: series?.nodeClick,
-        labels: series?.upperLabel?.show,
+        labelFormatter: series?.label?.formatter,
+        rootUpperLabel: series?.levels?.[0]?.upperLabel?.show ?? null,
+        groupLabel: series?.levels?.[1]?.label?.show ?? null,
+        groupUpperLabel: series?.levels?.[1]?.upperLabel?.show ?? null,
+        groupUpperLabelFormatter:
+          series?.levels?.[1]?.upperLabel?.formatter ?? null,
+        leafLabel: series?.levels?.[2]?.label?.show ?? null,
         levels: series?.levels?.length,
         nodes: series?.data?.map((node) => ({
           id: node.id,
-          children: node.children?.map((child) => child.id),
+          children: node.children?.map((child) => ({
+            id: child.id,
+            showLabel: child.label?.show,
+          })),
         })),
         colorScale: model.colorScale,
       }
@@ -248,19 +282,65 @@ describe('widget treemap model', () => {
     expect(readOptionOutput()).toEqual({
       leafDepth: null,
       nodeClick: false,
-      labels: false,
-      levels: 2,
+      labelFormatter: '{b}',
+      rootUpperLabel: null,
+      groupLabel: false,
+      groupUpperLabel: true,
+      groupUpperLabelFormatter: '{b}',
+      leafLabel: true,
+      levels: 3,
       nodes: [
         {
           id: 'sector:["demo-axis","demo-group-a"]',
-          children: ['row:stock:DEMO-A', 'row:stock:DEMO-B'],
+          children: [
+            { id: 'row:stock:DEMO-A', showLabel: true },
+            { id: 'row:stock:DEMO-B', showLabel: true },
+          ],
         },
         {
           id: 'sector:["demo-axis",null]',
-          children: ['row:stock:DEMO-C'],
+          children: [{ id: 'row:stock:DEMO-C', showLabel: true }],
         },
       ],
       colorScale: { min: -0.05, max: 0.04 },
+    })
+  })
+
+  it('単層 treemap の行名ラベルを有効にする', () => {
+    const option = createWidgetTreemapOption(
+      createWidgetTreemapModel({
+        display,
+        queries,
+        result: {
+          as_of: '2099-01-01',
+          rows: [
+            {
+              key: 'stock:DEMO-A',
+              name: '架空銘柄 A',
+              values: { size: 9, change: 0.015 },
+            },
+          ],
+        },
+        viz: { type: 'treemap', size: 'size', color: 'change' },
+      }),
+      palette,
+      () => undefined,
+    )
+    const series = Array.isArray(option.series)
+      ? option.series[0]
+      : option.series
+
+    function readOptionOutput() {
+      return {
+        formatter: series?.label?.formatter,
+        nodeLabels: series?.data?.map((node) => node.label?.show),
+        levels: series?.levels?.length,
+      }
+    }
+    expect(readOptionOutput()).toEqual({
+      formatter: '{b}',
+      nodeLabels: [true],
+      levels: 1,
     })
   })
 })

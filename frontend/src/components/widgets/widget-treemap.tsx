@@ -8,6 +8,7 @@ import {
   createWidgetTreemapModel,
   createWidgetTreemapOption,
   getTreemapFillColor,
+  getTreemapLabelMode,
   getTreemapTextColor,
   type TreemapDataNode,
   type TreemapRect,
@@ -61,19 +62,6 @@ function isSameLayout(
     }
   }
   return true
-}
-
-function getLabelMode(
-  rect: TreemapRect,
-  value: string,
-): 'both' | 'value' | null {
-  const availableWidth = rect.width - 8
-  const availableHeight = rect.height - 8
-  const valueWidth = value.length * 7
-  if (availableWidth < valueWidth) return null
-  if (availableHeight >= 32) return 'both'
-  if (availableHeight >= 18) return 'value'
-  return null
 }
 
 export function WidgetTreemap({
@@ -319,7 +307,11 @@ export function WidgetTreemap({
             {[...labelRects].flatMap(([key, rect]) => {
               const row = rowsByKey.get(key)
               if (row == null) return []
-              const mode = getLabelMode(rect, row.formattedColor)
+              const mode = getTreemapLabelMode(
+                rect,
+                row.name,
+                row.formattedColor,
+              )
               if (mode == null) return []
 
               return [

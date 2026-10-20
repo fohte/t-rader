@@ -33,6 +33,27 @@ export interface TreemapRect {
   height: number
 }
 
+export type TreemapLabelMode = 'both' | 'value' | null
+
+export function getTreemapLabelMode(
+  rect: TreemapRect,
+  name: string,
+  value: string,
+): TreemapLabelMode {
+  const availableWidth = rect.width - 8
+  const availableHeight = rect.height - 8
+  const valueWidth = value.length * 7
+  const nameWidth = Array.from(name).reduce(
+    (width, character) =>
+      width + (/^[\u0000-\u00ff]$/u.test(character) ? 7 : 12),
+    0,
+  )
+  if (availableWidth < valueWidth) return null
+  if (availableHeight >= 32 && availableWidth >= nameWidth) return 'both'
+  if (availableHeight >= 18) return 'value'
+  return null
+}
+
 type TreemapSeriesNode = NonNullable<TreemapSeriesOption['data']>[number]
 
 export interface TreemapRowModel {
@@ -202,6 +223,7 @@ function createRowNode(row: TreemapRowModel): TreemapDataNode {
     rowKey: row.key,
     name: row.name,
     value: row.area,
+    label: { show: true },
   }
 }
 
@@ -383,7 +405,7 @@ export function createWidgetTreemapOption(
         animation: false,
         label: {
           show: true,
-          formatter: 'x',
+          formatter: '{b}',
           color: 'rgba(0, 0, 0, 0)',
           fontSize: 1,
           padding: 0,
@@ -420,11 +442,21 @@ export function createWidgetTreemapOption(
                   itemStyle: {
                     color: palette.neutral,
                     borderColor: palette.border,
+                    borderWidth: 0,
+                    gapWidth: 0,
+                  },
+                },
+                {
+                  label: { show: false },
+                  itemStyle: {
+                    color: palette.neutral,
+                    borderColor: palette.border,
                     borderWidth: 1,
                     gapWidth: 4,
                   },
                   upperLabel: {
                     show: true,
+                    formatter: '{b}',
                     height: 22,
                     color: groupForeground,
                     backgroundColor: palette.neutral,
@@ -440,6 +472,7 @@ export function createWidgetTreemapOption(
                     borderWidth: 1,
                     gapWidth: 2,
                   },
+                  label: { show: true },
                 },
               ],
         data: chartData,

@@ -6,13 +6,14 @@ import type {
   Payload,
 } from 'echarts/core'
 import * as echarts from 'echarts/core'
+import { LabelLayout } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import { Result } from 'neverthrow'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { observeChartResize, observeChartTheme } from '#lib/chart-theme'
 
-echarts.use([AriaComponent, CanvasRenderer])
+echarts.use([AriaComponent, CanvasRenderer, LabelLayout])
 
 export interface EChartsPalette {
   background: string
