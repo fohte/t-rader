@@ -441,7 +441,7 @@ mod tests {
             }),
             Err((
                 0,
-                "unknown field `unknown`, expected one of `queries`, `formulas`, `viz`, `time`"
+                "unknown field `unknown`, expected one of `queries`, `formulas`, `display`, `viz`, `time`"
                     .to_owned(),
             )),
         );
