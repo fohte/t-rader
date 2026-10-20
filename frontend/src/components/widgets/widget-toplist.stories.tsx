@@ -1,13 +1,35 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
 
 import { WidgetToplist } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
-import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
+import type {
+  WidgetDisplayDefinitions,
+  WidgetQueryDefinitions,
+} from '#lib/widget-value-format'
+import { createStoryRouter } from '#storybook/story-router'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
+type WidgetToplistDefinition = Extract<
+  components['schemas']['WidgetVisualizationRequest'],
+  { type: 'toplist' }
+>
 
-const result: WidgetQueryResponse = {
-  as_of: '2099-01-01',
+const queries: WidgetQueryDefinitions = {
+  change: { metric: 'change', by: 'stock' },
+}
+const display: WidgetDisplayDefinitions = {
+  change: { label: '前日比', format: 'percent' },
+}
+const viz: WidgetToplistDefinition = {
+  type: 'toplist',
+  value: 'change',
+  order: 'desc',
+  limit: 5,
+}
+const mixedResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
   rows: [
     {
       key: 'stock:DEMO-C',
@@ -17,7 +39,7 @@ const result: WidgetQueryResponse = {
     {
       key: 'stock:DEMO-A',
       name: '架空銘柄 A',
-      values: { change: 0.021 },
+      values: { change: 0.024 },
     },
     {
       key: 'stock:DEMO-D',
@@ -29,19 +51,167 @@ const result: WidgetQueryResponse = {
       name: '架空銘柄 B',
       values: { change: 0.008 },
     },
+    {
+      key: 'stock:DEMO-E',
+      name: '架空銘柄 E',
+      values: { change: 0 },
+    },
   ],
 }
-const queries: WidgetQueryDefinitions = {
-  change: { metric: 'change', by: 'stock' },
+const singleLayerViz: WidgetToplistDefinition = {
+  ...viz,
+  bar_scale: { min: -0.04, max: 0.04 },
+}
+const longNameResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: [
+    {
+      key: 'stock:DEMO-LONG-A',
+      name: '架空銘柄 長い名称が狭い表示幅でも読みやすく表示されることを確認する',
+      values: { change: 0.032 },
+    },
+    {
+      key: 'stock:DEMO-LONG-B',
+      name: '架空銘柄 長い名前と同じ値を持つ項目',
+      values: { change: -0.012 },
+    },
+    {
+      key: 'stock:DEMO-LONG-C',
+      name: '架空銘柄 方向を比較するための例',
+      values: { change: 0.004 },
+    },
+  ],
+}
+const outlierResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: [
+    {
+      key: 'stock:DEMO-OUTLIER',
+      name: '架空銘柄 外れ値',
+      values: { change: 0.18 },
+    },
+    {
+      key: 'stock:DEMO-MID-A',
+      name: '架空銘柄 中央値 A',
+      values: { change: 0.024 },
+    },
+    {
+      key: 'stock:DEMO-MID-B',
+      name: '架空銘柄 中央値 B',
+      values: { change: -0.012 },
+    },
+  ],
+}
+const zeroResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: mixedResult.rows.map((row) => ({
+    ...row,
+    values: { ...row.values, change: 0 },
+  })),
+}
+const positiveResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: mixedResult.rows.map((row, index) => ({
+    ...row,
+    values: { ...row.values, change: (index + 1) * 0.003 },
+  })),
+}
+const negativeResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: mixedResult.rows.map((row, index) => ({
+    ...row,
+    values: { ...row.values, change: -(index + 1) * 0.003 },
+  })),
+}
+const indicatorResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: [
+    {
+      key: 'indicator:DEMO-INDEX',
+      name: '架空指標',
+      values: { change: 0.024 },
+    },
+  ],
+}
+const groupResult: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: [
+    {
+      key: 'group:demo-axis/demo-group',
+      name: '架空分類',
+      values: { change: -0.012 },
+    },
+  ],
+}
+const comparisonLeft: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: [
+    {
+      key: 'stock:DEMO-COMPARE-A',
+      name: '架空銘柄 比較 A',
+      values: { change: 0.032 },
+    },
+    {
+      key: 'stock:DEMO-COMPARE-B',
+      name: '架空銘柄 比較 B',
+      values: { change: 0.016 },
+    },
+    {
+      key: 'stock:DEMO-COMPARE-C',
+      name: '架空銘柄 比較 C',
+      values: { change: -0.008 },
+    },
+  ],
+}
+const comparisonRight: WidgetQueryResponse = {
+  as_of: '2099-04-12',
+  rows: [
+    {
+      key: 'stock:DEMO-COMPARE-D',
+      name: '架空銘柄 比較 D',
+      values: { change: 0.024 },
+    },
+    {
+      key: 'stock:DEMO-COMPARE-E',
+      name: '架空銘柄 比較 E',
+      values: { change: -0.016 },
+    },
+    {
+      key: 'stock:DEMO-COMPARE-F',
+      name: '架空銘柄 比較 F',
+      values: { change: -0.032 },
+    },
+  ],
+}
+
+function withWidgetRouter(Story: ComponentType) {
+  return (
+    <RouterProvider
+      router={createStoryRouter(
+        () => (
+          <Story />
+        ),
+        {
+          paths: [
+            '/groups/$axisKey/$groupKey',
+            '/indicators/$indicatorId',
+            '/stocks/$stockId',
+          ],
+        },
+      )}
+    />
+  )
 }
 
 const meta = {
   title: 'Widgets/WidgetToplist',
   component: WidgetToplist,
+  decorators: [withWidgetRouter],
   args: {
     queries,
-    result,
-    viz: { type: 'toplist', value: 'change', order: 'desc', limit: 3 },
+    display,
+    result: mixedResult,
+    viz,
   },
   parameters: { layout: 'padded' },
 } satisfies Meta<typeof WidgetToplist>
@@ -49,39 +219,111 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Descending: Story = {
-  name: '小さな騰落率を大きい順に符号付きパーセントで順位表示する。',
+export const MixedChanges: Story = {
+  name: '上昇と下落を同じ 0 起点の尺度で比較する。',
 }
 
-export const Ascending: Story = {
-  name: '値の小さい順に指定件数の行を表示する。',
-  args: {
-    viz: { type: 'toplist', value: 'change', order: 'asc', limit: 2 },
-  },
+export const AllZero: Story = {
+  name: 'すべての値がゼロのときに中立の基線を表示する。',
+  args: { result: zeroResult },
 }
 
-export const FormulaPercent: Story = {
-  name: '明示した表示形式で式の値をパーセント表示する。',
-  args: {
-    queries: {},
-    display: { relative: { label: 'Relative', format: 'percent' } },
-    result: {
-      as_of: '2099-01-01',
-      rows: [
-        {
-          key: 'stock:DEMO-A',
-          name: '架空銘柄 A',
-          values: { relative: 0.0123 },
-        },
-      ],
-    },
-    viz: { type: 'toplist', value: 'relative', order: 'desc', limit: 1 },
-  },
+export const PositiveOnly: Story = {
+  name: '正の値だけを 0 起点の尺度で表示する。',
+  args: { result: positiveResult },
+}
+
+export const NegativeOnly: Story = {
+  name: '負の値だけを 0 起点の尺度で表示する。',
+  args: { result: negativeResult },
+}
+
+export const Outlier: Story = {
+  name: '指定尺度を超える外れ値を同じ尺度の端で比較する。',
+  args: { result: outlierResult, viz: singleLayerViz },
+}
+
+export const LongNames: Story = {
+  name: '長い名称を省略して値とコードを読み取れる。',
+  args: { result: longNameResult },
+}
+
+export const NarrowWidth: Story = {
+  name: '幅 360 px で名称と値を表示する。',
+  render: (args) => (
+    <div style={{ width: 360 }}>
+      <WidgetToplist {...args} />
+    </div>
+  ),
+}
+
+export const MediumWidth: Story = {
+  name: '幅 600 px でバーの差を比較する。',
+  render: (args) => (
+    <div style={{ width: 600 }}>
+      <WidgetToplist {...args} />
+    </div>
+  ),
+}
+
+export const WideWidth: Story = {
+  name: '幅 1120 px で名称とバーをゆったり表示する。',
+  render: (args) => (
+    <div style={{ width: 1120 }}>
+      <WidgetToplist {...args} />
+    </div>
+  ),
 }
 
 export const Empty: Story = {
-  name: '表示できるデータがない状態を表示する。',
+  name: '表示できる値がない状態を示す。',
+  args: { result: { as_of: '2099-04-12', rows: [] } },
+}
+
+export const SelectedStock: Story = {
+  name: '選択した銘柄の詳細とアプリ内リンクを表示する。',
+  args: { initialSelectedRowKey: 'stock:DEMO-A' },
+}
+
+export const SelectedIndicator: Story = {
+  name: '選択した指標の詳細とアプリ内リンクを表示する。',
   args: {
-    result: { as_of: '2099-01-01', rows: [] },
+    result: indicatorResult,
+    initialSelectedRowKey: 'indicator:DEMO-INDEX',
   },
+}
+
+export const SelectedGroup: Story = {
+  name: '選択した分類の詳細とアプリ内リンクを表示する。',
+  args: {
+    result: groupResult,
+    initialSelectedRowKey: 'group:demo-axis/demo-group',
+  },
+}
+
+export const SharedScaleComparison: Story = {
+  name: '同じ基準日と尺度を使う左右のリストを比較する。',
+  render: () => (
+    <div
+      style={{
+        display: 'grid',
+        gap: 24,
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        width: 1120,
+      }}
+    >
+      <WidgetToplist
+        display={display}
+        queries={queries}
+        result={comparisonLeft}
+        viz={singleLayerViz}
+      />
+      <WidgetToplist
+        display={display}
+        queries={queries}
+        result={comparisonRight}
+        viz={singleLayerViz}
+      />
+    </div>
+  ),
 }

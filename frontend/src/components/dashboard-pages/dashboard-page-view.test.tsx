@@ -9,6 +9,28 @@ import {
 } from '#components/dashboard-pages/dashboard-page-view'
 import { createStoryRouter } from '#storybook/story-router'
 
+vi.mock('#lib/echarts/use-echarts-chart', async () => {
+  const React = await import('react')
+  return {
+    useEChartsChart: () => ({
+      containerRef: React.useRef<HTMLDivElement>(null),
+      palette: {
+        background: '#fafafa',
+        border: '#e5e5e5',
+        foreground: '#0a0a0a',
+        neutral: '#1a1a1a',
+        up: '#ef5350',
+        upDim: '#5a2a2a',
+        down: '#3f9fe0',
+        downDim: '#234152',
+      },
+      error: null,
+      updateOption: () => undefined,
+      dispatchAction: () => undefined,
+    }),
+  }
+})
+
 afterEach(cleanup)
 
 describe('DashboardPageView', () => {
@@ -33,7 +55,7 @@ describe('DashboardPageView', () => {
     expect(onAsOfChange.mock.calls).toEqual([['']])
   })
 
-  it('change query を符号付きパーセントで表示する', () => {
+  it('change query を符号付きパーセントで表示する', async () => {
     const state: DashboardPageState = {
       status: 'ready',
       title: '市場の動き',
@@ -72,9 +94,9 @@ describe('DashboardPageView', () => {
     }
     render(<DashboardPageView state={state} showDashboardListLink={false} />)
 
-    const row = screen.getByRole('listitem', {
-      name: '1 位: 架空銘柄 A +0.42%',
-    })
-    expect(row.lastElementChild?.textContent).toBe('+0.42%')
+    expect(await screen.findByRole('img')).toHaveAttribute(
+      'aria-label',
+      'change の toplist。基準日 2099-01-05。1 件を降順で表示。1 位 架空銘柄 A、DEMO-A、+0.42%',
+    )
   })
 })
