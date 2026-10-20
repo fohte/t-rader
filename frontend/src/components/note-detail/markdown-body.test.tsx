@@ -75,6 +75,15 @@ function bodyComment(anchorText: string): NoteVersionComment {
   }
 }
 
+function renderedLinkOutput(link: HTMLElement) {
+  return [
+    link.textContent,
+    link.getAttribute('href'),
+    link.getAttribute('target'),
+    link.getAttribute('rel'),
+  ]
+}
+
 beforeEach(() => {
   useBarsQuery.mockReturnValue({ data: [], isPending: false, isError: false })
 })
@@ -196,6 +205,24 @@ describe('MarkdownBody', () => {
     expect(link.getAttribute('href')).toBe('https://example.com/a')
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('renders an escaped body reference to the selected note version', () => {
+    render(
+      <MarkdownBody
+        source={String.raw`[架空 \[比較\] \*案\* \_補足\_ \`値\` \\ (v2)](/notes/00000000-0000-4000-8000-000000000101?version_id=00000000-0000-4000-8000-000000000202)`}
+      />,
+    )
+    const link = screen.getByRole('link', {
+      name: '架空 [比較] *案* _補足_ `値` \\ (v2)',
+    })
+
+    expect(renderedLinkOutput(link)).toEqual([
+      '架空 [比較] *案* _補足_ `値` \\ (v2)',
+      '/notes/00000000-0000-4000-8000-000000000101?version_id=00000000-0000-4000-8000-000000000202',
+      '_blank',
+      'noopener noreferrer',
+    ])
   })
 
   it('renders a nested list', () => {

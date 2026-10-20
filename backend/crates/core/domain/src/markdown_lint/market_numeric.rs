@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use super::ranges_overlap;
 use super::types::{MarkdownLintContext, RuleFinding};
 use crate::note_reference::prose_segment_ranges;
 
@@ -86,7 +87,7 @@ pub(crate) fn scan_prose_segment(
     findings.extend(number_ranges.into_iter().filter_map(|number| {
         if relative_ranges
             .iter()
-            .any(|range| overlaps(range, &number.range))
+            .any(|range| ranges_overlap(range, &number.range))
             || bar_count_starts.contains(&number.range.start)
             || !is_price_candidate(segment, &number)
         {
@@ -414,10 +415,6 @@ fn is_range_separator(between: &str) -> bool {
         between.trim_matches(|character: char| matches!(character, ' ' | '\t')),
         "+" | "-" | "−" | "–" | "—" | "~" | "〜" | "～"
     )
-}
-
-fn overlaps(left: &Range<usize>, right: &Range<usize>) -> bool {
-    left.start < right.end && right.start < left.end
 }
 
 fn previous_char(text: &str, index: usize) -> Option<(usize, char)> {

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 mod decision;
 mod document;
 mod fix;
@@ -18,3 +20,7 @@ pub use types::{
     LintDiagnostic, LintReport, MarkdownLintContext, ResolvedReferenceNames, RuleDefinition,
     RuleFinding, RuleRequirements, Severity, TextEdit,
 };
+
+pub(crate) fn ranges_overlap(left: &Range<usize>, right: &Range<usize>) -> bool {
+    left.start < right.end && right.start < left.end
+}
