@@ -178,9 +178,11 @@ describe('MarkdownBody widget blocks', () => {
       widget.textContent.replace(/\s+/g, ' ').trim(),
       widget.closest('pre') === null ? 'outside <pre>' : 'inside <pre>',
     ].join('\n')
-    expect(renderedWidget).toEqual(
-      'ウィジェット基準日 2099-01-05doubled2099-01-05自動尺度: 0 / 0 / 2.311デモグループdemo-axis/demo-group+2.1順位一覧から詳細を選ぶ (1)1デモグループdemo-axis/demo-group+2.1\noutside <pre>',
-    )
+    const expectedWidget = [
+      'ウィジェット基準日 2099-01-05doubled2099-01-05自動尺度: 0 / 0 / 2.311デモグループdemo-axis/demo-group+2.1順位一覧から詳細を選ぶ (1)1デモグループdemo-axis/demo-group+2.1',
+      'outside <pre>',
+    ].join('\n')
+    expect(renderedWidget).toEqual(expectedWidget)
   })
 
   it('renders direct change query values as signed percentages', async () => {
