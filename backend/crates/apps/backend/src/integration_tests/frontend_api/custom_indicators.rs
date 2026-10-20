@@ -3,7 +3,7 @@ mod tests {
     use super::super::{assert_response_eq, create_strategy};
     use sea_orm::{
         ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-        SqlxPostgresConnector,
+        QuerySelect, SqlxPostgresConnector, TransactionTrait,
     };
 
     use crate::testing::{create_test_server, create_test_server_with_db};
@@ -28,6 +28,9 @@ mod tests {
     const UPDATED_MULTILINE_CODE: &str = indoc::indoc! {"
         other
         text
+    "};
+    const SAMPLE_CODE: &str = indoc::indoc! {"
+        sample-code
     "};
 
     fn create_payload(name: &str, code: &str) -> serde_json::Value {
@@ -89,6 +92,16 @@ mod tests {
         })
     }
 
+    fn default_definition(name: &str, code: &str) -> Value {
+        expected_definition(
+            name,
+            code,
+            json!({"type": "object"}),
+            json!({"type": "object"}),
+            json!(null),
+        )
+    }
+
     fn expected_snapshot(before: Option<Value>, after: Option<Value>) -> Value {
         json!({
             "format": "definition_snapshot",
@@ -108,17 +121,6 @@ mod tests {
         for row in rows {
             row["id"] = json!("<dyn>");
             row["created_at"] = json!("<dyn>");
-            let target_id = row["target_id"].clone();
-            for side in ["before", "after"] {
-                if let Some(definition) = row
-                    .get_mut("diff_json")
-                    .and_then(Value::as_object_mut)
-                    .and_then(|diff| diff.get_mut(side))
-                    .filter(|definition| definition.is_object())
-                {
-                    definition["indicator_id"] = target_id.clone();
-                }
-            }
         }
     }
 
@@ -159,13 +161,82 @@ mod tests {
         for row in rows {
             change_history::ActiveModel {
                 id: Set(row.id),
-                created_at: Set(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset()),
+                created_at: Set(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset()
+                    + chrono::Duration::seconds(if row.op == "create" { 0 } else { 1 })),
                 ..Default::default()
             }
             .update(db)
             .await
             .expect("set history row time");
         }
+    }
+
+    async fn delete_test_indicator_rows(
+        db: &impl sea_orm::ConnectionTrait,
+        indicator_id: Uuid,
+    ) -> Result<(), sea_orm::DbErr> {
+        change_history::Entity::delete_many()
+            .filter(change_history::Column::TargetId.eq(indicator_id))
+            .exec(db)
+            .await?;
+        gateway_postgres::entities::custom_indicator::Entity::delete_by_id(indicator_id)
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
+    struct TestIndicatorCleanup {
+        db: gateway_postgres::DatabaseHandle,
+        indicator_id: Uuid,
+        pending: bool,
+    }
+
+    impl TestIndicatorCleanup {
+        async fn clean(mut self) {
+            delete_test_indicator_rows(&self.db, self.indicator_id)
+                .await
+                .expect("delete test indicator rows");
+            self.pending = false;
+        }
+    }
+
+    impl Drop for TestIndicatorCleanup {
+        fn drop(&mut self) {
+            if self.pending {
+                let db = self.db.clone();
+                let indicator_id = self.indicator_id;
+                tokio::spawn(async move {
+                    let _ = delete_test_indicator_rows(&db, indicator_id).await;
+                });
+            }
+        }
+    }
+
+    async fn wait_for_custom_indicator_lock_waiters(
+        db: &impl sea_orm::ConnectionTrait,
+        expected_waiters: i64,
+    ) -> bool {
+        for _ in 0..100 {
+            let waiting = db
+                .query_one_raw(sea_orm::Statement::from_string(
+                    sea_orm::DbBackend::Postgres,
+                    "SELECT count(*) AS waiting FROM pg_stat_activity \
+                     WHERE datname = current_database() \
+                       AND pid <> pg_backend_pid() \
+                       AND wait_event_type = 'Lock' \
+                       AND query ILIKE '%custom_indicator%'",
+                ))
+                .await
+                .expect("query custom indicator lock waiters")
+                .expect("lock waiter count exists")
+                .try_get::<i64>("", "waiting")
+                .expect("lock waiter count is an integer");
+            if waiting >= expected_waiters {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        false
     }
 
     #[backend_test_macros::database_test]
@@ -233,7 +304,7 @@ mod tests {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/indicators")
-            .json(&create_payload("sample-indicator", "sample-code\n"))
+            .json(&create_payload("sample-indicator", SAMPLE_CODE))
             .await;
         let id = res.json::<serde_json::Value>()["indicator_id"]
             .as_str()
@@ -250,7 +321,7 @@ mod tests {
                     None,
                     Some(expected_definition(
                         "sample-indicator",
-                        "sample-code\n",
+                        SAMPLE_CODE,
                         json!({"type": "object"}),
                         json!({"type": "object"}),
                         json!(null),
@@ -510,16 +581,6 @@ mod tests {
             "type": "object",
             "properties": {"result": {"type": "string"}},
         });
-        let mut initial_payload = create_payload("sample-indicator", INITIAL_RESTORABLE_CODE);
-        initial_payload["input_schema"] = initial_input_schema.clone();
-        initial_payload["output_schema"] = initial_output_schema.clone();
-        let created = server.post("/api/indicators").json(&initial_payload).await;
-        let id = created.json::<serde_json::Value>()["indicator_id"]
-            .as_str()
-            .map(str::to_string)
-            .expect("id");
-        set_history_created_at_to_epoch(&db, &id).await;
-
         let updated_input_schema = json!({
             "type": "object",
             "properties": {"second": {"type": "string"}},
@@ -528,11 +589,35 @@ mod tests {
             "type": "object",
             "properties": {"value": {"type": "integer"}},
         });
+        let initial_definition = expected_definition(
+            "sample-indicator",
+            INITIAL_RESTORABLE_CODE,
+            initial_input_schema.clone(),
+            initial_output_schema.clone(),
+            json!(null),
+        );
+        let updated_definition = expected_definition(
+            "renamed-indicator",
+            UPDATED_RESTORABLE_CODE,
+            updated_input_schema.clone(),
+            updated_output_schema.clone(),
+            json!(""),
+        );
+        let mut initial_payload = create_payload("sample-indicator", INITIAL_RESTORABLE_CODE);
+        initial_payload["input_schema"] = initial_input_schema;
+        initial_payload["output_schema"] = initial_output_schema;
+        let created = server.post("/api/indicators").json(&initial_payload).await;
+        let id = created.json::<serde_json::Value>()["indicator_id"]
+            .as_str()
+            .map(str::to_string)
+            .expect("id");
+        set_history_created_at_to_epoch(&db, &id).await;
+
         let update_payload = json!({
             "name": "renamed-indicator",
             "code": UPDATED_RESTORABLE_CODE,
-            "input_schema": updated_input_schema,
-            "output_schema": updated_output_schema,
+            "input_schema": updated_input_schema.clone(),
+            "output_schema": updated_output_schema.clone(),
             "description": "",
         });
         let updated = server
@@ -550,6 +635,7 @@ mod tests {
             "output_schema": before["output_schema"],
             "description": before["description"],
         });
+        set_history_created_at_to_epoch(&db, &id).await;
         let restored = server
             .put(&format!("/api/indicators/{id}"))
             .json(&restore_payload)
@@ -570,105 +656,32 @@ mod tests {
             ),
             (
                 StatusCode::OK,
-                {
-                    let mut expected = expected_definition(
-                        "renamed-indicator",
-                        UPDATED_RESTORABLE_CODE,
-                        json!({
-                            "type": "object",
-                            "properties": {"second": {"type": "string"}},
-                        }),
-                        json!({
-                            "type": "object",
-                            "properties": {"value": {"type": "integer"}},
-                        }),
-                        json!(""),
-                    );
-                    expected["created_at"] = json!("<dyn>");
-                    expected["updated_at"] = json!("<dyn>");
-                    expected
-                },
+                expected_response(updated_definition.clone()),
                 StatusCode::OK,
                 StatusCode::OK,
-                {
-                    let mut expected = expected_definition(
-                        "sample-indicator",
-                        INITIAL_RESTORABLE_CODE,
-                        initial_input_schema.clone(),
-                        initial_output_schema.clone(),
-                        json!(null),
-                    );
-                    expected["created_at"] = json!("<dyn>");
-                    expected["updated_at"] = json!("<dyn>");
-                    expected
-                },
+                expected_response(initial_definition.clone()),
                 StatusCode::OK,
                 vec![
                     expected_history_row(
                         &id,
                         "update",
                         expected_snapshot(
-                            Some(expected_definition(
-                                "renamed-indicator",
-                                UPDATED_RESTORABLE_CODE,
-                                json!({
-                                    "type": "object",
-                                    "properties": {"second": {"type": "string"}},
-                                }),
-                                json!({
-                                    "type": "object",
-                                    "properties": {"value": {"type": "integer"}},
-                                }),
-                                json!(""),
-                            )),
-                            Some(expected_definition(
-                                "sample-indicator",
-                                INITIAL_RESTORABLE_CODE,
-                                initial_input_schema.clone(),
-                                initial_output_schema.clone(),
-                                json!(null),
-                            )),
+                            Some(updated_definition.clone()),
+                            Some(initial_definition.clone()),
                         ),
                     ),
                     expected_history_row(
                         &id,
                         "update",
                         expected_snapshot(
-                            Some(expected_definition(
-                                "sample-indicator",
-                                INITIAL_RESTORABLE_CODE,
-                                initial_input_schema.clone(),
-                                initial_output_schema.clone(),
-                                json!(null),
-                            )),
-                            Some(expected_definition(
-                                "renamed-indicator",
-                                UPDATED_RESTORABLE_CODE,
-                                json!({
-                                    "type": "object",
-                                    "properties": {"second": {"type": "string"}},
-                                }),
-                                json!({
-                                    "type": "object",
-                                    "properties": {"value": {"type": "integer"}},
-                                }),
-                                json!(""),
-                            )),
+                            Some(initial_definition.clone()),
+                            Some(updated_definition.clone()),
                         ),
                     ),
                     expected_history_row(
                         &id,
                         "create",
-                        expected_snapshot(
-                            None,
-                            Some(expected_definition(
-                                "sample-indicator",
-                                INITIAL_RESTORABLE_CODE,
-                                initial_input_schema,
-                                initial_output_schema,
-                                json!(null),
-                            )),
-                        ),
+                        expected_snapshot(None, Some(initial_definition),),
                     ),
                 ],
             ),
@@ -680,7 +693,7 @@ mod tests {
         let server = create_test_server(db).await;
         let created = server
             .post("/api/indicators")
-            .json(&create_payload("sample-indicator", "sample-code\n"))
+            .json(&create_payload("sample-indicator", SAMPLE_CODE))
             .await;
         let id = created.json::<serde_json::Value>()["indicator_id"]
             .as_str()
@@ -702,13 +715,14 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         let created = server
             .post("/api/indicators")
-            .json(&create_payload("sample-indicator", "sample-code\n"))
+            .json(&create_payload("sample-indicator", SAMPLE_CODE))
             .await;
         let id = created.json::<serde_json::Value>()["indicator_id"]
             .as_str()
             .map(str::to_string)
             .expect("id");
         set_history_created_at_to_epoch(&db, &id).await;
+        let definition = default_definition("sample-indicator", SAMPLE_CODE);
 
         let deleted = server.delete(&format!("/api/indicators/{id}")).await;
         let (history_status, history) = fetch_history_for(&server, &id).await;
@@ -721,31 +735,9 @@ mod tests {
                     expected_history_row(
                         &id,
                         "delete",
-                        expected_snapshot(
-                            Some(expected_definition(
-                                "sample-indicator",
-                                "sample-code\n",
-                                json!({"type": "object"}),
-                                json!({"type": "object"}),
-                                json!(null),
-                            )),
-                            None,
-                        ),
+                        expected_snapshot(Some(definition.clone()), None,),
                     ),
-                    expected_history_row(
-                        &id,
-                        "create",
-                        expected_snapshot(
-                            None,
-                            Some(expected_definition(
-                                "sample-indicator",
-                                "sample-code\n",
-                                json!({"type": "object"}),
-                                json!({"type": "object"}),
-                                json!(null),
-                            )),
-                        ),
-                    ),
+                    expected_history_row(&id, "create", expected_snapshot(None, Some(definition)),),
                 ],
             ),
         );
@@ -807,26 +799,14 @@ mod tests {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"error": "internal server error"}),
                 StatusCode::OK,
-                expected_response(expected_definition(
-                    "sample-indicator",
-                    initial_code,
-                    json!({"type": "object"}),
-                    json!({"type": "object"}),
-                    json!(null),
-                )),
+                expected_response(default_definition("sample-indicator", initial_code)),
                 StatusCode::OK,
                 vec![expected_history_row(
                     &id,
                     "create",
                     expected_snapshot(
                         None,
-                        Some(expected_definition(
-                            "sample-indicator",
-                            initial_code,
-                            json!({"type": "object"}),
-                            json!({"type": "object"}),
-                            json!(null),
-                        )),
+                        Some(default_definition("sample-indicator", initial_code))
                     ),
                 )],
             ),
@@ -894,16 +874,46 @@ mod tests {
             .map(str::to_string)
             .expect("id");
         let indicator_id = Uuid::parse_str(&id).expect("indicator UUID");
+        let cleanup = TestIndicatorCleanup {
+            db: db.clone(),
+            indicator_id,
+            pending: true,
+        };
         set_history_created_at_to_epoch(&db, &id).await;
 
-        let (name_update, code_update) = tokio::join!(
-            server
-                .put(&format!("/api/indicators/{id}"))
-                .json(&json!({"name": renamed})),
-            server
-                .put(&format!("/api/indicators/{id}"))
-                .json(&json!({"code": changed_code})),
-        );
+        let lock_transaction = db.begin().await.expect("begin row lock transaction");
+        let row_was_locked =
+            gateway_postgres::entities::custom_indicator::Entity::find_by_id(indicator_id)
+                .lock(sea_orm::sea_query::LockType::Update)
+                .one(&lock_transaction)
+                .await
+                .expect("lock custom indicator row")
+                .is_some();
+
+        let name_server = create_test_server(db.clone()).await;
+        let code_server = create_test_server(db.clone()).await;
+        let name_request_id = id.clone();
+        let code_request_id = id.clone();
+        let name_task = tokio::spawn(async move {
+            name_server
+                .put(&format!("/api/indicators/{name_request_id}"))
+                .json(&json!({"name": renamed}))
+                .await
+        });
+        let code_task = tokio::spawn(async move {
+            code_server
+                .put(&format!("/api/indicators/{code_request_id}"))
+                .json(&json!({"code": changed_code}))
+                .await
+        });
+        let both_requests_waited = wait_for_custom_indicator_lock_waiters(&db, 2).await;
+        lock_transaction
+            .commit()
+            .await
+            .expect("release custom indicator row lock");
+        let (name_update, code_update) = tokio::join!(name_task, code_task);
+        let name_update = name_update.expect("name update task completes");
+        let code_update = code_update.expect("code update task completes");
         let name_status = name_update.status_code();
         let code_status = code_update.status_code();
         let mut name_body = name_update.json::<Value>();
@@ -914,7 +924,7 @@ mod tests {
         let current_status = current.status_code();
         let mut current_body = current.json::<Value>();
         normalize_dynamic(&mut current_body);
-        let (history_status, mut history) = fetch_history_for(&server, &id).await;
+        let (history_status, history) = fetch_history_for(&server, &id).await;
         let history_count = history.len();
         let mut update_history: Vec<_> = history
             .iter()
@@ -930,82 +940,38 @@ mod tests {
             .first()
             .is_some_and(|row| row["diff_json"]["after"]["code"].as_str() == Some(changed_code));
         let create_history: Vec<_> = history
-            .drain(..)
+            .iter()
             .filter(|row| row["op"] == "create")
+            .cloned()
             .collect();
 
-        change_history::Entity::delete_many()
-            .filter(change_history::Column::TargetId.eq(indicator_id))
-            .exec(&db)
-            .await
-            .expect("delete test history rows");
-        gateway_postgres::entities::custom_indicator::Entity::delete_by_id(indicator_id)
-            .exec(&db)
-            .await
-            .expect("delete test indicator");
-
-        let name_response = if code_was_first {
-            expected_response(expected_definition(
-                renamed,
-                changed_code,
-                json!({"type": "object"}),
-                json!({"type": "object"}),
-                json!(null),
-            ))
-        } else {
-            expected_response(expected_definition(
-                renamed,
-                initial_code,
-                json!({"type": "object"}),
-                json!({"type": "object"}),
-                json!(null),
-            ))
-        };
-        let code_response = if code_was_first {
-            expected_response(expected_definition(
-                &initial_name,
-                changed_code,
-                json!({"type": "object"}),
-                json!({"type": "object"}),
-                json!(null),
-            ))
-        } else {
-            expected_response(expected_definition(
-                renamed,
-                changed_code,
-                json!({"type": "object"}),
-                json!({"type": "object"}),
-                json!(null),
-            ))
-        };
+        let initial_definition = default_definition(&initial_name, initial_code);
+        let name_update_definition = default_definition(renamed, initial_code);
+        let code_update_definition = default_definition(&initial_name, changed_code);
+        let final_definition = default_definition(renamed, changed_code);
         let first_after = if code_was_first {
-            expected_definition(
-                &initial_name,
-                changed_code,
-                json!({"type": "object"}),
-                json!({"type": "object"}),
-                json!(null),
+            code_update_definition.clone()
+        } else {
+            name_update_definition.clone()
+        };
+        let (name_response, code_response) = if code_was_first {
+            (
+                expected_response(final_definition.clone()),
+                expected_response(code_update_definition),
             )
         } else {
-            expected_definition(
-                renamed,
-                initial_code,
-                json!({"type": "object"}),
-                json!({"type": "object"}),
-                json!(null),
+            (
+                expected_response(name_update_definition),
+                expected_response(final_definition.clone()),
             )
         };
-        let second_before = first_after.clone();
-        let final_definition = expected_definition(
-            renamed,
-            changed_code,
-            json!({"type": "object"}),
-            json!({"type": "object"}),
-            json!(null),
-        );
+
+        cleanup.clean().await;
 
         assert_eq!(
             (
+                row_was_locked,
+                both_requests_waited,
                 name_status,
                 name_body,
                 code_status,
@@ -1018,6 +984,8 @@ mod tests {
                 create_history,
             ),
             (
+                true,
+                true,
                 StatusCode::OK,
                 name_response,
                 StatusCode::OK,
@@ -1031,35 +999,20 @@ mod tests {
                         &id,
                         "update",
                         expected_snapshot(
-                            Some(expected_definition(
-                                &initial_name,
-                                initial_code,
-                                json!({"type": "object"}),
-                                json!({"type": "object"}),
-                                json!(null),
-                            )),
-                            Some(first_after)
+                            Some(initial_definition.clone()),
+                            Some(first_after.clone()),
                         ),
                     ),
                     expected_history_row(
                         &id,
                         "update",
-                        expected_snapshot(Some(second_before), Some(final_definition)),
+                        expected_snapshot(Some(first_after), Some(final_definition)),
                     ),
                 ],
                 vec![expected_history_row(
                     &id,
                     "create",
-                    expected_snapshot(
-                        None,
-                        Some(expected_definition(
-                            &initial_name,
-                            initial_code,
-                            json!({"type": "object"}),
-                            json!({"type": "object"}),
-                            json!(null),
-                        )),
-                    ),
+                    expected_snapshot(None, Some(initial_definition)),
                 )],
             ),
         );
