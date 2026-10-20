@@ -60,6 +60,25 @@ export const Ascending: Story = {
   },
 }
 
+export const FormulaPercent: Story = {
+  name: '明示した表示形式で式の値をパーセント表示する。',
+  args: {
+    queries: {},
+    display: { relative: { label: 'Relative', format: 'percent' } },
+    result: {
+      as_of: '2099-01-01',
+      rows: [
+        {
+          key: 'stock:DEMO-A',
+          name: '架空銘柄 A',
+          values: { relative: 0.0123 },
+        },
+      ],
+    },
+    viz: { type: 'toplist', value: 'relative', order: 'desc', limit: 1 },
+  },
+}
+
 export const Empty: Story = {
   name: '表示できるデータがない状態を表示する。',
   args: {

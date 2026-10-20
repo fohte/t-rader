@@ -3,7 +3,10 @@ import { Link } from '@tanstack/react-router'
 import type { DashboardConfigIssue } from '#components/dashboard-pages/dashboard-config'
 import { WidgetToplist, WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
-import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
+import type {
+  WidgetDisplayDefinitions,
+  WidgetQueryDefinitions,
+} from '#lib/widget-value-format'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
 
@@ -13,6 +16,7 @@ export type DashboardWidgetPageState = {
   width: 'half' | 'full'
   definition: {
     queries: WidgetQueryDefinitions
+    display?: WidgetDisplayDefinitions
     viz: Extract<
       components['schemas']['WidgetVisualizationRequest'],
       { type: 'treemap' | 'toplist' }
@@ -125,12 +129,14 @@ function WidgetCard({ widget }: { widget: DashboardWidgetPageState }) {
       ) : widget.definition.viz.type === 'treemap' ? (
         <WidgetTreemap
           queries={widget.definition.queries}
+          display={widget.definition.display}
           result={widget.result}
           viz={widget.definition.viz}
         />
       ) : (
         <WidgetToplist
           queries={widget.definition.queries}
+          display={widget.definition.display}
           result={widget.result}
           viz={widget.definition.viz}
         />

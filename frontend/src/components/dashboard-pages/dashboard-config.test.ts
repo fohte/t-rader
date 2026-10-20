@@ -16,11 +16,18 @@ widgets:
         by: stock
         universe:
           stocks: [DEMO-A]
+    display:
+      movement:
+        label: Movement
+        format: percent
     viz:
       type: toplist
       value: movement
       order: desc
       limit: 5
+      bar_scale:
+        min: -0.1
+        max: 0.1
 `
 
 const expectedDashboardConfig = {
@@ -40,11 +47,15 @@ const expectedDashboardConfig = {
               universe: { stocks: ['DEMO-A'] },
             },
           },
+          display: {
+            movement: { label: 'Movement', format: 'percent' },
+          },
           viz: {
             type: 'toplist',
             value: 'movement',
             order: 'desc',
             limit: 5,
+            bar_scale: { min: -0.1, max: 0.1 },
           },
         },
       },
@@ -69,11 +80,15 @@ const expectedDashboardConfigWithFixedAsOf = {
               universe: { stocks: ['DEMO-A'] },
             },
           },
+          display: {
+            movement: { label: 'Movement', format: 'percent' },
+          },
           viz: {
             type: 'toplist',
             value: 'movement',
             order: 'desc',
             limit: 5,
+            bar_scale: { min: -0.1, max: 0.1 },
           },
           time: { as_of: '2099-01-05' },
         },

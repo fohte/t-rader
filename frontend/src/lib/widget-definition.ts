@@ -60,6 +60,15 @@ function isWidgetQuery(value: unknown): boolean {
   )
 }
 
+function isDisplay(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isOptionalString(value.label) &&
+    isOptionalString(value.format) &&
+    hasOnlyKeys(value, ['label', 'format'])
+  )
+}
+
 function isVisualization(value: unknown): boolean {
   return isRecord(value) && typeof value.type === 'string'
 }
@@ -80,7 +89,7 @@ export function parseWidgetQueryRequest(
     }
   }
   const unsupportedKey = Object.keys(value).find(
-    (key) => !['queries', 'formulas', 'viz', 'time'].includes(key),
+    (key) => !['queries', 'formulas', 'display', 'viz', 'time'].includes(key),
   )
   if (unsupportedKey != null) {
     return {
@@ -108,6 +117,12 @@ export function parseWidgetQueryRequest(
       ))
   ) {
     return { ok: false, message: 'formulas は文字列のマップにしてください。' }
+  }
+  if (
+    value.display !== undefined &&
+    (!isRecord(value.display) || !Object.values(value.display).every(isDisplay))
+  ) {
+    return { ok: false, message: 'display は表示設定のマップにしてください。' }
   }
   if (!isVisualization(value.viz)) {
     return { ok: false, message: 'viz.type は文字列で指定してください。' }

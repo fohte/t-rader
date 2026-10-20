@@ -9,7 +9,7 @@ function createWidgetQueryBody(
   definition: DashboardConfig['widgets'][number]['definition'],
   asOf: string | null | undefined,
 ) {
-  const { queries, formulas, viz, time } = definition
+  const { queries, formulas, display, viz, time } = definition
   const requestTime =
     asOf === undefined
       ? time
@@ -19,6 +19,7 @@ function createWidgetQueryBody(
   return {
     queries,
     ...(formulas == null ? {} : { formulas }),
+    ...(display == null ? {} : { display }),
     viz,
     ...(requestTime == null ? {} : { time: requestTime }),
   }
@@ -48,6 +49,7 @@ export function useDashboardWidgetQueries(
         width: widget.width,
         definition: {
           queries: widget.definition.queries,
+          display: widget.definition.display ?? {},
           viz: widget.definition.viz,
         },
         isPending: query?.isPending ?? true,

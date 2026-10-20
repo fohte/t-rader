@@ -5,6 +5,7 @@ import type { components } from '#lib/api/schema.gen'
 import { parseGroupRefId } from '#lib/ref-id'
 import {
   formatWidgetValue,
+  type WidgetDisplayDefinitions,
   type WidgetQueryDefinitions,
 } from '#lib/widget-value-format'
 
@@ -25,10 +26,12 @@ export function WidgetTreemap({
   result,
   viz,
   queries,
+  display = {},
 }: {
   result: WidgetQueryResponse
   viz: WidgetTreemapDefinition
   queries: WidgetQueryDefinitions
+  display?: WidgetDisplayDefinitions
 }) {
   const leaves = result.rows.flatMap((row): TreemapLeaf[] => {
     const sizeValue = row.values[viz.size]
@@ -102,7 +105,12 @@ export function WidgetTreemap({
                   backgroundColor: 'var(--color-bg-tertiary)',
                   borderColor: 'var(--color-border)',
                 }
-        const formattedValue = formatWidgetValue(viz.color, tile.color, queries)
+        const formattedValue = formatWidgetValue(
+          viz.color,
+          tile.color,
+          queries,
+          display,
+        )
         const label = `${tile.row.name}: ${formattedValue}`
         const position = {
           left: `${String((tile.x / LAYOUT_WIDTH) * 100)}%`,

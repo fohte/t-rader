@@ -3151,6 +3151,13 @@ export interface components {
     WidgetAggregationRequest: 'mkt_cap_weighted' | 'mean' | 'sum' | 'count'
     /** @enum {string} */
     WidgetByRequest: 'none' | 'stock' | 'group'
+    WidgetGroupDto: {
+      key: string
+      name: string
+    }
+    WidgetHierarchyRequest: {
+      axis: string
+    }
     /**
      * @description スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。
      * @enum {string}
@@ -3160,6 +3167,9 @@ export interface components {
     /** @enum {string} */
     WidgetPeriodRequest: '1d' | '5d' | '20d' | '60d'
     WidgetQueryRequest: {
+      display?: {
+        [key: string]: components['schemas']['WidgetValueDisplayRequest']
+      }
       formulas?: {
         [key: string]: string
       }
@@ -3184,11 +3194,23 @@ export interface components {
       rows: components['schemas']['WidgetQueryResultRow'][]
     }
     WidgetQueryResultRow: {
+      classification?:
+        null | components['schemas']['WidgetRowClassificationDto']
       key: string
       name: string
       values: {
         [key: string]: number | null
       }
+    }
+    WidgetRowClassificationDto: {
+      axis: string
+      group?: null | components['schemas']['WidgetGroupDto']
+    }
+    WidgetScaleRequest: {
+      /** Format: double */
+      max: number
+      /** Format: double */
+      min: number
     }
     WidgetTimeRequest: {
       /** Format: date */
@@ -3205,17 +3227,26 @@ export interface components {
     WidgetUniverseStocksRequest: {
       stocks: string[]
     }
+    WidgetValueDisplayRequest: {
+      format?: null | components['schemas']['WidgetValueFormatRequest']
+      label?: string | null
+    }
+    /** @enum {string} */
+    WidgetValueFormatRequest: 'number' | 'percent'
     /** @enum {string} */
     WidgetVisualizationOrderRequest: 'asc' | 'desc'
     /** @description スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。 */
     WidgetVisualizationRequest:
       | {
           color: string
+          color_scale?: null | components['schemas']['WidgetScaleRequest']
+          hierarchy?: null | components['schemas']['WidgetHierarchyRequest']
           size: string
           /** @enum {string} */
           type: 'treemap'
         }
       | {
+          bar_scale?: null | components['schemas']['WidgetScaleRequest']
           /** Format: int32 */
           limit: number
           order: components['schemas']['WidgetVisualizationOrderRequest']

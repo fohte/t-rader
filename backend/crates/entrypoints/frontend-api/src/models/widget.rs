@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 use core_application::widget::{
-    WidgetAggregation, WidgetBy, WidgetDefinition, WidgetMetric, WidgetPeriod, WidgetQuery,
-    WidgetTime, WidgetUniverse, WidgetVisualization, WidgetVisualizationOrder,
+    WidgetAggregation, WidgetBy, WidgetDefinition, WidgetHierarchy, WidgetMetric, WidgetPeriod,
+    WidgetQuery, WidgetScale, WidgetTime, WidgetUniverse, WidgetValueDisplay, WidgetValueFormat,
+    WidgetVisualization, WidgetVisualizationOrder,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,8 @@ pub struct WidgetQueryRequest {
     pub queries: BTreeMap<String, WidgetQueryRequestDefinition>,
     #[serde(default)]
     pub formulas: BTreeMap<String, String>,
+    #[serde(default)]
+    pub display: BTreeMap<String, WidgetValueDisplayRequest>,
     pub viz: WidgetVisualizationRequest,
     #[serde(default)]
     pub time: WidgetTimeRequest,
@@ -29,6 +32,11 @@ impl From<WidgetQueryRequest> for WidgetDefinition {
                 .map(|(name, query)| (name, query.into()))
                 .collect(),
             formulas: request.formulas,
+            display: request
+                .display
+                .into_iter()
+                .map(|(name, display)| (name, display.into()))
+                .collect(),
             viz: request.viz.into(),
             time: request.time.into(),
         }
@@ -50,6 +58,70 @@ pub struct WidgetQueryRequestDefinition {
     pub universe: Option<WidgetUniverseRequest>,
     #[serde(default)]
     pub agg: Option<WidgetAggregationRequest>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetValueDisplayRequest {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub format: Option<WidgetValueFormatRequest>,
+}
+
+impl From<WidgetValueDisplayRequest> for WidgetValueDisplay {
+    fn from(display: WidgetValueDisplayRequest) -> Self {
+        Self {
+            label: display.label,
+            format: display.format.map(Into::into),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WidgetValueFormatRequest {
+    Number,
+    Percent,
+}
+
+impl From<WidgetValueFormatRequest> for WidgetValueFormat {
+    fn from(format: WidgetValueFormatRequest) -> Self {
+        match format {
+            WidgetValueFormatRequest::Number => Self::Number,
+            WidgetValueFormatRequest::Percent => Self::Percent,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetHierarchyRequest {
+    pub axis: String,
+}
+
+impl From<WidgetHierarchyRequest> for WidgetHierarchy {
+    fn from(hierarchy: WidgetHierarchyRequest) -> Self {
+        Self {
+            axis: hierarchy.axis,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetScaleRequest {
+    pub min: Decimal,
+    pub max: Decimal,
+}
+
+impl From<WidgetScaleRequest> for WidgetScale {
+    fn from(scale: WidgetScaleRequest) -> Self {
+        Self {
+            min: scale.min,
+            max: scale.max,
+        }
+    }
 }
 
 impl From<WidgetQueryRequestDefinition> for WidgetQuery {
@@ -199,11 +271,17 @@ pub enum WidgetVisualizationRequest {
     Treemap {
         size: String,
         color: String,
+        #[serde(default)]
+        hierarchy: Option<WidgetHierarchyRequest>,
+        #[serde(default)]
+        color_scale: Option<WidgetScaleRequest>,
     },
     Toplist {
         value: String,
         order: WidgetVisualizationOrderRequest,
         limit: u32,
+        #[serde(default)]
+        bar_scale: Option<WidgetScaleRequest>,
     },
     Table {
         columns: Vec<String>,
@@ -216,15 +294,27 @@ pub enum WidgetVisualizationRequest {
 impl From<WidgetVisualizationRequest> for WidgetVisualization {
     fn from(viz: WidgetVisualizationRequest) -> Self {
         match viz {
-            WidgetVisualizationRequest::Treemap { size, color } => Self::Treemap { size, color },
+            WidgetVisualizationRequest::Treemap {
+                size,
+                color,
+                hierarchy,
+                color_scale,
+            } => Self::Treemap {
+                size,
+                color,
+                hierarchy: hierarchy.map(Into::into),
+                color_scale: color_scale.map(Into::into),
+            },
             WidgetVisualizationRequest::Toplist {
                 value,
                 order,
                 limit,
+                bar_scale,
             } => Self::Toplist {
                 value,
                 order: order.into(),
                 limit,
+                bar_scale: bar_scale.map(Into::into),
             },
             WidgetVisualizationRequest::Table { columns } => Self::Table { columns },
             WidgetVisualizationRequest::Line { series } => Self::Line { series },
@@ -289,6 +379,20 @@ pub struct WidgetQueryResultRow {
     pub key: String,
     pub name: String,
     pub values: BTreeMap<String, Option<Decimal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<WidgetRowClassificationDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetRowClassificationDto {
+    pub axis: String,
+    pub group: Option<WidgetGroupDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetGroupDto {
+    pub key: String,
+    pub name: String,
 }
 
 impl From<core_application::widget::WidgetValueRow> for WidgetQueryResultRow {
@@ -301,6 +405,15 @@ impl From<core_application::widget::WidgetValueRow> for WidgetQueryResultRow {
                 .into_iter()
                 .map(|(name, value)| (name, value.map(|value| value.normalize())))
                 .collect(),
+            classification: row
+                .classification
+                .map(|classification| WidgetRowClassificationDto {
+                    axis: classification.axis,
+                    group: classification.group.map(|group| WidgetGroupDto {
+                        key: group.key,
+                        name: group.name,
+                    }),
+                }),
         }
     }
 }

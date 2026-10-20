@@ -195,6 +195,20 @@ pub struct DashboardWidgetRowPreview {
     pub name: String,
     #[schemars(with = "BTreeMap<String, Option<f64>>")]
     pub values: BTreeMap<String, Option<Decimal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<DashboardWidgetRowClassification>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardWidgetRowClassification {
+    pub axis: String,
+    pub group: Option<DashboardWidgetGroup>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardWidgetGroup {
+    pub key: String,
+    pub name: String,
 }
 
 impl From<WidgetValueRow> for DashboardWidgetRowPreview {
@@ -203,6 +217,15 @@ impl From<WidgetValueRow> for DashboardWidgetRowPreview {
             key: row.key.as_string(),
             name: row.name,
             values: row.values,
+            classification: row.classification.map(|classification| {
+                DashboardWidgetRowClassification {
+                    axis: classification.axis,
+                    group: classification.group.map(|group| DashboardWidgetGroup {
+                        key: group.key,
+                        name: group.name,
+                    }),
+                }
+            }),
         }
     }
 }

@@ -90,6 +90,56 @@ afterEach(() => {
 })
 
 describe('useDashboardPageData', () => {
+  it('ウィジェットの表示設定を API と表示 state に渡す', async () => {
+    activeMiddleware = installWidgetQueryCapture()
+    const displayConfig: DashboardConfig = {
+      title: '市場の動き',
+      widgets: [
+        {
+          title: '値動き',
+          width: 'half',
+          definition: {
+            queries: {
+              movement: { metric: 'change', period: '1d', by: 'stock' },
+            },
+            display: { movement: { label: 'Movement', format: 'percent' } },
+            viz: {
+              type: 'toplist',
+              value: 'movement',
+              order: 'desc',
+              limit: 5,
+            },
+          },
+        },
+      ],
+    }
+    const hook = renderHook(
+      () => useDashboardPageData(displayConfig, 'sample-market'),
+      { wrapper: createQueryClientWrapper() },
+    )
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 1) {
+        throw new Error('widget request is not complete')
+      }
+    })
+
+    expect(
+      activeMiddleware.requests.concat(
+        hook.result.current.widgets.map((widget) => widget.definition.display),
+      ),
+    ).toEqual([
+      {
+        queries: {
+          movement: { metric: 'change', period: '1d', by: 'stock' },
+        },
+        display: { movement: { label: 'Movement', format: 'percent' } },
+        viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
+      },
+      { movement: { label: 'Movement', format: 'percent' } },
+    ])
+  })
+
   it('初期表示では最新を使い、日付指定後に最新へ戻せる', async () => {
     activeMiddleware = installWidgetQueryCapture()
     const hook = renderHook(

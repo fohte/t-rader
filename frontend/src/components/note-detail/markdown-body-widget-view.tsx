@@ -1,6 +1,9 @@
 import { WidgetToplist, WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
-import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
+import type {
+  WidgetDisplayDefinitions,
+  WidgetQueryDefinitions,
+} from '#lib/widget-value-format'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
 type WidgetVisualization = Extract<
@@ -23,6 +26,7 @@ export type MarkdownBodyWidgetState =
   | {
       kind: 'ready'
       queries: WidgetQueryDefinitions
+      display?: WidgetDisplayDefinitions
       result: WidgetQueryResponse
       viz: WidgetVisualization
     }
@@ -77,12 +81,14 @@ export function MarkdownBodyWidgetView({
         ) : state.viz.type === 'treemap' ? (
           <WidgetTreemap
             queries={state.queries}
+            display={state.display}
             result={state.result}
             viz={state.viz}
           />
         ) : (
           <WidgetToplist
             queries={state.queries}
+            display={state.display}
             result={state.result}
             viz={state.viz}
           />

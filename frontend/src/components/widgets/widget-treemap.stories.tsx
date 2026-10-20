@@ -109,6 +109,25 @@ export const StockRows: Story = {
   args: { queries: stockQueries, result: stockResult },
 }
 
+export const FormulaPercent: Story = {
+  name: '式の値を明示した表示形式でパーセント表示する。',
+  args: {
+    queries: {},
+    display: { relative: { label: 'Relative', format: 'percent' } },
+    result: {
+      as_of: '2099-01-01',
+      rows: [
+        {
+          key: 'stock:DEMO-A',
+          name: '架空銘柄 A',
+          values: { size: 1, relative: 0.0123 },
+        },
+      ],
+    },
+    viz: { type: 'treemap', size: 'size', color: 'relative' },
+  },
+}
+
 export const ManyGroups: Story = {
   name: 'タイルが多い場合も各タイルの広さに応じてラベルを表示する。',
   args: { result: manyGroupResult },

@@ -23,4 +23,20 @@ pub struct QueryWidgetRowDto {
     pub name: String,
     #[schemars(with = "std::collections::BTreeMap<String, Option<f64>>")]
     pub values: std::collections::BTreeMap<String, Option<rust_decimal::Decimal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classification: Option<QueryWidgetRowClassificationDto>,
+}
+
+#[cfg_attr(test, derive(Deserialize))]
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct QueryWidgetRowClassificationDto {
+    pub axis: String,
+    pub group: Option<QueryWidgetGroupDto>,
+}
+
+#[cfg_attr(test, derive(Deserialize))]
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct QueryWidgetGroupDto {
+    pub key: String,
+    pub name: String,
 }

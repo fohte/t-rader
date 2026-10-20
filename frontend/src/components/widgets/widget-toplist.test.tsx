@@ -63,6 +63,33 @@ describe('WidgetToplist', () => {
     ])
   })
 
+  it('式の値は明示された表示形式でパーセント表示する', () => {
+    render(
+      <WidgetToplist
+        queries={{}}
+        display={{ relative: { label: 'Relative', format: 'percent' } }}
+        result={{
+          as_of: '2099-01-01',
+          rows: [
+            {
+              key: 'stock:DEMO-A',
+              name: '架空銘柄 A',
+              values: { relative: 0.0123 },
+            },
+          ],
+        }}
+        viz={{ type: 'toplist', value: 'relative', order: 'desc', limit: 1 }}
+      />,
+    )
+
+    expect(
+      screen.getAllByRole('listitem').map((row) => ({
+        label: row.getAttribute('aria-label'),
+        value: row.lastElementChild?.textContent ?? null,
+      })),
+    ).toEqual([{ label: '1 位: 架空銘柄 A +1.23%', value: '+1.23%' }])
+  })
+
   it('値が null または欠落した行を表示しない', () => {
     render(
       <WidgetToplist

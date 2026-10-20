@@ -20,6 +20,9 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
             }
             error => error.into(),
         },
+        WidgetUseCaseError::Query(WidgetQueryError::StockGroups(error)) => {
+            AppError::Internal(error.to_string())
+        }
     }
 }
 

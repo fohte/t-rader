@@ -4,12 +4,14 @@ mod types;
 mod validation;
 
 pub use query::{
-    SharedWidgetQuerySource, WidgetQueryError, WidgetQueryResponse, WidgetQueryRow,
-    WidgetQuerySource, WidgetRowKey, WidgetUseCaseError, WidgetUseCases, WidgetValueRow,
+    SharedWidgetGroupMembershipSource, SharedWidgetQuerySource, WidgetGroup,
+    WidgetGroupMembershipSource, WidgetQueryError, WidgetQueryResponse, WidgetQueryRow,
+    WidgetQuerySource, WidgetRowClassification, WidgetRowKey, WidgetUseCaseError, WidgetUseCases,
+    WidgetValueRow,
 };
 pub use types::{
-    WidgetAggregation, WidgetBy, WidgetDefinition, WidgetDefinitionParseError, WidgetMetric,
-    WidgetPeriod, WidgetQuery, WidgetTime, WidgetUniverse, WidgetVisualization,
-    WidgetVisualizationOrder,
+    WidgetAggregation, WidgetBy, WidgetDefinition, WidgetDefinitionParseError, WidgetHierarchy,
+    WidgetMetric, WidgetPeriod, WidgetQuery, WidgetScale, WidgetTime, WidgetUniverse,
+    WidgetValueDisplay, WidgetValueFormat, WidgetVisualization, WidgetVisualizationOrder,
 };
 pub use validation::{WidgetValidationError, WidgetValidationErrors};

@@ -3,7 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_application::widget::{
-    WidgetQuery, WidgetQueryError, WidgetQueryRow, WidgetQuerySource, WidgetRowKey, WidgetUseCases,
+    SharedWidgetGroupMembershipSource, WidgetGroupMembershipSource, WidgetQuery, WidgetQueryError,
+    WidgetQueryRow, WidgetQuerySource, WidgetRowKey, WidgetUseCases,
 };
 use indoc::indoc;
 use rust_decimal::Decimal;
@@ -33,6 +34,19 @@ const DASHBOARD_YAML: &str = indoc! {"
 
 struct FakeWidgetQuerySource {
     unavailable_date: Option<NaiveDate>,
+}
+
+struct EmptyWidgetGroupMembershipSource;
+
+#[async_trait]
+impl WidgetGroupMembershipSource for EmptyWidgetGroupMembershipSource {
+    async fn list_memberships(
+        &self,
+        _stock_ids: &[String],
+        _axis_key: &str,
+    ) -> Result<Vec<core_application::stock_group::StockGroupMembership>, WidgetQueryError> {
+        Ok(Vec::new())
+    }
 }
 
 #[async_trait]
@@ -76,8 +90,10 @@ fn test_server_with_source(
     db: gateway_postgres::DatabaseHandle,
     source: FakeWidgetQuerySource,
 ) -> super::tests_common::MgmtTestServer {
-    build_server(db, Arc::new(FakeAgentTaskClient::new()))
-        .with_widgets(WidgetUseCases::new(Arc::new(source)))
+    build_server(db, Arc::new(FakeAgentTaskClient::new())).with_widgets(WidgetUseCases::new(
+        Arc::new(source),
+        Arc::new(EmptyWidgetGroupMembershipSource) as SharedWidgetGroupMembershipSource,
+    ))
 }
 
 #[backend_test_macros::database_test]
