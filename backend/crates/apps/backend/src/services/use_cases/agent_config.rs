@@ -15,6 +15,7 @@ impl UseCases {
             self.unit_of_work.clone(),
             agent_config_repository,
             Arc::new(PostgresSubagentDefinitionRepository::new(self.db.clone())),
+            self.change_history.clone(),
         )
     }
 
