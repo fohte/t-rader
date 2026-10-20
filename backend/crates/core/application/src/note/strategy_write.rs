@@ -453,6 +453,7 @@ mod tests {
     const EXECUTION_STEP_ID: Uuid = Uuid::from_u128(5);
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
     const EVALUATION_ID: Uuid = Uuid::from_u128(0x101);
+    const BARE_UUID: &str = "4d7a2c91-6e30-4b8f-9c52-0a31d6e7f284";
 
     fn custom_indicator_evaluation_use_cases(
         evaluations: impl IntoIterator<Item = CustomIndicatorEvaluation>,
@@ -2076,6 +2077,101 @@ mod tests {
             .write_with_warning_dispositions(write_body_command(body), vec![])
             .await;
         assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
+    }
+
+    #[tokio::test]
+    async fn gated_write_rejects_bare_uuid_updates_even_with_a_reason() {
+        let body = format!("参照先 {BARE_UUID}");
+        let start = body.find(BARE_UUID).expect("UUID is in the body");
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command(&body),
+                vec![NoteBodyWarningDisposition {
+                    id: format!("no-bare-uuid:{BARE_UUID}:1"),
+                    reason: "参照先を記録するため".into(),
+                }],
+            )
+            .await;
+        let diagnostics = result.err().and_then(|error| match error {
+            NoteUseCaseError::BodyLintRejected { diagnostics, .. } => Some(diagnostics),
+            _ => None,
+        });
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (diagnostics, inserted_version_count),
+            (
+                Some(vec![core_domain::markdown_lint::LintDiagnostic {
+                    rule_id: "no-bare-uuid",
+                    id: format!("no-bare-uuid:{BARE_UUID}:1"),
+                    severity: core_domain::markdown_lint::Severity::Error,
+                    range: start..start + BARE_UUID.len(),
+                    message: "UUID を本文に直接書かず、参照先のタイトル付きリンクを本文に引用してください。"
+                        .into(),
+                    fix: None,
+                }]),
+                0,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn gated_write_checks_bare_uuid_when_body_is_omitted() {
+        let mut current_version = source_version();
+        current_version.body_md = BARE_UUID.into();
+        let (use_cases, repository) = make_note_use_cases(current_version);
+        let mut command = write_body_command("replacement");
+        command.body_md = None;
+        let result = use_cases
+            .write_with_warning_dispositions(
+                command,
+                vec![NoteBodyWarningDisposition {
+                    id: format!("no-bare-uuid:{BARE_UUID}:1"),
+                    reason: "参照先を記録するため".into(),
+                }],
+            )
+            .await;
+        let diagnostics = result.err().and_then(|error| match error {
+            NoteUseCaseError::BodyLintRejected { diagnostics, .. } => Some(diagnostics),
+            _ => None,
+        });
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (diagnostics, inserted_version_count),
+            (
+                Some(vec![core_domain::markdown_lint::LintDiagnostic {
+                    rule_id: "no-bare-uuid",
+                    id: format!("no-bare-uuid:{BARE_UUID}:1"),
+                    severity: core_domain::markdown_lint::Severity::Error,
+                    range: 0..BARE_UUID.len(),
+                    message: "UUID を本文に直接書かず、参照先のタイトル付きリンクを本文に引用してください。"
+                        .into(),
+                    fix: None,
+                }]),
+                0,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn human_write_can_edit_a_note_with_a_bare_uuid() {
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let mut command = write_body_command(BARE_UUID);
+        command.created_by_kind = "human".into();
+        command.actor = Actor::Human;
+        let mut result = use_cases
+            .write(command)
+            .await
+            .expect("human edits are not subject to the agent lint profile");
+        result.snapshot.version.id = NORMALIZED_VERSION_ID;
+        let mut expected = expected_write_result("Updated title", BARE_UUID, json!({}), None);
+        expected.snapshot.version.status = "approved".into();
+        expected.snapshot.version.created_by_kind = "human".into();
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!((result, inserted_version_count), (expected, 1));
     }
 
     #[rstest]
