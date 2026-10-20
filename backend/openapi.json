@@ -2847,7 +2847,7 @@
         "tags": [
           "history"
         ],
-        "summary": "変更履歴一覧。target で絞らない場合は全体の最新を返す。",
+        "summary": "変更履歴一覧。target 条件がなければ全体の最新を返す。created_at と ID の降順で並べる。",
         "operationId": "list_history",
         "parameters": [
           {
@@ -2876,6 +2876,16 @@
               "type": "integer",
               "format": "int64",
               "minimum": 0
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "ページを続ける履歴 ID。target 条件を指定した場合は条件に一致する ID を指定する。",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],

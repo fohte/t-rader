@@ -13,8 +13,8 @@ mod use_cases;
 mod fake;
 
 pub use query::{
-    ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQuery, ChangeHistoryQueryError,
-    SharedChangeHistoryQuery,
+    ChangeHistoryCursor, ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQuery,
+    ChangeHistoryQueryError, SharedChangeHistoryQuery,
 };
 pub use use_cases::{ChangeHistoryUseCaseError, ChangeHistoryUseCases};
 
@@ -48,6 +48,8 @@ pub enum TargetKind {
     Trade,
     Comment,
     CustomIndicator,
+    AgentConfig,
+    Trigger,
     NoteKind,
     StockGroup,
     Stock,
@@ -62,10 +64,28 @@ impl TargetKind {
             Self::Trade => "trade",
             Self::Comment => "comment",
             Self::CustomIndicator => "custom_indicator",
+            Self::AgentConfig => "agent_config",
+            Self::Trigger => "trigger",
             Self::NoteKind => "note_kind",
             Self::StockGroup => "stock_group",
             Self::Stock => "stock",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TargetKind;
+
+    #[test]
+    fn definition_target_kinds_use_their_persisted_keys() {
+        assert_eq!(
+            [
+                TargetKind::AgentConfig.as_str(),
+                TargetKind::Trigger.as_str()
+            ],
+            ["agent_config", "trigger"],
+        );
     }
 }
 

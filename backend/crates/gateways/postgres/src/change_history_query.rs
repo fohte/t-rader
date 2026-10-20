@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use core_application::change_history::{
     ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQuery, ChangeHistoryQueryError,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
@@ -26,16 +26,28 @@ impl ChangeHistoryQuery for PostgresChangeHistoryQuery {
         &self,
         query: ChangeHistoryListQuery,
     ) -> Result<Vec<ChangeHistoryEntry>, ChangeHistoryQueryError> {
-        let mut select =
-            change_history::Entity::find().order_by_desc(change_history::Column::CreatedAt);
+        let mut select = change_history::Entity::find();
         if let Some(target_kind) = query.target_kind {
             select = select.filter(change_history::Column::TargetKind.eq(target_kind));
         }
         if let Some(target_id) = query.target_id {
             select = select.filter(change_history::Column::TargetId.eq(target_id));
         }
+        if let Some(before) = query.before {
+            select = select.filter(
+                Condition::any()
+                    .add(change_history::Column::CreatedAt.lt(before.created_at))
+                    .add(
+                        Condition::all()
+                            .add(change_history::Column::CreatedAt.eq(before.created_at))
+                            .add(change_history::Column::Id.lt(before.id)),
+                    ),
+            );
+        }
 
         select
+            .order_by_desc(change_history::Column::CreatedAt)
+            .order_by_desc(change_history::Column::Id)
             .limit(query.limit)
             .all(&self.db)
             .await
@@ -84,7 +96,7 @@ mod tests {
 
     use chrono::{DateTime, FixedOffset, Utc};
     use core_application::change_history::{
-        ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQuery,
+        ChangeHistoryCursor, ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQuery,
     };
     use rstest::{fixture, rstest};
     use sea_orm::{ActiveValue::Set, EntityTrait};
@@ -193,6 +205,7 @@ mod tests {
             .list(ChangeHistoryListQuery {
                 target_kind: None,
                 target_id: None,
+                before: None,
                 limit: 10,
             })
             .await
@@ -220,12 +233,98 @@ mod tests {
             .list(ChangeHistoryListQuery {
                 target_kind: Some("trade".into()),
                 target_id: Some(history_fixture.target_id),
+                before: None,
                 limit: 10,
             })
             .await
             .map_err(|error| error.to_string());
 
         assert_eq!(result, Ok(vec![history_fixture.new, history_fixture.old]),);
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn list_uses_created_at_and_id_as_a_stable_cursor() {
+        let db = create_test_transaction().await;
+        let target_id = Uuid::from_u128(7_300);
+        let same_time = timestamp(30);
+        let entries = [
+            entry(
+                Uuid::from_u128(7_301),
+                "trigger",
+                target_id,
+                json!({ "sample": "older-id" }),
+                None,
+                same_time,
+            ),
+            entry(
+                Uuid::from_u128(7_302),
+                "trigger",
+                target_id,
+                json!({ "sample": "cursor" }),
+                None,
+                same_time,
+            ),
+            entry(
+                Uuid::from_u128(7_303),
+                "trigger",
+                target_id,
+                json!({ "sample": "newer-id" }),
+                None,
+                same_time,
+            ),
+            entry(
+                Uuid::from_u128(7_304),
+                "trigger",
+                target_id,
+                json!({ "sample": "newer-time" }),
+                None,
+                timestamp(31),
+            ),
+            entry(
+                Uuid::from_u128(7_305),
+                "trigger",
+                target_id,
+                json!({ "sample": "older-time" }),
+                None,
+                timestamp(29),
+            ),
+            entry(
+                Uuid::from_u128(7_306),
+                "agent_config",
+                target_id,
+                json!({ "sample": "other-kind" }),
+                None,
+                timestamp(29),
+            ),
+            entry(
+                Uuid::from_u128(7_307),
+                "trigger",
+                Uuid::from_u128(7_308),
+                json!({ "sample": "other-target" }),
+                None,
+                timestamp(29),
+            ),
+        ];
+        for history in &entries {
+            insert_history(&db, history).await;
+        }
+        let query = PostgresChangeHistoryQuery::new(db);
+
+        let result = query
+            .list(ChangeHistoryListQuery {
+                target_kind: Some("trigger".into()),
+                target_id: Some(target_id),
+                before: Some(ChangeHistoryCursor {
+                    id: Uuid::from_u128(7_302),
+                    created_at: same_time,
+                }),
+                limit: 10,
+            })
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(result, Ok(vec![entries[0].clone(), entries[4].clone()]));
     }
 
     #[rstest]
