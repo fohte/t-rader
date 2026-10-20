@@ -40,7 +40,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 `list_note_kinds` は REST (`/api/note-kinds`) と共通の application ユースケース (`backend/crates/core/application/src/note_kind/use_cases.rs`) を経由する。ノート種別の設定変更には同じ HTTP API を使う。
 
-Trigger 設定の HTTP API (`POST /api/strategies/{id}/triggers`, `PUT /api/triggers/{trigger_id}`, `DELETE /api/triggers/{trigger_id}`) は維持している。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
+Trigger 設定の HTTP API (`POST /api/strategies/{id}/triggers`, `PUT /api/triggers/{trigger_id}`, `DELETE /api/triggers/{trigger_id}`) は維持している。作成・更新・削除では、`change_history.target_kind = "trigger"` と actor `human` / label `user` で定義 snapshot を記録する。
 
 ## 戦略実行 MCP (`/mcp/strategy`)
 

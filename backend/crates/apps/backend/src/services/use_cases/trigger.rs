@@ -20,6 +20,7 @@ impl UseCases {
             self.strategy_existence.clone(),
             Arc::new(PostgresStrategyRepository::new(self.db.clone())),
             strategy_tasks,
+            self.change_history.clone(),
         )
     }
 }

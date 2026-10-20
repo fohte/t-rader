@@ -1,15 +1,16 @@
 use chrono::{DateTime, Utc};
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::agent_task_client::AgentTaskClient;
+use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
 use crate::strategy::SharedStrategyRepository;
 use crate::strategy_existence::SharedStrategyExistence;
 use crate::strategy_scope::StrategyScope;
 use crate::strategy_task::{
     PreparedStrategyTaskSubmission, StrategyTaskUseCases, SubmittedTask, TaskSource,
 };
-use crate::unit_of_work::SharedUnitOfWork;
+use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 use self::commands::{apply_update, ensure_scope, validate_create};
 use self::validation::validate_event_match;
@@ -29,6 +30,7 @@ pub struct TriggerUseCases {
     strategy_existence: SharedStrategyExistence,
     strategy_repository: SharedStrategyRepository,
     strategy_tasks: StrategyTaskUseCases,
+    change_history: SharedChangeHistoryPort,
 }
 
 impl TriggerUseCases {
@@ -38,6 +40,7 @@ impl TriggerUseCases {
         strategy_existence: SharedStrategyExistence,
         strategy_repository: SharedStrategyRepository,
         strategy_tasks: StrategyTaskUseCases,
+        change_history: SharedChangeHistoryPort,
     ) -> Self {
         Self {
             unit_of_work,
@@ -45,6 +48,7 @@ impl TriggerUseCases {
             strategy_existence,
             strategy_repository,
             strategy_tasks,
+            change_history,
         }
     }
 
@@ -112,6 +116,14 @@ impl TriggerUseCases {
                 },
             )
             .await?;
+        self.record_history(
+            &transaction,
+            trigger.trigger_id,
+            Op::Create,
+            None,
+            Some(&trigger),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(trigger)
     }
@@ -129,13 +141,22 @@ impl TriggerUseCases {
         let transaction = self.unit_of_work.begin().await?;
         let current = self
             .repository
-            .find_by_id_in_transaction(&transaction, trigger_id)
+            .find_by_id_for_update_in_transaction(&transaction, trigger_id)
             .await?
             .ok_or(TriggerUseCaseError::NotFound(trigger_id))?;
         ensure_scope(&current, scope)?;
 
+        let before = current.clone();
         let updated = apply_update(current, command)?;
         let updated = self.repository.update(&transaction, updated).await?;
+        self.record_history(
+            &transaction,
+            trigger_id,
+            Op::Update,
+            Some(&before),
+            Some(&updated),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(updated)
     }
@@ -148,13 +169,15 @@ impl TriggerUseCases {
         let transaction = self.unit_of_work.begin().await?;
         let current = self
             .repository
-            .find_by_id_in_transaction(&transaction, trigger_id)
+            .find_by_id_for_update_in_transaction(&transaction, trigger_id)
             .await?
             .ok_or(TriggerUseCaseError::NotFound(trigger_id))?;
         ensure_scope(&current, scope)?;
         if !self.repository.delete(&transaction, trigger_id).await? {
             return Err(TriggerUseCaseError::NotFound(trigger_id));
         }
+        self.record_history(&transaction, trigger_id, Op::Delete, Some(&current), None)
+            .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(())
     }
@@ -355,6 +378,55 @@ impl TriggerUseCases {
         }
         Ok(purpose)
     }
+
+    async fn record_history(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+        op: Op,
+        before: Option<&Trigger>,
+        after: Option<&Trigger>,
+    ) -> Result<(), TriggerUseCaseError> {
+        self.change_history
+            .record(
+                transaction,
+                ChangeHistoryRecord {
+                    actor: Actor::Human,
+                    target_kind: TargetKind::Trigger,
+                    target_id: trigger_id,
+                    op,
+                    diff: definition_snapshot(before, after),
+                    summary: None,
+                },
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+fn definition_snapshot(before: Option<&Trigger>, after: Option<&Trigger>) -> Value {
+    fn definition(trigger: &Trigger) -> Value {
+        json!({
+            "trigger_id": trigger.trigger_id,
+            "strategy_id": trigger.strategy_id,
+            "purpose": trigger.purpose,
+            "kind": trigger.kind.as_str(),
+            "schedule": trigger.schedule,
+            "hook_slug": trigger.hook_slug,
+            "event_type": trigger.event_type,
+            "event_match": trigger.event_match,
+            "prompt_template": trigger.prompt_template,
+            "enabled": trigger.enabled,
+            "business_days_only": trigger.business_days_only,
+        })
+    }
+
+    json!({
+        "format": "definition_snapshot",
+        "version": 1,
+        "before": before.map(definition),
+        "after": after.map(definition),
+    })
 }
 
 #[cfg(all(test, feature = "test-support"))]
@@ -378,6 +450,7 @@ mod tests {
             AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskStatus, FakeAgentTaskClient,
             SubmitAgentTask,
         },
+        change_history::{FakeChangeHistory, SharedChangeHistoryPort},
         strategy::{FakeStrategyRepository, SharedStrategyRepository, Strategy},
         strategy_existence::{FakeStrategyExistence, SharedStrategyExistence},
         strategy_task::{
@@ -411,6 +484,8 @@ mod tests {
         let strategy_repository: SharedStrategyRepository = strategies.clone();
         let strategy_existence: SharedStrategyExistence = Arc::new(FakeStrategyExistence::new());
         let task_repository: SharedStrategyTaskRepository = Arc::new(TestStrategyTaskRepository);
+        let change_history = Arc::new(FakeChangeHistory::new());
+        let change_history_shared: SharedChangeHistoryPort = change_history;
         let strategy_tasks =
             StrategyTaskUseCases::new(unit_of_work_shared.clone(), task_repository);
 
@@ -421,6 +496,7 @@ mod tests {
                 strategy_existence,
                 strategy_repository,
                 strategy_tasks,
+                change_history_shared,
             ),
             triggers,
             strategies,

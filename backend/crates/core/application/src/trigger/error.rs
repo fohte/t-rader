@@ -1,6 +1,7 @@
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::change_history::ChangeHistoryError;
 use crate::strategy::StrategyRepositoryError;
 use crate::strategy_existence::StrategyExistenceError;
 use crate::strategy_task::SubmitTaskError;
@@ -26,6 +27,8 @@ pub enum TriggerUseCaseError {
     Submit(#[from] SubmitTaskError),
     #[error(transparent)]
     Repository(#[from] TriggerRepositoryError),
+    #[error(transparent)]
+    ChangeHistory(#[from] ChangeHistoryError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]
