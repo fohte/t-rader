@@ -14,17 +14,17 @@ type Story = StoryObj<typeof meta>
 
 const PLAN: AgentGraphPhaseForm = {
   key: 'plan',
-  label: '調査計画',
-  model: 'claude-opus-4',
-  prompt: '仮説を立てよ',
+  label: '見出し案',
+  model: 'fictional-model-orbit',
+  prompt: 'テーマを読みやすい節に分ける',
   skills: [],
   tools: [],
   output: {
-    hypotheses: {
+    sections: {
       type: 'array',
       items: {
         title: { type: 'string' },
-        rationale: { type: 'string' },
+        description: { type: 'string' },
       },
     },
   },
@@ -33,7 +33,7 @@ const PLAN: AgentGraphPhaseForm = {
 const PLAN_WITH_PRIMITIVE_ARRAY: AgentGraphPhaseForm = {
   ...PLAN,
   output: {
-    checks: { type: 'array', items: { type: 'string' } },
+    key_points: { type: 'array', items: { type: 'string' } },
   },
 }
 
@@ -64,16 +64,12 @@ export const Default: Story = {
   name: 'shows the label field with available output properties.',
   args: {
     phases: [PLAN],
-    forEach: 'plan.hypotheses',
+    forEach: 'plan.sections',
     value: undefined,
     onChange: () => {},
   },
   render: () => (
-    <Interactive
-      phases={[PLAN]}
-      forEach="plan.hypotheses"
-      initial={undefined}
-    />
+    <Interactive phases={[PLAN]} forEach="plan.sections" initial={undefined} />
   ),
 }
 
@@ -81,12 +77,12 @@ export const Selected: Story = {
   name: 'shows a selected label from an earlier phase output.',
   args: {
     phases: [PLAN],
-    forEach: 'plan.hypotheses',
+    forEach: 'plan.sections',
     value: 'title',
     onChange: () => {},
   },
   render: () => (
-    <Interactive phases={[PLAN]} forEach="plan.hypotheses" initial="title" />
+    <Interactive phases={[PLAN]} forEach="plan.sections" initial="title" />
   ),
 }
 
@@ -94,14 +90,14 @@ export const StaleValue: Story = {
   name: 'preserves a selected label that is missing from the output properties.',
   args: {
     phases: [PLAN],
-    forEach: 'plan.hypotheses',
+    forEach: 'plan.sections',
     value: 'removed_field',
     onChange: () => {},
   },
   render: () => (
     <Interactive
       phases={[PLAN]}
-      forEach="plan.hypotheses"
+      forEach="plan.sections"
       initial="removed_field"
     />
   ),
@@ -111,14 +107,14 @@ export const NoOptions: Story = {
   name: 'shows the label field when array items have no named properties.',
   args: {
     phases: [PLAN_WITH_PRIMITIVE_ARRAY],
-    forEach: 'plan.checks',
+    forEach: 'plan.key_points',
     value: undefined,
     onChange: () => {},
   },
   render: () => (
     <Interactive
       phases={[PLAN_WITH_PRIMITIVE_ARRAY]}
-      forEach="plan.checks"
+      forEach="plan.key_points"
       initial={undefined}
     />
   ),

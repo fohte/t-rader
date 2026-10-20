@@ -92,7 +92,7 @@ export function CreateStrategyDialog({
               onChange={(e) => {
                 setName(e.target.value)
               }}
-              placeholder="例: 半導体短期スイング"
+              placeholder="名前を入力してください"
             />
           </div>
           <div className="space-y-2">

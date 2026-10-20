@@ -8,22 +8,22 @@ type AgentModel = components['schemas']['AgentModel']
 
 const MODELS: AgentModel[] = [
   {
-    id: 'claude-opus-4',
-    providers: ['anthropic'],
+    id: 'fictional-model-orbit',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: true,
   },
   {
-    id: 'claude-sonnet-4',
-    providers: ['anthropic'],
+    id: 'fictional-model-maple',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: false,
   },
   {
-    id: 'deepseek-v4-flash',
-    providers: ['deepseek'],
+    id: 'fictional-model-lantern',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: false,
@@ -56,8 +56,8 @@ function Interactive({
 
 export const Default: Story = {
   name: 'shows a selected model from the available options.',
-  args: { value: 'claude-sonnet-4', onChange: () => {}, models: MODELS },
-  render: () => <Interactive initial="claude-sonnet-4" models={MODELS} />,
+  args: { value: 'fictional-model-maple', onChange: () => {}, models: MODELS },
+  render: () => <Interactive initial="fictional-model-maple" models={MODELS} />,
 }
 
 export const Unset: Story = {
@@ -68,13 +68,13 @@ export const Unset: Story = {
 
 export const NoModelsAvailable: Story = {
   name: 'shows the model field when no choices are available.',
-  args: { value: 'claude-sonnet-4', onChange: () => {}, models: [] },
-  render: () => <Interactive initial="claude-sonnet-4" models={[]} />,
+  args: { value: 'fictional-model-maple', onChange: () => {}, models: [] },
+  render: () => <Interactive initial="fictional-model-maple" models={[]} />,
 }
 
 // 保存済みの値が一覧に無くても (typo・非推奨モデルなど) 選択肢から消えない
 export const ValueNotInList: Story = {
   name: 'preserves a selected model that is missing from the available options.',
-  args: { value: 'deprecated-model', onChange: () => {}, models: MODELS },
-  render: () => <Interactive initial="deprecated-model" models={MODELS} />,
+  args: { value: 'retired-example-model', onChange: () => {}, models: MODELS },
+  render: () => <Interactive initial="retired-example-model" models={MODELS} />,
 }

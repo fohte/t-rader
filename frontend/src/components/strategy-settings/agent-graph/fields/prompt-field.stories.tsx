@@ -22,7 +22,7 @@ function Interactive({ initial }: { initial: string }) {
 }
 
 const SAMPLE_PROMPT =
-  '与えられた問いに対し、検証すべき仮説を 2-4 件立てよ。\n\n[[indicator:USDJPY]] の direction も考慮すること。'
+  'テーマを読みやすい見出しに分ける。\n\n[[group:sample-archive/collection-a]] の内容も参照すること。'
 
 export const Default: Story = {
   name: 'shows a prompt containing an internal reference.',

@@ -9,33 +9,36 @@ import { fetchClient } from '#lib/api/client'
 
 const MODELS = [
   {
-    id: 'claude-opus-4',
-    providers: ['anthropic'],
+    id: 'fictional-model-orbit',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: true,
   },
   {
-    id: 'deepseek-v4-flash',
-    providers: ['deepseek'],
+    id: 'fictional-model-lantern',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: false,
   },
   {
-    id: 'claude-sonnet-4',
-    providers: ['anthropic'],
+    id: 'fictional-model-maple',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: false,
   },
 ]
 const TOOLS = [
-  { name: 'list_notes', description: null },
-  { name: 'query_data', description: null },
-  { name: 'write_note', description: null },
+  { name: 'find_reference', description: null },
+  { name: 'read_reference', description: null },
+  { name: 'save_draft', description: null },
 ]
-const SKILLS = { snapshot: '# snapshot\n', recap: '# recap\n' }
+const SKILLS = {
+  outline_guide: '# outline_guide\n',
+  style_guide: '# style_guide\n',
+}
 
 // Storybook にはグローバルな QueryClientProvider が無いため、$api.useQuery を使う
 // AgentGraphForm (form ビュー) 用にこのファイルの story 全体でモックを用意する
@@ -100,26 +103,26 @@ type Story = StoryObj<typeof meta>
 
 const SAMPLE = `phases:
   - key: plan
-    label: 調査計画
-    model: claude-opus-4
+    label: 見出し案
+    model: fictional-model-orbit
     runs: once
-    tools: [list_notes]
-    skills: [snapshot]
-    prompt: 与えられた問いに対し、検証すべき仮説を 2-4 件立てよ。
+    tools: [find_reference]
+    skills: [outline_guide]
+    prompt: 与えられたテーマを 2-4 個の見出しに分ける。
     output:
-      hypotheses:
+      sections:
         type: array
-  - key: investigate
-    label: 仮説の調査
-    model: deepseek-v4-flash
-    for_each: plan.hypotheses
+  - key: compose
+    label: 節の作成
+    model: fictional-model-lantern
+    for_each: plan.sections
     label_field: title
     max_parallel: 4
-    prompt: 割り当てられた 1 件だけを検証し、結論をノートに書け。
+    prompt: 割り当てられた見出しに沿って、説明文を作成する。
   - key: synthesize
     label: 統合
-    model: claude-sonnet-4
-    prompt: 調査結果をまとめ、結論のノートを 1 本書け。
+    model: fictional-model-maple
+    prompt: 作成した節を読みやすい順序にまとめ、全体の概要を記す。
 `
 
 export const FormView: Story = {

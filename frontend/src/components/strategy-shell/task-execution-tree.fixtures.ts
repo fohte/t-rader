@@ -4,68 +4,68 @@ import type {
 } from '#components/strategy-shell/task-execution-tree'
 
 export const CONFIG_PHASES: AgentGraphPhaseSummary[] = [
-  { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+  { key: 'prepare', label: '準備一覧', model: 'simulated-model-amber' },
   {
-    key: 'investigate',
-    label: '仮説の調査',
-    model: 'deepseek-v4-flash',
+    key: 'inspect',
+    label: '項目確認',
+    model: 'simulated-model-teal',
     output: {
-      verdict: { enum: ['supported', 'rejected', 'inconclusive'] },
-      summary: { type: 'string' },
+      result: { enum: ['consistent', 'needs_review', 'undetermined'] },
+      details: { type: 'string' },
       note_id: { type: 'string' },
     },
   },
-  { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
+  { key: 'finalize', label: '結果整理', model: 'simulated-model-violet' },
 ]
 
-export const PLAN_STEP: TaskStep = {
-  phase_key: 'plan',
-  execution_step_id: 'exec-plan-0001',
-  label: '調査計画',
-  model: 'claude-opus-4',
+export const PREPARATION_STEP: TaskStep = {
+  phase_key: 'prepare',
+  execution_step_id: 'exec-prepare-0001',
+  label: '準備一覧',
+  model: 'simulated-model-amber',
   status: 'completed',
   output: {
-    items: ['円安の進行が主因', '半導体サイクルの反転', '個別の材料出尽くし'],
+    items: ['受付番号の形式', '見出しの表記ゆれ', '項目間の重複'],
   },
   started_at: '2026-08-15T09:00:00.000Z',
   finished_at: '2026-08-15T09:00:12.400Z',
-  trace_id: 'trace-plan-0001',
-  span_id: 'span-plan-0001',
+  trace_id: 'trace-prepare-0001',
+  span_id: 'span-prepare-0001',
 }
 
-export function investigateStep(
+export function inspectStep(
   title: string,
   {
     status,
     finishedAt,
-    verdict,
+    result,
     noteId,
   }: {
     status: TaskStep['status']
     finishedAt?: string
-    verdict?: 'supported' | 'rejected' | 'inconclusive'
+    result?: 'consistent' | 'needs_review' | 'undetermined'
     noteId?: string
   },
 ): TaskStep {
   return {
-    phase_key: 'investigate',
-    execution_step_id: `exec-investigate-${title}`,
-    label: '仮説の調査',
-    model: 'deepseek-v4-flash',
+    phase_key: 'inspect',
+    execution_step_id: `exec-inspect-${title}`,
+    label: '項目確認',
+    model: 'simulated-model-teal',
     status,
     item: { title },
     item_label: title,
     output:
       status === 'completed'
         ? {
-            verdict: verdict ?? 'supported',
-            summary: `${title}を検証した結果`,
+            result: result ?? 'consistent',
+            details: `${title}を確認した結果`,
             ...(noteId != null ? { note_id: noteId } : {}),
           }
         : undefined,
     started_at: '2026-08-15T09:00:13.000Z',
     finished_at: finishedAt,
-    trace_id: `trace-investigate-${title}`,
-    span_id: `span-investigate-${title}`,
+    trace_id: `trace-inspect-${title}`,
+    span_id: `span-inspect-${title}`,
   }
 }

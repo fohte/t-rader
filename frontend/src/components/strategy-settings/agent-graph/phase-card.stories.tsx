@@ -16,20 +16,20 @@ type Story = StoryObj<typeof meta>
 
 const PLAN_PHASE: AgentGraphPhaseForm = {
   key: 'plan',
-  label: '調査計画',
-  model: 'claude-opus-4',
-  prompt: '与えられた問いに対し、検証すべき仮説を 2-4 件立てよ。',
+  label: '見出し案',
+  model: 'fictional-model-orbit',
+  prompt: '与えられたテーマを 2-4 個の見出しに分ける。',
   skills: [],
   tools: [],
   output: {},
 }
 
-const INVESTIGATE_PHASE: AgentGraphPhaseForm = {
-  key: 'investigate',
-  label: '仮説の調査',
-  model: 'deepseek-v4-flash',
-  prompt: '割り当てられた 1 件だけを検証し、結論をノートに書け。',
-  forEach: 'plan.hypotheses',
+const COMPOSE_PHASE: AgentGraphPhaseForm = {
+  key: 'compose',
+  label: '節の作成',
+  model: 'fictional-model-lantern',
+  prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+  forEach: 'plan.sections',
   labelField: 'title',
   skills: [],
   tools: [],
@@ -102,8 +102,8 @@ export const ForEach: Story = {
   args: {
     index: 1,
     total: 2,
-    phase: INVESTIGATE_PHASE,
-    referencedLabel: '調査計画',
+    phase: COMPOSE_PHASE,
+    referencedLabel: '見出し案',
     onLabelChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
@@ -111,7 +111,7 @@ export const ForEach: Story = {
     children: null,
   },
   render: () => (
-    <Interactive initial={INVESTIGATE_PHASE} referencedLabel="調査計画" />
+    <Interactive initial={COMPOSE_PHASE} referencedLabel="見出し案" />
   ),
 }
 
