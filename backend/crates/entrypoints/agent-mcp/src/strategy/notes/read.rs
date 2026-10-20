@@ -25,25 +25,13 @@ fn parse_note_ref(value: &str) -> Result<(String, String), McpError> {
     })
 }
 
-fn note_to_dto(
-    snapshot: NoteSnapshot,
-    include_body: bool,
-    include_body_reference: bool,
-) -> Result<NoteDto, McpError> {
+fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, McpError> {
     let graphs: Vec<GraphDef> =
         serde_json::from_value(snapshot.version.graphs_json).map_err(|error| {
             internal_error(format!(
                 "failed to deserialize note_version.graphs_json: {error}"
             ))
         })?;
-    let body_reference = include_body_reference.then(|| {
-        note_body_reference(
-            snapshot.note.id,
-            snapshot.version.id,
-            snapshot.version.version_no,
-            &snapshot.version.title,
-        )
-    });
     let frontmatter_json = snapshot
         .version
         .frontmatter_json
@@ -57,7 +45,7 @@ fn note_to_dto(
         version_no: snapshot.version.version_no,
         title: snapshot.version.title,
         body_md: include_body.then_some(snapshot.version.body_md),
-        body_reference,
+        body_reference: None,
         frontmatter_json,
         tags,
         kind: snapshot.note.kind,
@@ -139,7 +127,14 @@ impl StrategyServer {
                 to_version_id: link.to_version_id,
             })
             .collect();
-        let mut dto = note_to_dto(snapshot, true, true)?;
+        let body_reference = note_body_reference(
+            snapshot.note.id,
+            snapshot.version.id,
+            snapshot.version.version_no,
+            &snapshot.version.title,
+        );
+        let mut dto = note_to_dto(snapshot, true)?;
+        dto.body_reference = Some(body_reference);
         dto.links = Some(links);
         Ok(dto)
     }
@@ -172,7 +167,7 @@ impl StrategyServer {
                 .await
                 .map_err(note_read_error_to_mcp)?;
             for snapshot in page.notes {
-                notes.push(note_to_dto(snapshot, include_body, false)?);
+                notes.push(note_to_dto(snapshot, include_body)?);
                 if notes.len() == limit {
                     return Ok(ListNotesResult { notes });
                 }
@@ -253,7 +248,7 @@ impl StrategyServer {
         let notes = page
             .notes
             .into_iter()
-            .map(|snapshot| note_to_dto(snapshot, include_body, false))
+            .map(|snapshot| note_to_dto(snapshot, include_body))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ListNotesResult { notes })
     }
@@ -304,7 +299,6 @@ mod tests {
                 created_by_kind: "human".into(),
             },
             true,
-            false,
         )
         .expect("note converts to a DTO");
 
