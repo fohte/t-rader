@@ -143,7 +143,7 @@ const groupResult: WidgetQueryResponse = {
     },
   ],
 }
-const comparisonLeft: WidgetQueryResponse = {
+const comparisonResult: WidgetQueryResponse = {
   as_of: '2099-04-12',
   rows: [
     {
@@ -161,11 +161,6 @@ const comparisonLeft: WidgetQueryResponse = {
       name: '架空銘柄 比較 C',
       values: { change: -0.008 },
     },
-  ],
-}
-const comparisonRight: WidgetQueryResponse = {
-  as_of: '2099-04-12',
-  rows: [
     {
       key: 'stock:DEMO-COMPARE-D',
       name: '架空銘柄 比較 D',
@@ -303,27 +298,29 @@ export const SelectedGroup: Story = {
 
 export const SharedScaleComparison: Story = {
   name: '同じ基準日と尺度を使う左右のリストを比較する。',
-  render: () => (
-    <div
-      style={{
-        display: 'grid',
-        gap: 24,
-        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        width: 1120,
-      }}
-    >
-      <WidgetToplist
-        display={display}
-        queries={queries}
-        result={comparisonLeft}
-        viz={singleLayerViz}
-      />
-      <WidgetToplist
-        display={display}
-        queries={queries}
-        result={comparisonRight}
-        viz={singleLayerViz}
-      />
-    </div>
-  ),
+  args: { result: comparisonResult, viz: singleLayerViz },
+  render: (args) => {
+    const midpoint = Math.ceil(args.result.rows.length / 2)
+    const leftResult = {
+      ...args.result,
+      rows: args.result.rows.slice(0, midpoint),
+    }
+    const rightResult = {
+      ...args.result,
+      rows: args.result.rows.slice(midpoint),
+    }
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gap: 24,
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          width: 1120,
+        }}
+      >
+        <WidgetToplist {...args} result={leftResult} />
+        <WidgetToplist {...args} result={rightResult} />
+      </div>
+    )
+  },
 }

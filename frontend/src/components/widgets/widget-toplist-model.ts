@@ -10,6 +10,7 @@ import type { components } from '#lib/api/schema.gen'
 import type { EChartsPalette } from '#lib/echarts/use-echarts-chart'
 import {
   formatWidgetValue,
+  usesWidgetPercentFormat,
   type WidgetDisplayDefinitions,
   type WidgetQueryDefinitions,
 } from '#lib/widget-value-format'
@@ -57,18 +58,6 @@ function getCode(key: string): string {
   return separator < 0 ? key : key.slice(separator + 1)
 }
 
-function usesPercentFormat(
-  name: string,
-  queries: WidgetQueryDefinitions,
-  display: WidgetDisplayDefinitions,
-): boolean {
-  const format = display[name]?.format
-  return (
-    format === 'percent' ||
-    (format == null && queries[name]?.metric === 'change')
-  )
-}
-
 function formatToplistValue(
   name: string,
   value: number,
@@ -76,7 +65,7 @@ function formatToplistValue(
   display: WidgetDisplayDefinitions,
 ): string {
   const formatted = formatWidgetValue(name, value, queries, display)
-  return value > 0 && !usesPercentFormat(name, queries, display)
+  return value > 0 && !usesWidgetPercentFormat(name, queries, display)
     ? '+' + formatted
     : formatted
 }
@@ -246,7 +235,7 @@ export function createWidgetToplistOption(
         name: model.valueLabel,
         type: 'bar',
         barWidth: 12,
-        clip: false,
+        clip: true,
         animation: false,
         label: {
           show: true,
@@ -264,22 +253,38 @@ export function createWidgetToplistOption(
           lineStyle: { color: palette.foreground, opacity: 0.35, width: 1 },
           data: [{ xAxis: 0 }],
         },
-        data: model.rows.map((row) => ({
-          name: row.name,
-          value: row.value,
-          cursor: 'pointer',
-          itemStyle: {
-            color:
-              row.value > 0
-                ? palette.up
-                : row.value < 0
-                  ? palette.down
-                  : palette.neutral,
-          },
-          label: {
-            position: row.value < 0 ? 'left' : 'right',
-          },
-        })),
+        data: model.rows.map((row) => {
+          const isBelowScale = row.value < model.scale.min
+          const isAboveScale = row.value > model.scale.max
+          return {
+            name: row.name,
+            value: Math.min(
+              model.scale.max,
+              Math.max(model.scale.min, row.value),
+            ),
+            cursor: 'pointer',
+            itemStyle: {
+              color:
+                row.value > 0
+                  ? palette.up
+                  : row.value < 0
+                    ? palette.down
+                    : palette.neutral,
+            },
+            label: {
+              position: isBelowScale
+                ? 'insideLeft'
+                : isAboveScale
+                  ? 'insideRight'
+                  : row.value < 0
+                    ? 'left'
+                    : 'right',
+              ...(isBelowScale || isAboveScale
+                ? { color: palette.background }
+                : {}),
+            },
+          }
+        }),
       },
     ],
   }

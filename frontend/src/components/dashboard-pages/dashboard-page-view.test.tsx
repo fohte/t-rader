@@ -11,19 +11,12 @@ import { createStoryRouter } from '#storybook/story-router'
 
 vi.mock('#lib/echarts/use-echarts-chart', async () => {
   const React = await import('react')
+  const { testEChartsPalette } =
+    await import('../../test/echarts-palette.test-helper')
   return {
     useEChartsChart: () => ({
       containerRef: React.useRef<HTMLDivElement>(null),
-      palette: {
-        background: '#fafafa',
-        border: '#e5e5e5',
-        foreground: '#0a0a0a',
-        neutral: '#1a1a1a',
-        up: '#ef5350',
-        upDim: '#5a2a2a',
-        down: '#3f9fe0',
-        downDim: '#234152',
-      },
+      palette: testEChartsPalette,
       error: null,
       updateOption: () => undefined,
       dispatchAction: () => undefined,

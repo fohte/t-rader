@@ -19,6 +19,8 @@ const chartHarness = vi.hoisted(() => ({
 
 vi.mock('#lib/echarts/use-echarts-chart', async () => {
   const React = await import('react')
+  const { testEChartsPalette } =
+    await import('../../test/echarts-palette.test-helper')
   return {
     useEChartsChart: ({
       createOption,
@@ -28,22 +30,12 @@ vi.mock('#lib/echarts/use-echarts-chart', async () => {
       onClick: ChartClickHandler
     }) => {
       chartHarness.clickHandler = onClick
-      const palette = {
-        background: '#fafafa',
-        border: '#e5e5e5',
-        foreground: '#0a0a0a',
-        neutral: '#1a1a1a',
-        up: '#ef5350',
-        upDim: '#5a2a2a',
-        down: '#3f9fe0',
-        downDim: '#234152',
-      }
       React.useEffect(() => {
-        chartHarness.options.push(createOption(palette))
+        chartHarness.options.push(createOption(testEChartsPalette))
       }, [createOption])
       return {
         containerRef: React.useRef<HTMLDivElement>(null),
-        palette,
+        palette: testEChartsPalette,
         error: null,
         updateOption: () => undefined,
         dispatchAction: () => undefined,
@@ -147,6 +139,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function isLabelFormatter(
+  value: unknown,
+): value is (params: { dataIndex: number }) => unknown {
+  return typeof value === 'function'
+}
+
 function readChartOutput() {
   const option = chartHarness.options.at(-1)
   if (!isRecord(option)) return null
@@ -169,14 +167,17 @@ function readChartOutput() {
 
   const rows = Array.isArray(seriesValue.data) ? seriesValue.data : []
   const markLine = isRecord(seriesValue.markLine) ? seriesValue.markLine : {}
+  const seriesLabel = isRecord(seriesValue.label) ? seriesValue.label : {}
+  const labelFormatter = seriesLabel.formatter
   return {
     axis: {
       minimum: xAxisValue.min,
       maximum: xAxisValue.max,
       scale: xAxisValue.scale,
     },
+    clip: seriesValue.clip,
     categories: yAxisValue.data,
-    bars: rows.map((row) => {
+    bars: rows.map((row, index) => {
       const data = isRecord(row) ? row : {}
       const itemStyle = isRecord(data.itemStyle) ? data.itemStyle : {}
       const label = isRecord(data.label) ? data.label : {}
@@ -184,6 +185,10 @@ function readChartOutput() {
         value: data.value,
         color: itemStyle.color,
         labelPosition: label.position,
+        labelColor: label.color ?? seriesLabel.color,
+        formattedLabel: isLabelFormatter(labelFormatter)
+          ? (labelFormatter({ dataIndex: index }) ?? null)
+          : null,
       }
     }),
     zeroReference: markLine.data,
@@ -194,6 +199,22 @@ function readConfiguredScaleOutput() {
   return {
     header: screen.getByText('指定尺度: 0 / 0 / 100').textContent,
     chart: readChartOutput(),
+  }
+}
+
+function readChartTransitionOutput(
+  initialContainer: Element | null,
+  initiallyHidden: boolean | null,
+  populatedContainer: Element | null,
+) {
+  return {
+    retainedNode: initialContainer === populatedContainer,
+    initiallyHidden,
+    populatedHidden:
+      populatedContainer instanceof HTMLElement
+        ? populatedContainer.hasAttribute('hidden')
+        : null,
+    categories: readChartOutput()?.categories,
   }
 }
 
@@ -373,16 +394,79 @@ describe('WidgetToplist', () => {
       header: '指定尺度: 0 / 0 / 100',
       chart: {
         axis: { minimum: 0, maximum: 100, scale: false },
+        clip: true,
         categories: ['stock:DEMO-A'],
         bars: [
           {
             value: 35,
             color: '#ef5350',
             labelPosition: 'right',
+            labelColor: '#0a0a0a',
+            formattedLabel: '+35',
           },
         ],
         zeroReference: [{ xAxis: 0 }],
       },
+    })
+  })
+
+  it('尺度を超える棒を端で止め、値のラベルは実際の値を表示する', async () => {
+    await renderWidget(
+      {
+        as_of: '2099-01-01',
+        rows: [
+          {
+            key: 'stock:DEMO-POSITIVE',
+            name: '架空銘柄 正の外れ値',
+            values: { change: 0.18 },
+          },
+          {
+            key: 'stock:DEMO-INSIDE',
+            name: '架空銘柄 尺度内',
+            values: { change: 0.03 },
+          },
+          {
+            key: 'stock:DEMO-NEGATIVE',
+            name: '架空銘柄 負の外れ値',
+            values: { change: -0.12 },
+          },
+        ],
+      },
+      { ...viz, limit: 3, bar_scale: { min: -0.04, max: 0.04 } },
+    )
+
+    expect(readChartOutput()).toEqual({
+      axis: { minimum: -0.04, maximum: 0.04, scale: false },
+      clip: true,
+      categories: [
+        'stock:DEMO-POSITIVE',
+        'stock:DEMO-INSIDE',
+        'stock:DEMO-NEGATIVE',
+      ],
+      bars: [
+        {
+          value: 0.04,
+          color: '#ef5350',
+          labelPosition: 'insideRight',
+          labelColor: '#fafafa',
+          formattedLabel: '+18.00%',
+        },
+        {
+          value: 0.03,
+          color: '#ef5350',
+          labelPosition: 'right',
+          labelColor: '#0a0a0a',
+          formattedLabel: '+3.00%',
+        },
+        {
+          value: -0.04,
+          color: '#3f9fe0',
+          labelPosition: 'insideLeft',
+          labelColor: '#fafafa',
+          formattedLabel: '-12.00%',
+        },
+      ],
+      zeroReference: [{ xAxis: 0 }],
     })
   })
 
@@ -480,5 +564,35 @@ describe('WidgetToplist', () => {
     expect(screen.getByRole('status').textContent).toBe(
       '表示できるデータがありません。',
     )
+  })
+
+  it('空状態でも chart container を維持し、データ取得後に表示する', () => {
+    const emptyResult: WidgetQueryResponse = {
+      as_of: '2099-01-01',
+      rows: [],
+    }
+    const rendered = render(
+      <WidgetToplist queries={queries} result={emptyResult} viz={viz} />,
+    )
+    const initialContainer = rendered.container.querySelector('[role="img"]')
+    const initiallyHidden = initialContainer?.hasAttribute('hidden') ?? null
+
+    rendered.rerender(
+      <WidgetToplist queries={queries} result={result} viz={viz} />,
+    )
+    const populatedContainer = rendered.container.querySelector('[role="img"]')
+
+    expect(
+      readChartTransitionOutput(
+        initialContainer,
+        initiallyHidden,
+        populatedContainer,
+      ),
+    ).toEqual({
+      retainedNode: true,
+      initiallyHidden: true,
+      populatedHidden: false,
+      categories: ['stock:DEMO-A', 'stock:DEMO-B', 'stock:DEMO-C'],
+    })
   })
 })

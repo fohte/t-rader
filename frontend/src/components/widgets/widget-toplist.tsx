@@ -7,7 +7,6 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   createWidgetToplistModel,
   createWidgetToplistOption,
-  type WidgetToplistRow,
 } from '#components/widgets/widget-toplist-model'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -110,45 +109,42 @@ export function WidgetToplist({
     displayDefinitions,
   )
 
-  const selectRow = (row: WidgetToplistRow) => {
-    setSelectedRowKey(row.key)
-  }
-
-  if (model.rows.length === 0) {
-    return (
-      <p
-        className="border border-border bg-card px-4 py-8 text-center font-mono text-xs text-muted-foreground"
-        role="status"
-      >
-        表示できるデータがありません。
-      </p>
-    )
-  }
+  const isEmpty = model.rows.length === 0
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>{model.valueLabel}</span>
-        <span className="font-mono">{result.as_of}</span>
-        <span className="font-mono tabular-nums">
-          {model.scale.configured ? '指定尺度' : '自動尺度'}: {scaleMin} / 0 /{' '}
-          {scaleMax}
-        </span>
-      </div>
+      {isEmpty ? (
+        <p
+          className="border border-border bg-card px-4 py-8 text-center font-mono text-xs text-muted-foreground"
+          role="status"
+        >
+          表示できるデータがありません。
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>{model.valueLabel}</span>
+          <span className="font-mono">{result.as_of}</span>
+          <span className="font-mono tabular-nums">
+            {model.scale.configured ? '指定尺度' : '自動尺度'}: {scaleMin} / 0 /{' '}
+            {scaleMax}
+          </span>
+        </div>
+      )}
       <div
         aria-label={model.ariaDescription}
         className="w-full overflow-hidden border border-border bg-card"
+        hidden={isEmpty}
         ref={containerRef}
         role="img"
         style={{ height: Math.max(112, model.rows.length * CHART_ROW_HEIGHT) }}
       />
-      {error != null && (
+      {!isEmpty && error != null && (
         <p className="text-xs text-destructive" role="alert">
           {error}
         </p>
       )}
 
-      {selectedRow != null && (
+      {!isEmpty && selectedRow != null && (
         <section
           aria-label="選択した行の詳細"
           className="border border-border bg-card p-3"
@@ -223,55 +219,57 @@ export function WidgetToplist({
         </section>
       )}
 
-      <details className="border border-border bg-card">
-        <summary className="min-h-10 cursor-pointer px-3 py-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-          {`順位一覧から詳細を選ぶ (${String(model.rows.length)})`}
-        </summary>
-        <ol
-          aria-label="toplist の順位"
-          className="list-none border-t border-border"
-        >
-          {model.rows.map((row, index) => (
-            <li
-              className="border-t border-border first:border-t-0"
-              key={row.key}
-            >
-              <button
-                aria-label={
-                  String(index + 1) +
-                  ' 位: ' +
-                  row.name +
-                  '、' +
-                  row.code +
-                  '、' +
-                  row.formattedValue +
-                  '、詳細を表示'
-                }
-                className="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                onClick={() => {
-                  selectRow(row)
-                }}
-                type="button"
+      {!isEmpty && (
+        <details className="border border-border bg-card">
+          <summary className="min-h-10 cursor-pointer px-3 py-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+            {`順位一覧から詳細を選ぶ (${String(model.rows.length)})`}
+          </summary>
+          <ol
+            aria-label="toplist の順位"
+            className="list-none border-t border-border"
+          >
+            {model.rows.map((row, index) => (
+              <li
+                className="border-t border-border first:border-t-0"
+                key={row.key}
               >
-                <span className="w-8 shrink-0 text-right font-mono text-muted-foreground">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block break-words text-foreground">
-                    {row.name}
+                <button
+                  aria-label={
+                    String(index + 1) +
+                    ' 位: ' +
+                    row.name +
+                    '、' +
+                    row.code +
+                    '、' +
+                    row.formattedValue +
+                    '、詳細を表示'
+                  }
+                  className="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                  onClick={() => {
+                    setSelectedRowKey(row.key)
+                  }}
+                  type="button"
+                >
+                  <span className="w-8 shrink-0 text-right font-mono text-muted-foreground">
+                    {index + 1}
                   </span>
-                  <span className="block break-all font-mono text-2xs text-muted-foreground">
-                    {row.code}
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-foreground">
+                      {row.name}
+                    </span>
+                    <span className="block break-all font-mono text-2xs text-muted-foreground">
+                      {row.code}
+                    </span>
                   </span>
-                </span>
-                <span className="shrink-0 font-mono tabular-nums text-muted-foreground-strong">
-                  {row.formattedValue}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ol>
-      </details>
+                  <span className="shrink-0 font-mono tabular-nums text-muted-foreground-strong">
+                    {row.formattedValue}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
     </div>
   )
 }
