@@ -16,55 +16,58 @@ type Story = StoryObj<typeof meta>
 
 const SINGLE_PHASE = `phases:
   - key: plan
-    label: 調査計画
-    model: claude-opus-4
-    prompt: 与えられた問いに対し、検証すべき仮説を立てよ。
-    tools: [list_notes]
+    label: 見出し案
+    model: fictional-model-orbit
+    prompt: 与えられたテーマを読みやすい見出しに分ける。
+    tools: [find_reference]
 `
 
 const MULTI_PHASE_WITH_FOR_EACH = `phases:
   - key: plan
-    label: 調査計画
-    model: claude-opus-4
-    prompt: 与えられた問いに対し、検証すべき仮説を 2-4 件立てよ。
-    tools: [list_notes, query_data]
-    skills: [snapshot]
+    label: 見出し案
+    model: fictional-model-orbit
+    prompt: 与えられたテーマを 2-4 個の見出しに分ける。
+    tools: [find_reference, read_reference]
+    skills: [outline_guide]
     output:
-      hypotheses:
+      sections:
         type: array
         items:
           title: { type: string }
-          rationale: { type: string }
-  - key: investigate
-    label: 仮説の調査
-    model: deepseek-v4-flash
-    for_each: plan.hypotheses
+          description: { type: string }
+  - key: compose
+    label: 節の作成
+    model: fictional-model-lantern
+    for_each: plan.sections
     label_field: title
-    prompt: 割り当てられた 1 件だけを検証し、結論をノートに書け。
+    prompt: 割り当てられた見出しに沿って、説明文を作成する。
 `
 
 const MODELS = [
   {
-    id: 'claude-opus-4',
-    providers: ['anthropic'],
+    id: 'fictional-model-orbit',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: true,
   },
   {
-    id: 'deepseek-v4-flash',
-    providers: ['deepseek'],
+    id: 'fictional-model-lantern',
+    providers: ['fictional-lab'],
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: false,
   },
 ]
 const TOOLS = [
-  { name: 'list_notes', description: null },
-  { name: 'query_data', description: null },
-  { name: 'write_note', description: null },
+  { name: 'find_reference', description: null },
+  { name: 'read_reference', description: null },
+  { name: 'save_draft', description: null },
 ]
-const SKILLS = { snapshot: '# snapshot\n', recap: '# recap\n' }
+const SKILLS = {
+  outline_guide: '# outline_guide\n',
+  style_guide: '# style_guide\n',
+}
 
 // Storybook にはグローバルな QueryClientProvider が無いため、$api.useQuery を使う
 // AgentGraphForm 用に各 story でモックを用意する
@@ -156,7 +159,7 @@ export const ToggleOn: Story = {
 }
 
 export const MultiPhaseWithForEach: Story = {
-  name: 'shows a multi-phase graph that investigates each generated hypothesis.',
+  name: 'shows a multi-phase graph that composes each generated section.',
   args: {
     purpose: 'explore',
     value: MULTI_PHASE_WITH_FOR_EACH,
@@ -172,13 +175,10 @@ export const WithError: Story = {
     purpose: 'explore',
     value: MULTI_PHASE_WITH_FOR_EACH,
     onChange: () => {},
-    errorPhaseKey: 'investigate',
+    errorPhaseKey: 'compose',
     lastEnabledValueRef: { current: MULTI_PHASE_WITH_FOR_EACH },
   },
   render: () => (
-    <Interactive
-      initial={MULTI_PHASE_WITH_FOR_EACH}
-      errorPhaseKey="investigate"
-    />
+    <Interactive initial={MULTI_PHASE_WITH_FOR_EACH} errorPhaseKey="compose" />
   ),
 }

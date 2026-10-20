@@ -4,8 +4,8 @@ import { RouterProvider } from '@tanstack/react-router'
 import { TaskExecutionTree } from '#components/strategy-shell/task-execution-tree'
 import {
   CONFIG_PHASES,
-  investigateStep,
-  PLAN_STEP,
+  inspectStep,
+  PREPARATION_STEP,
 } from '#components/strategy-shell/task-execution-tree.fixtures'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -32,25 +32,25 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// merge フェーズには step を渡さないので、常に「未着手」ノードとして描画される
+// 結果整理フェーズには step を渡さないので、常に「未着手」ノードとして描画される
 export const Running: Story = {
-  name: 'shows an active task with completed and running analysis steps.',
+  name: 'shows an active task with completed and running item checks.',
   render: () => (
     <Frame>
       <TaskExecutionTree
         steps={[
-          PLAN_STEP,
-          investigateStep('円安の進行が主因', {
+          PREPARATION_STEP,
+          inspectStep('見出しの表記ゆれ', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:21.100Z',
-            verdict: 'supported',
+            result: 'consistent',
             noteId: 'note-0001',
           }),
-          investigateStep('半導体サイクルの反転', { status: 'running' }),
-          investigateStep('個別の材料出尽くし', {
+          inspectStep('注記の抜け', { status: 'running' }),
+          inspectStep('項目間の重複', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:19.700Z',
-            verdict: 'rejected',
+            result: 'needs_review',
           }),
         ]}
         configPhases={CONFIG_PHASES}
@@ -61,43 +61,43 @@ export const Running: Story = {
 }
 
 export const Completed: Story = {
-  name: 'shows a finished run with verdicts, notes, and a summary.',
+  name: 'shows a finished run with review results and generated notes.',
   render: () => (
     <Frame>
       <TaskExecutionTree
         steps={[
-          PLAN_STEP,
-          investigateStep('円安の進行が主因', {
+          PREPARATION_STEP,
+          inspectStep('見出しの表記ゆれ', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:21.100Z',
-            verdict: 'supported',
+            result: 'consistent',
             noteId: 'note-0001',
           }),
-          investigateStep('半導体サイクルの反転', {
+          inspectStep('注記の抜け', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:24.900Z',
-            verdict: 'rejected',
+            result: 'needs_review',
             noteId: 'note-0002',
           }),
-          investigateStep('個別の材料出尽くし', {
+          inspectStep('項目間の重複', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:19.700Z',
-            verdict: 'inconclusive',
+            result: 'undetermined',
           }),
           {
-            phase_key: 'merge',
-            execution_step_id: 'exec-merge-0001',
-            label: '統合',
-            model: 'claude-sonnet-4',
+            phase_key: 'finalize',
+            execution_step_id: 'exec-finalize-0001',
+            label: '結果整理',
+            model: 'simulated-model-violet',
             status: 'completed',
             output: {
-              summary: '円安進行と半導体サイクル反転の複合要因と判断',
+              details: '見出しの表記ゆれと項目間の重複を確認',
               note_id: 'note-0003',
             },
             started_at: '2026-08-15T09:00:25.000Z',
             finished_at: '2026-08-15T09:00:33.200Z',
-            trace_id: 'trace-merge-0001',
-            span_id: 'span-merge-0001',
+            trace_id: 'trace-finalize-0001',
+            span_id: 'span-finalize-0001',
           },
         ]}
         configPhases={CONFIG_PHASES}
@@ -116,8 +116,8 @@ export const CompletedWithNoEntries: Story = {
           {
             phase_key: 'source',
             execution_step_id: 'source-step',
-            label: 'Source',
-            model: 'fictional-model',
+            label: '入力',
+            model: 'simulated-model-amber',
             status: 'completed',
             output: { entries: [] },
             started_at: '2026-08-15T09:00:00.000Z',
@@ -128,10 +128,10 @@ export const CompletedWithNoEntries: Story = {
           {
             phase_key: 'summary',
             execution_step_id: 'summary-step',
-            label: 'Summary',
-            model: 'fictional-model',
+            label: '整理',
+            model: 'simulated-model-violet',
             status: 'completed',
-            output: { summary: 'No entries' },
+            output: { details: 'No entries' },
             started_at: '2026-08-15T09:00:01.100Z',
             finished_at: '2026-08-15T09:00:02.000Z',
             trace_id: 'summary-trace',
@@ -139,14 +139,14 @@ export const CompletedWithNoEntries: Story = {
           },
         ]}
         configPhases={[
-          { key: 'source', label: 'Source', model: 'fictional-model' },
+          { key: 'source', label: '入力', model: 'simulated-model-amber' },
           {
             key: 'inspect',
-            label: 'Inspect',
-            model: 'fictional-model',
+            label: '確認',
+            model: 'simulated-model-teal',
             forEach: 'source.entries',
           },
-          { key: 'summary', label: 'Summary', model: 'fictional-model' },
+          { key: 'summary', label: '整理', model: 'simulated-model-violet' },
         ]}
         taskCompleted
       />
@@ -155,27 +155,27 @@ export const CompletedWithNoEntries: Story = {
 }
 
 export const WithFailure: Story = {
-  name: 'shows a failed analysis step alongside completed steps.',
+  name: 'shows a failed item check alongside completed checks.',
   render: () => (
     <Frame>
       <TaskExecutionTree
         steps={[
-          PLAN_STEP,
-          investigateStep('円安の進行が主因', {
+          PREPARATION_STEP,
+          inspectStep('見出しの表記ゆれ', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:21.100Z',
-            verdict: 'supported',
+            result: 'consistent',
           }),
           {
-            ...investigateStep('半導体サイクルの反転', { status: 'failed' }),
+            ...inspectStep('注記の抜け', { status: 'failed' }),
             finished_at: '2026-08-15T09:00:18.300Z',
-            error: 'tool call timeout: query_data がタイムアウトしました',
+            error: 'tool call timeout: item_lookup がタイムアウトしました',
             output: undefined,
           },
-          investigateStep('個別の材料出尽くし', {
+          inspectStep('項目間の重複', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:19.700Z',
-            verdict: 'rejected',
+            result: 'needs_review',
           }),
         ]}
         configPhases={CONFIG_PHASES}

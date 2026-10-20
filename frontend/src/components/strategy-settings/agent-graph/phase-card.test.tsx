@@ -9,19 +9,19 @@ afterEach(cleanup)
 
 const PLAN: AgentGraphPhaseForm = {
   key: 'plan',
-  label: '調査計画',
-  model: 'claude-opus-4',
-  prompt: '仮説を立てよ',
+  label: '見出し案',
+  model: 'fictional-model-orbit',
+  prompt: 'テーマを読みやすい節に分ける',
   skills: [],
   tools: [],
   output: {},
 }
 
-const INVESTIGATE: AgentGraphPhaseForm = {
+const COMPOSE: AgentGraphPhaseForm = {
   ...PLAN,
-  key: 'investigate',
-  label: '仮説の調査',
-  forEach: 'plan.hypotheses',
+  key: 'compose',
+  label: '節の作成',
+  forEach: 'plan.sections',
 }
 
 const NOOP_HANDLERS = {
@@ -39,8 +39,8 @@ describe('PhaseCard', () => {
       </PhaseCard>,
     )
     expect(screen.getByText('1')).toBeInTheDocument()
-    expect(screen.getByLabelText('フェーズ名')).toHaveValue('調査計画')
-    expect(screen.getByText('claude-opus-4')).toBeInTheDocument()
+    expect(screen.getByLabelText('フェーズ名')).toHaveValue('見出し案')
+    expect(screen.getByText('fictional-model-orbit')).toBeInTheDocument()
   })
 
   it('フェーズ名を編集すると onLabelChange が呼ばれる', async () => {
@@ -58,7 +58,7 @@ describe('PhaseCard', () => {
       </PhaseCard>,
     )
     await user.type(screen.getByLabelText('フェーズ名'), 'X')
-    expect(onLabelChange).toHaveBeenCalledWith('調査計画X')
+    expect(onLabelChange).toHaveBeenCalledWith('見出し案X')
   })
 
   it('for_each を持つフェーズは参照先ラベルと対象フィールドを含む説明文を表示する', () => {
@@ -66,15 +66,15 @@ describe('PhaseCard', () => {
       <PhaseCard
         index={1}
         total={2}
-        phase={INVESTIGATE}
-        referencedLabel="調査計画"
+        phase={COMPOSE}
+        referencedLabel="見出し案"
         {...NOOP_HANDLERS}
       >
         <span>field</span>
       </PhaseCard>,
     )
-    expect(screen.getByText(/調査計画 が返す/)).toBeInTheDocument()
-    expect(screen.getByText('hypotheses[]')).toBeInTheDocument()
+    expect(screen.getByText(/見出し案 が返す/)).toBeInTheDocument()
+    expect(screen.getByText('sections[]')).toBeInTheDocument()
   })
 
   it('for_each を持たないフェーズには説明文を出さない', () => {
@@ -102,10 +102,10 @@ describe('PhaseCard', () => {
       </PhaseCard>,
     )
     expect(
-      screen.getByRole('button', { name: 'フェーズ 調査計画 を上に移動' }),
+      screen.getByRole('button', { name: 'フェーズ 見出し案 を上に移動' }),
     ).toBeDisabled()
     expect(
-      screen.getByRole('button', { name: 'フェーズ 調査計画 を下に移動' }),
+      screen.getByRole('button', { name: 'フェーズ 見出し案 を下に移動' }),
     ).not.toBeDisabled()
   })
 
@@ -128,13 +128,13 @@ describe('PhaseCard', () => {
       </PhaseCard>,
     )
     await user.click(
-      screen.getByRole('button', { name: 'フェーズ 調査計画 を上に移動' }),
+      screen.getByRole('button', { name: 'フェーズ 見出し案 を上に移動' }),
     )
     await user.click(
-      screen.getByRole('button', { name: 'フェーズ 調査計画 を下に移動' }),
+      screen.getByRole('button', { name: 'フェーズ 見出し案 を下に移動' }),
     )
     await user.click(
-      screen.getByRole('button', { name: 'フェーズ 調査計画 を削除' }),
+      screen.getByRole('button', { name: 'フェーズ 見出し案 を削除' }),
     )
     expect(onMoveUp).toHaveBeenCalledTimes(1)
     expect(onMoveDown).toHaveBeenCalledTimes(1)

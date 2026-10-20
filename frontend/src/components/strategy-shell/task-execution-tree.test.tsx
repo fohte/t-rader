@@ -55,8 +55,8 @@ function makeStep(
 ): TaskStep {
   return {
     execution_step_id: 'exec-1',
-    label: '仮説の調査',
-    model: 'deepseek-v4-flash',
+    label: '項目確認',
+    model: 'simulated-model-teal',
     status: 'completed',
     started_at: '2026-08-15T00:00:00Z',
     finished_at: '2026-08-15T00:00:08Z',
@@ -110,16 +110,20 @@ describe('TaskExecutionTree', () => {
       <TaskExecutionTree
         {...makeProps({
           configPhases: [
-            { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
-            { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
+            { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
+            {
+              key: 'merge',
+              label: '結果整理',
+              model: 'simulated-model-violet',
+            },
           ],
           steps: [makeStep({ phase_key: 'plan' })],
         })}
       />,
     )
 
-    expect(screen.getByText('統合')).toBeInTheDocument()
-    expect(screen.getByText('claude-sonnet-4')).toBeInTheDocument()
+    expect(screen.getByText('結果整理')).toBeInTheDocument()
+    expect(screen.getByText('simulated-model-violet')).toBeInTheDocument()
     expect(screen.getByText('待機')).toBeInTheDocument()
   })
 
@@ -127,14 +131,14 @@ describe('TaskExecutionTree', () => {
     const branches = [
       makeStep({
         phase_key: 'investigate',
-        item: { title: '円安の進行が主因' },
-        item_label: '円安の進行が主因',
+        item: { title: '見出しの表記ゆれ' },
+        item_label: '見出しの表記ゆれ',
         status: 'completed',
       }),
       makeStep({
         phase_key: 'investigate',
-        item: { title: '半導体サイクルの反転' },
-        item_label: '半導体サイクルの反転',
+        item: { title: '注記の抜け' },
+        item_label: '注記の抜け',
         status: 'running',
         finished_at: undefined,
       }),
@@ -143,12 +147,12 @@ describe('TaskExecutionTree', () => {
     render(<TaskExecutionTree {...makeProps({ steps: branches })} />)
 
     expect(
-      screen.getByRole('button', { name: /円安の進行が主因/ }),
+      screen.getByRole('button', { name: /見出しの表記ゆれ/ }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /半導体サイクルの反転/ }),
+      screen.getByRole('button', { name: /注記の抜け/ }),
     ).toBeInTheDocument()
-    expect(screen.getAllByText('deepseek-v4-flash')).toHaveLength(2)
+    expect(screen.getAllByText('simulated-model-teal')).toHaveLength(2)
     expect(screen.getByText('完了')).toBeInTheDocument()
     expect(screen.getByText('実行中')).toBeInTheDocument()
   })
@@ -157,18 +161,18 @@ describe('TaskExecutionTree', () => {
     const configPhases = [
       {
         key: 'investigate',
-        label: '仮説の調査',
-        model: 'deepseek-v4-flash',
-        output: { verdict: { enum: ['supported', 'rejected'] } },
+        label: '項目確認',
+        model: 'simulated-model-teal',
+        output: { result: { enum: ['consistent', 'needs_review'] } },
       },
     ]
     const branches = [
       makeStep({
         phase_key: 'investigate',
-        item: { title: '円安の進行が主因' },
-        item_label: '円安の進行が主因',
+        item: { title: '見出しの表記ゆれ' },
+        item_label: '見出しの表記ゆれ',
         status: 'completed',
-        output: { verdict: 'supported' },
+        output: { result: 'consistent' },
       }),
     ]
 
@@ -176,7 +180,7 @@ describe('TaskExecutionTree', () => {
       <TaskExecutionTree {...makeProps({ configPhases, steps: branches })} />,
     )
 
-    expect(screen.getByText('supported')).toBeInTheDocument()
+    expect(screen.getByText('consistent')).toBeInTheDocument()
     expect(screen.queryByText('完了')).not.toBeInTheDocument()
   })
 
@@ -184,16 +188,16 @@ describe('TaskExecutionTree', () => {
     const configPhases = [
       {
         key: 'investigate',
-        label: '仮説の調査',
-        model: 'deepseek-v4-flash',
-        output: { verdict: { enum: ['supported', 'rejected'] } },
+        label: '項目確認',
+        model: 'simulated-model-teal',
+        output: { result: { enum: ['consistent', 'needs_review'] } },
       },
     ]
     const branches = [
       makeStep({
         phase_key: 'investigate',
-        item: { title: '半導体サイクルの反転' },
-        item_label: '半導体サイクルの反転',
+        item: { title: '注記の抜け' },
+        item_label: '注記の抜け',
         status: 'running',
         finished_at: undefined,
       }),
@@ -230,7 +234,7 @@ describe('TaskExecutionTree', () => {
     const step = makeStep({
       phase_key: 'investigate',
       status: 'completed',
-      output: { verdict: 'rejected' },
+      output: { result: 'needs_review' },
     })
 
     render(<TaskExecutionTree {...makeProps({ steps: [step] })} />)
@@ -261,13 +265,13 @@ describe('TaskExecutionTree', () => {
   it('ノードをクリックすると item/output の詳細が開閉する', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      item_label: '円安の進行が主因',
-      output: { verdict: '妥当' },
+      item: { title: '見出しの表記ゆれ' },
+      item_label: '見出しの表記ゆれ',
+      output: { result: '一致' },
     })
 
     render(<TaskExecutionTree {...makeProps({ steps: [step] })} />)
-    const button = screen.getByRole('button', { name: /円安の進行が主因/ })
+    const button = screen.getByRole('button', { name: /見出しの表記ゆれ/ })
 
     expect(screen.queryByText('input')).not.toBeInTheDocument()
     expect(screen.queryByText('output')).not.toBeInTheDocument()
@@ -275,10 +279,10 @@ describe('TaskExecutionTree', () => {
     await userEvent.click(button)
     expect(screen.getByText('input')).toBeInTheDocument()
     expect(
-      screen.getByText('{ "title": "円安の進行が主因" }'),
+      screen.getByText('{ "title": "見出しの表記ゆれ" }'),
     ).toBeInTheDocument()
     expect(screen.getByText('output')).toBeInTheDocument()
-    expect(screen.getByText('{ "verdict": "妥当" }')).toBeInTheDocument()
+    expect(screen.getByText('{ "result": "一致" }')).toBeInTheDocument()
 
     await userEvent.click(button)
     expect(screen.queryByText('input')).not.toBeInTheDocument()
@@ -288,8 +292,8 @@ describe('TaskExecutionTree', () => {
   it('traceUrlTemplate があれば選択中ステップのトレースリンクを組み立てる', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      item_label: '円安の進行が主因',
+      item: { title: '見出しの表記ゆれ' },
+      item_label: '見出しの表記ゆれ',
       trace_id: 'trace-abc',
       span_id: 'span-def',
     })
@@ -304,7 +308,7 @@ describe('TaskExecutionTree', () => {
       />,
     )
     await userEvent.click(
-      screen.getByRole('button', { name: /円安の進行が主因/ }),
+      screen.getByRole('button', { name: /見出しの表記ゆれ/ }),
     )
 
     const link = screen.getByRole('link', { name: '→ トレースを開く' })
@@ -317,15 +321,15 @@ describe('TaskExecutionTree', () => {
   it('traceUrlTemplate が無ければトレースリンクを出さない', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      item_label: '円安の進行が主因',
+      item: { title: '見出しの表記ゆれ' },
+      item_label: '見出しの表記ゆれ',
       trace_id: 'trace-abc',
       span_id: 'span-def',
     })
 
     render(<TaskExecutionTree {...makeProps({ steps: [step] })} />)
     await userEvent.click(
-      screen.getByRole('button', { name: /円安の進行が主因/ }),
+      screen.getByRole('button', { name: /見出しの表記ゆれ/ }),
     )
 
     expect(
@@ -336,17 +340,15 @@ describe('TaskExecutionTree', () => {
   it('failed ステータスのステップを選択すると error を表示する', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '半導体サイクルの反転' },
-      item_label: '半導体サイクルの反転',
+      item: { title: '注記の抜け' },
+      item_label: '注記の抜け',
       status: 'failed',
       finished_at: '2026-08-15T00:00:05Z',
       error: 'tool call timeout',
     })
 
     render(<TaskExecutionTree {...makeProps({ steps: [step] })} />)
-    await userEvent.click(
-      screen.getByRole('button', { name: /半導体サイクルの反転/ }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /注記の抜け/ }))
 
     expect(
       screen.getByText('tool call timeout', { selector: 'pre' }),
@@ -356,9 +358,9 @@ describe('TaskExecutionTree', () => {
   it('detailPlacement が external のときクリックしてもインライン detail を出さない', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      item_label: '円安の進行が主因',
-      output: { verdict: '妥当' },
+      item: { title: '見出しの表記ゆれ' },
+      item_label: '見出しの表記ゆれ',
+      output: { result: '一致' },
     })
 
     render(
@@ -367,7 +369,7 @@ describe('TaskExecutionTree', () => {
       />,
     )
     await userEvent.click(
-      screen.getByRole('button', { name: /円安の進行が主因/ }),
+      screen.getByRole('button', { name: /見出しの表記ゆれ/ }),
     )
 
     expect(screen.queryByText('output')).not.toBeInTheDocument()
@@ -376,15 +378,15 @@ describe('TaskExecutionTree', () => {
   it('行の選択/選択解除のたびに onSelectStep を呼ぶ', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      item_label: '円安の進行が主因',
+      item: { title: '見出しの表記ゆれ' },
+      item_label: '見出しの表記ゆれ',
     })
     const onSelectStep = vi.fn()
 
     render(
       <TaskExecutionTree {...makeProps({ steps: [step], onSelectStep })} />,
     )
-    const button = screen.getByRole('button', { name: /円安の進行が主因/ })
+    const button = screen.getByRole('button', { name: /見出しの表記ゆれ/ })
 
     await userEvent.click(button)
     expect(onSelectStep).toHaveBeenLastCalledWith({
@@ -399,8 +401,8 @@ describe('TaskExecutionTree', () => {
   it('選択中の step の内容が変わったら (同じ key のまま) onSelectStep が新しい内容で再度呼ばれる', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      item_label: '円安の進行が主因',
+      item: { title: '見出しの表記ゆれ' },
+      item_label: '見出しの表記ゆれ',
       status: 'running',
       finished_at: undefined,
     })
@@ -410,7 +412,7 @@ describe('TaskExecutionTree', () => {
       <TaskExecutionTree {...makeProps({ steps: [step], onSelectStep })} />,
     )
     await userEvent.click(
-      screen.getByRole('button', { name: /円安の進行が主因/ }),
+      screen.getByRole('button', { name: /見出しの表記ゆれ/ }),
     )
     expect(onSelectStep).toHaveBeenLastCalledWith({
       step,
@@ -421,7 +423,7 @@ describe('TaskExecutionTree', () => {
       ...step,
       status: 'completed',
       finished_at: '2026-08-15T00:00:08Z',
-      output: { verdict: '妥当' },
+      output: { result: '一致' },
     }
     rerender(
       <TaskExecutionTree
@@ -440,8 +442,8 @@ describe('StepDetail', () => {
   it('フェーズ/モデル/所要を kv ブロックに表示する', () => {
     const step = makeStep({
       phase_key: 'investigate',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
+      label: '項目確認',
+      model: 'simulated-model-teal',
       started_at: '2026-08-15T00:00:00Z',
       finished_at: '2026-08-15T00:00:28.700Z',
     })
@@ -449,9 +451,9 @@ describe('StepDetail', () => {
     render(<StepDetail step={step} />)
 
     expect(screen.getByText('フェーズ')).toBeInTheDocument()
-    expect(screen.getByText('仮説の調査')).toBeInTheDocument()
+    expect(screen.getByText('項目確認')).toBeInTheDocument()
     expect(screen.getByText('モデル')).toBeInTheDocument()
-    expect(screen.getByText('deepseek-v4-flash')).toBeInTheDocument()
+    expect(screen.getByText('simulated-model-teal')).toBeInTheDocument()
     expect(screen.getByText('所要')).toBeInTheDocument()
     expect(screen.getByText('28.7s')).toBeInTheDocument()
   })
@@ -471,46 +473,46 @@ describe('StepDetail', () => {
   it('outputSchema の enum 項目を項目名をラベルに値とともに表示する', () => {
     const step = makeStep({
       phase_key: 'investigate',
-      output: { verdict: 'rejected', summary: 'done' },
+      output: { result: 'needs_review', details: 'done' },
     })
     const outputSchema = {
-      verdict: { enum: ['supported', 'rejected'] },
-      summary: { type: 'string' },
+      result: { enum: ['consistent', 'needs_review'] },
+      details: { type: 'string' },
     }
 
     render(<StepDetail step={step} outputSchema={outputSchema} />)
 
-    expect(screen.getByText('verdict')).toBeInTheDocument()
-    expect(screen.getByText('rejected')).toBeInTheDocument()
-    expect(screen.queryByText('summary')).not.toBeInTheDocument()
+    expect(screen.getByText('result')).toBeInTheDocument()
+    expect(screen.getByText('needs_review')).toBeInTheDocument()
+    expect(screen.queryByText('details')).not.toBeInTheDocument()
   })
 
   it('outputSchema が無ければ enum 行を出さない', () => {
     const step = makeStep({
       phase_key: 'investigate',
-      output: { verdict: 'rejected' },
+      output: { result: 'needs_review' },
     })
 
     render(<StepDetail step={step} />)
 
-    expect(screen.queryByText('rejected')).not.toBeInTheDocument()
+    expect(screen.queryByText('needs_review')).not.toBeInTheDocument()
   })
 
   it('item/output を JSON で表示する', () => {
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      output: { verdict: '妥当' },
+      item: { title: '見出しの表記ゆれ' },
+      output: { result: '一致' },
     })
 
     render(<StepDetail step={step} />)
 
     expect(screen.getByText('input')).toBeInTheDocument()
     expect(
-      screen.getByText('{ "title": "円安の進行が主因" }'),
+      screen.getByText('{ "title": "見出しの表記ゆれ" }'),
     ).toBeInTheDocument()
     expect(screen.getByText('output')).toBeInTheDocument()
-    expect(screen.getByText('{ "verdict": "妥当" }')).toBeInTheDocument()
+    expect(screen.getByText('{ "result": "一致" }')).toBeInTheDocument()
   })
 
   it('traceUrlTemplate があればトレースリンクを組み立てる', () => {
@@ -538,7 +540,7 @@ describe('StepDetail', () => {
   it('output に note_id があればノートへのリンクを組み立てる', async () => {
     const step = makeStep({
       phase_key: 'investigate',
-      output: { verdict: 'rejected', note_id: 'note-abc' },
+      output: { result: 'needs_review', note_id: 'note-abc' },
     })
 
     await renderInRouter(<StepDetail step={step} />)
@@ -551,7 +553,7 @@ describe('StepDetail', () => {
   it('output に note_id が無ければノートへのリンクを出さない', () => {
     const step = makeStep({
       phase_key: 'investigate',
-      output: { verdict: 'rejected' },
+      output: { result: 'needs_review' },
     })
 
     render(<StepDetail step={step} />)
@@ -564,7 +566,7 @@ describe('StepDetail', () => {
   it('output の note_id が空文字列ならノートへのリンクを出さない', () => {
     const step = makeStep({
       phase_key: 'investigate',
-      output: { verdict: 'rejected', note_id: '' },
+      output: { result: 'needs_review', note_id: '' },
     })
 
     render(<StepDetail step={step} />)
@@ -578,54 +580,54 @@ describe('StepDetail', () => {
 describe('findEnumBadge', () => {
   it('output スキーマの enum 項目に対応する値があればそれを返す', () => {
     const outputSchema = {
-      verdict: { enum: ['supported', 'rejected', 'inconclusive'] },
-      summary: { type: 'string' },
+      result: { enum: ['consistent', 'needs_review', 'undetermined'] },
+      details: { type: 'string' },
     }
 
-    expect(findEnumBadge(outputSchema, { verdict: 'rejected' })).toBe(
-      'rejected',
+    expect(findEnumBadge(outputSchema, { result: 'needs_review' })).toBe(
+      'needs_review',
     )
   })
 
   it('output スキーマが無ければ null を返す', () => {
-    expect(findEnumBadge(undefined, { verdict: 'rejected' })).toBeNull()
+    expect(findEnumBadge(undefined, { result: 'needs_review' })).toBeNull()
   })
 
   it('output に enum 項目の値がまだ無ければ null を返す', () => {
-    const outputSchema = { verdict: { enum: ['supported', 'rejected'] } }
+    const outputSchema = { result: { enum: ['consistent', 'needs_review'] } }
 
     expect(findEnumBadge(outputSchema, undefined)).toBeNull()
     expect(findEnumBadge(outputSchema, { other: 'x' })).toBeNull()
   })
 
   it('enum 宣言の無い項目しか無ければ null を返す', () => {
-    const outputSchema = { summary: { type: 'string' } }
+    const outputSchema = { details: { type: 'string' } }
 
-    expect(findEnumBadge(outputSchema, { summary: 'done' })).toBeNull()
+    expect(findEnumBadge(outputSchema, { details: 'done' })).toBeNull()
   })
 })
 
 describe('listEnumEntries', () => {
   it('enum 項目のうち値があるものすべてを項目名をラベルとして返す', () => {
     const outputSchema = {
-      verdict: { enum: ['supported', 'rejected'] },
-      confidence: { enum: ['high', 'low'] },
-      summary: { type: 'string' },
+      result: { enum: ['consistent', 'needs_review'] },
+      category: { enum: ['primary', 'secondary'] },
+      details: { type: 'string' },
     }
-    const output = { verdict: 'rejected', confidence: 'high', summary: 'x' }
+    const output = { result: 'needs_review', category: 'primary', details: 'x' }
 
     expect(listEnumEntries(outputSchema, output)).toEqual([
-      { label: 'verdict', value: 'rejected' },
-      { label: 'confidence', value: 'high' },
+      { label: 'result', value: 'needs_review' },
+      { label: 'category', value: 'primary' },
     ])
   })
 
   it('outputSchema が無ければ空配列を返す', () => {
-    expect(listEnumEntries(undefined, { verdict: 'rejected' })).toEqual([])
+    expect(listEnumEntries(undefined, { result: 'needs_review' })).toEqual([])
   })
 
   it('output に値がまだ無い項目は含めない', () => {
-    const outputSchema = { verdict: { enum: ['supported', 'rejected'] } }
+    const outputSchema = { result: { enum: ['consistent', 'needs_review'] } }
 
     expect(listEnumEntries(outputSchema, undefined)).toEqual([])
     expect(listEnumEntries(outputSchema, { other: 'x' })).toEqual([])
@@ -669,7 +671,7 @@ describe('stepSubtitle', () => {
     const step = makeStep({
       phase_key: 'investigate',
       status: 'completed',
-      output: { verdict: 'rejected' },
+      output: { result: 'needs_review' },
     })
 
     expect(stepSubtitle(step)).toBeNull()
@@ -686,22 +688,22 @@ describe('parseAgentGraphPhases', () => {
     const yaml = [
       'phases:',
       '  - key: plan',
-      '    label: 調査計画',
-      '    model: claude-opus-4',
-      '    prompt: p',
+      '    label: 準備一覧',
+      '    model: simulated-model-amber',
+      '    prompt: 項目の形式を確認する',
       '  - key: investigate',
-      '    label: 調査',
-      '    model: deepseek-v4-flash',
-      '    prompt: p',
+      '    label: 確認',
+      '    model: simulated-model-teal',
+      '    prompt: 項目の形式を確認する',
       '    for_each: plan.items',
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
       {
         key: 'investigate',
-        label: '調査',
-        model: 'deepseek-v4-flash',
+        label: '確認',
+        model: 'simulated-model-teal',
         forEach: 'plan.items',
       },
     ])
@@ -711,23 +713,23 @@ describe('parseAgentGraphPhases', () => {
     const yaml = [
       'phases:',
       '  - key: investigate',
-      '    label: 調査',
-      '    model: deepseek-v4-flash',
+      '    label: 確認',
+      '    model: simulated-model-teal',
       '    output:',
-      '      verdict:',
-      '        enum: [supported, rejected]',
-      '      summary:',
+      '      result:',
+      '        enum: [consistent, needs_review]',
+      '      details:',
       '        type: string',
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
       {
         key: 'investigate',
-        label: '調査',
-        model: 'deepseek-v4-flash',
+        label: '確認',
+        model: 'simulated-model-teal',
         output: {
-          verdict: { enum: ['supported', 'rejected'] },
-          summary: { type: 'string' },
+          result: { enum: ['consistent', 'needs_review'] },
+          details: { type: 'string' },
         },
       },
     ])
@@ -737,16 +739,16 @@ describe('parseAgentGraphPhases', () => {
     const yaml = [
       'phases:',
       '  - key: inspect',
-      '    label: Inspect',
-      '    model: fictional-model',
+      '    label: 確認',
+      '    model: simulated-model-teal',
       '    for_each: source.entries',
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
       {
         key: 'inspect',
-        label: 'Inspect',
-        model: 'fictional-model',
+        label: '確認',
+        model: 'simulated-model-teal',
         forEach: 'source.entries',
       },
     ])
@@ -765,14 +767,14 @@ describe('parseAgentGraphPhases', () => {
     const yaml = [
       'phases:',
       '  - key: plan',
-      '    label: 調査計画',
-      '    model: claude-opus-4',
+      '    label: 準備一覧',
+      '    model: simulated-model-amber',
       '  - key: broken',
       '    label: 壊れた設定',
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
     ])
   })
 })
@@ -780,15 +782,15 @@ describe('parseAgentGraphPhases', () => {
 describe('buildPhaseNodes', () => {
   it('returns empty array when steps is empty, even with configured phases', () => {
     const configPhases = [
-      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
     ]
     expect(buildPhaseNodes(configPhases, [])).toEqual([])
   })
 
   it('marks configured phases with no steps as pending', () => {
     const configPhases = [
-      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
-      { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
+      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
+      { key: 'merge', label: '結果整理', model: 'simulated-model-violet' },
     ]
     const steps = [makeStep({ phase_key: 'plan' })]
 
@@ -797,25 +799,25 @@ describe('buildPhaseNodes', () => {
       {
         kind: 'pending',
         key: 'merge',
-        label: '統合',
-        model: 'claude-sonnet-4',
+        label: '結果整理',
+        model: 'simulated-model-violet',
       },
     ])
   })
 
   const configPhases = [
-    { key: 'source', label: 'Source', model: 'fictional-model' },
+    { key: 'source', label: '入力', model: 'simulated-model-teal' },
     {
       key: 'inspect',
-      label: 'Inspect',
-      model: 'fictional-model',
+      label: '確認',
+      model: 'simulated-model-teal',
       forEach: 'source.entries',
     },
-    { key: 'summary', label: 'Summary', model: 'fictional-model' },
+    { key: 'details', label: '整理', model: 'simulated-model-teal' },
   ]
   const steps = [
     makeStep({ phase_key: 'source' }),
-    makeStep({ phase_key: 'summary' }),
+    makeStep({ phase_key: 'details' }),
   ]
 
   it.each([
@@ -826,10 +828,10 @@ describe('buildPhaseNodes', () => {
         {
           kind: 'pending',
           key: 'inspect',
-          label: 'Inspect',
-          model: 'fictional-model',
+          label: '確認',
+          model: 'simulated-model-teal',
         },
-        { kind: 'single', key: 'summary', step: steps[1] },
+        { kind: 'single', key: 'details', step: steps[1] },
       ],
     },
     {
@@ -839,10 +841,10 @@ describe('buildPhaseNodes', () => {
         {
           kind: 'empty',
           key: 'inspect',
-          label: 'Inspect',
-          model: 'fictional-model',
+          label: '確認',
+          model: 'simulated-model-teal',
         },
-        { kind: 'single', key: 'summary', step: steps[1] },
+        { kind: 'single', key: 'details', step: steps[1] },
       ],
     },
   ])(
@@ -856,18 +858,18 @@ describe('buildPhaseNodes', () => {
 
   it('groups steps carrying an item into a branch node', () => {
     const configPhases = [
-      { key: 'investigate', label: '調査', model: 'deepseek-v4-flash' },
+      { key: 'investigate', label: '確認', model: 'simulated-model-teal' },
     ]
     const branchA = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
-      item_label: '円安の進行が主因',
+      item: { title: '見出しの表記ゆれ' },
+      item_label: '見出しの表記ゆれ',
       started_at: '2026-08-15T00:00:01Z',
     })
     const branchB = makeStep({
       phase_key: 'investigate',
-      item: { title: '半導体サイクルの反転' },
-      item_label: '半導体サイクルの反転',
+      item: { title: '注記の抜け' },
+      item_label: '注記の抜け',
       status: 'running',
       finished_at: undefined,
       started_at: '2026-08-15T00:00:00Z',
@@ -879,18 +881,18 @@ describe('buildPhaseNodes', () => {
   })
 
   it('configPhases の output をノードの outputSchema として運ぶ', () => {
-    const outputSchema = { verdict: { enum: ['supported', 'rejected'] } }
+    const outputSchema = { result: { enum: ['consistent', 'needs_review'] } }
     const configPhases = [
       {
         key: 'investigate',
-        label: '調査',
-        model: 'deepseek-v4-flash',
+        label: '確認',
+        model: 'simulated-model-teal',
         output: outputSchema,
       },
     ]
     const step = makeStep({
       phase_key: 'investigate',
-      item: { title: '円安の進行が主因' },
+      item: { title: '見出しの表記ゆれ' },
     })
 
     expect(buildPhaseNodes(configPhases, [step])).toEqual([

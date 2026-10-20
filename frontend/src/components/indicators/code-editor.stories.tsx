@@ -14,15 +14,15 @@ type Story = StoryObj<typeof meta>
 const SAMPLE_PYTHON = `import json, sys
 
 args = json.load(sys.stdin)["args"]
-period = args.get("period", 14)
-print(json.dumps({"value": period * 2}))
+label = args.get("label", "")
+print(json.dumps({"characters": len(label)}))
 `
 
 const SAMPLE_JSON = JSON.stringify(
   {
     type: 'object',
-    properties: { period: { type: 'integer' } },
-    required: ['period'],
+    properties: { label: { type: 'string' } },
+    required: ['label'],
   },
   null,
   2,
@@ -30,10 +30,10 @@ const SAMPLE_JSON = JSON.stringify(
 
 const SAMPLE_YAML = `phases:
   - key: plan
-    label: 調査計画
-    model: claude-opus-4
+    label: 見出し案
+    model: fictional-model-orbit
     prompt: |
-      与えられた問いに対し、検証すべき仮説を立てよ。
+      与えられたテーマを読みやすい見出しに分ける。
 `
 
 function Interactive({
@@ -55,7 +55,7 @@ function Interactive({
 }
 
 export const Python: Story = {
-  name: 'shows a Python indicator script in the code editor.',
+  name: 'shows a Python text-processing example in the code editor.',
   args: { language: 'python', value: SAMPLE_PYTHON, onChange: () => {} },
   render: () => <Interactive language="python" initial={SAMPLE_PYTHON} />,
 }

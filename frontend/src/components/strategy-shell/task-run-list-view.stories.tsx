@@ -34,9 +34,9 @@ export const List: Story = {
         tasks: [
           {
             taskId: 'task-0003',
-            strategyId: 'semi-swing',
-            strategyName: '半導体スイング',
-            prompt: '半導体セクターの調整は一時的か、循環の転換点か',
+            strategyId: 'sample-workspace',
+            strategyName: 'サンプルワークスペース',
+            prompt: 'サンプル項目の記録内容を確認する',
             source: 'frontend',
             phase: 'running',
             purpose: 'inspect',
@@ -44,8 +44,8 @@ export const List: Story = {
           },
           {
             taskId: 'task-0002',
-            strategyId: 'semi-swing',
-            prompt: '円安進行を受けたポジション調整の要否を確認',
+            strategyId: 'sample-workspace',
+            prompt: '項目一覧の表記を確認する',
             source: 'cron',
             phase: 'completed',
             purpose: null,
@@ -53,8 +53,8 @@ export const List: Story = {
           },
           {
             taskId: 'task-0001',
-            strategyId: 'semi-swing',
-            prompt: 'SUMCO のレンジ回帰シナリオを再評価',
+            strategyId: 'sample-workspace',
+            prompt: '重複している項目を確認する',
             source: 'mgmt-mcp',
             phase: 'failed',
             purpose: null,
@@ -78,7 +78,7 @@ export const Loading: Story = {
 }
 
 export const Empty: Story = {
-  name: 'shows the empty state when the strategy has no task runs.',
+  name: 'shows the empty state when the workspace has no task runs.',
   render: () => (
     <RouterProvider
       router={createTaskRunListViewRouter({

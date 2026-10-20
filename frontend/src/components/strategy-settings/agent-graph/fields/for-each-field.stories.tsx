@@ -14,25 +14,25 @@ type Story = StoryObj<typeof meta>
 
 const PLAN: AgentGraphPhaseForm = {
   key: 'plan',
-  label: '調査計画',
-  model: 'claude-opus-4',
-  prompt: '仮説を立てよ',
+  label: '見出し案',
+  model: 'fictional-model-orbit',
+  prompt: 'テーマを読みやすい節に分ける',
   skills: [],
   tools: [],
   output: {
-    hypotheses: {
+    sections: {
       type: 'array',
       items: { title: { type: 'string' } },
     },
   },
 }
 
-const INVESTIGATE: AgentGraphPhaseForm = {
-  key: 'investigate',
-  label: '仮説の調査',
-  model: 'deepseek-v4-flash',
-  prompt: '割り当てられた仮説を検証せよ',
-  forEach: 'plan.hypotheses',
+const COMPOSE: AgentGraphPhaseForm = {
+  key: 'compose',
+  label: '節の作成',
+  model: 'fictional-model-lantern',
+  prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+  forEach: 'plan.sections',
   skills: [],
   tools: [],
   output: {},
@@ -73,14 +73,14 @@ export const NoPriorArrayOutput: Story = {
 export const WithArrayOption: Story = {
   name: 'shows available array outputs while choosing items to process.',
   args: {
-    phases: [PLAN, INVESTIGATE],
+    phases: [PLAN, COMPOSE],
     index: 1,
     value: undefined,
     onChange: () => {},
   },
   render: () => (
     <Interactive
-      phases={[PLAN, INVESTIGATE]}
+      phases={[PLAN, COMPOSE]}
       index={1}
       initial={undefined}
       selectDefaultOpen
@@ -91,16 +91,12 @@ export const WithArrayOption: Story = {
 export const Selected: Story = {
   name: 'shows a selected array output to process for each run.',
   args: {
-    phases: [PLAN, INVESTIGATE],
+    phases: [PLAN, COMPOSE],
     index: 1,
-    value: 'plan.hypotheses',
+    value: 'plan.sections',
     onChange: () => {},
   },
   render: () => (
-    <Interactive
-      phases={[PLAN, INVESTIGATE]}
-      index={1}
-      initial="plan.hypotheses"
-    />
+    <Interactive phases={[PLAN, COMPOSE]} index={1} initial="plan.sections" />
   ),
 }

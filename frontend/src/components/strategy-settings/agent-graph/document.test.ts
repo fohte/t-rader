@@ -16,18 +16,18 @@ import {
 
 const SAMPLE = `phases:
   - key: plan
-    label: 調査計画
-    model: claude-opus-4
+    label: 見出し案
+    model: fictional-model-orbit
     runs: once
-    prompt: 仮説を立てよ
-  - key: investigate
-    label: 仮説の調査
-    model: deepseek-v4-flash
-    for_each: plan.hypotheses
+    prompt: テーマを読みやすい節に分ける
+  - key: compose
+    label: 節の作成
+    model: fictional-model-lantern
+    for_each: plan.sections
     label_field: title
     max_parallel: 4
-    prompt: 割り当てられた仮説を検証せよ
-    tools: [query_data, write_note]
+    prompt: 割り当てられた見出しに沿って、説明文を作成する。
+    tools: [read_reference, save_draft]
 `
 
 const INCOMPLETE_PHASE = `phases:
@@ -45,9 +45,9 @@ describe('parseAgentGraphPhases', () => {
     expect(parseAgentGraphPhases(SAMPLE)).toEqual([
       {
         key: 'plan',
-        label: '調査計画',
-        model: 'claude-opus-4',
-        prompt: '仮説を立てよ',
+        label: '見出し案',
+        model: 'fictional-model-orbit',
+        prompt: 'テーマを読みやすい節に分ける',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
@@ -56,15 +56,15 @@ describe('parseAgentGraphPhases', () => {
         output: {},
       },
       {
-        key: 'investigate',
-        label: '仮説の調査',
-        model: 'deepseek-v4-flash',
-        prompt: '割り当てられた仮説を検証せよ',
-        forEach: 'plan.hypotheses',
+        key: 'compose',
+        label: '節の作成',
+        model: 'fictional-model-lantern',
+        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+        forEach: 'plan.sections',
         labelField: 'title',
         maxParallel: 4,
         skills: [],
-        tools: ['query_data', 'write_note'],
+        tools: ['read_reference', 'save_draft'],
         output: {},
       },
     ])
@@ -93,13 +93,13 @@ describe('parseAgentGraphPhases', () => {
 
 describe('setPhaseField', () => {
   it('指定したフェーズのフィールドだけを書き換え、他はそのまま残す', () => {
-    const next = setPhaseField(SAMPLE, 0, 'model', 'claude-sonnet-4')
+    const next = setPhaseField(SAMPLE, 0, 'model', 'fictional-model-maple')
     expect(parseAgentGraphPhases(next)).toEqual([
       {
         key: 'plan',
-        label: '調査計画',
-        model: 'claude-sonnet-4',
-        prompt: '仮説を立てよ',
+        label: '見出し案',
+        model: 'fictional-model-maple',
+        prompt: 'テーマを読みやすい節に分ける',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
@@ -108,15 +108,15 @@ describe('setPhaseField', () => {
         output: {},
       },
       {
-        key: 'investigate',
-        label: '仮説の調査',
-        model: 'deepseek-v4-flash',
-        prompt: '割り当てられた仮説を検証せよ',
-        forEach: 'plan.hypotheses',
+        key: 'compose',
+        label: '節の作成',
+        model: 'fictional-model-lantern',
+        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+        forEach: 'plan.sections',
         labelField: 'title',
         maxParallel: 4,
         skills: [],
-        tools: ['query_data', 'write_note'],
+        tools: ['read_reference', 'save_draft'],
         output: {},
       },
     ])
@@ -125,12 +125,12 @@ describe('setPhaseField', () => {
   })
 
   it('label を書き換えられる', () => {
-    const next = setPhaseField(SAMPLE, 0, 'label', '新しい調査計画')
+    const next = setPhaseField(SAMPLE, 0, 'label', '新しい見出し案')
     expect(parseAgentGraphPhases(next)?.[0]).toEqual({
       key: 'plan',
-      label: '新しい調査計画',
-      model: 'claude-opus-4',
-      prompt: '仮説を立てよ',
+      label: '新しい見出し案',
+      model: 'fictional-model-orbit',
+      prompt: 'テーマを読みやすい節に分ける',
       forEach: undefined,
       labelField: undefined,
       maxParallel: undefined,
@@ -150,13 +150,13 @@ describe('setPhaseField', () => {
 
 describe('setPhaseForEach', () => {
   it('値を設定すると for_each が書き込まれる', () => {
-    const next = setPhaseForEach(SAMPLE, 0, 'plan.hypotheses')
+    const next = setPhaseForEach(SAMPLE, 0, 'plan.sections')
     expect(parseAgentGraphPhases(next)?.[0]).toEqual({
       key: 'plan',
-      label: '調査計画',
-      model: 'claude-opus-4',
-      prompt: '仮説を立てよ',
-      forEach: 'plan.hypotheses',
+      label: '見出し案',
+      model: 'fictional-model-orbit',
+      prompt: 'テーマを読みやすい節に分ける',
+      forEach: 'plan.sections',
       labelField: undefined,
       maxParallel: undefined,
       skills: [],
@@ -168,15 +168,15 @@ describe('setPhaseForEach', () => {
   it('undefined を渡すと for_each キーごと消える (label_field/max_parallel は残す)', () => {
     const next = setPhaseForEach(SAMPLE, 1, undefined)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'investigate',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
-      prompt: '割り当てられた仮説を検証せよ',
+      key: 'compose',
+      label: '節の作成',
+      model: 'fictional-model-lantern',
+      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
       forEach: undefined,
       labelField: 'title',
       maxParallel: 4,
       skills: [],
-      tools: ['query_data', 'write_note'],
+      tools: ['read_reference', 'save_draft'],
       output: {},
     })
   })
@@ -184,17 +184,17 @@ describe('setPhaseForEach', () => {
 
 describe('setPhaseLabelField', () => {
   it('値を設定すると label_field が書き込まれる', () => {
-    const next = setPhaseLabelField(SAMPLE, 1, 'summary')
+    const next = setPhaseLabelField(SAMPLE, 1, 'overview')
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'investigate',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
-      prompt: '割り当てられた仮説を検証せよ',
-      forEach: 'plan.hypotheses',
-      labelField: 'summary',
+      key: 'compose',
+      label: '節の作成',
+      model: 'fictional-model-lantern',
+      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+      forEach: 'plan.sections',
+      labelField: 'overview',
       maxParallel: 4,
       skills: [],
-      tools: ['query_data', 'write_note'],
+      tools: ['read_reference', 'save_draft'],
       output: {},
     })
   })
@@ -202,15 +202,15 @@ describe('setPhaseLabelField', () => {
   it('undefined を渡すと label_field キーごと消える', () => {
     const next = setPhaseLabelField(SAMPLE, 1, undefined)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'investigate',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
-      prompt: '割り当てられた仮説を検証せよ',
-      forEach: 'plan.hypotheses',
+      key: 'compose',
+      label: '節の作成',
+      model: 'fictional-model-lantern',
+      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+      forEach: 'plan.sections',
       labelField: undefined,
       maxParallel: 4,
       skills: [],
-      tools: ['query_data', 'write_note'],
+      tools: ['read_reference', 'save_draft'],
       output: {},
     })
   })
@@ -220,15 +220,15 @@ describe('setPhaseMaxParallel', () => {
   it('値を設定すると max_parallel が書き込まれる', () => {
     const next = setPhaseMaxParallel(SAMPLE, 1, 8)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'investigate',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
-      prompt: '割り当てられた仮説を検証せよ',
-      forEach: 'plan.hypotheses',
+      key: 'compose',
+      label: '節の作成',
+      model: 'fictional-model-lantern',
+      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+      forEach: 'plan.sections',
       labelField: 'title',
       maxParallel: 8,
       skills: [],
-      tools: ['query_data', 'write_note'],
+      tools: ['read_reference', 'save_draft'],
       output: {},
     })
   })
@@ -236,15 +236,15 @@ describe('setPhaseMaxParallel', () => {
   it('undefined を渡すと max_parallel キーごと消える', () => {
     const next = setPhaseMaxParallel(SAMPLE, 1, undefined)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'investigate',
-      label: '仮説の調査',
-      model: 'deepseek-v4-flash',
-      prompt: '割り当てられた仮説を検証せよ',
-      forEach: 'plan.hypotheses',
+      key: 'compose',
+      label: '節の作成',
+      model: 'fictional-model-lantern',
+      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+      forEach: 'plan.sections',
       labelField: 'title',
       maxParallel: undefined,
       skills: [],
-      tools: ['query_data', 'write_note'],
+      tools: ['read_reference', 'save_draft'],
       output: {},
     })
   })
@@ -253,7 +253,7 @@ describe('setPhaseMaxParallel', () => {
 describe('setPhaseOutput', () => {
   it('指定したフェーズの output だけを書き換え、他フィールド・他フェーズはそのまま残す', () => {
     const next = setPhaseOutput(SAMPLE, 0, {
-      hypotheses: {
+      sections: {
         type: 'array',
         items: { title: { type: 'string' } },
         required: ['title'],
@@ -262,16 +262,16 @@ describe('setPhaseOutput', () => {
     expect(parseAgentGraphPhases(next)).toEqual([
       {
         key: 'plan',
-        label: '調査計画',
-        model: 'claude-opus-4',
-        prompt: '仮説を立てよ',
+        label: '見出し案',
+        model: 'fictional-model-orbit',
+        prompt: 'テーマを読みやすい節に分ける',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
         skills: [],
         tools: undefined,
         output: {
-          hypotheses: {
+          sections: {
             type: 'array',
             items: { title: { type: 'string' } },
             required: ['title'],
@@ -279,15 +279,15 @@ describe('setPhaseOutput', () => {
         },
       },
       {
-        key: 'investigate',
-        label: '仮説の調査',
-        model: 'deepseek-v4-flash',
-        prompt: '割り当てられた仮説を検証せよ',
-        forEach: 'plan.hypotheses',
+        key: 'compose',
+        label: '節の作成',
+        model: 'fictional-model-lantern',
+        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+        forEach: 'plan.sections',
         labelField: 'title',
         maxParallel: 4,
         skills: [],
-        tools: ['query_data', 'write_note'],
+        tools: ['read_reference', 'save_draft'],
         output: {},
       },
     ])
@@ -297,7 +297,7 @@ describe('setPhaseOutput', () => {
 
   it('空オブジェクトを書き込むと output は空になる', () => {
     const withOutput = setPhaseOutput(SAMPLE, 0, {
-      verdict: { type: 'string' },
+      abstract: { type: 'string' },
     })
     const cleared = setPhaseOutput(withOutput, 0, {})
     expect(parseAgentGraphPhases(cleared)?.[0]?.output).toEqual({})
@@ -311,9 +311,9 @@ describe('setPhaseArrayField', () => {
     // 他のフィールドは変化しない
     expect(parseAgentGraphPhases(next)?.[0]).toEqual({
       key: 'plan',
-      label: '調査計画',
-      model: 'claude-opus-4',
-      prompt: '仮説を立てよ',
+      label: '見出し案',
+      model: 'fictional-model-orbit',
+      prompt: 'テーマを読みやすい節に分ける',
       forEach: undefined,
       labelField: undefined,
       maxParallel: undefined,
@@ -323,8 +323,8 @@ describe('setPhaseArrayField', () => {
     })
     // 他のフェーズは変化しない
     expect(parseAgentGraphPhases(next)?.[1]?.tools).toEqual([
-      'query_data',
-      'write_note',
+      'read_reference',
+      'save_draft',
     ])
     // runs はフォームの型には出ないが、YAML 上は素通しされたままであること
     expect(parseDocument(next).getIn(['phases', 0, 'runs'])).toBe('once')
@@ -345,8 +345,8 @@ describe('setPhaseArrayField', () => {
   })
 
   it('skills にも配列を書き込める', () => {
-    const next = setPhaseArrayField(SAMPLE, 0, 'skills', ['snapshot'])
-    expect(parseAgentGraphPhases(next)?.[0]?.skills).toEqual(['snapshot'])
+    const next = setPhaseArrayField(SAMPLE, 0, 'skills', ['outline_guide'])
+    expect(parseAgentGraphPhases(next)?.[0]?.skills).toEqual(['outline_guide'])
   })
 })
 
@@ -392,15 +392,15 @@ describe('removePhase', () => {
     const next = removePhase(SAMPLE, 0)
     expect(parseAgentGraphPhases(next)).toEqual([
       {
-        key: 'investigate',
-        label: '仮説の調査',
-        model: 'deepseek-v4-flash',
-        prompt: '割り当てられた仮説を検証せよ',
-        forEach: 'plan.hypotheses',
+        key: 'compose',
+        label: '節の作成',
+        model: 'fictional-model-lantern',
+        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+        forEach: 'plan.sections',
         labelField: 'title',
         maxParallel: 4,
         skills: [],
-        tools: ['query_data', 'write_note'],
+        tools: ['read_reference', 'save_draft'],
         output: {},
       },
     ])
@@ -411,7 +411,7 @@ describe('movePhase', () => {
   it('up で 1 つ前と入れ替える', () => {
     const next = movePhase(SAMPLE, 1, 'up')
     expect(parseAgentGraphPhases(next)?.map((p) => p.key)).toEqual([
-      'investigate',
+      'compose',
       'plan',
     ])
   })
@@ -419,7 +419,7 @@ describe('movePhase', () => {
   it('down で 1 つ後ろと入れ替える', () => {
     const next = movePhase(SAMPLE, 0, 'down')
     expect(parseAgentGraphPhases(next)?.map((p) => p.key)).toEqual([
-      'investigate',
+      'compose',
       'plan',
     ])
   })

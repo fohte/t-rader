@@ -15,49 +15,53 @@ import { createStoryRouter } from '#storybook/story-router'
 const queryClient = new QueryClient()
 
 const NAMES: Record<string, string> = {
-  'stock:demo-code': 'Sample Stock',
-  'indicator:demo-indicator': 'Sample Indicator',
-  'group:demo-axis/demo-group': 'Sample Group',
+  'stock:item-a': 'Item A',
+  'indicator:metric-a': 'Measure A',
+  'group:set/a': 'Set A',
+  'group:set/b': 'Input B',
+  'group:set/c': 'Input C',
+  'group:set/d': 'Record',
+  'group:set/e': 'Index',
 }
 
-const SAMPLE = `# サンプル銘柄の記録
+const SAMPLE = `# サンプル項目の記録
 
 ## 要約
 
-[[stock:demo-code]] はサンプル期間に 1,200-1,400 のレンジで推移している。[[indicator:demo-indicator]] と [[group:demo-axis/demo-group]] の動きも中立。こうした局面では **レンジ内での推移が続く可能性がある**。
+[[stock:item-a]] は記録期間に 12-18 件の範囲で確認された。[[indicator:metric-a]] と [[group:set/a]] の値も安定している。現在の記録から **同じ形式で項目を整理できる**。
 
-## レンジ回帰の定量評価
+## 項目の集計結果
 
-過去の類似期間を抽出し、レンジ内で価格が推移した割合を計測した。
+過去の記録を抽出し、指定された形式に沿って整理できた割合を集計した。
 
-- 下限から中央へ戻った割合: **72%** (n=18)
-- 上限を超えて推移した割合: 21%
-- 中央へ戻るまでの営業日数: 4.3 日
+- 形式に一致した割合: **72%** (n=18)
+- 要確認の項目: 21%
+- 整理にかかった時間: 4.3 分
 
-直近の [[anno:A2]] で下限に接触し、終値は前日を上回った。
+直近の [[anno:mark-7]] で項目名の表記ゆれを確認した。
 
-> 「確認ラインは 1,180」 — サンプル範囲の下限に設定
+> 「一覧の 12 番から 18 番を再確認」 — 対象範囲を記録
 
-| ケース | 割合 | n |
+| 区分 | 割合 | 件数 |
 | --- | ---: | ---: |
-| 下限から中央へ戻る | 72% | 18 |
-| 上限を超えて推移する | 21% | 18 |
+| 形式に一致 | 72% | 18 |
+| 要確認 | 21% | 18 |
 
-詳細は [サンプル記事](https://example.com/sample-range) と [[group:demo-axis/demo-group]] の動向を参照。
+詳細は [サンプル手順](https://example.com/sample-process) と [[group:set/a]] の記録を参照。
 
-判断の前提は [[note:00000000-0000-0000-0000-000000000101]] のバージョンに記録した。
-現行の資料は [[note:00000000-0000-0000-0000-000000000102@current]] を参照する。
+確認の前提は [[note:11111111-2222-4333-8444-555555555501]] のバージョンに記録した。
+現行の資料は [[note:11111111-2222-4333-8444-555555555502@current]] を参照する。
 
-- 直近レンジ
-    - 下限: 1,480
-    - 上限: 1,640
+- 対象の範囲
+    - 開始番号: 12
+    - 終了番号: 18
 
-1. 最初の手順
-    - 子項目
-2. 次の手順
+1. 項目を読み込む
+    - 表記を整える
+2. 一覧を保存する
 
 \`\`\`python
-print("nsjail で集計したサンプル")
+print("サンプル項目を集計")
 \`\`\`
 `
 
@@ -85,25 +89,25 @@ const GUTTER_LAYOUT_SAMPLE = `${'\n'.repeat(99)}${[
 
 const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
   {
-    note_id: '00000000-0000-0000-0000-000000000101',
-    version_id: '00000000-0000-0000-0000-000000000201',
+    note_id: '11111111-2222-4333-8444-555555555501',
+    version_id: '11111111-2222-4333-8444-555555555601',
     version_no: 2,
-    title: 'サンプル銘柄の判断',
+    title: 'サンプル項目の確認',
   },
   {
-    note_id: '00000000-0000-0000-0000-000000000102',
+    note_id: '11111111-2222-4333-8444-555555555502',
     version_id: null,
     version_no: 4,
-    title: 'サンプル環境の記録',
+    title: 'サンプル一覧の記録',
   },
 ]
 
 const rangeComment: NoteVersionComment = {
-  id: 'sample-range-comment',
+  id: 'sample-item-comment',
   target_kind: 'note_version',
-  target_id: 'sample-version',
+  target_id: 'synthetic-version',
   parent_id: null,
-  body: 'この段落の根拠を補足してください。',
+  body: 'この段落の説明を補足してください。',
   author_kind: 'human',
   author_label: 'レビュー担当者',
   resolved: false,
@@ -118,9 +122,9 @@ const formattedNoteComments: NoteVersionComment[] = [
   {
     id: 'nested-list-comment',
     target_kind: 'note_version',
-    target_id: 'sample-version',
+    target_id: 'synthetic-version',
     parent_id: null,
-    body: '入れ子の項目を確認した。',
+    body: '入れ子の項目を記録した。',
     author_kind: 'human',
     author_label: 'レビュー担当者',
     resolved: false,
@@ -133,9 +137,9 @@ const formattedNoteComments: NoteVersionComment[] = [
   {
     id: 'table-row-comment',
     target_kind: 'note_version',
-    target_id: 'sample-version',
+    target_id: 'synthetic-version',
     parent_id: null,
-    body: '表の行を確認した。',
+    body: '表の行を記録した。',
     author_kind: 'human',
     author_label: 'レビュー担当者',
     resolved: false,
@@ -239,20 +243,20 @@ export const WithRangeCommentGutter: Story = {
 }
 
 export const WithResolvedPriceReferences: Story = {
-  name: 'renders resolved price, valuation, indicator, and evaluation values.',
+  name: 'renders resolved dated values and keeps unresolved values visible.',
   args: {
     source:
-      '終値 [[price:fictional-code@2030-01-02:close]]、期間変化 [[change:fictional-code@2030-01-02..2030-01-03:close]]、PER [[valuation:fictional-code@2030-01-02:per]]、為替 [[indicator:demo-indicator@2030-01-02]]、評価結果 [[eval:00000000-0000-0000-0000-000000000101:result]]、指標参照 [[indicator:demo-indicator]]、未解決 [[price:fictional-code@2030-01-04:close]]',
+      '記録値 [[price:item-a@2030-01-02:close]]、期間差 [[change:item-a@2030-01-02..2030-01-03:close]]、比率 [[valuation:item-a@2030-01-02:per]]、補助値 [[indicator:metric-a@2030-01-02]]、算出結果 [[eval:11111111-2222-4333-8444-555555555501:result]]、項目参照 [[indicator:metric-a]]、未登録値 [[price:item-a@2030-01-04:close]]',
     resolvedPriceReferences: {
-      '[[price:fictional-code@2030-01-02:close]]': {
+      '[[price:item-a@2030-01-02:close]]': {
         value: 1234.5,
       },
-      '[[change:fictional-code@2030-01-02..2030-01-03:close]]': {
+      '[[change:item-a@2030-01-02..2030-01-03:close]]': {
         value: 2.5,
       },
-      '[[valuation:fictional-code@2030-01-02:per]]': { value: 24.6 },
-      '[[indicator:demo-indicator@2030-01-02]]': { value: 152.3 },
-      '[[eval:00000000-0000-0000-0000-000000000101:result]]': {
+      '[[valuation:item-a@2030-01-02:per]]': { value: 24.6 },
+      '[[indicator:metric-a@2030-01-02]]': { value: 152.3 },
+      '[[eval:11111111-2222-4333-8444-555555555501:result]]': {
         value: 253.7,
       },
     },
@@ -263,7 +267,7 @@ export const WithUnresolvedDatedReferences: Story = {
   name: 'keeps dated value tokens visible when their values are unavailable.',
   args: {
     source:
-      '未解決の valuation [[valuation:demo-code@2030-01-04:per]] と indicator [[indicator:demo-indicator@2030-01-04]] は保存値がありません。日付なしの [[indicator:demo-indicator]] は参照リンクです。',
+      '日付つきの値 [[valuation:item-a@2030-01-04:per]] と [[indicator:metric-a@2030-01-04]] は未登録です。日付なしの [[indicator:metric-a]] は項目参照です。',
   },
 }
 
@@ -364,31 +368,30 @@ export const ResolveFailed: Story = {
   },
 }
 
-// 以下のノード/ティッカーはすべて架空のもの。実在の企業・銘柄コードとは無関係
-const GRAPH_SAMPLE = `# 架空エコシステムの業界構造メモ
+const GRAPH_SAMPLE = `# サンプル資料の構成メモ
 
-前工程は ACME Litho [[stock:ACME]] と Nortek Materials [[stock:NRTK]] が押さえており、
-受託製造の Fabrion Foundry [[stock:FBRN]] にほぼ集約される。
+記録は [[group:set/b]] と [[group:set/c]] の項目から組み立て、
+内容を [[group:set/d]] にまとめる。
 
-[[graph:g1]]
+[[graph:map-7]]
 
-Fabrion の生産能力が QuantumX [[stock:QNTX]] の供給制約になっている点に注意。
+完成した項目は [[group:set/e]] に並べる。
 `
 
 const GRAPH_DEF: components['schemas']['GraphDef'] = {
-  id: 'g1',
+  id: 'map-7',
   layout: 'flow',
-  title: '架空エコシステムの業界構造',
+  title: 'サンプル資料の構成',
   nodes: [
-    { id: 'acme', label: 'ACME Litho', ref: 'stock:ACME' },
-    { id: 'nortek', label: 'Nortek Materials', ref: 'stock:NRTK' },
-    { id: 'fabrion', label: 'Fabrion Foundry', ref: 'stock:FBRN' },
-    { id: 'quantumx', label: 'QuantumX', ref: 'stock:QNTX' },
+    { id: 'input-a', label: '入力 A', ref: 'group:set/b' },
+    { id: 'input-b', label: '入力 B', ref: 'group:set/c' },
+    { id: 'record', label: '記録票', ref: 'group:set/d' },
+    { id: 'overview', label: '一覧', ref: 'group:set/e' },
   ],
   edges: [
-    { source: 'acme', target: 'fabrion', label: '露光装置' },
-    { source: 'nortek', target: 'fabrion', label: '成膜材料' },
-    { source: 'fabrion', target: 'quantumx', label: '受託生産' },
+    { source: 'input-a', target: 'record', label: '形式を適用' },
+    { source: 'input-b', target: 'record', label: '内容を整理' },
+    { source: 'record', target: 'overview', label: '結果を出力' },
   ],
 }
 
@@ -401,7 +404,7 @@ export const WithInteractiveReferences: Story = {
   name: 'makes stock, indicator, group, and annotation chips clickable.',
   args: {
     source:
-      '[[stock:demo-code]] [[indicator:demo-indicator]] [[group:demo-axis/demo-group]] [[anno:00000000-0000-0000-0000-000000000301]]\n\n[[graph:g1]]',
+      '[[stock:item-a]] [[indicator:metric-a]] [[group:set/a]] [[anno:mark-7]]\n\n[[graph:map-7]]',
     graphs: [GRAPH_DEF],
     onRef: () => undefined,
     onAnno: () => undefined,

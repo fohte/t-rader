@@ -7,8 +7,8 @@ import { mockResolveRef } from '#storybook/mock-resolve-ref'
 const queryClient = new QueryClient()
 
 const NAMES: Record<string, string> = {
-  'stock:7203': 'トヨタ自動車',
-  'indicator:USDJPY': 'USD/JPY',
+  'stock:sample-card-73': '参照カード',
+  'indicator:sample-field-46': '補助値',
 }
 
 const meta = {
@@ -29,19 +29,19 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-const SAMPLE = `# AGENTS.md
+const SAMPLE = `# 作業メモ
 
-この戦略の方針と制約を Markdown で記述する。
+表示内容を Markdown で記録する。
 
-- 投資ホライズン: 1-3 ヶ月
-- 集中: 半導体・電子部品
-- 想定リスク: USDJPY ボラティリティ
+- 更新項目: 一覧の見出し
+- 確認状態: 読みやすい
+- 参照先: [[indicator:sample-field-46]]
 
-> [[indicator:USDJPY]] と [[stock:7203]] は要監視。
+> [[stock:sample-card-73]] は表示確認用のサンプルです。
 `
 
 export const Default: Story = {
-  name: 'edits strategy guidance with markdown and linked references.',
+  name: 'edits a work note with markdown and linked references.',
   args: {
     initialValue: SAMPLE,
     onSave: () => {},

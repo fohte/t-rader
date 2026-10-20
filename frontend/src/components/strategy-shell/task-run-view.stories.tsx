@@ -3,8 +3,8 @@ import { RouterProvider } from '@tanstack/react-router'
 
 import {
   CONFIG_PHASES,
-  investigateStep,
-  PLAN_STEP,
+  inspectStep,
+  PREPARATION_STEP,
 } from '#components/strategy-shell/task-execution-tree.fixtures'
 import {
   TaskRunView,
@@ -28,7 +28,7 @@ function baseTask(
 ): NonNullable<TaskRunViewProps['task']> {
   return {
     taskId: 'task-0001',
-    prompt: '半導体セクターの調整は一時的か、循環の転換点か',
+    prompt: 'サンプル項目の記録内容を確認する',
     source: 'frontend',
     phase: 'running',
     createdAt: '2026-08-16T09:00:00.000Z',
@@ -47,21 +47,21 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Running: Story = {
-  name: 'shows an active task with its analysis progress.',
+  name: 'shows an active task with its item-check progress.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'semi-swing',
+        strategyId: 'sample-workspace',
         task: baseTask({ phase: 'running' }),
         steps: [
-          PLAN_STEP,
-          investigateStep('円安の進行が主因', {
+          PREPARATION_STEP,
+          inspectStep('見出しの表記ゆれ', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:21.100Z',
-            verdict: 'supported',
+            result: 'consistent',
             noteId: 'note-0001',
           }),
-          investigateStep('半導体サイクルの反転', { status: 'running' }),
+          inspectStep('注記の抜け', { status: 'running' }),
         ],
         configPhases: CONFIG_PHASES,
         notes: [],
@@ -78,30 +78,30 @@ export const Completed: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'semi-swing',
+        strategyId: 'sample-workspace',
         task: baseTask({
           phase: 'completed',
           updatedAt: '2026-08-16T09:04:33.200Z',
         }),
         steps: [
-          PLAN_STEP,
-          investigateStep('円安の進行が主因', {
+          PREPARATION_STEP,
+          inspectStep('見出しの表記ゆれ', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:21.100Z',
-            verdict: 'supported',
+            result: 'consistent',
             noteId: 'note-0001',
           }),
-          investigateStep('半導体サイクルの反転', {
+          inspectStep('注記の抜け', {
             status: 'completed',
             finishedAt: '2026-08-15T09:00:24.900Z',
-            verdict: 'rejected',
+            result: 'needs_review',
             noteId: 'note-0002',
           }),
         ],
         configPhases: CONFIG_PHASES,
         notes: [
-          { id: 'fake-note-001', title: 'サンプル企業の調査メモ' },
-          { id: 'fake-note-002', title: '架空グループの確認事項' },
+          { id: 'fake-note-001', title: '表記確認メモ' },
+          { id: 'fake-note-002', title: '重複項目の補足' },
         ],
         notesState: 'success',
       })}
@@ -110,22 +110,22 @@ export const Completed: Story = {
 }
 
 export const Failed: Story = {
-  name: 'shows an error summary for a task that failed during analysis.',
+  name: 'shows an error summary for a task that failed during item checks.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'semi-swing',
+        strategyId: 'sample-workspace',
         task: baseTask({
           phase: 'failed',
           updatedAt: '2026-08-16T09:01:18.300Z',
-          errorSummary: 'tool call timeout: query_data がタイムアウトしました',
+          errorSummary: 'tool call timeout: item_lookup がタイムアウトしました',
         }),
         steps: [
-          PLAN_STEP,
+          PREPARATION_STEP,
           {
-            ...investigateStep('半導体サイクルの反転', { status: 'failed' }),
+            ...inspectStep('注記の抜け', { status: 'failed' }),
             finished_at: '2026-08-16T09:01:18.300Z',
-            error: 'tool call timeout: query_data がタイムアウトしました',
+            error: 'tool call timeout: item_lookup がタイムアウトしました',
             output: undefined,
           },
         ],
@@ -142,12 +142,12 @@ export const CompletedWithoutNotes: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'semi-swing',
+        strategyId: 'sample-workspace',
         task: baseTask({
           phase: 'completed',
           updatedAt: '2026-08-16T09:04:33.200Z',
         }),
-        steps: [PLAN_STEP],
+        steps: [PREPARATION_STEP],
         configPhases: CONFIG_PHASES,
         notes: [],
         notesState: 'success',
@@ -161,7 +161,7 @@ export const NoSteps: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'semi-swing',
+        strategyId: 'sample-workspace',
         task: baseTask({ phase: 'pending' }),
         steps: [],
         configPhases: [],
@@ -177,7 +177,7 @@ export const Loading: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'semi-swing',
+        strategyId: 'sample-workspace',
         task: null,
         steps: [],
         configPhases: [],

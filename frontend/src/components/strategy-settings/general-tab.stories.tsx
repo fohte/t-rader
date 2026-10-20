@@ -113,8 +113,8 @@ export const Default: Story = {
     <RouterProvider
       router={createGeneralTabRouter({
         id: 'strat-1',
-        name: '半導体短期スイング',
-        description: '半導体セクターの短期変動を狙う',
+        name: '週次資料整理',
+        description: '公開資料を分類し、確認内容を記録する',
       })}
     />
   ),
@@ -126,7 +126,7 @@ export const NoDescription: Story = {
     <RouterProvider
       router={createGeneralTabRouter({
         id: 'strat-1',
-        name: '長期投資',
+        name: '議事録アーカイブ',
         description: null,
       })}
     />

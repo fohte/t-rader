@@ -26,9 +26,9 @@ const NOT_PHASE_YAML = 'sample'
 
 const SAMPLE_PHASES = `phases:
   - key: plan
-    label: 調査計画
-    model: claude-opus-4
-    prompt: 仮説を立てよ
+    label: 見出し案
+    model: fictional-model-orbit
+    prompt: テーマを読みやすい節に分ける
 `
 
 // AgentGraphForm (form ビュー) が $api.useQuery でモデル/tool/skills 一覧を取得するため、
@@ -218,25 +218,25 @@ describe('AgentGraphEditor', () => {
     const planCard = within(screen.getByTestId('phase-card-plan'))
     const labelInput = planCard.getByLabelText('フェーズ名')
     await user.clear(labelInput)
-    await user.type(labelInput, '調査計画X')
+    await user.type(labelInput, '見出し案X')
 
     const outputInput = planCard.getByLabelText('出力スキーマ')
-    await user.type(outputInput, 'verdict:{enter}  type: string')
+    await user.type(outputInput, 'abstract:{enter}  type: string')
 
     await user.click(screen.getByRole('button', { name: 'YAML' }))
     const yamlEditor = screen.getByLabelText<HTMLTextAreaElement>('agent_graph')
     expect(parseAgentGraphPhases(yamlEditor.value)).toEqual([
       {
         key: 'plan',
-        label: '調査計画X',
-        model: 'claude-opus-4',
-        prompt: '仮説を立てよ',
+        label: '見出し案X',
+        model: 'fictional-model-orbit',
+        prompt: 'テーマを読みやすい節に分ける',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
         skills: [],
         tools: undefined,
-        output: { verdict: { type: 'string' } },
+        output: { abstract: { type: 'string' } },
       },
     ])
   })
@@ -248,16 +248,16 @@ describe('AgentGraphEditor', () => {
     const planCard = within(screen.getByTestId('phase-card-plan'))
     const labelInput = planCard.getByLabelText('フェーズ名')
     await user.clear(labelInput)
-    await user.type(labelInput, '調査計画X')
+    await user.type(labelInput, '見出し案X')
 
     const outputInput = planCard.getByLabelText('出力スキーマ')
-    await user.type(outputInput, 'verdict:{enter}  type: string')
+    await user.type(outputInput, 'abstract:{enter}  type: string')
 
     await user.click(screen.getByRole('button', { name: 'YAML' }))
     await user.click(screen.getByRole('button', { name: 'フォーム' }))
 
     const planCardAfter = within(screen.getByTestId('phase-card-plan'))
-    expect(planCardAfter.getByLabelText('フェーズ名')).toHaveValue('調査計画X')
+    expect(planCardAfter.getByLabelText('フェーズ名')).toHaveValue('見出し案X')
     expect(planCardAfter.getByText('✓ valid')).toBeInTheDocument()
   })
 })

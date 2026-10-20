@@ -115,25 +115,31 @@ afterEach(() => {
 
 describe('GeneralTab', () => {
   it('GET の値が名前の入力欄の初期値に反映される', async () => {
-    setup({ id: 'strat-1', name: '半導体短期スイング', description: '狙い' })
+    setup({
+      id: 'strat-1',
+      name: '週次資料整理',
+      description: '公開資料を分類する',
+    })
 
     await waitFor(() => {
-      expect(screen.getByLabelText('戦略名 *')).toHaveValue(
-        '半導体短期スイング',
-      )
+      expect(screen.getByLabelText('戦略名 *')).toHaveValue('週次資料整理')
     })
   })
 
   it('GET の値が説明の入力欄の初期値に反映される', async () => {
-    setup({ id: 'strat-1', name: '半導体短期スイング', description: '狙い' })
+    setup({
+      id: 'strat-1',
+      name: '週次資料整理',
+      description: '公開資料を分類する',
+    })
 
     await waitFor(() => {
-      expect(screen.getByLabelText('説明')).toHaveValue('狙い')
+      expect(screen.getByLabelText('説明')).toHaveValue('公開資料を分類する')
     })
   })
 
   it('説明が未設定なら入力欄を空にする', async () => {
-    setup({ id: 'strat-1', name: '長期投資', description: null })
+    setup({ id: 'strat-1', name: '議事録アーカイブ', description: null })
 
     await waitFor(() => {
       expect(screen.getByLabelText('説明')).toHaveValue('')
@@ -141,7 +147,7 @@ describe('GeneralTab', () => {
   })
 
   it('変更がなければ保存ボタンが disabled になる', async () => {
-    setup({ id: 'strat-1', name: '長期投資', description: null })
+    setup({ id: 'strat-1', name: '議事録アーカイブ', description: null })
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
@@ -150,11 +156,11 @@ describe('GeneralTab', () => {
 
   it('名前を空にすると保存ボタンが disabled になる', async () => {
     const user = userEvent.setup()
-    setup({ id: 'strat-1', name: '長期投資', description: null })
+    setup({ id: 'strat-1', name: '議事録アーカイブ', description: null })
 
     const nameInput = await screen.findByLabelText('戦略名 *')
     await waitFor(() => {
-      expect(nameInput).toHaveValue('長期投資')
+      expect(nameInput).toHaveValue('議事録アーカイブ')
     })
     await user.clear(nameInput)
 
@@ -163,32 +169,32 @@ describe('GeneralTab', () => {
 
   it('名前を編集して保存すると変更したフィールドだけ PATCH される', async () => {
     const user = userEvent.setup()
-    setup({ id: 'strat-1', name: '長期投資', description: null })
+    setup({ id: 'strat-1', name: '議事録アーカイブ', description: null })
 
     const nameInput = await screen.findByLabelText('戦略名 *')
     await waitFor(() => {
-      expect(nameInput).toHaveValue('長期投資')
+      expect(nameInput).toHaveValue('議事録アーカイブ')
     })
     await user.clear(nameInput)
-    await user.type(nameInput, '中期投資')
+    await user.type(nameInput, '月次記録一覧')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
-      expect(active?.store.name).toBe('中期投資')
+      expect(active?.store.name).toBe('月次記録一覧')
     })
-    expect(active?.patchCalls).toEqual([{ name: '中期投資' }])
+    expect(active?.patchCalls).toEqual([{ name: '月次記録一覧' }])
   })
 
   it('保存に失敗するとエラーメッセージを表示する', async () => {
     const user = userEvent.setup()
     setup(
-      { id: 'strat-1', name: '長期投資', description: null },
+      { id: 'strat-1', name: '議事録アーカイブ', description: null },
       { status: 400, body: { error: 'invalid name' } },
     )
 
     const nameInput = await screen.findByLabelText('戦略名 *')
     await user.clear(nameInput)
-    await user.type(nameInput, '中期投資')
+    await user.type(nameInput, '月次記録一覧')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
@@ -200,12 +206,14 @@ describe('GeneralTab', () => {
 
   it('戦略を削除ボタンを押すと確認ダイアログに戦略名が表示される', async () => {
     const user = userEvent.setup()
-    setup({ id: 'strat-1', name: '長期投資', description: null })
+    setup({ id: 'strat-1', name: '議事録アーカイブ', description: null })
 
     await user.click(await screen.findByRole('button', { name: '戦略を削除' }))
 
     expect(
-      screen.getByText('確認のため戦略名「長期投資」を入力してください'),
+      screen.getByText(
+        '確認のため戦略名「議事録アーカイブ」を入力してください',
+      ),
     ).toBeInTheDocument()
   })
 })
