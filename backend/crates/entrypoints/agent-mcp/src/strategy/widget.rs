@@ -17,6 +17,7 @@ fn widget_use_case_to_mcp(error: WidgetUseCaseError) -> McpError {
             super::persistence_error_to_mcp(error)
         }
         WidgetUseCaseError::Query(WidgetQueryError::StockGroups(error)) => {
+            tracing::error!(error = %error, "strategy mcp widget stock group membership query failed");
             internal_error(format!("stock group membership query failed: {error}"))
         }
     }

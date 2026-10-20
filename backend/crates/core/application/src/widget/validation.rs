@@ -512,6 +512,10 @@ mod tests {
         HierarchyRequiresStockRows,
         InvalidColorScale,
         InvalidBarScale,
+        EmptyHierarchyAxis,
+        EmptyDisplayLabel,
+        EqualColorScaleBounds,
+        EqualBarScaleBounds,
         UnknownDisplayName,
     }
 
@@ -622,6 +626,53 @@ mod tests {
                     limit: 5,
                     bar_scale: Some(WidgetScale {
                         min: rust_decimal::Decimal::ONE,
+                        max: rust_decimal::Decimal::ZERO,
+                    }),
+                };
+            }
+            SemanticValidationCase::EmptyHierarchyAxis => {
+                for name in ["sector", "market"] {
+                    let query = widget.queries.get_mut(name).expect("query");
+                    query.by = WidgetBy::Stock;
+                    query.axis = None;
+                    query.agg = None;
+                }
+                widget.viz = WidgetVisualization::Treemap {
+                    size: "market".to_string(),
+                    color: "relative".to_string(),
+                    hierarchy: Some(WidgetHierarchy {
+                        axis: "  ".to_string(),
+                    }),
+                    color_scale: None,
+                };
+            }
+            SemanticValidationCase::EmptyDisplayLabel => {
+                widget.display.insert(
+                    "market".to_string(),
+                    WidgetValueDisplay {
+                        label: Some("  ".to_string()),
+                        format: None,
+                    },
+                );
+            }
+            SemanticValidationCase::EqualColorScaleBounds => {
+                widget.viz = WidgetVisualization::Treemap {
+                    size: "market".to_string(),
+                    color: "market".to_string(),
+                    hierarchy: None,
+                    color_scale: Some(WidgetScale {
+                        min: rust_decimal::Decimal::ZERO,
+                        max: rust_decimal::Decimal::ZERO,
+                    }),
+                };
+            }
+            SemanticValidationCase::EqualBarScaleBounds => {
+                widget.viz = WidgetVisualization::Toplist {
+                    value: "market".to_string(),
+                    order: WidgetVisualizationOrder::Desc,
+                    limit: 5,
+                    bar_scale: Some(WidgetScale {
+                        min: rust_decimal::Decimal::ZERO,
                         max: rust_decimal::Decimal::ZERO,
                     }),
                 };
@@ -749,6 +800,22 @@ mod tests {
     )]
     #[case::bar_scale_requires_ordered_bounds(
         SemanticValidationCase::InvalidBarScale,
+        Some("viz.bar_scale: min must be less than max")
+    )]
+    #[case::hierarchy_axis_must_not_be_blank(
+        SemanticValidationCase::EmptyHierarchyAxis,
+        Some("viz.hierarchy.axis: axis must not be empty")
+    )]
+    #[case::display_label_must_not_be_blank(
+        SemanticValidationCase::EmptyDisplayLabel,
+        Some("display.market.label: label must not be empty")
+    )]
+    #[case::color_scale_bounds_must_differ(
+        SemanticValidationCase::EqualColorScaleBounds,
+        Some("viz.color_scale: min must be less than max")
+    )]
+    #[case::bar_scale_bounds_must_differ(
+        SemanticValidationCase::EqualBarScaleBounds,
         Some("viz.bar_scale: min must be less than max")
     )]
     #[case::display_name_must_reference_a_value(

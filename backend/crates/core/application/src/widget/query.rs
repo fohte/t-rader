@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, btree_map::Entry},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -216,19 +219,21 @@ impl WidgetUseCases {
             .await?;
         let mut classifications = BTreeMap::new();
         for membership in memberships {
-            if classifications
-                .insert(membership.stock_id.clone(), membership.clone())
-                .is_some()
-            {
-                return Err(WidgetUseCaseError::Validation(WidgetValidationErrors(
-                    vec![WidgetValidationError {
-                        path: "viz.hierarchy.axis".to_owned(),
-                        message: format!(
-                            "stock `{}` belongs to multiple groups in axis `{axis_key}`",
-                            membership.stock_id
-                        ),
-                    }],
-                )));
+            match classifications.entry(membership.stock_id.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(membership);
+                }
+                Entry::Occupied(entry) => {
+                    return Err(WidgetUseCaseError::Validation(WidgetValidationErrors(
+                        vec![WidgetValidationError {
+                            path: "viz.hierarchy.axis".to_owned(),
+                            message: format!(
+                                "stock `{}` belongs to multiple groups in axis `{axis_key}`",
+                                entry.key()
+                            ),
+                        }],
+                    )));
+                }
             }
         }
 
