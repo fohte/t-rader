@@ -55,6 +55,27 @@ fn definition(definition: Definition<'_>) -> Value {
     })
 }
 
+fn event_definition(
+    trigger_id: Uuid,
+    strategy_id: Uuid,
+    prompt_template: &str,
+    enabled: bool,
+) -> Value {
+    definition(Definition {
+        trigger_id,
+        strategy_id,
+        purpose: None,
+        kind: "event",
+        schedule: None,
+        hook_slug: None,
+        event_type: Some("synthetic_job.started"),
+        event_match: None,
+        prompt_template,
+        enabled,
+        business_days_only: false,
+    })
+}
+
 fn snapshot(before: Option<Value>, after: Option<Value>) -> Value {
     json!({
         "format": "definition_snapshot",
@@ -83,6 +104,11 @@ fn normalize_history(mut rows: Vec<Value>) -> Vec<Value> {
         row["id"] = json!("<id>");
         row["created_at"] = json!("<created_at>");
     }
+    rows
+}
+
+fn normalize_unordered_history(rows: Vec<Value>) -> Vec<Value> {
+    let mut rows = normalize_history(rows);
     rows.sort_by_key(|row| row["diff_json"].to_string());
     rows
 }
@@ -128,6 +154,28 @@ async fn clean_concurrent_test_strategy_history(db: &impl ConnectionTrait) {
             .exec(db)
             .await
             .expect("delete concurrent test strategy history");
+    }
+}
+
+async fn assign_history_timestamps(db: &DatabaseHandle, target_id: Uuid, diffs: &[Value]) {
+    let rows = change_history::Entity::find()
+        .filter(change_history::Column::TargetId.eq(target_id))
+        .all(db)
+        .await
+        .expect("list trigger histories");
+    let base = DateTime::parse_from_rfc3339("2025-03-04T05:06:07+00:00").expect("fixed timestamp");
+
+    for row in rows {
+        let index = diffs
+            .iter()
+            .position(|diff| diff == &row.diff_json)
+            .expect("history snapshot has an expected timestamp");
+        let mut row = row.into_active_model();
+        row.created_at = Set(base
+            + chrono::Duration::seconds(
+                i64::try_from(index).expect("history index fits in a timestamp"),
+            ));
+        row.update(db).await.expect("set history timestamp");
     }
 }
 
@@ -260,9 +308,7 @@ async fn trigger_snapshots_cover_create_update_restore_and_delete(
         .last_fired_at;
 
     let deleted = server.delete(&format!("/api/triggers/{trigger_id}")).await;
-    let history_after_delete = trigger_history(&server, trigger_id).await;
-    let history_rows = normalize_history(history_after_delete.json::<Vec<Value>>());
-    let expected_history = normalize_history(vec![
+    let expected_history_chronological = vec![
         history_entry(trigger_id, "create", snapshot(None, Some(original.clone()))),
         history_entry(
             trigger_id,
@@ -280,14 +326,26 @@ async fn trigger_snapshots_cover_create_update_restore_and_delete(
         history_entry(
             trigger_id,
             "update",
-            snapshot(Some(after_partial_update), Some(after_clear.clone())),
+            snapshot(
+                Some(after_partial_update.clone()),
+                Some(after_clear.clone()),
+            ),
         ),
         history_entry(
             trigger_id,
             "delete",
             snapshot(Some(after_clear.clone()), None),
         ),
-    ]);
+    ];
+    let expected_diffs = expected_history_chronological
+        .iter()
+        .map(|row| row["diff_json"].clone())
+        .collect::<Vec<_>>();
+    assign_history_timestamps(&db, trigger_id, &expected_diffs).await;
+    let history_after_delete = trigger_history(&server, trigger_id).await;
+    let history_rows = normalize_history(history_after_delete.json::<Vec<Value>>());
+    let expected_history =
+        normalize_history(expected_history_chronological.into_iter().rev().collect());
 
     assert_eq!(
         (
@@ -339,6 +397,7 @@ async fn create_snapshots_preserve_kind_specific_configuration(
             None,
             None,
             None,
+            "synthetic cron template",
             true,
         ),
         (
@@ -353,6 +412,7 @@ async fn create_snapshots_preserve_kind_specific_configuration(
             Some("synthetic-hook"),
             None,
             Some(json!({ "source": { "eq": "synthetic" } })),
+            "synthetic hook template",
             false,
         ),
         (
@@ -367,6 +427,7 @@ async fn create_snapshots_preserve_kind_specific_configuration(
             None,
             Some("synthetic_job.changed"),
             Some(json!({ "phase": { "eq": "ready" } })),
+            "synthetic event template",
             false,
         ),
     ];
@@ -374,7 +435,17 @@ async fn create_snapshots_preserve_kind_specific_configuration(
     let mut actual_history = Vec::new();
     let mut expected_history = Vec::new();
 
-    for (kind, request, schedule, hook_slug, event_type, event_match, business_days_only) in cases {
+    for (
+        kind,
+        request,
+        schedule,
+        hook_slug,
+        event_type,
+        event_match,
+        prompt_template,
+        business_days_only,
+    ) in cases
+    {
         let created = server
             .post(&format!("/api/strategies/{strategy_id}/triggers"))
             .json(&request)
@@ -401,12 +472,7 @@ async fn create_snapshots_preserve_kind_specific_configuration(
                     hook_slug,
                     event_type,
                     event_match,
-                    prompt_template: match kind {
-                        "cron" => "synthetic cron template",
-                        "hook" => "synthetic hook template",
-                        "event" => "synthetic event template",
-                        _ => unreachable!(),
-                    },
+                    prompt_template,
                     enabled: true,
                     business_days_only,
                 })),
@@ -453,63 +519,18 @@ async fn concurrent_updates_record_the_definition_they_replace(
     )
     .expect("valid trigger id");
 
-    let initial = definition(Definition {
+    let initial = event_definition(trigger_id, strategy_id, "concurrent initial template", true);
+    let final_definition = event_definition(
         trigger_id,
         strategy_id,
-        purpose: None,
-        kind: "event",
-        schedule: None,
-        hook_slug: None,
-        event_type: Some("synthetic_job.started"),
-        event_match: None,
-        prompt_template: "concurrent initial template",
-        enabled: true,
-        business_days_only: false,
-    });
-    let prompt_first = definition(Definition {
-        trigger_id,
-        strategy_id,
-        purpose: None,
-        kind: "event",
-        schedule: None,
-        hook_slug: None,
-        event_type: Some("synthetic_job.started"),
-        event_match: None,
-        prompt_template: "concurrent replacement template",
-        enabled: true,
-        business_days_only: false,
-    });
-    let enabled_first = definition(Definition {
-        trigger_id,
-        strategy_id,
-        purpose: None,
-        kind: "event",
-        schedule: None,
-        hook_slug: None,
-        event_type: Some("synthetic_job.started"),
-        event_match: None,
-        prompt_template: "concurrent initial template",
-        enabled: false,
-        business_days_only: false,
-    });
-    let final_definition = definition(Definition {
-        trigger_id,
-        strategy_id,
-        purpose: None,
-        kind: "event",
-        schedule: None,
-        hook_slug: None,
-        event_type: Some("synthetic_job.started"),
-        event_match: None,
-        prompt_template: "concurrent replacement template",
-        enabled: false,
-        business_days_only: false,
-    });
+        "concurrent initial template",
+        false,
+    );
 
-    let (prompt_update, enabled_update) = tokio::join!(
+    let (first_update, second_update) = tokio::join!(
         server
             .put(&format!("/api/triggers/{trigger_id}"))
-            .json(&json!({ "prompt_template": "concurrent replacement template" })),
+            .json(&json!({ "enabled": false })),
         server
             .put(&format!("/api/triggers/{trigger_id}"))
             .json(&json!({ "enabled": false })),
@@ -519,41 +540,44 @@ async fn concurrent_updates_record_the_definition_they_replace(
     let actual = (
         created.status_code(),
         (
-            prompt_update.status_code(),
-            normalize_trigger_response(prompt_update.json::<Value>()),
-            enabled_update.status_code(),
-            normalize_trigger_response(enabled_update.json::<Value>()),
+            first_update.status_code(),
+            normalize_trigger_response(first_update.json::<Value>()),
+            second_update.status_code(),
+            normalize_trigger_response(second_update.json::<Value>()),
         ),
         (
             history.status_code(),
-            normalize_history(history.json::<Vec<Value>>()),
+            normalize_unordered_history(history.json::<Vec<Value>>()),
         ),
         (
             final_response.status_code(),
             normalize_trigger_response(final_response.json::<Value>()),
         ),
     );
-    let prompt_first_expected = (
+    let expected = (
         StatusCode::CREATED,
         (
             StatusCode::OK,
-            trigger_response(prompt_first.clone(), Value::Null),
+            trigger_response(final_definition.clone(), Value::Null),
             StatusCode::OK,
             trigger_response(final_definition.clone(), Value::Null),
         ),
         (
             StatusCode::OK,
-            normalize_history(vec![
+            normalize_unordered_history(vec![
                 history_entry(trigger_id, "create", snapshot(None, Some(initial.clone()))),
                 history_entry(
                     trigger_id,
                     "update",
-                    snapshot(Some(initial.clone()), Some(prompt_first.clone())),
+                    snapshot(Some(initial.clone()), Some(final_definition.clone())),
                 ),
                 history_entry(
                     trigger_id,
                     "update",
-                    snapshot(Some(prompt_first), Some(final_definition.clone())),
+                    snapshot(
+                        Some(final_definition.clone()),
+                        Some(final_definition.clone()),
+                    ),
                 ),
             ]),
         ),
@@ -562,36 +586,6 @@ async fn concurrent_updates_record_the_definition_they_replace(
             trigger_response(final_definition.clone(), Value::Null),
         ),
     );
-    let enabled_first_expected = (
-        StatusCode::CREATED,
-        (
-            StatusCode::OK,
-            trigger_response(final_definition.clone(), Value::Null),
-            StatusCode::OK,
-            trigger_response(enabled_first.clone(), Value::Null),
-        ),
-        (
-            StatusCode::OK,
-            normalize_history(vec![
-                history_entry(trigger_id, "create", snapshot(None, Some(initial.clone()))),
-                history_entry(
-                    trigger_id,
-                    "update",
-                    snapshot(Some(initial), Some(enabled_first.clone())),
-                ),
-                history_entry(
-                    trigger_id,
-                    "update",
-                    snapshot(Some(enabled_first), Some(final_definition.clone())),
-                ),
-            ]),
-        ),
-        (
-            StatusCode::OK,
-            trigger_response(final_definition, Value::Null),
-        ),
-    );
-
     change_history::Entity::delete_many()
         .filter(change_history::Column::TargetId.is_in([trigger_id, strategy_id]))
         .exec(&db)
@@ -606,7 +600,7 @@ async fn concurrent_updates_record_the_definition_they_replace(
         .await
         .expect("delete strategy");
 
-    assert!(actual == prompt_first_expected || actual == enabled_first_expected);
+    assert_eq!(actual, expected);
 }
 
 struct FailingChangeHistory;

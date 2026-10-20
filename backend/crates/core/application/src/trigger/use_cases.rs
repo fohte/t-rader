@@ -10,7 +10,7 @@ use crate::strategy_scope::StrategyScope;
 use crate::strategy_task::{
     PreparedStrategyTaskSubmission, StrategyTaskUseCases, SubmittedTask, TaskSource,
 };
-use crate::unit_of_work::SharedUnitOfWork;
+use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 use self::commands::{apply_update, ensure_scope, validate_create};
 use self::validation::validate_event_match;
@@ -116,19 +116,14 @@ impl TriggerUseCases {
                 },
             )
             .await?;
-        self.change_history
-            .record(
-                &transaction,
-                ChangeHistoryRecord {
-                    actor: Actor::Human,
-                    target_kind: TargetKind::Trigger,
-                    target_id: trigger.trigger_id,
-                    op: Op::Create,
-                    diff: definition_snapshot(None, Some(&trigger)),
-                    summary: None,
-                },
-            )
-            .await?;
+        self.record_history(
+            &transaction,
+            trigger.trigger_id,
+            Op::Create,
+            None,
+            Some(&trigger),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(trigger)
     }
@@ -154,19 +149,14 @@ impl TriggerUseCases {
         let before = current.clone();
         let updated = apply_update(current, command)?;
         let updated = self.repository.update(&transaction, updated).await?;
-        self.change_history
-            .record(
-                &transaction,
-                ChangeHistoryRecord {
-                    actor: Actor::Human,
-                    target_kind: TargetKind::Trigger,
-                    target_id: trigger_id,
-                    op: Op::Update,
-                    diff: definition_snapshot(Some(&before), Some(&updated)),
-                    summary: None,
-                },
-            )
-            .await?;
+        self.record_history(
+            &transaction,
+            trigger_id,
+            Op::Update,
+            Some(&before),
+            Some(&updated),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(updated)
     }
@@ -186,18 +176,7 @@ impl TriggerUseCases {
         if !self.repository.delete(&transaction, trigger_id).await? {
             return Err(TriggerUseCaseError::NotFound(trigger_id));
         }
-        self.change_history
-            .record(
-                &transaction,
-                ChangeHistoryRecord {
-                    actor: Actor::Human,
-                    target_kind: TargetKind::Trigger,
-                    target_id: trigger_id,
-                    op: Op::Delete,
-                    diff: definition_snapshot(Some(&current), None),
-                    summary: None,
-                },
-            )
+        self.record_history(&transaction, trigger_id, Op::Delete, Some(&current), None)
             .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(())
@@ -398,6 +377,30 @@ impl TriggerUseCases {
             return Err(TriggerUseCaseError::PurposeNotFound(purpose));
         }
         Ok(purpose)
+    }
+
+    async fn record_history(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+        op: Op,
+        before: Option<&Trigger>,
+        after: Option<&Trigger>,
+    ) -> Result<(), TriggerUseCaseError> {
+        self.change_history
+            .record(
+                transaction,
+                ChangeHistoryRecord {
+                    actor: Actor::Human,
+                    target_kind: TargetKind::Trigger,
+                    target_id: trigger_id,
+                    op,
+                    diff: definition_snapshot(before, after),
+                    summary: None,
+                },
+            )
+            .await?;
+        Ok(())
     }
 }
 
