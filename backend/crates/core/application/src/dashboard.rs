@@ -355,10 +355,12 @@ mod tests {
                             },
                         )]),
                         formulas: BTreeMap::new(),
+                        display: BTreeMap::new(),
                         viz: WidgetVisualization::Toplist {
                             value: "movement".to_owned(),
                             order: WidgetVisualizationOrder::Desc,
                             limit: 5,
+                            bar_scale: None,
                         },
                         time: WidgetTime::default(),
                     },

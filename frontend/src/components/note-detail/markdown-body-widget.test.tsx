@@ -34,6 +34,10 @@ const CHANGE_WIDGET_SOURCE = VALID_WIDGET_SOURCE.replace(
   '  value: doubled',
   '  value: daily',
 )
+const DISPLAY_WIDGET_SOURCE = VALID_WIDGET_SOURCE.replace(
+  'viz:',
+  'display:\n  daily:\n    label: Daily movement\n    format: percent\nviz:',
+).replace('  limit: 5', '  limit: 5\n  bar_scale:\n    min: -0.1\n    max: 0.1')
 
 const WIDGET_SOURCES_WITHOUT_AS_OF = [
   {
@@ -102,6 +106,41 @@ describe('MarkdownBody widget blocks', () => {
             },
             formulas: { doubled: 'daily * 2' },
             viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
+            time: { as_of: '2099-01-05' },
+          },
+        },
+        { enabled: true },
+      ],
+    ])
+  })
+
+  it('sends display formats and fixed scales to the widget query API', () => {
+    render(<MarkdownBody source={DISPLAY_WIDGET_SOURCE} />)
+
+    expect(useApiQuery.mock.calls).toEqual([
+      [
+        'post',
+        '/api/widgets/query',
+        {
+          body: {
+            queries: {
+              daily: {
+                metric: 'change',
+                period: '1d',
+                by: 'group',
+                axis: 'demo-axis',
+                agg: 'mean',
+              },
+            },
+            formulas: { doubled: 'daily * 2' },
+            display: { daily: { label: 'Daily movement', format: 'percent' } },
+            viz: {
+              type: 'toplist',
+              value: 'doubled',
+              order: 'desc',
+              limit: 5,
+              bar_scale: { min: -0.1, max: 0.1 },
+            },
             time: { as_of: '2099-01-05' },
           },
         },

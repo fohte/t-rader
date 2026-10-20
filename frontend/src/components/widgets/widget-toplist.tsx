@@ -1,6 +1,7 @@
 import type { components } from '#lib/api/schema.gen'
 import {
   formatWidgetValue,
+  type WidgetDisplayDefinitions,
   type WidgetQueryDefinitions,
 } from '#lib/widget-value-format'
 
@@ -14,10 +15,12 @@ export function WidgetToplist({
   result,
   viz,
   queries,
+  display = {},
 }: {
   result: WidgetQueryResponse
   viz: WidgetToplistDefinition
   queries: WidgetQueryDefinitions
+  display?: WidgetDisplayDefinitions
 }) {
   const rows = result.rows.flatMap((row) => {
     const value = row.values[viz.value]
@@ -52,7 +55,12 @@ export function WidgetToplist({
       className="divide-y divide-border border border-border bg-card font-mono text-xs"
     >
       {orderedRows.map(({ row, value }, index) => {
-        const formattedValue = formatWidgetValue(viz.value, value, queries)
+        const formattedValue = formatWidgetValue(
+          viz.value,
+          value,
+          queries,
+          display,
+        )
         return (
           <li
             aria-label={`${String(index + 1)} 位: ${row.name} ${formattedValue}`}

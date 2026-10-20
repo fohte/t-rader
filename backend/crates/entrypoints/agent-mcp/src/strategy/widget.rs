@@ -1,8 +1,11 @@
 use core_application::widget::{WidgetDefinition, WidgetQueryError, WidgetUseCaseError};
 use rmcp::ErrorData as McpError;
 
-use super::dto::{QueryWidgetParams, QueryWidgetResult, QueryWidgetRowDto};
-use super::{StrategyServer, invalid_params};
+use super::dto::{
+    QueryWidgetGroupDto, QueryWidgetParams, QueryWidgetResult, QueryWidgetRowClassificationDto,
+    QueryWidgetRowDto,
+};
+use super::{StrategyServer, internal_error, invalid_params};
 
 fn widget_use_case_to_mcp(error: WidgetUseCaseError) -> McpError {
     match error {
@@ -12,6 +15,9 @@ fn widget_use_case_to_mcp(error: WidgetUseCaseError) -> McpError {
         }
         WidgetUseCaseError::Query(WidgetQueryError::Database(error)) => {
             super::persistence_error_to_mcp(error)
+        }
+        WidgetUseCaseError::Query(WidgetQueryError::StockGroups(error)) => {
+            internal_error(format!("stock group membership query failed: {error}"))
         }
     }
 }
@@ -39,6 +45,15 @@ impl StrategyServer {
                     key: row.key.as_string(),
                     name: row.name,
                     values: row.values,
+                    classification: row.classification.map(|classification| {
+                        QueryWidgetRowClassificationDto {
+                            axis: classification.axis,
+                            group: classification.group.map(|group| QueryWidgetGroupDto {
+                                key: group.key,
+                                name: group.name,
+                            }),
+                        }
+                    }),
                 })
                 .collect(),
         })

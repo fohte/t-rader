@@ -14390,6 +14390,33 @@
           "group"
         ]
       },
+      "WidgetGroupDto": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "WidgetHierarchyRequest": {
+        "type": "object",
+        "required": [
+          "axis"
+        ],
+        "properties": {
+          "axis": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "WidgetMetricRequest": {
         "type": "string",
         "description": "スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。",
@@ -14419,6 +14446,15 @@
           "viz"
         ],
         "properties": {
+          "display": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WidgetValueDisplayRequest"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "formulas": {
             "type": "object",
             "additionalProperties": {
@@ -14531,6 +14567,16 @@
           "values"
         ],
         "properties": {
+          "classification": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetRowClassificationDto"
+              }
+            ]
+          },
           "key": {
             "type": "string"
           },
@@ -14551,6 +14597,45 @@
             }
           }
         }
+      },
+      "WidgetRowClassificationDto": {
+        "type": "object",
+        "required": [
+          "axis"
+        ],
+        "properties": {
+          "axis": {
+            "type": "string"
+          },
+          "group": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetGroupDto"
+              }
+            ]
+          }
+        }
+      },
+      "WidgetScaleRequest": {
+        "type": "object",
+        "required": [
+          "min",
+          "max"
+        ],
+        "properties": {
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
       },
       "WidgetTimeRequest": {
         "type": "object",
@@ -14609,6 +14694,35 @@
         },
         "additionalProperties": false
       },
+      "WidgetValueDisplayRequest": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetValueFormatRequest"
+              }
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WidgetValueFormatRequest": {
+        "type": "string",
+        "enum": [
+          "number",
+          "percent"
+        ]
+      },
       "WidgetVisualizationOrderRequest": {
         "type": "string",
         "enum": [
@@ -14628,6 +14742,26 @@
             "properties": {
               "color": {
                 "type": "string"
+              },
+              "color_scale": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WidgetScaleRequest"
+                  }
+                ]
+              },
+              "hierarchy": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WidgetHierarchyRequest"
+                  }
+                ]
               },
               "size": {
                 "type": "string"
@@ -14649,6 +14783,16 @@
               "type"
             ],
             "properties": {
+              "bar_scale": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WidgetScaleRequest"
+                  }
+                ]
+              },
               "limit": {
                 "type": "integer",
                 "format": "int32",

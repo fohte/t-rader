@@ -68,7 +68,12 @@ pub(super) fn validate_widget(
     }
 
     match &definition.viz {
-        WidgetVisualization::Treemap { size, color } => {
+        WidgetVisualization::Treemap {
+            size,
+            color,
+            hierarchy,
+            color_scale,
+        } => {
             validate_value_reference("viz.size", size, definition, &mut errors);
             validate_value_reference("viz.color", color, definition, &mut errors);
             validate_matching_dimensions(
@@ -78,14 +83,44 @@ pub(super) fn validate_widget(
                 &parsed_formulas,
                 &mut errors,
             );
+            if let Some(hierarchy) = hierarchy {
+                if hierarchy.axis.trim().is_empty() {
+                    errors.push(WidgetValidationError::new(
+                        "viz.hierarchy.axis",
+                        "axis must not be empty",
+                    ));
+                }
+                for name in [size.as_str(), color.as_str()] {
+                    if query_dimension(name, definition, &parsed_formulas)
+                        != Some(QueryDimension::Stock)
+                    {
+                        errors.push(WidgetValidationError::new(
+                            "viz.hierarchy",
+                            "hierarchy requires values that use stock rows",
+                        ));
+                        break;
+                    }
+                }
+            }
+            if let Some(scale) = color_scale {
+                validate_scale("viz.color_scale", scale, &mut errors);
+            }
         }
-        WidgetVisualization::Toplist { value, limit, .. } => {
+        WidgetVisualization::Toplist {
+            value,
+            limit,
+            bar_scale,
+            ..
+        } => {
             validate_value_reference("viz.value", value, definition, &mut errors);
             if *limit == 0 {
                 errors.push(WidgetValidationError::new(
                     "viz.limit",
                     "limit must be greater than zero",
                 ));
+            }
+            if let Some(scale) = bar_scale {
+                validate_scale("viz.bar_scale", scale, &mut errors);
             }
         }
         WidgetVisualization::Table { .. } => errors.push(WidgetValidationError::new(
@@ -96,6 +131,25 @@ pub(super) fn validate_widget(
             "viz.type",
             "line visualization is not supported yet",
         )),
+    }
+
+    for (name, display) in &definition.display {
+        if !definition.queries.contains_key(name) && !definition.formulas.contains_key(name) {
+            errors.push(WidgetValidationError::new(
+                format!("display.{name}"),
+                "name must reference a query or formula",
+            ));
+        }
+        if display
+            .label
+            .as_deref()
+            .is_some_and(|label| label.trim().is_empty())
+        {
+            errors.push(WidgetValidationError::new(
+                format!("display.{name}.label"),
+                "label must not be empty",
+            ));
+        }
     }
 
     if definition.time.range.is_some() {
@@ -109,6 +163,19 @@ pub(super) fn validate_widget(
         Ok(parsed_formulas)
     } else {
         Err(WidgetValidationErrors(errors))
+    }
+}
+
+fn validate_scale(
+    path: &str,
+    scale: &super::types::WidgetScale,
+    errors: &mut Vec<WidgetValidationError>,
+) {
+    if scale.min >= scale.max {
+        errors.push(WidgetValidationError::new(
+            path,
+            "min must be less than max",
+        ));
     }
 }
 
@@ -381,6 +448,7 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
 
+    use super::super::types::{WidgetHierarchy, WidgetScale, WidgetValueDisplay};
     use super::*;
 
     fn definition() -> WidgetDefinition {
@@ -412,9 +480,12 @@ mod tests {
                 ),
             ]),
             formulas: BTreeMap::from([("relative".to_string(), "sector - market".to_string())]),
+            display: BTreeMap::new(),
             viz: WidgetVisualization::Treemap {
                 size: "market".to_string(),
                 color: "relative".to_string(),
+                hierarchy: None,
+                color_scale: None,
             },
             time: WidgetTime {
                 as_of: Some(NaiveDate::from_ymd_opt(2098, 1, 5).expect("valid date")),
@@ -438,6 +509,10 @@ mod tests {
         ZeroToplistLimit,
         MismatchedRowDimensions,
         FormulaQueryNameCollision,
+        HierarchyRequiresStockRows,
+        InvalidColorScale,
+        InvalidBarScale,
+        UnknownDisplayName,
     }
 
     fn semantic_validation_input(case: SemanticValidationCase) -> WidgetDefinition {
@@ -456,6 +531,8 @@ mod tests {
                 widget.viz = WidgetVisualization::Treemap {
                     size: "fictional-missing-query".to_string(),
                     color: "relative".to_string(),
+                    hierarchy: None,
+                    color_scale: None,
                 };
             }
             SemanticValidationCase::GroupAxisMissing => {
@@ -492,6 +569,7 @@ mod tests {
                     value: "market".to_string(),
                     order: WidgetVisualizationOrder::Desc,
                     limit: 0,
+                    bar_scale: None,
                 };
             }
             SemanticValidationCase::MismatchedRowDimensions => {
@@ -502,6 +580,8 @@ mod tests {
                 widget.viz = WidgetVisualization::Treemap {
                     size: "sector".to_string(),
                     color: "stock".to_string(),
+                    hierarchy: None,
+                    color_scale: None,
                 };
             }
             SemanticValidationCase::FormulaQueryNameCollision => {
@@ -510,7 +590,47 @@ mod tests {
                 widget.viz = WidgetVisualization::Treemap {
                     size: "market".to_string(),
                     color: "market".to_string(),
+                    hierarchy: None,
+                    color_scale: None,
                 };
+            }
+            SemanticValidationCase::HierarchyRequiresStockRows => {
+                widget.viz = WidgetVisualization::Treemap {
+                    size: "sector".to_string(),
+                    color: "sector".to_string(),
+                    hierarchy: Some(WidgetHierarchy {
+                        axis: "demo-axis".to_string(),
+                    }),
+                    color_scale: None,
+                };
+            }
+            SemanticValidationCase::InvalidColorScale => {
+                widget.viz = WidgetVisualization::Treemap {
+                    size: "market".to_string(),
+                    color: "market".to_string(),
+                    hierarchy: None,
+                    color_scale: Some(WidgetScale {
+                        min: rust_decimal::Decimal::ONE,
+                        max: rust_decimal::Decimal::ZERO,
+                    }),
+                };
+            }
+            SemanticValidationCase::InvalidBarScale => {
+                widget.viz = WidgetVisualization::Toplist {
+                    value: "market".to_string(),
+                    order: WidgetVisualizationOrder::Desc,
+                    limit: 5,
+                    bar_scale: Some(WidgetScale {
+                        min: rust_decimal::Decimal::ONE,
+                        max: rust_decimal::Decimal::ZERO,
+                    }),
+                };
+            }
+            SemanticValidationCase::UnknownDisplayName => {
+                widget.display.insert(
+                    "fictional-unknown-value".to_string(),
+                    WidgetValueDisplay::default(),
+                );
             }
         }
 
@@ -557,10 +677,12 @@ mod tests {
                 },
             )]),
             formulas: BTreeMap::new(),
+            display: BTreeMap::new(),
             viz: WidgetVisualization::Toplist {
                 value: "market".to_string(),
                 order: WidgetVisualizationOrder::Desc,
                 limit: 10,
+                bar_scale: None,
             },
             time: WidgetTime::default(),
         };
@@ -616,6 +738,22 @@ mod tests {
     #[case::formula_name_must_not_match_query_name(
         SemanticValidationCase::FormulaQueryNameCollision,
         Some("formulas.relative: formula name conflicts with a query name")
+    )]
+    #[case::hierarchy_requires_stock_rows(
+        SemanticValidationCase::HierarchyRequiresStockRows,
+        Some("viz.hierarchy: hierarchy requires values that use stock rows")
+    )]
+    #[case::color_scale_requires_ordered_bounds(
+        SemanticValidationCase::InvalidColorScale,
+        Some("viz.color_scale: min must be less than max")
+    )]
+    #[case::bar_scale_requires_ordered_bounds(
+        SemanticValidationCase::InvalidBarScale,
+        Some("viz.bar_scale: min must be less than max")
+    )]
+    #[case::display_name_must_reference_a_value(
+        SemanticValidationCase::UnknownDisplayName,
+        Some("display.fictional-unknown-value: name must reference a query or formula")
     )]
     fn validates_widget_semantics(
         #[case] case: SemanticValidationCase,

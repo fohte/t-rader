@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -10,6 +11,8 @@ pub struct WidgetDefinition {
     pub queries: BTreeMap<String, WidgetQuery>,
     #[serde(default)]
     pub formulas: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub display: BTreeMap<String, WidgetValueDisplay>,
     pub viz: WidgetVisualization,
     #[serde(default)]
     pub time: WidgetTime,
@@ -48,6 +51,35 @@ pub struct WidgetQuery {
     pub universe: Option<WidgetUniverse>,
     #[serde(default)]
     pub agg: Option<WidgetAggregation>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetValueDisplay {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<WidgetValueFormat>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WidgetValueFormat {
+    Number,
+    Percent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetHierarchy {
+    pub axis: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetScale {
+    pub min: Decimal,
+    pub max: Decimal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -169,11 +201,17 @@ pub enum WidgetVisualization {
     Treemap {
         size: String,
         color: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hierarchy: Option<WidgetHierarchy>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        color_scale: Option<WidgetScale>,
     },
     Toplist {
         value: String,
         order: WidgetVisualizationOrder,
         limit: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bar_scale: Option<WidgetScale>,
     },
     Table {
         columns: Vec<String>,

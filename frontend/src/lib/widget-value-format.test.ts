@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   formatWidgetValue,
+  type WidgetDisplayDefinitions,
   type WidgetQueryDefinitions,
 } from '#lib/widget-value-format'
 
@@ -9,6 +10,29 @@ const queries: WidgetQueryDefinitions = {
   movement: { metric: 'change', by: 'stock' },
   capitalization: { metric: 'mkt_cap', by: 'stock' },
 }
+
+const displayCases: {
+  name: string
+  key: string
+  value: number
+  display: WidgetDisplayDefinitions
+  expected: string
+}[] = [
+  {
+    name: 'explicit percent formatting supports formula values',
+    key: 'derived-value',
+    value: 0.0123,
+    display: { 'derived-value': { format: 'percent' } },
+    expected: '+1.23%',
+  },
+  {
+    name: 'explicit number formatting overrides change metric formatting',
+    key: 'movement',
+    value: 0.0123,
+    display: { movement: { format: 'number' } },
+    expected: '0.01',
+  },
+]
 
 describe('formatWidgetValue', () => {
   it.each([
@@ -56,5 +80,9 @@ describe('formatWidgetValue', () => {
     },
   ])('$name', ({ key, value, expected }) => {
     expect(formatWidgetValue(key, value, queries)).toBe(expected)
+  })
+
+  it.each(displayCases)('$name', ({ key, value, display, expected }) => {
+    expect(formatWidgetValue(key, value, queries, display)).toBe(expected)
   })
 })
