@@ -118,10 +118,10 @@ pub async fn get_note(
 ) -> Result<Json<NoteResponse>, AppError> {
     let snapshot = state
         .note_read_use_cases
-        .get_note(id, params.version_id, false)
+        .get_note_for_display(id, params.version_id, false)
         .await
         .map_err(map_note_read_error)?;
-    Ok(Json(NoteResponse::from_snapshot(snapshot)))
+    Ok(Json(NoteResponse::from_display_snapshot(snapshot)))
 }
 
 pub(super) fn map_note_read_error(error: NoteReadUseCaseError) -> AppError {

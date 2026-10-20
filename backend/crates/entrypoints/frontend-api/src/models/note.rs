@@ -37,6 +37,8 @@ pub struct NoteResponse {
     pub is_current: bool,
     pub title: String,
     pub body_md: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_body_md: Option<String>,
     pub frontmatter_json: Json,
     /// 本文中の価格・市場データ参照リンクを key、解決した値を value とする。
     pub resolved_price_references_json: Json,
@@ -65,6 +67,7 @@ impl NoteResponse {
             is_current: snapshot.version.is_current,
             title: snapshot.version.title,
             body_md: snapshot.version.body_md,
+            display_body_md: None,
             frontmatter_json: snapshot.version.frontmatter_json,
             resolved_price_references_json: snapshot.version.resolved_price_references_json,
             tags,
@@ -78,6 +81,12 @@ impl NoteResponse {
             graphs_json: snapshot.version.graphs_json,
             execution_id: snapshot.note.execution_id,
         }
+    }
+
+    pub fn from_display_snapshot(snapshot: core_application::note::NoteDisplaySnapshot) -> Self {
+        let mut response = Self::from_snapshot(snapshot.snapshot);
+        response.display_body_md = Some(snapshot.display_body_md);
+        response
     }
 }
 

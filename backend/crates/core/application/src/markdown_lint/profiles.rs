@@ -8,4 +8,4 @@ pub const AGENT_NOTE_WRITE: &[&RuleDefinition] = &[
     &rules::duplicate_stock_name::RULE,
 ];
 
-pub const NOTE_DISPLAY: &[&RuleDefinition] = &[];
+pub const NOTE_DISPLAY: &[&RuleDefinition] = &[&rules::duplicate_stock_name::RULE];

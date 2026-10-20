@@ -17,6 +17,10 @@ pub struct FakeNoteReadQuery {
 
 impl FakeNoteReadQuery {
     pub fn new(note_id: Uuid, version_id: Uuid) -> Self {
+        Self::with_body(note_id, version_id, "body")
+    }
+
+    pub fn with_body(note_id: Uuid, version_id: Uuid, body_md: impl Into<String>) -> Self {
         let timestamp = timestamp();
         Self {
             note: Note {
@@ -33,7 +37,7 @@ impl FakeNoteReadQuery {
                 note_id,
                 version_no: 1,
                 title: "Example note".into(),
-                body_md: "body".into(),
+                body_md: body_md.into(),
                 frontmatter_json: json!({}),
                 graphs_json: json!([]),
                 resolved_price_references_json: json!({}),

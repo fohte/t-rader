@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { NoteBodyCard } from '#components/note-detail/note-body-card'
 import { NoteVersionBodyComments } from '#components/note-detail/note-version-body-comments'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
+import { mockResolveRef } from '#storybook/mock-resolve-ref'
 
 const versionId = 'sample-version'
 const comment: NoteVersionComment = {
@@ -32,6 +33,7 @@ const meta = {
     layout: 'padded',
     msw: {
       handlers: [
+        mockResolveRef({ 'stock:DEMO-A': '架空工業' }),
         http.get('/api/comments', () => HttpResponse.json([comment])),
         http.post('/api/comments', () => HttpResponse.json(comment)),
         http.patch('/api/comments/:id', () => HttpResponse.json(comment)),
@@ -40,7 +42,7 @@ const meta = {
   },
   args: {
     versionId,
-    source: '# サンプル本文\n\n対象の段落です。',
+    source: '[[stock:DEMO-A]]: 概要\n\n対象の段落です。',
   },
   decorators: [
     (Story) => (
@@ -59,5 +61,5 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const CommentThreadVisible: Story = {
-  name: 'shows the comments for the selected note version.',
+  name: 'shows one stock name beside the existing line comment.',
 }

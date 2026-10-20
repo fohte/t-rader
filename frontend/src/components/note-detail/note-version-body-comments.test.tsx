@@ -128,7 +128,7 @@ function selectParagraphText(text: string): HTMLElement {
 describe('NoteVersionBodyComments', () => {
   it('sends the selected quote and source range to the current version', async () => {
     const user = userEvent.setup()
-    const source = `# サンプル見出し
+    const source = `[[stock:DEMO-A]]: 概要
 
 対象の段落です。
 次の行です。`

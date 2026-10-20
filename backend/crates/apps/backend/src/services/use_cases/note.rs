@@ -8,7 +8,10 @@ use super::UseCases;
 
 impl UseCases {
     pub fn note_reads(&self) -> NoteReadUseCases {
-        NoteReadUseCases::new(Arc::new(PostgresNoteReadQuery::new(self.db.clone())))
+        NoteReadUseCases::with_markdown_lint(
+            Arc::new(PostgresNoteReadQuery::new(self.db.clone())),
+            MarkdownLintService::new(self.refs()),
+        )
     }
 
     pub fn notes(&self) -> NoteUseCases {

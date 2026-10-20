@@ -214,6 +214,7 @@ mod tests {
                     "is_current": true,
                     "title": "sample note",
                     "body_md": "sample body",
+                    "display_body_md": "sample body",
                     "frontmatter_json": {},
                     "resolved_price_references_json": {},
                     "tags": [],

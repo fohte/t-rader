@@ -11355,6 +11355,12 @@
           "created_by_kind": {
             "type": "string"
           },
+          "display_body_md": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "execution_id": {
             "type": [
               "string",
