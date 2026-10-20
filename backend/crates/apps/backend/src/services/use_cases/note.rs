@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use core_application::markdown_lint::MarkdownLintService;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
 use gateway_postgres::{PostgresNoteReadQuery, PostgresNoteRepository};
 
@@ -19,6 +20,7 @@ impl UseCases {
             self.valuations(),
             self.indicator_observations(),
             self.custom_indicator_evaluations(),
+            MarkdownLintService::new(self.refs()),
         )
     }
 }

@@ -141,11 +141,13 @@ impl NoteUseCases {
             self.ensure_note_kind_exists(&transaction, kind).await?;
         }
         let graphs_json = command.graphs_json.clone().unwrap_or_else(|| json!([]));
-        let lint_outcome = self.inspect_checked_body(
-            command.body_md.as_deref().unwrap_or_default(),
-            &graphs_json,
-            warning_dispositions.as_deref(),
-        )?;
+        let lint_outcome = self
+            .inspect_checked_body(
+                command.body_md.as_deref().unwrap_or_default(),
+                &graphs_json,
+                warning_dispositions.as_deref(),
+            )
+            .await?;
 
         let note_id = Uuid::new_v4();
         let inserted = self
@@ -336,8 +338,9 @@ impl NoteUseCases {
             graphs_json = graphs;
             touched = true;
         }
-        let lint_outcome =
-            self.inspect_checked_body(&body_md, &graphs_json, warning_dispositions)?;
+        let lint_outcome = self
+            .inspect_checked_body(&body_md, &graphs_json, warning_dispositions)
+            .await?;
         if !touched {
             return Err(NoteUseCaseError::Validation(
                 "at least one of title / body_md / frontmatter_json / graphs must be provided"
@@ -438,11 +441,13 @@ mod tests {
     use crate::indicator_observation::{
         FakeIndicatorObservationRepository, IndicatorObservationUseCases,
     };
+    use crate::markdown_lint::{MarkdownLintService, MarkdownLintServiceError};
     use crate::note::repository::{NoteRepository, NoteRepositoryError};
     use crate::note::types::{
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
         NoteVersionUpdate, UpdateNoteCommand,
     };
+    use crate::refs::{RefUseCases, test_support::FakeRefRepository};
     use crate::unit_of_work::FakeUnitOfWork;
     use crate::valuation::{FakeValuationRepository, ValuationUseCases};
 
@@ -830,9 +835,14 @@ mod tests {
             valuations,
             indicator_observations,
             custom_indicator_evaluation_use_cases([]),
+            MarkdownLintService::default(),
         )
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "テスト対象の依存を個別に構成するため"
+    )]
     fn make_note_use_cases_with_all_services(
         source_version: NoteVersion,
         latest_version: NoteVersion,
@@ -841,6 +851,7 @@ mod tests {
         valuations: ValuationUseCases,
         indicator_observations: IndicatorObservationUseCases,
         custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
+        markdown_lint: MarkdownLintService,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
         let repository = Arc::new(LinkNoteRepository {
             source_note: source_note_with_kind(requires_approval.then(|| "sample-kind".into())),
@@ -865,6 +876,7 @@ mod tests {
             valuations,
             indicator_observations,
             custom_indicator_evaluations,
+            markdown_lint,
         );
         (use_cases, repository)
     }
@@ -1345,6 +1357,7 @@ mod tests {
             custom_indicator_evaluation_use_cases([custom_indicator_evaluation(
                 json!({ "result": 256.75 }),
             )]),
+            MarkdownLintService::default(),
         );
         let body = concat!(
             "[[valuation:fictional-code@2030-01-02:per]] ",
@@ -1436,6 +1449,7 @@ mod tests {
             ),
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
             evaluation_use_cases,
+            MarkdownLintService::default(),
         );
         let token = "[[eval:00000000-0000-0000-0000-000000000101:result]]";
 
@@ -2256,6 +2270,53 @@ mod tests {
             .await;
 
         assert_rejected_without_saving(result, &repository, scan_body_warnings(body)).await;
+    }
+
+    #[tokio::test]
+    async fn gated_write_does_not_save_when_stock_name_resolution_fails() {
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let refs = RefUseCases::new(
+            Arc::new(FakeUnitOfWork::new()),
+            Arc::new(FakeRefRepository::new(
+                std::collections::HashMap::new(),
+                true,
+            )),
+        );
+        let (use_cases, repository) = make_note_use_cases_with_all_services(
+            source_version(),
+            source_version(),
+            false,
+            bars_repository.clone(),
+            ValuationUseCases::new(
+                Arc::new(FakeValuationRepository::default()),
+                bars_repository,
+            ),
+            IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+            custom_indicator_evaluation_use_cases([]),
+            MarkdownLintService::new(refs),
+        );
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command("[[stock:DEMO-A]] 架空工業"),
+                vec![],
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| {
+                matches!(
+                    error,
+                    NoteUseCaseError::MarkdownLint(MarkdownLintServiceError::ReferenceResolution(
+                        _
+                    ))
+                )
+            });
+        let inserted_note_count = repository.inserted_note_ids.lock().await.len();
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (result, inserted_note_count, inserted_version_count),
+            (Err(true), 0, 0)
+        );
     }
 
     #[tokio::test]

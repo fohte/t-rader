@@ -5,6 +5,7 @@ pub const AGENT_NOTE_WRITE: &[&RuleDefinition] = &[
     &rules::no_bare_uuid::RULE,
     &rules::price::RULE,
     &rules::relative::RULE,
+    &rules::duplicate_stock_name::RULE,
 ];
 
 pub const NOTE_DISPLAY: &[&RuleDefinition] = &[];

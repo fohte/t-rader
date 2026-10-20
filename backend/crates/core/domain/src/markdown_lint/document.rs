@@ -81,6 +81,23 @@ impl<'a> ParsedMarkdown<'a> {
     pub fn url_ranges(&self) -> &[Range<usize>] {
         &self.url_ranges
     }
+
+    pub fn plain_text_run_containing(&self, range: &Range<usize>) -> Option<&TextRun> {
+        let run = self.runs.iter().find(|run| {
+            run.kind == TextRunKind::Text
+                && run.formatting_depth == 0
+                && run.range.start <= range.start
+                && range.end <= run.range.end
+        })?;
+        if self
+            .url_ranges
+            .iter()
+            .any(|url| range.start < url.end && url.start < range.end)
+        {
+            return None;
+        }
+        Some(run)
+    }
 }
 
 pub(crate) fn validate_range(

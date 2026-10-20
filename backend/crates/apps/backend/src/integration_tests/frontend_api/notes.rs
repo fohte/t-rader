@@ -406,6 +406,93 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn human_post_and_patch_allow_duplicate_stock_names(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        insert_test_stock(&db, "DEMO-A", "架空工業").await;
+        let initial_body = "[[stock:DEMO-A]] 架空工業: メモ";
+        let updated_body = "[[stock:DEMO-A]] 架空工業: 更新メモ";
+
+        let created_response = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "human note",
+                "body_md": initial_body,
+            }))
+            .await;
+        let created_body = created_response.json::<Value>();
+        let note_id = Uuid::parse_str(created_body["id"].as_str().expect("note id"))
+            .expect("note id is a UUID");
+        let updated_response = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({ "body_md": updated_body }))
+            .await;
+        let updated_response_body = updated_response.json::<Value>();
+        let current_body = find_current_note_version(&db, note_id)
+            .await
+            .expect("find current note version")
+            .map(|version| version.body_md);
+
+        assert_eq!(
+            (
+                created_response.status_code(),
+                normalize_note_response(created_body),
+                updated_response.status_code(),
+                normalize_note_response(updated_response_body),
+                note_version_states(&db, note_id).await,
+                current_body,
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": "human note",
+                    "body_md": initial_body,
+                    "frontmatter_json": {},
+                    "resolved_price_references_json": {},
+                    "tags": [],
+                    "graphs_json": [],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_id": null,
+                }),
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 2,
+                    "is_current": true,
+                    "title": "human note",
+                    "body_md": updated_body,
+                    "frontmatter_json": {},
+                    "resolved_price_references_json": {},
+                    "tags": [],
+                    "graphs_json": [],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_id": null,
+                }),
+                vec![(1, "approved".into(), false), (2, "approved".into(), true,)],
+                Some(updated_body.into()),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn list_notes_filters_by_exact_tag_and_returns_tags(
         db: gateway_postgres::DatabaseHandle,
     ) {

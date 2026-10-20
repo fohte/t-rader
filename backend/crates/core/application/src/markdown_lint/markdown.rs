@@ -274,8 +274,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn agent_note_profile_reports_visible_bare_uuids_at_source_byte_ranges() {
+    #[tokio::test]
+    async fn agent_note_profile_reports_visible_bare_uuids_at_source_byte_ranges() {
         const UUID_A: &str = "3e9b7f12-c840-4a6d-9e21-5b6c7d8e9f01";
         const UUID_B: &str = "ABCDEF12-ABCD-4EF0-8ABC-DEFABCDEFABC";
         const UUID_C: &str = "bcdefabc-defa-4abc-8def-abcdefabcdef";
@@ -324,15 +324,17 @@ mod tests {
                 fix: None,
             }
         };
-        let service = MarkdownLintService;
+        let service = MarkdownLintService::default();
 
         assert_eq!(
             (
                 service
                     .inspect(&source, AGENT_NOTE_WRITE)
+                    .await
                     .expect("agent note Markdown parses"),
                 service
                     .inspect(&source, NOTE_DISPLAY)
+                    .await
                     .expect("note display Markdown parses"),
             ),
             (

@@ -5,6 +5,7 @@ use crate::bars::BarsUseCases;
 use crate::change_history::{ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
 use crate::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
 use crate::indicator_observation::IndicatorObservationUseCases;
+use crate::markdown_lint::MarkdownLintService;
 use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
 use crate::note::types::{Note, NoteSnapshot};
@@ -30,9 +31,14 @@ pub struct NoteUseCases {
     pub(super) valuations: ValuationUseCases,
     pub(super) indicator_observations: IndicatorObservationUseCases,
     pub(super) custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
+    pub(super) markdown_lint: MarkdownLintService,
 }
 
 impl NoteUseCases {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "依存を composition root から明示注入するため"
+    )]
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         repository: SharedNoteRepository,
@@ -41,6 +47,7 @@ impl NoteUseCases {
         valuations: ValuationUseCases,
         indicator_observations: IndicatorObservationUseCases,
         custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
+        markdown_lint: MarkdownLintService,
     ) -> Self {
         Self {
             unit_of_work,
@@ -50,6 +57,7 @@ impl NoteUseCases {
             valuations,
             indicator_observations,
             custom_indicator_evaluations,
+            markdown_lint,
         }
     }
 

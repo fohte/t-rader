@@ -7,6 +7,10 @@ pub fn nfkc_ascii_lowercase(value: &str) -> String {
         .collect()
 }
 
+pub fn nfkc_lowercase(value: &str) -> String {
+    value.nfkc().flat_map(char::to_lowercase).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;

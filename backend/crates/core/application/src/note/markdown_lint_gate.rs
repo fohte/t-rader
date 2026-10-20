@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use core_domain::markdown_lint::{Disposition, LintReport, Severity, evaluate_dispositions};
 use core_domain::note_body_warning::{NoteBodyWarning, scan_graph_warnings_with_ids};
 
-use crate::markdown_lint::{AGENT_NOTE_WRITE, MarkdownLintService};
+use crate::markdown_lint::AGENT_NOTE_WRITE;
 use crate::note::types::{NoteBodyWarningDisposition, NoteWriteResult};
 use crate::note::{NoteUseCaseError, NoteUseCases};
 
@@ -13,7 +13,7 @@ pub(super) struct CheckedLintOutcome {
 }
 
 impl NoteUseCases {
-    pub(super) fn inspect_checked_body(
+    pub(super) async fn inspect_checked_body(
         &self,
         body_md: &str,
         graphs_json: &serde_json::Value,
@@ -26,7 +26,10 @@ impl NoteUseCases {
             serde_json::from_value(graphs_json.clone()).map_err(|error| {
                 NoteUseCaseError::Validation(format!("invalid graphs_json: {error}"))
             })?;
-        let report = MarkdownLintService.inspect(body_md, AGENT_NOTE_WRITE)?;
+        let report = self
+            .markdown_lint
+            .inspect(body_md, AGENT_NOTE_WRITE)
+            .await?;
         let body_warnings = report
             .diagnostics
             .iter()

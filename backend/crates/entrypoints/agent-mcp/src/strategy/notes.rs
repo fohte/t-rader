@@ -2,6 +2,7 @@
 //!
 
 use core_application::change_history::{Actor, ChangeHistoryError};
+use core_application::markdown_lint::MarkdownLintServiceError;
 use core_application::note::{
     NoteBodyWarningDisposition, NoteRepositoryError, NoteUseCaseError, NoteWriteCommand,
 };
@@ -61,6 +62,10 @@ fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
             internal_error(format!("note kind {kind} not found"))
         }
         NoteUseCaseError::NotFound(_) => McpError::resource_not_found("note not found", None),
+        NoteUseCaseError::MarkdownLint(MarkdownLintServiceError::ReferenceResolution(error)) => {
+            tracing::error!(error = %error, "strategy mcp note reference name resolution failed");
+            internal_error("failed to resolve note reference names")
+        }
         other => internal_error(format!("{other}")),
     }
 }
