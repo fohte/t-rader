@@ -2,6 +2,7 @@ use std::ops::Range;
 
 use super::super::{
     MarkdownLintContext, RuleDefinition, RuleFinding, RuleRequirements, Severity, TextRunKind,
+    ranges_overlap,
 };
 
 const UUID_LENGTH: usize = 36;
@@ -33,8 +34,11 @@ fn check(context: &MarkdownLintContext<'_>) -> Vec<RuleFinding> {
             !document
                 .validated_tokens()
                 .iter()
-                .any(|token| overlaps(range, &token.range))
-                && !document.url_ranges().iter().any(|url| overlaps(range, url))
+                .any(|token| ranges_overlap(range, &token.range))
+                && !document
+                    .url_ranges()
+                    .iter()
+                    .any(|url| ranges_overlap(range, url))
         })
         .map(|range| RuleFinding {
             key: source[range.clone()].to_string(),
@@ -79,8 +83,4 @@ fn is_standard_uuid(bytes: &[u8]) -> bool {
 
 fn is_identifier_byte(byte: Option<u8>) -> bool {
     byte.is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-}
-
-fn overlaps(left: &Range<usize>, right: &Range<usize>) -> bool {
-    left.start < right.end && right.start < left.end
 }
