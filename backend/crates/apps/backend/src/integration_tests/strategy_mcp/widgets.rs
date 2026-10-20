@@ -1,6 +1,8 @@
 use chrono::{NaiveDate, TimeZone, Utc};
+use core_domain::bar::{Bar, Timeframe};
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::{bars, instruments, stock, valuation};
+use gateway_postgres::entities::{instruments, stock, valuation};
+use gateway_postgres::repositories::bars::upsert_bars;
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde_json::json;
@@ -37,23 +39,25 @@ async fn insert_stock(db: &DatabaseHandle) {
 async fn insert_market_data(db: &DatabaseHandle) {
     let timestamp = as_of()
         .and_hms_opt(0, 0, 0)
-        .map(|timestamp| Utc.from_utc_datetime(&timestamp).fixed_offset())
+        .map(|timestamp| Utc.from_utc_datetime(&timestamp))
         .expect("valid test timestamp");
     let close = Decimal::from(100);
-    bars::Entity::insert(bars::ActiveModel {
-        instrument_id: Set("F001".to_string()),
-        timeframe: Set("1d".to_string()),
-        timestamp: Set(timestamp),
-        open: Set(close),
-        high: Set(close),
-        low: Set(close),
-        close: Set(close),
-        volume: Set(100),
-        adjustment_factor: Set(Decimal::ONE),
-    })
-    .exec_without_returning(db)
+    upsert_bars(
+        db,
+        vec![Bar {
+            instrument_id: "F001".to_string(),
+            timeframe: Timeframe::Daily,
+            timestamp,
+            open: close,
+            high: close,
+            low: close,
+            close,
+            volume: 100,
+            adjustment_factor: Decimal::ONE,
+        }],
+    )
     .await
-    .expect("insert widget bar");
+    .expect("upsert widget bar");
     valuation::ActiveModel {
         code: Set("F0010".to_string()),
         date: Set(as_of()),
