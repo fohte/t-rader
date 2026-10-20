@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::markdown_lint::{MarkdownLintService, NOTE_DISPLAY};
-use core_domain::markdown_lint::apply_safe_edits;
+use crate::markdown_lint::{MarkdownLintService, MarkdownLintServiceError, NOTE_DISPLAY};
+use core_domain::markdown_lint::{FixError, apply_safe_edits};
 
 use super::query::{NoteReadQueryError, SharedNoteReadQuery};
 use super::types::{
@@ -30,17 +30,26 @@ pub enum NoteReadUseCaseError {
     Query(#[from] NoteReadQueryError),
 }
 
+#[derive(Debug, Error)]
+enum NoteDisplayBodyError {
+    #[error(transparent)]
+    Inspect(#[from] MarkdownLintServiceError),
+    #[error(transparent)]
+    ApplyEdits(#[from] FixError),
+}
+
 #[derive(Clone)]
 pub struct NoteReadUseCases {
     query: SharedNoteReadQuery,
-    markdown_lint: Option<MarkdownLintService>,
+    markdown_lint: MarkdownLintService,
 }
 
 impl NoteReadUseCases {
+    #[cfg(test)]
     pub fn new(query: SharedNoteReadQuery) -> Self {
         Self {
             query,
-            markdown_lint: None,
+            markdown_lint: MarkdownLintService::default(),
         }
     }
 
@@ -50,7 +59,7 @@ impl NoteReadUseCases {
     ) -> Self {
         Self {
             query,
-            markdown_lint: Some(markdown_lint),
+            markdown_lint,
         }
     }
 
@@ -111,44 +120,33 @@ impl NoteReadUseCases {
             .get_note(note_id, version_id, use_latest_if_no_current)
             .await?;
         let source = snapshot.version.body_md.clone();
-        let display_body_md = match &self.markdown_lint {
-            Some(markdown_lint) => match markdown_lint.inspect(&source, NOTE_DISPLAY).await {
-                Ok(report) => {
-                    let edits = report
-                        .diagnostics
-                        .into_iter()
-                        .filter_map(|diagnostic| diagnostic.fix)
-                        .collect::<Vec<_>>();
-                    match apply_safe_edits(&source, &edits) {
-                        Ok(display_body_md) => display_body_md,
-                        Err(error) => {
-                            tracing::error!(
-                                note_id = %note_id,
-                                version_id = %snapshot.version.id,
-                                error = %error,
-                                "ノート表示本文の補正に失敗したため原文を返します"
-                            );
-                            source.clone()
-                        }
-                    }
-                }
-                Err(error) => {
-                    tracing::error!(
-                        note_id = %note_id,
-                        version_id = %snapshot.version.id,
-                        error = %error,
-                        "ノート表示本文の検査に失敗したため原文を返します"
-                    );
-                    source.clone()
-                }
-            },
-            None => source.clone(),
+        let display_body_md = match self.correct_display_body(&source).await {
+            Ok(display_body_md) => display_body_md,
+            Err(error) => {
+                tracing::error!(
+                    note_id = %note_id,
+                    version_id = %snapshot.version.id,
+                    error = %error,
+                    "ノート表示本文の補正に失敗したため原文を返します"
+                );
+                source.clone()
+            }
         };
 
         Ok(NoteDisplaySnapshot {
             snapshot,
             display_body_md,
         })
+    }
+
+    async fn correct_display_body(&self, source: &str) -> Result<String, NoteDisplayBodyError> {
+        let report = self.markdown_lint.inspect(source, NOTE_DISPLAY).await?;
+        let edits = report
+            .diagnostics
+            .into_iter()
+            .filter_map(|diagnostic| diagnostic.fix)
+            .collect::<Vec<_>>();
+        Ok(apply_safe_edits(source, &edits)?)
     }
 
     pub async fn list_note_versions(

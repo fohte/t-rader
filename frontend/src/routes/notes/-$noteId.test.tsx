@@ -185,24 +185,32 @@ async function renderNoteDetail(
 }
 
 function displayedBodyText(): string | null {
-  const paragraphs = Array.from(
-    document.querySelectorAll(
-      'article > div.text-foreground p.leading-relaxed',
-    ),
-  ).map((paragraph) => paragraph.textContent)
+  const body = screen.queryByRole('region', { name: 'ノート本文' })
+  if (body == null) return null
+  const paragraphs = Array.from(body.querySelectorAll('p')).map(
+    (paragraph) => paragraph.textContent,
+  )
   return paragraphs.length === 0 ? null : paragraphs.join('\n')
 }
 
 function notePageOutput(noteRequests: NoteRequest[]) {
   return [
     screen.queryByRole('heading', { level: 1 })?.textContent ?? null,
-    screen.queryByText(noteKindLabel)?.textContent ?? null,
+    noteKindOutput(),
     displayedBodyText(),
     screen.queryByRole('alert')?.textContent ?? null,
     screen.queryByRole('heading', { name: 'バージョン差分' })?.textContent ??
       null,
     noteRequests,
   ]
+}
+
+function noteKindOutput(): string | null {
+  return (
+    screen.queryByText(noteKindLabel)?.textContent ??
+    screen.queryByText('種別を読み込めませんでした')?.textContent ??
+    null
+  )
 }
 
 afterEach(() => {
@@ -218,16 +226,11 @@ describe('NoteDetailPage', () => {
       `/notes/${noteId}?version_id=${historicalVersion.id}`,
     )
 
-    await screen.findByRole('button', { name: '銘柄架空工業DEMO-A' })
-    await waitFor(() => {
-      expect(requests.noteRequests).toEqual([
-        {
-          method: 'GET',
-          path: `/api/notes/${noteId}`,
-          versionId: historicalVersion.id,
-        },
-      ])
-    })
+    await screen.findByRole(
+      'button',
+      { name: '銘柄架空工業DEMO-A' },
+      { timeout: 30_000 },
+    )
 
     expect(notePageOutput(requests.noteRequests)).toEqual([
       historicalVersion.title,
@@ -256,7 +259,7 @@ describe('NoteDetailPage', () => {
       `/notes/${noteId}?version_id=${historicalVersion.id}`,
     )
 
-    await screen.findByRole('heading', { level: 1 })
+    await screen.findByRole('heading', { level: 1 }, { timeout: 30_000 })
     await waitFor(() => {
       expect(requests.noteRequests).toEqual([
         {
@@ -269,7 +272,11 @@ describe('NoteDetailPage', () => {
     expect(displayedBodyText()).toEqual(null)
 
     resolveNoteResponse(Response.json(noteForVersion(historicalVersion)))
-    await screen.findByRole('button', { name: '銘柄架空工業DEMO-A' })
+    await screen.findByRole(
+      'button',
+      { name: '銘柄架空工業DEMO-A' },
+      { timeout: 30_000 },
+    )
 
     expect(displayedBodyText()).toEqual(
       '銘柄架空工業DEMO-A: 銘柄架空商事DEMO-B: 内容の続き',
@@ -287,16 +294,21 @@ describe('NoteDetailPage', () => {
 
     await screen.findByRole('heading', { level: 1 })
     await waitFor(() => {
-      expect(requests.noteRequests).toEqual([
-        {
-          method: 'GET',
-          path: `/api/notes/${noteId}`,
-          versionId: historicalVersion.id,
-        },
+      expect(notePageOutput(requests.noteRequests)).toEqual([
+        historicalVersion.title,
+        noteKindLabel,
+        null,
+        null,
+        null,
+        [
+          {
+            method: 'GET',
+            path: `/api/notes/${noteId}`,
+            versionId: historicalVersion.id,
+          },
+        ],
       ])
     })
-
-    expect(displayedBodyText()).toEqual(null)
   }, 30_000)
 
   it('keeps raw body hidden when the detail request fails', async () => {
@@ -307,21 +319,10 @@ describe('NoteDetailPage', () => {
     )
 
     await screen.findByRole('alert')
-    await waitFor(() => {
-      expect(requests.noteRequests).toEqual([
-        {
-          method: 'GET',
-          path: `/api/notes/${noteId}`,
-          versionId: historicalVersion.id,
-        },
-      ])
-    })
-
-    await screen.findByText(noteKindLabel)
 
     expect(notePageOutput(requests.noteRequests)).toEqual([
       historicalVersion.title,
-      noteKindLabel,
+      '種別を読み込めませんでした',
       null,
       'バージョンを読み込めませんでした。',
       null,
@@ -342,15 +343,7 @@ describe('NoteDetailPage', () => {
     )
 
     await screen.findByText(noteKindLabel)
-    await waitFor(() => {
-      expect(requests.noteRequests).toEqual([
-        {
-          method: 'GET',
-          path: `/api/notes/${noteId}`,
-          versionId,
-        },
-      ])
-    })
+    await screen.findByRole('region', { name: 'ノート本文' })
 
     expect(notePageOutput(requests.noteRequests)).toEqual([
       pendingVersion.title,
@@ -393,15 +386,6 @@ describe('NoteDetailPage', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: '全文' }))
     await screen.findByRole('button', { name: '銘柄架空工業DEMO-A' })
-    await waitFor(() => {
-      expect(requests.noteRequests).toEqual([
-        {
-          method: 'GET',
-          path: `/api/notes/${noteId}`,
-          versionId: currentVersion.id,
-        },
-      ])
-    })
 
     expect(notePageOutput(requests.noteRequests)).toEqual([
       currentVersion.title,

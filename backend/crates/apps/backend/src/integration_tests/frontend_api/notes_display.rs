@@ -113,27 +113,20 @@ fn expected_detail(
     })
 }
 
-fn normalize_comment(mut value: Value) -> Value {
+fn normalize_id_and_created_at(value: &mut Value) {
     for key in ["id", "created_at"] {
         value[key] = json!(format!("<{key}>"));
     }
+}
+
+fn normalize_value(mut value: Value) -> Value {
+    normalize_id_and_created_at(&mut value);
     value
 }
 
-fn normalize_note_versions(mut value: Value) -> Value {
-    for version in value.as_array_mut().expect("versions are an array") {
-        for key in ["id", "created_at"] {
-            version[key] = json!(format!("<{key}>"));
-        }
-    }
-    value
-}
-
-fn normalize_comments(mut value: Value) -> Value {
-    for comment in value.as_array_mut().expect("comments are an array") {
-        for key in ["id", "created_at"] {
-            comment[key] = json!(format!("<{key}>"));
-        }
+fn normalize_collection(mut value: Value) -> Value {
+    for item in value.as_array_mut().expect("value is an array") {
+        normalize_id_and_created_at(item);
     }
     value
 }
@@ -195,7 +188,7 @@ async fn get_note_displays_a_corrected_body_without_changing_versions_or_comment
     assert_eq!(
         (
             created_comment.status_code(),
-            normalize_comment(created_comment_body)
+            normalize_value(created_comment_body)
         ),
         (
             StatusCode::CREATED,
@@ -219,7 +212,7 @@ async fn get_note_displays_a_corrected_body_without_changing_versions_or_comment
 
     let versions_before = get_versions(&server, note_id).await;
     let comments_before = get_comments(&server, first_version_id).await;
-    let versions_before_normalized = normalize_note_versions(versions_before.clone());
+    let versions_before_normalized = normalize_collection(versions_before.clone());
     let first_detail = server
         .get(&format!(
             "/api/notes/{note_id}?version_id={first_version_id}"
@@ -246,11 +239,11 @@ async fn get_note_displays_a_corrected_body_without_changing_versions_or_comment
             current_detail.status_code(),
             current_detail_body,
             versions_before_normalized.clone(),
-            normalize_note_versions(versions_after.clone()),
+            normalize_collection(versions_after.clone()),
             versions_before == versions_after,
             comments_before == comments_after,
             (RAW_BODY.lines().count(), DISPLAY_BODY.lines().count()),
-            normalize_comments(comments_after),
+            normalize_collection(comments_after),
         ),
         (
             StatusCode::OK,
