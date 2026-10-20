@@ -28,7 +28,7 @@ export type WidgetToplistOption = ComposeOption<
   | MarkLineComponentOption
 >
 
-export interface WidgetToplistRow {
+interface WidgetToplistRow {
   key: string
   name: string
   code: string
@@ -36,7 +36,7 @@ export interface WidgetToplistRow {
   formattedValue: string
 }
 
-export interface WidgetToplistScale {
+interface WidgetToplistScale {
   min: number
   max: number
   configured: boolean

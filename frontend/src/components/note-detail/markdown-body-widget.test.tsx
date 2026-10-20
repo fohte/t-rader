@@ -179,7 +179,7 @@ describe('MarkdownBody widget blocks', () => {
       widget.closest('pre') === null ? 'outside <pre>' : 'inside <pre>',
     ].join('\n')
     expect(renderedWidget).toEqual(
-      'ウィジェット基準日 2099-01-05doubled2099-01-05自動尺度: 0 / 0 / 2.31順位一覧から詳細を選ぶ (1)1デモグループdemo-axis/demo-group+2.1\noutside <pre>',
+      'ウィジェット基準日 2099-01-05doubled2099-01-05自動尺度: 0 / 0 / 2.311デモグループdemo-axis/demo-group+2.1順位一覧から詳細を選ぶ (1)1デモグループdemo-axis/demo-group+2.1\noutside <pre>',
     )
   })
 
