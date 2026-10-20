@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::change_history::ChangeHistoryError;
 use crate::subagent_definition::SubagentDefinitionRepositoryError;
 use crate::unit_of_work::UnitOfWorkError;
 
@@ -34,6 +35,8 @@ pub enum AgentConfigUseCaseError {
     Repository(#[from] AgentConfigRepositoryError),
     #[error(transparent)]
     SubagentDefinitionRepository(#[from] SubagentDefinitionRepositoryError),
+    #[error(transparent)]
+    ChangeHistory(#[from] ChangeHistoryError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
 }

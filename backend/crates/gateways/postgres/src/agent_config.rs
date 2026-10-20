@@ -5,7 +5,8 @@ use core_application::agent_config::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::sea_query::LockType;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -69,6 +70,21 @@ impl AgentConfigRepository for PostgresAgentConfigRepository {
         let transaction = transaction_ref(transaction)?;
         agent_config::Entity::find()
             .filter(agent_config::Column::Purpose.eq(purpose))
+            .one(transaction)
+            .await
+            .map(|row| row.map(to_domain))
+            .map_err(repository_error)
+    }
+
+    async fn find_by_purpose_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        purpose: &str,
+    ) -> Result<Option<AgentConfig>, AgentConfigRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        agent_config::Entity::find()
+            .filter(agent_config::Column::Purpose.eq(purpose))
+            .lock(LockType::Update)
             .one(transaction)
             .await
             .map(|row| row.map(to_domain))

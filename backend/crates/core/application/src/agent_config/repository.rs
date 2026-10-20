@@ -28,6 +28,12 @@ pub trait AgentConfigRepository: Send + Sync {
         purpose: &str,
     ) -> Result<Option<AgentConfig>, AgentConfigRepositoryError>;
 
+    async fn find_by_purpose_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        purpose: &str,
+    ) -> Result<Option<AgentConfig>, AgentConfigRepositoryError>;
+
     async fn insert(
         &self,
         transaction: &UnitOfWorkTransaction,

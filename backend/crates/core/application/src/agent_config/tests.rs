@@ -8,6 +8,7 @@ use rstest::{fixture, rstest};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::change_history::{Actor, ChangeHistoryRecord, FakeChangeHistory, Op, TargetKind};
 use crate::persistence::PersistenceError;
 use crate::subagent_definition::{
     SharedSubagentDefinitionRepository, SubagentDefinition, SubagentDefinitionRepository,
@@ -128,6 +129,15 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
         self.find_by_purpose(purpose).await
     }
 
+    async fn find_by_purpose_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        purpose: &str,
+    ) -> Result<Option<AgentConfig>, AgentConfigRepositoryError> {
+        self.find_by_purpose_in_transaction(transaction, purpose)
+            .await
+    }
+
     async fn insert(
         &self,
         _transaction: &UnitOfWorkTransaction,
@@ -226,6 +236,7 @@ struct Fixture {
     use_cases: AgentConfigUseCases,
     unit_of_work: Arc<FakeUnitOfWork>,
     subagent_definition_repository: Arc<EmptySubagentDefinitionRepository>,
+    change_history: Arc<FakeChangeHistory>,
 }
 
 #[fixture]
@@ -233,6 +244,7 @@ fn fixture() -> Fixture {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeAgentConfigRepository::default());
     let subagent_definition_repository = Arc::new(EmptySubagentDefinitionRepository::default());
+    let change_history = Arc::new(FakeChangeHistory::new());
     let shared_subagent_definition_repository: SharedSubagentDefinitionRepository =
         subagent_definition_repository.clone();
     Fixture {
@@ -240,9 +252,11 @@ fn fixture() -> Fixture {
             unit_of_work.clone(),
             repository,
             shared_subagent_definition_repository,
+            change_history.clone(),
         ),
         unit_of_work,
         subagent_definition_repository,
+        change_history,
     }
 }
 
@@ -266,6 +280,230 @@ async fn transaction_counts(unit_of_work: &FakeUnitOfWork) -> (usize, usize) {
         unit_of_work.begun.lock().await.len(),
         unit_of_work.committed.lock().await.len(),
     )
+}
+
+fn snapshot(
+    id: Uuid,
+    purpose: &str,
+    agents_md: &str,
+    skills: serde_json::Value,
+    agent_graph: &str,
+) -> serde_json::Value {
+    json!({
+        "id": id,
+        "purpose": purpose,
+        "agents_md": agents_md,
+        "skills": skills,
+        "agent_graph": agent_graph,
+    })
+}
+
+fn expected_snapshot_record(
+    op: Op,
+    target_id: Uuid,
+    before: Option<serde_json::Value>,
+    after: Option<serde_json::Value>,
+) -> ChangeHistoryRecord {
+    ChangeHistoryRecord {
+        actor: Actor::Human,
+        target_kind: TargetKind::AgentConfig,
+        target_id,
+        op,
+        diff: json!({
+            "format": "definition_snapshot",
+            "version": 1,
+            "before": before,
+            "after": after,
+        }),
+        summary: None,
+    }
+}
+
+#[rstest]
+#[tokio::test]
+async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
+    let created = fixture
+        .use_cases
+        .create("example-purpose".to_string())
+        .await
+        .expect("create config");
+    let id = created.id;
+    let initial = snapshot(id, "example-purpose", "", json!({}), "");
+
+    let agents_md = indoc::indoc! {"
+        First fabricated line.
+
+        Final fabricated line."};
+    fixture
+        .use_cases
+        .save_agents_md("example-purpose", agents_md.to_string())
+        .await
+        .expect("save agents_md");
+    let with_agents_md = snapshot(id, "example-purpose", agents_md, json!({}), "");
+
+    let first_skill_content = indoc::indoc! {"
+        First skill line.
+
+        Final skill line."};
+    fixture
+        .use_cases
+        .put_skill(
+            "example-purpose",
+            "first_skill",
+            first_skill_content.to_string(),
+        )
+        .await
+        .expect("add first skill");
+    let with_first_skill = snapshot(
+        id,
+        "example-purpose",
+        agents_md,
+        json!({ "first_skill": first_skill_content }),
+        "",
+    );
+
+    fixture
+        .use_cases
+        .put_skill(
+            "example-purpose",
+            "second_skill",
+            "second fabricated content".to_string(),
+        )
+        .await
+        .expect("add second skill");
+    let with_two_skills = snapshot(
+        id,
+        "example-purpose",
+        agents_md,
+        json!({
+            "first_skill": first_skill_content,
+            "second_skill": "second fabricated content",
+        }),
+        "",
+    );
+
+    fixture
+        .use_cases
+        .delete_skill("example-purpose", "first_skill")
+        .await
+        .expect("delete first skill");
+    let with_one_skill = snapshot(
+        id,
+        "example-purpose",
+        agents_md,
+        json!({ "second_skill": "second fabricated content" }),
+        "",
+    );
+
+    fixture
+        .use_cases
+        .put_skills(
+            "example-purpose",
+            BTreeMap::from([(
+                "replacement_skill".to_string(),
+                "replacement fabricated content".to_string(),
+            )]),
+        )
+        .await
+        .expect("replace skills");
+    let replaced_skills = snapshot(
+        id,
+        "example-purpose",
+        agents_md,
+        json!({ "replacement_skill": "replacement fabricated content" }),
+        "",
+    );
+
+    fixture
+        .use_cases
+        .put_skills("example-purpose", BTreeMap::new())
+        .await
+        .expect("replace skills with an empty map");
+    let empty_skills = snapshot(id, "example-purpose", agents_md, json!({}), "");
+
+    let agent_graph = indoc::indoc! {"
+        timeout_minutes: 21
+        phases:
+          - key: sample-phase
+            label: Sample phase
+            model: fictional-model-phase
+            prompt: fabricated example text"};
+    fixture
+        .use_cases
+        .save_agent_graph("example-purpose", agent_graph)
+        .await
+        .expect("save agent graph");
+    let with_graph = snapshot(id, "example-purpose", agents_md, json!({}), agent_graph);
+
+    fixture
+        .use_cases
+        .delete("example-purpose")
+        .await
+        .expect("delete config");
+
+    let records = fixture.change_history.entries.lock().await.clone();
+    let committed_transactions = fixture.unit_of_work.committed.lock().await.clone();
+    assert_eq!(
+        (
+            records
+                .iter()
+                .map(|entry| entry.record.clone())
+                .collect::<Vec<_>>(),
+            records
+                .iter()
+                .map(|entry| entry.transaction_id)
+                .collect::<Vec<_>>(),
+        ),
+        (
+            vec![
+                expected_snapshot_record(Op::Create, id, None, Some(initial.clone())),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(initial),
+                    Some(with_agents_md.clone()),
+                ),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(with_agents_md),
+                    Some(with_first_skill.clone()),
+                ),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(with_first_skill),
+                    Some(with_two_skills.clone()),
+                ),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(with_two_skills),
+                    Some(with_one_skill.clone()),
+                ),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(with_one_skill),
+                    Some(replaced_skills.clone()),
+                ),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(replaced_skills),
+                    Some(empty_skills.clone()),
+                ),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(empty_skills),
+                    Some(with_graph.clone()),
+                ),
+                expected_snapshot_record(Op::Delete, id, Some(with_graph), None),
+            ],
+            committed_transactions,
+        ),
+    );
 }
 
 #[rstest]

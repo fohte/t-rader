@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 
 use chrono::Utc;
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
+use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
 use crate::persistence::PersistenceError;
 use crate::slug::is_valid_slug;
 use crate::subagent_definition::SharedSubagentDefinitionRepository;
@@ -19,6 +20,7 @@ pub struct AgentConfigUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedAgentConfigRepository,
     subagent_definition_repository: SharedSubagentDefinitionRepository,
+    change_history: SharedChangeHistoryPort,
 }
 
 impl AgentConfigUseCases {
@@ -26,11 +28,13 @@ impl AgentConfigUseCases {
         unit_of_work: SharedUnitOfWork,
         repository: SharedAgentConfigRepository,
         subagent_definition_repository: SharedSubagentDefinitionRepository,
+        change_history: SharedChangeHistoryPort,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
             subagent_definition_repository,
+            change_history,
         }
     }
 
@@ -65,6 +69,14 @@ impl AgentConfigUseCases {
                 }
                 error => error.into(),
             })?;
+        self.record_snapshot(
+            &transaction,
+            agent_config.id,
+            Op::Create,
+            None,
+            Some(&agent_config),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         tracing::info!(purpose = %agent_config.purpose, "created agent_config");
         Ok(agent_config)
@@ -72,9 +84,14 @@ impl AgentConfigUseCases {
 
     pub async fn delete(&self, purpose: &str) -> Result<(), AgentConfigUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
+        let current = self
+            .find_for_update_in_transaction(&transaction, purpose)
+            .await?;
         if !self.repository.delete(&transaction, purpose).await? {
             return Err(AgentConfigUseCaseError::NotFound(purpose.to_string()));
         }
+        self.record_snapshot(&transaction, current.id, Op::Delete, Some(&current), None)
+            .await?;
         self.unit_of_work.commit(transaction).await?;
         tracing::info!(purpose, "deleted agent_config");
         Ok(())
@@ -86,7 +103,9 @@ impl AgentConfigUseCases {
         content: String,
     ) -> Result<String, AgentConfigUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let agent_config = self.find_in_transaction(&transaction, purpose).await?;
+        let agent_config = self
+            .find_for_update_in_transaction(&transaction, purpose)
+            .await?;
         let from_len = agent_config.agents_md.len();
         let saved = self
             .repository
@@ -98,6 +117,14 @@ impl AgentConfigUseCases {
             )
             .await
             .map_err(|error| map_update_error(error, purpose))?;
+        self.record_snapshot(
+            &transaction,
+            saved.id,
+            Op::Update,
+            Some(&agent_config),
+            Some(&saved),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         tracing::info!(
             purpose,
@@ -117,7 +144,9 @@ impl AgentConfigUseCases {
             validate_skill_name(name)?;
         }
         let transaction = self.unit_of_work.begin().await?;
-        let current = self.find_in_transaction(&transaction, purpose).await?;
+        let current = self
+            .find_for_update_in_transaction(&transaction, purpose)
+            .await?;
         let map = skills
             .into_iter()
             .map(|(name, content)| (name, Value::String(content)))
@@ -134,7 +163,9 @@ impl AgentConfigUseCases {
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         validate_skill_name(name)?;
         let transaction = self.unit_of_work.begin().await?;
-        let current = self.find_in_transaction(&transaction, purpose).await?;
+        let current = self
+            .find_for_update_in_transaction(&transaction, purpose)
+            .await?;
         let mut patch = Map::new();
         patch.insert(name.to_string(), Value::String(content));
         let merged = apply_skills_patch(&current.skills, patch);
@@ -148,7 +179,9 @@ impl AgentConfigUseCases {
         name: &str,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let current = self.find_in_transaction(&transaction, purpose).await?;
+        let current = self
+            .find_for_update_in_transaction(&transaction, purpose)
+            .await?;
         let mut skills = skills_object(&current.skills);
         if skills.remove(name).is_none() {
             return Err(AgentConfigUseCaseError::SkillNotFound(name.to_string()));
@@ -188,7 +221,9 @@ impl AgentConfigUseCases {
             }
         }
 
-        let agent_config = self.find_in_transaction(&transaction, purpose).await?;
+        let agent_config = self
+            .find_for_update_in_transaction(&transaction, purpose)
+            .await?;
         let from_len = agent_config.agent_graph.len();
         let saved = self
             .repository
@@ -200,6 +235,14 @@ impl AgentConfigUseCases {
             )
             .await
             .map_err(|error| map_update_error(error, purpose))?;
+        self.record_snapshot(
+            &transaction,
+            saved.id,
+            Op::Update,
+            Some(&agent_config),
+            Some(&saved),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         tracing::info!(
             purpose,
@@ -210,13 +253,13 @@ impl AgentConfigUseCases {
         Ok(saved.agent_graph)
     }
 
-    async fn find_in_transaction(
+    async fn find_for_update_in_transaction(
         &self,
         transaction: &UnitOfWorkTransaction,
         purpose: &str,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         self.repository
-            .find_by_purpose_in_transaction(transaction, purpose)
+            .find_by_purpose_for_update_in_transaction(transaction, purpose)
             .await?
             .ok_or_else(|| AgentConfigUseCaseError::NotFound(purpose.to_string()))
     }
@@ -236,10 +279,57 @@ impl AgentConfigUseCases {
             .update_skills(&transaction, current.id, skills, updated_at)
             .await
             .map_err(|error| map_update_error(error, &purpose))?;
+        self.record_snapshot(
+            &transaction,
+            saved.id,
+            Op::Update,
+            Some(&current),
+            Some(&saved),
+        )
+        .await?;
         self.unit_of_work.commit(transaction).await?;
         tracing::info!(purpose, ?from, ?to, "updated agent_config skills");
         Ok(saved)
     }
+
+    async fn record_snapshot(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        target_id: Uuid,
+        op: Op,
+        before: Option<&AgentConfig>,
+        after: Option<&AgentConfig>,
+    ) -> Result<(), AgentConfigUseCaseError> {
+        self.change_history
+            .record(
+                transaction,
+                ChangeHistoryRecord {
+                    actor: Actor::Human,
+                    target_kind: TargetKind::AgentConfig,
+                    target_id,
+                    op,
+                    diff: json!({
+                        "format": "definition_snapshot",
+                        "version": 1,
+                        "before": before.map(agent_config_snapshot),
+                        "after": after.map(agent_config_snapshot),
+                    }),
+                    summary: None,
+                },
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+fn agent_config_snapshot(agent_config: &AgentConfig) -> Value {
+    json!({
+        "id": agent_config.id,
+        "purpose": agent_config.purpose,
+        "agents_md": agent_config.agents_md,
+        "skills": agent_config.skills,
+        "agent_graph": agent_config.agent_graph,
+    })
 }
 
 fn map_update_error(error: AgentConfigRepositoryError, purpose: &str) -> AgentConfigUseCaseError {
