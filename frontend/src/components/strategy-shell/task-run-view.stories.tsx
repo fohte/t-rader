@@ -51,7 +51,7 @@ export const Running: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'sample-workspace',
+        strategyId: 'sample-strategy',
         task: baseTask({ phase: 'running' }),
         steps: [
           PREPARATION_STEP,
@@ -78,7 +78,7 @@ export const Completed: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'sample-workspace',
+        strategyId: 'sample-strategy',
         task: baseTask({
           phase: 'completed',
           updatedAt: '2026-08-16T09:04:33.200Z',
@@ -114,7 +114,7 @@ export const Failed: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'sample-workspace',
+        strategyId: 'sample-strategy',
         task: baseTask({
           phase: 'failed',
           updatedAt: '2026-08-16T09:01:18.300Z',
@@ -142,7 +142,7 @@ export const CompletedWithoutNotes: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'sample-workspace',
+        strategyId: 'sample-strategy',
         task: baseTask({
           phase: 'completed',
           updatedAt: '2026-08-16T09:04:33.200Z',
@@ -161,7 +161,7 @@ export const NoSteps: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'sample-workspace',
+        strategyId: 'sample-strategy',
         task: baseTask({ phase: 'pending' }),
         steps: [],
         configPhases: [],
@@ -177,7 +177,7 @@ export const Loading: Story = {
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
-        strategyId: 'sample-workspace',
+        strategyId: 'sample-strategy',
         task: null,
         steps: [],
         configPhases: [],

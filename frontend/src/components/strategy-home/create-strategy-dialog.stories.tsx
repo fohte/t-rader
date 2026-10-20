@@ -31,6 +31,6 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Open: Story = {
-  name: 'shows the open dialog for creating a workspace.',
+  name: 'shows the open dialog for creating a strategy.',
   render: () => <RouterProvider router={createDialogRouter()} />,
 }
