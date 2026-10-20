@@ -36,6 +36,12 @@ pub trait TriggerRepository: Send + Sync {
         trigger_id: Uuid,
     ) -> Result<Option<Trigger>, TriggerRepositoryError>;
 
+    async fn find_by_id_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+    ) -> Result<Option<Trigger>, TriggerRepositoryError>;
+
     async fn find_enabled_hook_by_slug(
         &self,
         hook_slug: &str,

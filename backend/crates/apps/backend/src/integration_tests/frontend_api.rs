@@ -185,5 +185,6 @@ mod subagent_definitions;
 mod tasks;
 mod trade_notes;
 mod trades;
+mod trigger_history;
 mod triggers;
 mod widgets;

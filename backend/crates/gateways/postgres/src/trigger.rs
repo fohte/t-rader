@@ -6,9 +6,10 @@ use core_application::trigger::{
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
+use sea_orm::sea_query::LockType;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter,
-    QueryOrder,
+    QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -71,6 +72,21 @@ impl TriggerRepository for PostgresTriggerRepository {
     ) -> Result<Option<Trigger>, TriggerRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         trigger::Entity::find_by_id(trigger_id)
+            .one(transaction)
+            .await
+            .map_err(repository_error)?
+            .map(to_domain)
+            .transpose()
+    }
+
+    async fn find_by_id_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+    ) -> Result<Option<Trigger>, TriggerRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        trigger::Entity::find_by_id(trigger_id)
+            .lock(LockType::Update)
             .one(transaction)
             .await
             .map_err(repository_error)?

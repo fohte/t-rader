@@ -82,6 +82,15 @@ impl TriggerRepository for FakeTriggerRepository {
         self.find_by_id(trigger_id).await
     }
 
+    async fn find_by_id_for_update_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+    ) -> Result<Option<Trigger>, TriggerRepositoryError> {
+        self.record_transaction(transaction).await?;
+        self.find_by_id(trigger_id).await
+    }
+
     async fn find_enabled_hook_by_slug(
         &self,
         hook_slug: &str,
