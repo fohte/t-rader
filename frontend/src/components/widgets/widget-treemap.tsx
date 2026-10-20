@@ -1,7 +1,24 @@
-import { Link } from '@tanstack/react-router'
-import { hierarchy, treemap } from 'd3-hierarchy'
+import '#lib/echarts/treemap'
 
+import { Link } from '@tanstack/react-router'
+import type { ECElementEvent } from 'echarts/core'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import {
+  createWidgetTreemapModel,
+  createWidgetTreemapOption,
+  getTreemapFillColor,
+  getTreemapLabelMode,
+  getTreemapTextColor,
+  type TreemapDataNode,
+  type TreemapRect,
+  type TreemapRowModel,
+} from '#components/widgets/widget-treemap-model'
 import type { components } from '#lib/api/schema.gen'
+import {
+  type EChartsPalette,
+  useEChartsChart,
+} from '#lib/echarts/use-echarts-chart'
 import { parseGroupRefId } from '#lib/ref-id'
 import {
   formatWidgetValue,
@@ -10,160 +27,436 @@ import {
 } from '#lib/widget-value-format'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
-type WidgetRow = components['schemas']['WidgetQueryResultRow']
 type WidgetTreemapDefinition = Extract<
   components['schemas']['WidgetVisualizationRequest'],
   { type: 'treemap' }
 >
 
-type TreemapLeaf = { row: WidgetRow; weight: number; color: number }
-type TreemapData = TreemapLeaf | { children: TreemapLeaf[] }
+const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
+const SERIES_ID = 'widget-treemap'
 
-const LAYOUT_WIDTH = 1200
-const LAYOUT_HEIGHT = 675
+function isTreemapDataNode(value: unknown): value is TreemapDataNode {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'kind' in value &&
+    (value.kind === 'group' || value.kind === 'row')
+  )
+}
+
+function isSameLayout(
+  left: ReadonlyMap<string, TreemapRect>,
+  right: ReadonlyMap<string, TreemapRect>,
+): boolean {
+  if (left.size !== right.size) return false
+  for (const [key, rect] of right) {
+    const previous = left.get(key)
+    if (
+      previous == null ||
+      previous.x !== rect.x ||
+      previous.y !== rect.y ||
+      previous.width !== rect.width ||
+      previous.height !== rect.height
+    ) {
+      return false
+    }
+  }
+  return true
+}
 
 export function WidgetTreemap({
   result,
   viz,
   queries,
-  display = {},
+  display,
+  initialFocusGroupKey,
+  initialSelectedRowKey,
 }: {
   result: WidgetQueryResponse
   viz: WidgetTreemapDefinition
   queries: WidgetQueryDefinitions
   display?: WidgetDisplayDefinitions
+  initialFocusGroupKey?: string
+  initialSelectedRowKey?: string
 }) {
-  const leaves = result.rows.flatMap((row): TreemapLeaf[] => {
-    const sizeValue = row.values[viz.size]
-    const colorValue = row.values[viz.color]
-    if (
-      typeof sizeValue !== 'number' ||
-      !Number.isFinite(sizeValue) ||
-      typeof colorValue !== 'number' ||
-      !Number.isFinite(colorValue)
-    ) {
-      return []
-    }
+  const displayDefinitions = display ?? EMPTY_DISPLAY
+  const labelRectsRef = useRef(new Map<string, TreemapRect>())
+  const [labelRects, setLabelRects] = useState<
+    ReadonlyMap<string, TreemapRect>
+  >(new Map())
 
-    const weight = Math.abs(sizeValue)
-    return weight === 0 ? [] : [{ row, weight, color: colorValue }]
-  })
-
-  const root = hierarchy<TreemapData>({ children: leaves }, (node) =>
-    'children' in node ? node.children : undefined,
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(
+    initialSelectedRowKey ?? null,
   )
-    .sum((node) => ('weight' in node ? node.weight : 0))
-    .sort((left, right) => {
-      const valueOrder = (right.value ?? 0) - (left.value ?? 0)
-      if (valueOrder !== 0) return valueOrder
-      const leftKey = 'row' in left.data ? left.data.row.key : ''
-      const rightKey = 'row' in right.data ? right.data.row.key : ''
-      return leftKey.localeCompare(rightKey)
-    })
+  const model = useMemo(
+    () =>
+      createWidgetTreemapModel({
+        result,
+        viz,
+        queries,
+        display: displayDefinitions,
+      }),
+    [displayDefinitions, queries, result, viz],
+  )
 
-  const tiles = treemap<TreemapData>()
-    .size([LAYOUT_WIDTH, LAYOUT_HEIGHT])
-    .paddingInner(2)(root)
-    .leaves()
-    .flatMap((node) => {
-      if (!('row' in node.data)) return []
-      const width = node.x1 - node.x0
-      const height = node.y1 - node.y0
-      if (width <= 0 || height <= 0) return []
-      return [{ ...node.data, x: node.x0, y: node.y0, width, height }]
-    })
+  const getInitialFocusId = () =>
+    initialFocusGroupKey == null
+      ? null
+      : (model.groups.find((group) => group.key === initialFocusGroupKey)?.id ??
+        null)
+  const [focusId, setFocusId] = useState<string | null>(getInitialFocusId)
+  const focusedGroup =
+    focusId == null
+      ? null
+      : (model.groups.find((group) => group.id === focusId) ?? null)
 
-  if (tiles.length === 0) {
-    return (
-      <p
-        className="border border-border bg-card px-4 py-8 text-center font-mono text-xs text-muted-foreground"
-        role="status"
-      >
-        表示できるデータがありません。
-      </p>
+  const clearLabelRects = useCallback(() => {
+    labelRectsRef.current.clear()
+    setLabelRects((previous) => (previous.size === 0 ? previous : new Map()))
+  }, [])
+  const recordLabelRect = useCallback((rowKey: string, rect: TreemapRect) => {
+    labelRectsRef.current.set(rowKey, rect)
+  }, [])
+  const handleChartRendered = useCallback(() => {
+    const visibleKeys = new Set(
+      model.rows.filter((row) => row.area > 0).map((row) => row.key),
     )
+    const nextRects = new Map(
+      [...labelRectsRef.current].filter(([key]) => visibleKeys.has(key)),
+    )
+    setLabelRects((previous) =>
+      isSameLayout(previous, nextRects) ? previous : nextRects,
+    )
+  }, [model.rows])
+
+  const option = useMemo(
+    () => (activePalette: EChartsPalette) =>
+      createWidgetTreemapOption(model, activePalette, recordLabelRect),
+    [model, recordLabelRect],
+  )
+  const { containerRef, palette, error, updateOption, dispatchAction } =
+    useEChartsChart({
+      createOption: option,
+      onClick: (event: ECElementEvent) => {
+        const node = event.data
+        if (!isTreemapDataNode(node)) return
+        if (node.kind === 'group') {
+          setSelectedRowKey(null)
+          setFocusId(node.id == null ? null : String(node.id))
+          return
+        }
+        if (node.rowKey != null) setSelectedRowKey(node.rowKey)
+      },
+      onRendered: handleChartRendered,
+      onBeforeUpdate: clearLabelRects,
+    })
+
+  useEffect(() => {
+    if (focusId == null) return
+    if (focusedGroup == null) {
+      setFocusId(null)
+      return
+    }
+    clearLabelRects()
+    dispatchAction({
+      type: 'treemapRootToNode',
+      seriesId: SERIES_ID,
+      targetNodeId: focusedGroup.id,
+    })
+  }, [clearLabelRects, dispatchAction, focusId, focusedGroup, option, palette])
+
+  const rowsByKey = useMemo(
+    () => new Map(model.rows.map((row) => [row.key, row])),
+    [model.rows],
+  )
+
+  const selectedRow =
+    selectedRowKey == null
+      ? null
+      : (model.rows.find((row) => row.key === selectedRowKey) ?? null)
+  const stockId =
+    selectedRow?.key.startsWith('stock:') === true
+      ? selectedRow.key.slice('stock:'.length)
+      : null
+  const groupTarget =
+    selectedRow?.key.startsWith('group:') === true
+      ? parseGroupRefId(selectedRow.key.slice('group:'.length))
+      : null
+  const colorMin = formatWidgetValue(
+    viz.color,
+    model.colorScale.min,
+    queries,
+    displayDefinitions,
+  )
+  const colorMax = formatWidgetValue(
+    viz.color,
+    model.colorScale.max,
+    queries,
+    displayDefinitions,
+  )
+
+  const selectRow = (row: TreemapRowModel) => {
+    setSelectedRowKey(row.key)
+  }
+  const focusGroup = (groupId: string) => {
+    setSelectedRowKey(null)
+    setFocusId(groupId)
+  }
+  const resetToOverview = () => {
+    clearLabelRects()
+    updateOption()
+    setFocusId(null)
   }
 
-  return (
-    <ul
-      aria-label="ウィジェットの treemap"
-      className="relative aspect-video w-full list-none overflow-hidden border border-border bg-card"
-    >
-      {tiles.map((tile) => {
-        const colorStyle =
-          tile.color > 0
-            ? {
-                backgroundColor: 'var(--color-up-dim)',
-                borderColor: 'var(--color-up)',
-              }
-            : tile.color < 0
-              ? {
-                  backgroundColor: 'var(--color-down-dim)',
-                  borderColor: 'var(--color-down)',
-                }
-              : {
-                  backgroundColor: 'var(--color-bg-tertiary)',
-                  borderColor: 'var(--color-border)',
-                }
-        const formattedValue = formatWidgetValue(
-          viz.color,
-          tile.color,
-          queries,
-          display,
-        )
-        const label = `${tile.row.name}: ${formattedValue}`
-        const position = {
-          left: `${String((tile.x / LAYOUT_WIDTH) * 100)}%`,
-          top: `${String((tile.y / LAYOUT_HEIGHT) * 100)}%`,
-          width: `${String((tile.width / LAYOUT_WIDTH) * 100)}%`,
-          height: `${String((tile.height / LAYOUT_HEIGHT) * 100)}%`,
-          ...colorStyle,
-        }
-        const showName = tile.width >= 64 && tile.height >= 28
-        const showValue = tile.width >= 48 && tile.height >= 48
-        const contents = (
-          <>
-            {showName && (
-              <span className="line-clamp-1 font-sans text-xs font-semibold text-foreground">
-                {tile.row.name}
-              </span>
-            )}
-            {showValue && (
-              <span className="mt-auto font-mono text-2xs tabular-nums text-foreground/80">
-                {formattedValue}
-              </span>
-            )}
-          </>
-        )
-        const target = tile.row.key.startsWith('group:')
-          ? parseGroupRefId(tile.row.key.slice('group:'.length))
-          : null
+  const chartRows = model.rows.filter((row) => row.area > 0)
+  const renderRowButtons = (rows: readonly TreemapRowModel[]) =>
+    rows.map((row) => (
+      <li className="border-t border-border first:border-t-0" key={row.key}>
+        <button
+          aria-label={`${row.name}, ${model.colorLabel}: ${row.formattedColor}, 詳細を表示`}
+          className="flex min-h-10 w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+          onClick={() => {
+            selectRow(row)
+          }}
+          type="button"
+        >
+          <span className="min-w-0 flex-1 break-words text-foreground">
+            {row.name}
+          </span>
+          <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+            {row.formattedColor}
+          </span>
+        </button>
+      </li>
+    ))
 
-        return (
-          <li
-            aria-label={label}
-            className="absolute overflow-hidden border p-1.5"
-            key={tile.row.key}
-            style={position}
-            title={label}
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>面積: {model.sizeLabel}</span>
+          <span className="inline-flex items-center gap-2">
+            <span>色: {model.colorLabel}</span>
+            <span
+              aria-hidden="true"
+              className="h-2 w-28 border border-border"
+              style={{
+                background: `linear-gradient(90deg, ${palette.down}, ${palette.neutral} 50%, ${palette.up})`,
+              }}
+            />
+            <span className="font-mono tabular-nums">
+              {colorMin} / {colorMax}
+            </span>
+          </span>
+        </div>
+        <button
+          className="min-h-9 border border-border px-3 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+          disabled={focusId == null}
+          onClick={resetToOverview}
+          type="button"
+        >
+          全体を表示
+        </button>
+      </div>
+
+      <nav
+        aria-label="表示中の階層"
+        className="flex min-h-8 items-center gap-2 text-xs"
+      >
+        <button
+          aria-current={focusedGroup == null ? 'page' : undefined}
+          className="text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+          disabled={focusedGroup == null}
+          onClick={resetToOverview}
+          type="button"
+        >
+          すべての分類
+        </button>
+        {focusedGroup != null && (
+          <>
+            <span aria-hidden="true" className="text-muted-foreground">
+              /
+            </span>
+            <span aria-current="page" className="text-foreground">
+              {focusedGroup.name}
+            </span>
+          </>
+        )}
+      </nav>
+
+      <div className="relative aspect-video min-h-52 w-full overflow-hidden border border-border bg-card">
+        <div
+          aria-hidden={chartRows.length === 0}
+          aria-label={`${model.sizeLabel} の値で面積を表す treemap。色は ${model.colorLabel} の値です。`}
+          className="absolute inset-0"
+          ref={containerRef}
+          role="img"
+        />
+        {chartRows.length === 0 ? (
+          <p
+            className="absolute inset-0 flex items-center justify-center px-4 text-center font-mono text-xs text-muted-foreground"
+            role="status"
           >
-            {target == null ? (
-              <div className="flex h-full w-full flex-col overflow-hidden">
-                {contents}
+            表示できるデータがありません。
+          </p>
+        ) : (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+          >
+            {[...labelRects].flatMap(([key, rect]) => {
+              const row = rowsByKey.get(key)
+              if (row == null) return []
+              const mode = getTreemapLabelMode(
+                rect,
+                row.name,
+                row.formattedColor,
+              )
+              if (mode == null) return []
+
+              return [
+                <div
+                  className="absolute flex flex-col justify-center overflow-hidden px-1 text-center"
+                  key={key}
+                  style={{
+                    left: rect.x,
+                    top: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    color: getTreemapTextColor(
+                      getTreemapFillColor(
+                        row.colorValue,
+                        model.colorScale,
+                        palette,
+                      ),
+                    ),
+                  }}
+                >
+                  {mode === 'both' && (
+                    <span className="min-w-0 truncate font-sans text-xs font-semibold leading-tight">
+                      {row.name}
+                    </span>
+                  )}
+                  <span className="whitespace-nowrap font-mono text-xs font-semibold leading-tight tabular-nums">
+                    {row.formattedColor}
+                  </span>
+                </div>,
+              ]
+            })}
+          </div>
+        )}
+      </div>
+      {error != null && (
+        <p className="text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+
+      {selectedRow != null && (
+        <section
+          aria-label="選択した行の詳細"
+          className="border border-border bg-card p-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="break-words text-sm font-semibold text-foreground">
+                {selectedRow.name}
+              </h3>
+              <dl
+                className="mt-2 grid gap-x-4 gap-y-1 text-xs"
+                style={{ gridTemplateColumns: 'auto 1fr' }}
+              >
+                <dt className="text-muted-foreground">
+                  面積: {model.sizeLabel}
+                </dt>
+                <dd className="text-right font-mono tabular-nums text-foreground">
+                  {selectedRow.formattedSize}
+                </dd>
+                <dt className="text-muted-foreground">
+                  色: {model.colorLabel}
+                </dt>
+                <dd className="text-right font-mono tabular-nums text-foreground">
+                  {selectedRow.formattedColor}
+                </dd>
+              </dl>
+            </div>
+            <div className="flex items-center gap-3">
+              {stockId != null && (
+                <Link
+                  className="min-h-9 border border-border px-3 py-2 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                  params={{ stockId }}
+                  to="/stocks/$stockId"
+                >
+                  銘柄ページを開く
+                </Link>
+              )}
+              {groupTarget != null && (
+                <Link
+                  className="min-h-9 border border-border px-3 py-2 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                  params={groupTarget}
+                  to="/groups/$axisKey/$groupKey"
+                >
+                  分類ページを開く
+                </Link>
+              )}
+              <button
+                aria-label="詳細を閉じる"
+                className="min-h-9 px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                onClick={() => {
+                  setSelectedRowKey(null)
+                }}
+                type="button"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {model.rows.length > 0 && (
+        <details className="border border-border bg-card">
+          <summary className="min-h-10 cursor-pointer px-3 py-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+            全件一覧 ({model.rows.length})
+          </summary>
+          <div className="border-t border-border">
+            {model.groups.length > 0 ? (
+              <div className="divide-y divide-border">
+                {model.groups.map((group) => (
+                  <section key={group.id}>
+                    <div className="flex min-h-10 items-start justify-between gap-3 bg-bg-secondary px-3 py-2">
+                      <h3 className="min-w-0 flex-1 break-words text-xs font-semibold text-foreground">
+                        {group.name}
+                      </h3>
+                      <button
+                        aria-pressed={focusId === group.id}
+                        className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={group.area <= 0}
+                        onClick={() => {
+                          focusGroup(group.id)
+                        }}
+                        type="button"
+                      >
+                        分類にフォーカス
+                      </button>
+                    </div>
+                    <ul
+                      aria-label={`${group.name} の銘柄`}
+                      className="list-none"
+                    >
+                      {renderRowButtons(group.rows)}
+                    </ul>
+                  </section>
+                ))}
               </div>
             ) : (
-              <Link
-                aria-label={label}
-                className="flex h-full w-full flex-col overflow-hidden transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-ring"
-                params={target}
-                to="/groups/$axisKey/$groupKey"
-              >
-                {contents}
-              </Link>
+              <ul aria-label="treemap の全件" className="list-none">
+                {renderRowButtons(model.rows)}
+              </ul>
             )}
-          </li>
-        )
-      })}
-    </ul>
+          </div>
+        </details>
+      )}
+    </div>
   )
 }
