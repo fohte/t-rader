@@ -56,7 +56,7 @@ comments:
   - table: change_history
     tableComment: '主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。'
     columnComments:
-      target_kind: '変更対象のレコード種別。stock は銘柄、stock_group は銘柄グループを表す。'
+      target_kind: '変更対象のレコード種別。agent_config はエージェント設定、trigger はトリガー定義、stock は銘柄、stock_group は銘柄グループを表す。'
       target_id: '変更対象レコードの ID。'
       actor_kind: '変更を行った主体の種別。'
       actor_label: '変更を行った主体の表示名。'

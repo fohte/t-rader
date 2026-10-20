@@ -15,6 +15,9 @@ fn map_err(error: ChangeHistoryUseCaseError) -> AppError {
         ChangeHistoryUseCaseError::NotFound(id) => {
             AppError::NotFound(format!("history {id} not found"))
         }
+        ChangeHistoryUseCaseError::InvalidCursor => {
+            AppError::Validation("history cursor is invalid".into())
+        }
         ChangeHistoryUseCaseError::Query(
             core_application::change_history::ChangeHistoryQueryError::Database(error),
         ) => error.into(),
@@ -28,9 +31,11 @@ pub struct ListHistoryQuery {
     pub target_id: Option<Uuid>,
     /// 1〜500 (デフォルト 100)
     pub limit: Option<u64>,
+    /// ページを続ける履歴 ID。target 条件を指定した場合は条件に一致する ID を指定する。
+    pub before: Option<Uuid>,
 }
 
-/// 変更履歴一覧。target で絞らない場合は全体の最新を返す。
+/// 変更履歴一覧。target 条件がなければ全体の最新を返す。created_at と ID の降順で並べる。
 #[utoipa::path(
     get,
     path = "/api/history",
@@ -48,7 +53,7 @@ pub async fn list_history(
 ) -> Result<Json<Vec<ChangeHistoryResponse>>, AppError> {
     let entries = state
         .change_history_use_cases
-        .list(p.target_kind.as_deref(), p.target_id, p.limit)
+        .list(p.target_kind.as_deref(), p.target_id, p.limit, p.before)
         .await
         .map_err(map_err)?;
     Ok(Json(

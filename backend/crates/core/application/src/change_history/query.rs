@@ -25,7 +25,14 @@ pub struct ChangeHistoryEntry {
 pub struct ChangeHistoryListQuery {
     pub target_kind: Option<String>,
     pub target_id: Option<Uuid>,
+    pub before: Option<ChangeHistoryCursor>,
     pub limit: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeHistoryCursor {
+    pub id: Uuid,
+    pub created_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Error)]

@@ -497,7 +497,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** 変更履歴一覧。target で絞らない場合は全体の最新を返す。 */
+    /** 変更履歴一覧。target 条件がなければ全体の最新を返す。created_at と ID の降順で並べる。 */
     get: operations['list_history']
     put?: never
     post?: never
@@ -5430,6 +5430,8 @@ export interface operations {
         target_id?: string
         /** @description 1〜500 (デフォルト 100) */
         limit?: number
+        /** @description ページを続ける履歴 ID。target 条件を指定した場合は条件に一致する ID を指定する。 */
+        before?: string
       }
       header?: never
       path?: never

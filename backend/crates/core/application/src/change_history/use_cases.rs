@@ -2,7 +2,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::query::SharedChangeHistoryQuery;
-use super::{ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQueryError};
+use super::{
+    ChangeHistoryCursor, ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQueryError,
+};
 
 const DEFAULT_LIMIT: u64 = 100;
 const MAX_LIMIT: u64 = 500;
@@ -11,6 +13,8 @@ const MAX_LIMIT: u64 = 500;
 pub enum ChangeHistoryUseCaseError {
     #[error("history {0} not found")]
     NotFound(Uuid),
+    #[error("history cursor is invalid")]
+    InvalidCursor,
     #[error(transparent)]
     Query(#[from] ChangeHistoryQueryError),
 }
@@ -30,13 +34,38 @@ impl ChangeHistoryUseCases {
         target_kind: Option<&str>,
         target_id: Option<Uuid>,
         limit: Option<u64>,
+        before_id: Option<Uuid>,
     ) -> Result<Vec<ChangeHistoryEntry>, ChangeHistoryUseCaseError> {
+        let target_kind = target_kind
+            .filter(|target_kind| !target_kind.is_empty())
+            .map(str::to_owned);
+        let before = match before_id {
+            Some(id) => {
+                let entry = self
+                    .query
+                    .find_by_id(id)
+                    .await?
+                    .ok_or(ChangeHistoryUseCaseError::InvalidCursor)?;
+                if target_kind
+                    .as_deref()
+                    .is_some_and(|target_kind| entry.target_kind != target_kind)
+                    || target_id.is_some_and(|target_id| entry.target_id != target_id)
+                {
+                    return Err(ChangeHistoryUseCaseError::InvalidCursor);
+                }
+                Some(ChangeHistoryCursor {
+                    id: entry.id,
+                    created_at: entry.created_at,
+                })
+            }
+            None => None,
+        };
+
         self.query
             .list(ChangeHistoryListQuery {
-                target_kind: target_kind
-                    .filter(|target_kind| !target_kind.is_empty())
-                    .map(str::to_owned),
+                target_kind,
                 target_id,
+                before,
                 limit: limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT),
             })
             .await
@@ -131,7 +160,7 @@ mod tests {
     ) {
         let result = fixture
             .use_cases
-            .list(target_kind, target_id, limit)
+            .list(target_kind, target_id, limit, None)
             .await
             .map_err(|error| error.to_string());
         let queries = fixture
@@ -148,6 +177,7 @@ mod tests {
                 vec![ChangeHistoryListQuery {
                     target_kind: expected_target_kind.map(str::to_owned),
                     target_id: expected_target_id,
+                    before: None,
                     limit: expected_limit,
                 }],
             ),
@@ -165,5 +195,17 @@ mod tests {
             .map_err(|error| error.to_string());
 
         assert_eq!(result, Err(format!("history {id} not found")));
+    }
+
+    #[tokio::test]
+    async fn list_rejects_a_missing_cursor() {
+        let fixture = fixture();
+        let result = fixture
+            .use_cases
+            .list(None, None, None, Some(Uuid::from_u128(2)))
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(result, Err("history cursor is invalid".into()));
     }
 }
