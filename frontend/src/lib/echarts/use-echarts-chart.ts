@@ -25,6 +25,10 @@ export interface EChartsPalette {
   downDim: string
 }
 
+export type EChartsOptionFactory = (
+  palette: EChartsPalette,
+) => EChartsCoreOption
+
 const fallbackPalette: EChartsPalette = {
   background: '#fafafa',
   border: '#e5e5e5',
@@ -64,37 +68,49 @@ class EChartsBoundaryError extends Error {
   }
 }
 
-function applyOption(chart: EChartsType, option: EChartsCoreOption) {
+function applyOption(
+  chart: EChartsType,
+  createOption: EChartsOptionFactory,
+  palette: EChartsPalette,
+) {
   return Result.fromThrowable(() => {
-    chart.setOption(option, { notMerge: true })
+    chart.setOption(createOption(palette), { notMerge: true })
   }, boundaryError)()
 }
 
 export function useEChartsChart({
-  option,
+  createOption,
   onClick,
   onRendered,
   onBeforeUpdate,
 }: {
-  option: EChartsCoreOption
+  createOption: EChartsOptionFactory
   onClick?: (event: ECElementEvent) => void
   onRendered?: () => void
   onBeforeUpdate?: () => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<EChartsType | null>(null)
+  const paletteRef = useRef(fallbackPalette)
+  const createOptionRef = useRef(createOption)
+  const appliedFactoryRef = useRef(createOption)
   const handlersRef = useRef({ onClick, onRendered, onBeforeUpdate })
   const [palette, setPalette] = useState(fallbackPalette)
   const [error, setError] = useState<string | null>(null)
 
+  createOptionRef.current = createOption
   handlersRef.current = { onClick, onRendered, onBeforeUpdate }
 
-  const updateOption = useCallback((nextOption: EChartsCoreOption) => {
+  const updateOption = useCallback(() => {
     const chart = chartRef.current
     if (chart == null) return
 
     handlersRef.current.onBeforeUpdate?.()
-    const applied = applyOption(chart, nextOption)
+    const applied = applyOption(
+      chart,
+      createOptionRef.current,
+      paletteRef.current,
+    )
     applied.match(
       () => {
         setError(null)
@@ -143,22 +159,27 @@ export function useEChartsChart({
     chart.on('click', handleClick)
     chart.on('finished', handleFinished)
 
-    const updatePalette = () => {
+    const updatePalette = (apply: boolean) => {
       const nextPalette = Result.fromThrowable(
         () => readPalette(container),
         boundaryError,
       )()
       nextPalette.match(
         (value) => {
+          paletteRef.current = value
           setPalette(value)
-          setError(null)
+          if (apply) {
+            updateOption()
+          } else {
+            setError(null)
+          }
         },
         (failure) => {
           setError(failure.message)
         },
       )
     }
-    updatePalette()
+    updatePalette(false)
     const disconnectResize = observeChartResize(container, () => {
       handlersRef.current.onBeforeUpdate?.()
       const resized = Result.fromThrowable(() => {
@@ -173,7 +194,11 @@ export function useEChartsChart({
         },
       )
     })
-    const disconnectTheme = observeChartTheme(updatePalette)
+    const disconnectTheme = observeChartTheme(() => {
+      updatePalette(true)
+    })
+    appliedFactoryRef.current = createOptionRef.current
+    updateOption()
 
     return () => {
       disconnectResize()
@@ -184,13 +209,20 @@ export function useEChartsChart({
       const disposed = Result.fromThrowable(() => {
         chart.dispose()
       }, boundaryError)()
-      if (disposed.isErr()) return
+      disposed.match(
+        () => undefined,
+        (failure) => {
+          console.error('ECharts の破棄に失敗しました。', failure)
+        },
+      )
     }
-  }, [])
+  }, [updateOption])
 
   useEffect(() => {
-    updateOption(option)
-  }, [option, updateOption])
+    if (appliedFactoryRef.current === createOption) return
+    appliedFactoryRef.current = createOption
+    updateOption()
+  }, [createOption, updateOption])
 
   return { containerRef, palette, error, updateOption, dispatchAction }
 }

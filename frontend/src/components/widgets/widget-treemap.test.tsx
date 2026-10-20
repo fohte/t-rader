@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
+import type { EChartsOptionFactory } from '#lib/echarts/use-echarts-chart'
 import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -20,22 +21,32 @@ const chartHarness = vi.hoisted(() => ({
 vi.mock('#lib/echarts/use-echarts-chart', async () => {
   const React = await import('react')
   return {
-    useEChartsChart: ({ onClick }: { onClick: ChartClickHandler }) => {
+    useEChartsChart: ({
+      createOption,
+      onClick,
+    }: {
+      createOption: EChartsOptionFactory
+      onClick: ChartClickHandler
+    }) => {
       chartHarness.clickHandler = onClick
+      const palette = {
+        background: '#fafafa',
+        border: '#e5e5e5',
+        foreground: '#0a0a0a',
+        neutral: '#1a1a1a',
+        up: '#ef5350',
+        upDim: '#5a2a2a',
+        down: '#3f9fe0',
+        downDim: '#234152',
+      }
+      React.useEffect(() => {
+        chartHarness.options.push(createOption(palette))
+      }, [createOption])
       return {
         containerRef: React.useRef<HTMLDivElement>(null),
-        palette: {
-          background: '#fafafa',
-          border: '#e5e5e5',
-          foreground: '#0a0a0a',
-          neutral: '#1a1a1a',
-          up: '#ef5350',
-          upDim: '#5a2a2a',
-          down: '#3f9fe0',
-          downDim: '#234152',
-        },
+        palette,
         error: null,
-        updateOption: (option: unknown) => chartHarness.options.push(option),
+        updateOption: () => chartHarness.options.push(createOption(palette)),
         dispatchAction: (action: unknown) => chartHarness.actions.push(action),
       }
     },

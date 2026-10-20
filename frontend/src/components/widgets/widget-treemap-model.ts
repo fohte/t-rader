@@ -337,41 +337,7 @@ export function createWidgetTreemapOption(
 ): WidgetTreemapOption {
   const groupForeground = getTreemapTextColor(palette.neutral)
   const rowByKey = new Map(model.rows.map((row) => [row.key, row]))
-  const chartData = model.chartData.map((node): TreemapDataNode => {
-    if (node.kind === 'group') {
-      return {
-        ...node,
-        cursor: 'pointer',
-        itemStyle: {
-          color: palette.neutral,
-          borderColor: palette.border,
-          borderWidth: 1,
-          gapWidth: 4,
-        },
-        children: node.children?.map((child) => {
-          const row =
-            child.rowKey == null ? undefined : rowByKey.get(child.rowKey)
-          return {
-            ...child,
-            cursor: 'pointer',
-            itemStyle: {
-              color:
-                row == null
-                  ? palette.neutral
-                  : getTreemapFillColor(
-                      row.colorValue,
-                      model.colorScale,
-                      palette,
-                    ),
-              borderColor: palette.background,
-              borderWidth: 1,
-              gapWidth: 2,
-            },
-          }
-        }),
-      }
-    }
-
+  const styleRowNode = (node: TreemapDataNode): TreemapDataNode => {
     const row = node.rowKey == null ? undefined : rowByKey.get(node.rowKey)
     return {
       ...node,
@@ -381,12 +347,18 @@ export function createWidgetTreemapOption(
           row == null
             ? palette.neutral
             : getTreemapFillColor(row.colorValue, model.colorScale, palette),
-        borderColor: palette.background,
-        borderWidth: 1,
-        gapWidth: 2,
       },
     }
-  })
+  }
+  const chartData = model.chartData.map((node): TreemapDataNode =>
+    node.kind === 'group'
+      ? {
+          ...node,
+          cursor: 'pointer',
+          children: node.children?.map(styleRowNode),
+        }
+      : styleRowNode(node),
+  )
 
   return {
     aria: {

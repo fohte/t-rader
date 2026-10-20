@@ -14,7 +14,10 @@ import {
   type TreemapRowModel,
 } from '#components/widgets/widget-treemap-model'
 import type { components } from '#lib/api/schema.gen'
-import { useEChartsChart } from '#lib/echarts/use-echarts-chart'
+import {
+  type EChartsPalette,
+  useEChartsChart,
+} from '#lib/echarts/use-echarts-chart'
 import { parseGroupRefId } from '#lib/ref-id'
 import {
   formatWidgetValue,
@@ -30,16 +33,6 @@ type WidgetTreemapDefinition = Extract<
 
 const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
 const SERIES_ID = 'widget-treemap'
-const FALLBACK_PALETTE = {
-  background: '#fafafa',
-  border: '#e5e5e5',
-  foreground: '#0a0a0a',
-  neutral: '#1a1a1a',
-  up: '#ef5350',
-  upDim: '#5a2a2a',
-  down: '#3f9fe0',
-  downDim: '#234152',
-}
 
 function isTreemapDataNode(value: unknown): value is TreemapDataNode {
   return (
@@ -131,6 +124,7 @@ export function WidgetTreemap({
 
   const clearLabelRects = useCallback(() => {
     labelRectsRef.current.clear()
+    setLabelRects((previous) => (previous.size === 0 ? previous : new Map()))
   }, [])
   const recordLabelRect = useCallback((rowKey: string, rect: TreemapRect) => {
     labelRectsRef.current.set(rowKey, rect)
@@ -147,13 +141,14 @@ export function WidgetTreemap({
     )
   }, [model.rows])
 
-  const fallbackOption = useMemo(
-    () => createWidgetTreemapOption(model, FALLBACK_PALETTE, recordLabelRect),
+  const option = useMemo(
+    () => (activePalette: EChartsPalette) =>
+      createWidgetTreemapOption(model, activePalette, recordLabelRect),
     [model, recordLabelRect],
   )
   const { containerRef, palette, error, updateOption, dispatchAction } =
     useEChartsChart({
-      option: fallbackOption,
+      createOption: option,
       onClick: (event: ECElementEvent) => {
         const node = event.data
         if (!isTreemapDataNode(node)) return
@@ -168,15 +163,6 @@ export function WidgetTreemap({
       onBeforeUpdate: clearLabelRects,
     })
 
-  const option = useMemo(
-    () => createWidgetTreemapOption(model, palette, recordLabelRect),
-    [model, palette, recordLabelRect],
-  )
-
-  useEffect(() => {
-    updateOption(option)
-  }, [option, updateOption])
-
   useEffect(() => {
     if (focusId == null) return
     if (focusedGroup == null) {
@@ -189,7 +175,7 @@ export function WidgetTreemap({
       seriesId: SERIES_ID,
       targetNodeId: focusedGroup.id,
     })
-  }, [clearLabelRects, dispatchAction, focusId, focusedGroup, option])
+  }, [clearLabelRects, dispatchAction, focusId, focusedGroup, option, palette])
 
   const rowsByKey = useMemo(
     () => new Map(model.rows.map((row) => [row.key, row])),
@@ -230,7 +216,7 @@ export function WidgetTreemap({
   }
   const resetToOverview = () => {
     clearLabelRects()
-    updateOption(option)
+    updateOption()
     setFocusId(null)
   }
 

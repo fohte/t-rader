@@ -200,8 +200,12 @@ export const FormulaPercent: Story = {
 }
 
 export const GroupRows: Story = {
-  name: '分類行から分類ページへ移動できる。',
-  args: { result: groupResult, viz: singleLayerViz },
+  name: '選択した分類の詳細と分類ページへのリンクを表示する。',
+  args: {
+    result: groupResult,
+    viz: singleLayerViz,
+    initialSelectedRowKey: 'group:demo-axis/demo-group-a',
+  },
 }
 
 export const AllZero: Story = {
