@@ -7,6 +7,7 @@ import {
   MarkdownBodyWidgetView,
 } from '#components/note-detail/markdown-body-widget-view'
 import type { components } from '#lib/api/schema.gen'
+import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 import { createStoryRouter } from '#storybook/story-router'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
@@ -17,12 +18,12 @@ const toplistResult: WidgetQueryResponse = {
     {
       key: 'group:demo-axis/demo-group-a',
       name: 'デモグループ A',
-      values: { daily: 2.4 },
+      values: { daily: 0.0042 },
     },
     {
       key: 'group:demo-axis/demo-group-b',
       name: 'デモグループ B',
-      values: { daily: -1.8 },
+      values: { daily: -0.009 },
     },
   ],
 }
@@ -33,14 +34,20 @@ const treemapResult: WidgetQueryResponse = {
     {
       key: 'group:demo-axis/demo-group-a',
       name: 'デモグループ A',
-      values: { size: 48, change: 2.4 },
+      values: { size: 48, change: 0.0042 },
     },
     {
       key: 'group:demo-axis/demo-group-b',
       name: 'デモグループ B',
-      values: { size: 30, change: -1.8 },
+      values: { size: 30, change: -0.009 },
     },
   ],
+}
+const toplistQueries: WidgetQueryDefinitions = {
+  daily: { metric: 'change', by: 'group' },
+}
+const treemapQueries: WidgetQueryDefinitions = {
+  change: { metric: 'change', by: 'group' },
 }
 
 function withGroupRouter(Story: ComponentType) {
@@ -64,6 +71,7 @@ const meta = {
   args: {
     state: {
       kind: 'ready',
+      queries: toplistQueries,
       result: toplistResult,
       viz: { type: 'toplist', value: 'daily', order: 'desc', limit: 5 },
     } satisfies MarkdownBodyWidgetState,
@@ -74,7 +82,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Toplist: Story = {
-  name: '基準日とともにグループ別の順位を表示する。',
+  name: '基準日とともに小さな騰落率を符号付きパーセントで表示する。',
 }
 
 export const Treemap: Story = {
@@ -82,6 +90,7 @@ export const Treemap: Story = {
   args: {
     state: {
       kind: 'ready',
+      queries: treemapQueries,
       result: treemapResult,
       viz: { type: 'treemap', size: 'size', color: 'change' },
     },
@@ -130,6 +139,7 @@ export const Empty: Story = {
   args: {
     state: {
       kind: 'ready',
+      queries: toplistQueries,
       result: { as_of: '2099-01-05', rows: [] },
       viz: { type: 'toplist', value: 'daily', order: 'desc', limit: 5 },
     },

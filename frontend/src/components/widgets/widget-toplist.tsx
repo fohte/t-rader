@@ -1,4 +1,8 @@
 import type { components } from '#lib/api/schema.gen'
+import {
+  formatWidgetValue,
+  type WidgetQueryDefinitions,
+} from '#lib/widget-value-format'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
 type WidgetToplistDefinition = Extract<
@@ -6,16 +10,14 @@ type WidgetToplistDefinition = Extract<
   { type: 'toplist' }
 >
 
-const numberFormat = new Intl.NumberFormat('ja-JP', {
-  maximumFractionDigits: 2,
-})
-
 export function WidgetToplist({
   result,
   viz,
+  queries,
 }: {
   result: WidgetQueryResponse
   viz: WidgetToplistDefinition
+  queries: WidgetQueryDefinitions
 }) {
   const rows = result.rows.flatMap((row) => {
     const value = row.values[viz.value]
@@ -49,23 +51,26 @@ export function WidgetToplist({
       aria-label="ウィジェットの toplist"
       className="divide-y divide-border border border-border bg-card font-mono text-xs"
     >
-      {orderedRows.map(({ row, value }, index) => (
-        <li
-          aria-label={`${String(index + 1)} 位: ${row.name} ${numberFormat.format(value)}`}
-          className="flex items-center gap-3 px-3 py-2"
-          key={row.key}
-        >
-          <span className="w-8 shrink-0 text-right text-muted-foreground">
-            {index + 1}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-foreground">
-            {row.name}
-          </span>
-          <span className="shrink-0 tabular-nums text-muted-foreground-strong">
-            {numberFormat.format(value)}
-          </span>
-        </li>
-      ))}
+      {orderedRows.map(({ row, value }, index) => {
+        const formattedValue = formatWidgetValue(viz.value, value, queries)
+        return (
+          <li
+            aria-label={`${String(index + 1)} 位: ${row.name} ${formattedValue}`}
+            className="flex items-center gap-3 px-3 py-2"
+            key={row.key}
+          >
+            <span className="w-8 shrink-0 text-right text-muted-foreground">
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-foreground">
+              {row.name}
+            </span>
+            <span className="shrink-0 tabular-nums text-muted-foreground-strong">
+              {formattedValue}
+            </span>
+          </li>
+        )
+      })}
     </ol>
   )
 }

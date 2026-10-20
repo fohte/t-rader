@@ -270,8 +270,8 @@ pub async fn delete_note(
 pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
     match error {
         NoteUseCaseError::Validation(message) => AppError::Validation(message),
-        NoteUseCaseError::UnresolvedBodyWarnings { .. } => {
-            AppError::Validation("note body warnings require a disposition".into())
+        NoteUseCaseError::BodyLintRejected { .. } => {
+            AppError::Validation("note body has lint errors or unresolved warnings".into())
         }
         NoteUseCaseError::UnknownNoteKind(kind) => {
             AppError::Validation(format!("unknown note kind: {kind}"))
@@ -286,5 +286,34 @@ pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
         | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
         other => AppError::Internal(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use core_application::note::NoteUseCaseError;
+
+    use super::map_note_error;
+    use crate::error::AppError;
+
+    #[test]
+    fn maps_body_lint_rejections_to_validation_errors() {
+        let error = map_note_error(NoteUseCaseError::BodyLintRejected {
+            diagnostics: Vec::new(),
+            warnings: Vec::new(),
+        });
+        let actual = match error {
+            AppError::Validation(message) => (StatusCode::BAD_REQUEST, message),
+            other => (StatusCode::INTERNAL_SERVER_ERROR, other.to_string()),
+        };
+
+        assert_eq!(
+            actual,
+            (
+                StatusCode::BAD_REQUEST,
+                "note body has lint errors or unresolved warnings".into(),
+            ),
+        );
     }
 }

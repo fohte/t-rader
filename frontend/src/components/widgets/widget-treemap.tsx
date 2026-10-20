@@ -3,6 +3,10 @@ import { hierarchy, treemap } from 'd3-hierarchy'
 
 import type { components } from '#lib/api/schema.gen'
 import { parseGroupRefId } from '#lib/ref-id'
+import {
+  formatWidgetValue,
+  type WidgetQueryDefinitions,
+} from '#lib/widget-value-format'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
 type WidgetRow = components['schemas']['WidgetQueryResultRow']
@@ -16,16 +20,15 @@ type TreemapData = TreemapLeaf | { children: TreemapLeaf[] }
 
 const LAYOUT_WIDTH = 1200
 const LAYOUT_HEIGHT = 675
-const numberFormat = new Intl.NumberFormat('ja-JP', {
-  maximumFractionDigits: 2,
-})
 
 export function WidgetTreemap({
   result,
   viz,
+  queries,
 }: {
   result: WidgetQueryResponse
   viz: WidgetTreemapDefinition
+  queries: WidgetQueryDefinitions
 }) {
   const leaves = result.rows.flatMap((row): TreemapLeaf[] => {
     const sizeValue = row.values[viz.size]
@@ -99,7 +102,8 @@ export function WidgetTreemap({
                   backgroundColor: 'var(--color-bg-tertiary)',
                   borderColor: 'var(--color-border)',
                 }
-        const label = `${tile.row.name}: ${numberFormat.format(tile.color)}`
+        const formattedValue = formatWidgetValue(viz.color, tile.color, queries)
+        const label = `${tile.row.name}: ${formattedValue}`
         const position = {
           left: `${String((tile.x / LAYOUT_WIDTH) * 100)}%`,
           top: `${String((tile.y / LAYOUT_HEIGHT) * 100)}%`,
@@ -118,7 +122,7 @@ export function WidgetTreemap({
             )}
             {showValue && (
               <span className="mt-auto font-mono text-2xs tabular-nums text-foreground/80">
-                {numberFormat.format(tile.color)}
+                {formattedValue}
               </span>
             )}
           </>

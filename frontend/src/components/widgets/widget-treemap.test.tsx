@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
+import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 import { createStoryRouter } from '#storybook/story-router'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
@@ -17,6 +18,9 @@ const viz: WidgetTreemapDefinition = {
   size: 'size',
   color: 'change',
 }
+const queries: WidgetQueryDefinitions = {
+  change: { metric: 'change', by: 'group' },
+}
 
 afterEach(cleanup)
 
@@ -28,19 +32,23 @@ describe('WidgetTreemap', () => {
         {
           key: 'group:demo-axis/demo-group-a',
           name: 'デモグループ A',
-          values: { size: 7, change: 1.5 },
+          values: { size: 7, change: 0.015 },
         },
       ],
     }
     const router = createStoryRouter(
-      () => <WidgetTreemap result={result} viz={viz} />,
+      () => <WidgetTreemap queries={queries} result={result} viz={viz} />,
       { paths: ['/groups/$axisKey/$groupKey'] },
     )
     render(<RouterProvider router={router} />)
 
-    expect((await screen.findByRole('link')).getAttribute('href')).toBe(
-      '/groups/demo-axis/demo-group-a',
-    )
+    expect(
+      (
+        await screen.findByRole('link', {
+          name: 'デモグループ A: +1.50%',
+        })
+      ).getAttribute('href'),
+    ).toBe('/groups/demo-axis/demo-group-a')
   })
 
   it('上昇値と下落値に対応する配色を使う', () => {
@@ -50,31 +58,34 @@ describe('WidgetTreemap', () => {
         {
           key: 'stock:DEMO-A',
           name: '架空銘柄 A',
-          values: { size: 7, change: 1.5 },
+          values: { size: 7, change: 0.015 },
         },
         {
           key: 'stock:DEMO-B',
           name: '架空銘柄 B',
-          values: { size: 4, change: -0.8 },
+          values: { size: 4, change: -0.008 },
         },
       ],
     }
-    render(<WidgetTreemap result={result} viz={viz} />)
+    render(<WidgetTreemap queries={queries} result={result} viz={viz} />)
 
     expect(
       screen.getAllByRole('listitem').map((tile) => ({
         label: tile.getAttribute('aria-label'),
+        value: Array.from(tile.querySelectorAll('span')).at(-1)?.textContent,
         backgroundColor: tile.style.backgroundColor,
         borderColor: tile.style.borderColor,
       })),
     ).toEqual([
       {
-        label: '架空銘柄 A: 1.5',
+        label: '架空銘柄 A: +1.50%',
+        value: '+1.50%',
         backgroundColor: 'var(--color-up-dim)',
         borderColor: 'var(--color-up)',
       },
       {
-        label: '架空銘柄 B: -0.8',
+        label: '架空銘柄 B: -0.80%',
+        value: '-0.80%',
         backgroundColor: 'var(--color-down-dim)',
         borderColor: 'var(--color-down)',
       },
@@ -88,11 +99,11 @@ describe('WidgetTreemap', () => {
         {
           key: 'stock:DEMO-A',
           name: '架空銘柄 A',
-          values: { size: 7, change: 1.5 },
+          values: { size: 7, change: 0.015 },
         },
       ],
     }
-    render(<WidgetTreemap result={result} viz={viz} />)
+    render(<WidgetTreemap queries={queries} result={result} viz={viz} />)
 
     expect(screen.queryByRole('link')).toBeNull()
   })
@@ -104,7 +115,7 @@ describe('WidgetTreemap', () => {
         {
           key: 'stock:DEMO-A',
           name: '架空銘柄 A',
-          values: { change: 1.2 },
+          values: { change: 0.012 },
         },
         {
           key: 'stock:DEMO-B',
@@ -118,7 +129,7 @@ describe('WidgetTreemap', () => {
         },
       ],
     }
-    render(<WidgetTreemap result={result} viz={viz} />)
+    render(<WidgetTreemap queries={queries} result={result} viz={viz} />)
 
     expect(screen.getByRole('status').textContent).toBe(
       '表示できるデータがありません。',
