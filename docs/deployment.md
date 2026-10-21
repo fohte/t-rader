@@ -57,6 +57,9 @@ rules:
   - apiGroups: ['']
     resources: ['pods/log']
     verbs: ['get']
+  - apiGroups: ['']
+    resources: ['pods/attach']
+    verbs: ['create', 'get']
 ```
 
 exec Pod は untrusted な LLM 生成コードを実行するため、以下を namespace 側で構成すること:

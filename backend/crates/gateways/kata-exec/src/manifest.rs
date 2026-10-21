@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::config::PodResourceLimits;
 
 pub(crate) const ENVELOPE_MARKER: &str = "__T_RADER_ENVELOPE__";
-const RUNTIME_CLASS_NAME: &str = "kata";
+pub(crate) const RUNTIME_CLASS_NAME: &str = "kata";
 const DEFAULT_POD_NAME_PREFIX: &str = "t-rader-exec";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +70,7 @@ pub(crate) fn assemble_result(
             stdout: envelope.stdout,
             stderr: envelope.stderr,
             exit_code: envelope.exit_code,
+            files: Vec::new(),
         });
     }
 
@@ -97,19 +98,30 @@ pub(crate) fn build_pod_manifest(
     limits: &PodResourceLimits,
     active_deadline_seconds: i64,
 ) -> serde_json::Value {
-    let code_b64 = BASE64.encode(request.code.as_bytes());
-    let mut env = vec![json!({
-        "name": "EXEC_CODE_B64",
-        "value": code_b64,
-    })];
-    if let Some(stdin) = &request.stdin {
-        env.push(json!({
-            "name": "EXEC_STDIN_B64",
-            "value": BASE64.encode(stdin.as_bytes()),
-        }));
-    }
+    let file_transfer = request.input_files.is_some();
+    let tmp_empty_dir = if file_transfer {
+        json!({ "sizeLimit": limits.ephemeral_storage })
+    } else {
+        json!({ "medium": "Memory", "sizeLimit": "16Mi" })
+    };
+    let env = if file_transfer {
+        vec![json!({"name": "EXEC_MODE", "value": "file-transfer"})]
+    } else {
+        let code_b64 = BASE64.encode(request.code.as_bytes());
+        let mut env = vec![json!({
+            "name": "EXEC_CODE_B64",
+            "value": code_b64,
+        })];
+        if let Some(stdin) = &request.stdin {
+            env.push(json!({
+                "name": "EXEC_STDIN_B64",
+                "value": BASE64.encode(stdin.as_bytes()),
+            }));
+        }
+        env
+    };
 
-    json!({
+    let mut manifest = json!({
         "apiVersion": "v1",
         "kind": "Pod",
         "metadata": {
@@ -121,7 +133,6 @@ pub(crate) fn build_pod_manifest(
             },
         },
         "spec": {
-            "runtimeClassName": RUNTIME_CLASS_NAME,
             "automountServiceAccountToken": false,
             "restartPolicy": "Never",
             "activeDeadlineSeconds": active_deadline_seconds,
@@ -161,10 +172,17 @@ pub(crate) fn build_pod_manifest(
             }],
             "volumes": [{
                 "name": "tmp",
-                "emptyDir": { "medium": "Memory", "sizeLimit": "16Mi" },
+                "emptyDir": tmp_empty_dir,
             }],
         },
-    })
+    });
+    if file_transfer {
+        manifest["spec"]["securityContext"]["fsGroup"] = json!(65532);
+        manifest["spec"]["containers"][0]["stdin"] = json!(true);
+        manifest["spec"]["containers"][0]["stdinOnce"] = json!(true);
+    }
+    manifest["spec"]["runtimeClassName"] = json!(RUNTIME_CLASS_NAME);
+    manifest
 }
 
 #[cfg(test)]
@@ -183,6 +201,7 @@ mod tests {
                 stdin: stdin.map(str::to_string),
                 timeout: None,
                 max_output_bytes: None,
+                input_files: None,
             },
             &PodResourceLimits::default(),
             30,
@@ -268,6 +287,83 @@ mod tests {
     }
 
     #[rstest]
+    fn file_manifest_contains_no_payload_data() {
+        let manifest = build_pod_manifest(
+            "exec-test-abcdef",
+            "exec-test",
+            "example.invalid/runner:sample",
+            &ExecRequest::new("print('ready')").with_files(vec![
+                core_application::kata_exec::ExecFile {
+                    path: "input/data.bin".to_string(),
+                    bytes: b"sample bytes".to_vec(),
+                },
+            ]),
+            &PodResourceLimits::default(),
+            30,
+        );
+
+        assert_eq!(
+            manifest,
+            json!({
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "metadata": {
+                    "name": "exec-test-abcdef",
+                    "namespace": "exec-test",
+                    "labels": {
+                        "app.kubernetes.io/name": "t-rader-exec",
+                        "app.kubernetes.io/managed-by": "t-rader-backend",
+                    },
+                },
+                "spec": {
+                    "runtimeClassName": "kata",
+                    "automountServiceAccountToken": false,
+                    "restartPolicy": "Never",
+                    "activeDeadlineSeconds": 30,
+                    "enableServiceLinks": false,
+                    "securityContext": {
+                        "runAsNonRoot": true,
+                        "runAsUser": 65532,
+                        "runAsGroup": 65532,
+                        "fsGroup": 65532,
+                        "seccompProfile": { "type": "RuntimeDefault" },
+                    },
+                    "containers": [{
+                        "name": "exec",
+                        "image": "example.invalid/runner:sample",
+                        "imagePullPolicy": "IfNotPresent",
+                        "stdin": true,
+                        "stdinOnce": true,
+                        "env": [{ "name": "EXEC_MODE", "value": "file-transfer" }],
+                        "resources": {
+                            "limits": {
+                                "cpu": "500m",
+                                "memory": "256Mi",
+                                "ephemeral-storage": "64Mi",
+                            },
+                            "requests": {
+                                "cpu": "500m",
+                                "memory": "256Mi",
+                                "ephemeral-storage": "64Mi",
+                            },
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "capabilities": { "drop": ["ALL"] },
+                        },
+                        "volumeMounts": [{ "name": "tmp", "mountPath": "/tmp" }],
+                    }],
+                    "volumes": [{
+                        "name": "tmp",
+                        "emptyDir": { "sizeLimit": "64Mi" },
+                    }],
+                },
+            }),
+        );
+    }
+
+    #[rstest]
     fn assemble_result_parses_envelope() {
         let envelope = json!({
             "stdout": "hello\n",
@@ -287,6 +383,7 @@ mod tests {
                 stdout: "hello\n".to_string(),
                 stderr: String::new(),
                 exit_code: 0,
+                files: Vec::new(),
             },
         );
     }
@@ -309,6 +406,7 @@ mod tests {
                 stdout: "real".to_string(),
                 stderr: String::new(),
                 exit_code: 7,
+                files: Vec::new(),
             },
         );
     }

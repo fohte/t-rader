@@ -17,6 +17,9 @@ pub enum KataExecError {
     #[error("failed to parse response: {0}")]
     Parse(String),
 
+    #[error("file transfer failed: {0}")]
+    FileTransfer(String),
+
     #[error("exec pod terminated abnormally: {0}")]
     PodFailed(String),
 
