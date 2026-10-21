@@ -2,7 +2,7 @@ import { CandlestickChart } from '#components/candlestick-chart'
 import type { TradeDetailChartState } from '#components/trades/trade-detail-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import { type ChartCurrency, TRADE_MARKER_COLORS } from '#lib/chart-utils'
+import type { ChartCurrency } from '#lib/chart-utils'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
 
@@ -48,8 +48,8 @@ export function TradeDetailChartView({
             className="flex gap-3 font-mono text-2xs"
             role="group"
           >
-            <span style={{ color: TRADE_MARKER_COLORS.buy }}>▲買</span>{' '}
-            <span style={{ color: TRADE_MARKER_COLORS.sell }}>▼売</span>
+            <span className="text-chart-2">▲買</span>{' '}
+            <span className="text-up">▼売</span>
           </p>
         </>
       ) : state.status === 'loading' ? (

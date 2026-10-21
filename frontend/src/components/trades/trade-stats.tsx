@@ -1,9 +1,9 @@
-import { formatYen, pnlColorClass } from '#components/trades/format'
+import { formatYen } from '#components/trades/format'
 
 interface Stat {
   label: string
   value: string
-  cls?: string
+  tone?: 'positive' | 'negative' | 'muted'
 }
 
 export function TradeStats({
@@ -17,16 +17,18 @@ export function TradeStats({
   tradeCount: number
   openPositions: number
 }) {
+  const realizedPnlTone =
+    realizedPnl > 0 ? 'positive' : realizedPnl < 0 ? 'negative' : 'muted'
   const stats: Stat[] = [
     {
       label: '実現損益 (累計)',
       value: formatYen(realizedPnl, true),
-      cls: pnlColorClass(realizedPnl),
+      tone: realizedPnlTone,
     },
     {
       label: '手数料 (累計)',
       value: formatYen(feesTotal),
-      cls: 'text-muted-foreground-strong',
+      tone: 'muted',
     },
     { label: '取引回数', value: tradeCount.toLocaleString() },
     { label: '保有銘柄', value: openPositions.toLocaleString() },
@@ -43,9 +45,8 @@ export function TradeStats({
             {s.label}
           </span>
           <span
-            className={`font-mono text-lg font-bold tabular-nums ${
-              s.cls ?? 'text-foreground'
-            }`}
+            data-tone={s.tone}
+            className="font-mono text-lg font-bold tabular-nums data-[tone=positive]:text-up data-[tone=negative]:text-down data-[tone=muted]:text-muted-foreground-strong"
           >
             {s.value}
           </span>
