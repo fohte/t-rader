@@ -21,6 +21,8 @@ pub enum Relation {
     BarsTimestampCoverage,
     #[sea_orm(has_one = "super::us_stock_hourly_bar_ingest_progress::Entity")]
     UsStockHourlyBarIngestProgress,
+    #[sea_orm(has_one = "super::us_stock_minute_bar_ingest_progress::Entity")]
+    UsStockMinuteBarIngestProgress,
     #[sea_orm(has_one = "super::us_stock_sip_bar_refetch_progress::Entity")]
     UsStockSipBarRefetchProgress,
 }
@@ -40,6 +42,12 @@ impl Related<super::bars_timestamp_coverage::Entity> for Entity {
 impl Related<super::us_stock_hourly_bar_ingest_progress::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::UsStockHourlyBarIngestProgress.def()
+    }
+}
+
+impl Related<super::us_stock_minute_bar_ingest_progress::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::UsStockMinuteBarIngestProgress.def()
     }
 }
 

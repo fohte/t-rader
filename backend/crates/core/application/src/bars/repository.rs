@@ -102,6 +102,12 @@ pub trait BarsRepository: Send + Sync {
         completed_through: DateTime<Utc>,
     ) -> Result<(), BarsRepositoryError>;
 
+    async fn mark_us_stock_minute_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError>;
+
     async fn compress_bars_older_than_policy(
         &self,
         now: DateTime<Utc>,

@@ -262,7 +262,7 @@ impl UsStockBarsIngestUseCases {
                     &mut batch_context,
                 )
                 .await?;
-            (completed, batch_context.skipped_instrument_ids)
+            (completed.completed, batch_context.skipped_instrument_ids)
         };
         if !completed {
             return Ok(RefetchFrameResult::Interrupted);

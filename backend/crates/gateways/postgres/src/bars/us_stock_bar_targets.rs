@@ -14,6 +14,7 @@ impl PostgresBarsRepository {
             latest_daily_bar: Option<DateTime<FixedOffset>>,
             latest_minute_bar: Option<DateTime<FixedOffset>>,
             latest_hourly_bar: Option<DateTime<FixedOffset>>,
+            minute_history_completed_through: Option<DateTime<FixedOffset>>,
             hourly_history_completed_through: Option<DateTime<FixedOffset>>,
             earliest_daily_bar: Option<DateTime<FixedOffset>>,
             earliest_minute_bar: Option<DateTime<FixedOffset>>,
@@ -25,6 +26,7 @@ impl PostgresBarsRepository {
                 daily_coverage.latest_timestamp AS latest_daily_bar,
                 minute_coverage.latest_timestamp AS latest_minute_bar,
                 hourly_coverage.latest_timestamp AS latest_hourly_bar,
+                minute_progress.completed_through AS minute_history_completed_through,
                 hourly_progress.completed_through AS hourly_history_completed_through,
                 daily_coverage.earliest_timestamp AS earliest_daily_bar,
                 minute_coverage.earliest_timestamp AS earliest_minute_bar,
@@ -39,6 +41,8 @@ impl PostgresBarsRepository {
             LEFT JOIN bars_timestamp_coverage AS hourly_coverage
                 ON hourly_coverage.instrument_id = instruments.id
                AND hourly_coverage.timeframe = '1h'
+            LEFT JOIN us_stock_minute_bar_ingest_progress AS minute_progress
+                ON minute_progress.instrument_id = instruments.id
             LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
                 ON hourly_progress.instrument_id = instruments.id
             WHERE instruments.market = 'US'
@@ -74,6 +78,9 @@ impl PostgresBarsRepository {
                     latest_daily_bar: row.latest_daily_bar.map(|timestamp| timestamp.to_utc()),
                     latest_minute_bar: row.latest_minute_bar.map(|timestamp| timestamp.to_utc()),
                     latest_hourly_bar: row.latest_hourly_bar.map(|timestamp| timestamp.to_utc()),
+                    minute_history_completed_through: row
+                        .minute_history_completed_through
+                        .map(|timestamp| timestamp.to_utc()),
                     hourly_history_completed_through: row
                         .hourly_history_completed_through
                         .map(|timestamp| timestamp.to_utc()),
