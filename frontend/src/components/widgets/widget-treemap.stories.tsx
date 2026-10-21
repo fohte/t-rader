@@ -255,6 +255,7 @@ export const NegativeOnly: Story = {
 export const MissingValues: Story = {
   name: '値が欠損した項目も全件一覧から確認できる。',
   args: {
+    initialListExpanded: true,
     result: {
       as_of: '2099-01-01',
       rows: [
