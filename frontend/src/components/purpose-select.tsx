@@ -19,12 +19,13 @@ export function PurposeSelect({
   onPurposeChange,
   disabled,
 }: PurposeSelectProps): React.ReactElement {
+  const defaultPurposeLabel = '既定の設定'
   const selectablePurposes =
     selectedPurpose === '' || purposes.includes(selectedPurpose)
       ? purposes
       : [selectedPurpose, ...purposes]
   const items = [
-    { value: null, label: '既定の設定' },
+    { value: null, label: defaultPurposeLabel },
     ...selectablePurposes.map((purpose) => ({
       value: purpose,
       label: purpose,
@@ -43,13 +44,15 @@ export function PurposeSelect({
         disabled={disabled}
       >
         <SelectTrigger aria-label="実行目的" className="min-w-0 flex-1">
-          <SelectValue placeholder="既定の設定" />
+          <SelectValue placeholder={defaultPurposeLabel} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={null}>既定の設定</SelectItem>
-          {selectablePurposes.map((purpose) => (
-            <SelectItem key={purpose} value={purpose}>
-              {purpose}
+          {items.map(({ value, label }) => (
+            <SelectItem
+              key={value === null ? 'default' : `purpose-${value}`}
+              value={value}
+            >
+              {label}
             </SelectItem>
           ))}
         </SelectContent>
