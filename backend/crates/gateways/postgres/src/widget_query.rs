@@ -865,6 +865,67 @@ mod tests {
         );
     }
 
+    #[backend_test_macros::database_test]
+    async fn series_input_limit_allows_the_boundary_and_rejects_larger_universes(
+        db: DatabaseHandle,
+    ) {
+        let stock_ids = (0..501)
+            .map(|index| format!("D{index:04}"))
+            .collect::<Vec<_>>();
+        stock::Entity::insert_many(stock_ids.iter().map(|id| stock::ActiveModel {
+            id: Set(id.clone()),
+            name: Set(format!("Demo Stock {id}")),
+            market: Set(Some("OTHER".to_string())),
+            product_category: Set(None),
+            created_at: Default::default(),
+            updated_at: Default::default(),
+        }))
+        .exec_without_returning(&db)
+        .await
+        .expect("insert widget stocks");
+        instruments::Entity::insert_many(stock_ids.iter().map(|id| instruments::ActiveModel {
+            id: Set(id.clone()),
+            name: Set(format!("Demo Stock {id}")),
+            market: Set("OTHER".to_string()),
+            sector: Set(None),
+        }))
+        .exec_without_returning(&db)
+        .await
+        .expect("insert widget instruments");
+
+        let range = WidgetTimeRange::OneYear
+            .resolve(date(5), Some(WidgetPeriod::SixtyDays))
+            .expect("resolve one-year range");
+        let source = PostgresWidgetQuerySource::new(db);
+        let query = |stocks| WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::SixtyDays),
+            by: WidgetBy::None,
+            axis: None,
+            indicator: None,
+            universe: Some(WidgetUniverse::Stocks { stocks }),
+            agg: Some(WidgetAggregation::Mean),
+        };
+        let within_limit = source
+            .query_series(range, &query(stock_ids[..500].to_vec()))
+            .await
+            .map(|rows| rows.len())
+            .map_err(|error| error.to_string());
+        let over_limit = source
+            .query_series(range, &query(stock_ids))
+            .await
+            .map(|rows| rows.len())
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            (within_limit, over_limit),
+            (
+                Ok(0),
+                Err("widget query input exceeds 250000 daily values".to_string()),
+            ),
+        );
+    }
+
     async fn insert_market_aggregate_fixture(db: &DatabaseHandle) {
         insert_stock(db, "D007", "Stock Eta").await;
         insert_stock(db, "D008", "Stock Theta").await;
