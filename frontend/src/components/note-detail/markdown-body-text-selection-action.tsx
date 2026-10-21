@@ -1,6 +1,12 @@
-import type { MouseEvent } from 'react'
+import { Button } from '@fohte/ui/button'
+import type { CSSProperties, MouseEvent } from 'react'
 
 import type { TextSelectionAction } from '#components/note-detail/use-markdown-body-comment-selection'
+
+type SelectionActionStyle = CSSProperties & {
+  '--markdown-body-selection-action-left': string
+  '--markdown-body-selection-action-top': string
+}
 
 export interface MarkdownBodyTextSelectionActionProps {
   selection: TextSelectionAction | null
@@ -16,27 +22,35 @@ export function MarkdownBodyTextSelectionAction({
   const preserveSelection = (event: MouseEvent<HTMLButtonElement>): void => {
     event.preventDefault()
   }
+  const positionStyle: SelectionActionStyle = {
+    '--markdown-body-selection-action-left': `${String(selection.position.left)}px`,
+    '--markdown-body-selection-action-top': `${String(selection.position.top)}px`,
+  }
 
   return (
-    <button
-      type="button"
-      aria-label="選択した本文にコメント"
-      onMouseDown={preserveSelection}
-      onMouseUp={(event) => {
-        event.stopPropagation()
-      }}
-      onTouchEnd={(event) => {
-        event.stopPropagation()
-      }}
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        onStartComment()
-      }}
-      className="fixed z-50 border border-primary bg-card px-2 py-1 font-mono text-2xs text-primary shadow-md hover:bg-primary/10"
-      style={{ left: selection.position.left, top: selection.position.top }}
+    <div
+      className="fixed top-(--markdown-body-selection-action-top) left-(--markdown-body-selection-action-left) z-50"
+      style={positionStyle}
     >
-      💬 コメント
-    </button>
+      <Button
+        type="button"
+        variant="plain"
+        aria-label="選択した本文にコメント"
+        onMouseDown={preserveSelection}
+        onMouseUp={(event) => {
+          event.stopPropagation()
+        }}
+        onTouchEnd={(event) => {
+          event.stopPropagation()
+        }}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onStartComment()
+        }}
+      >
+        <span className="px-2 py-1 font-mono text-2xs">💬 コメント</span>
+      </Button>
+    </div>
   )
 }
