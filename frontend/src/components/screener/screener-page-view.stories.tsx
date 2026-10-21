@@ -177,6 +177,21 @@ export const MobileFilters: Story = {
   },
 }
 
+export const SectorOptionsLoading: Story = {
+  name: '業種の候補を読み込んでいます。',
+  args: { ...args, sectorOptions: [], sectorOptionsPending: true },
+}
+
+export const SectorOptionsError: Story = {
+  name: '業種の候補を取得できない状態を表示します。',
+  args: { ...args, sectorOptions: [], sectorOptionsError: true },
+}
+
+export const NoSectorOptions: Story = {
+  name: '業種の候補がない状態を表示します。',
+  args: { ...args, sectorOptions: [] },
+}
+
 export const MobileAgentRequest: Story = {
   name: 'スマートフォンの条件画面下部からエージェントに依頼できます。',
   args: { ...args, mobileFiltersOpen: true, onAskAgent: () => {} },

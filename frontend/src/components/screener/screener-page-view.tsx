@@ -1,5 +1,8 @@
+import { Button } from '@fohte/ui/button'
+import { Checkbox } from '@fohte/ui/checkbox'
+import { DialogTrigger } from '@fohte/ui/dialog'
 import { Input } from '@fohte/ui/input'
-import { ChevronDown, SlidersHorizontal, X } from 'lucide-react'
+import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
 
 import { MobileScreenerFilterActions } from '#components/screener/mobile-screener-filter-actions'
@@ -12,6 +15,12 @@ import {
   type ScreenerResultsStatus,
   ScreenerResultsView,
 } from '#components/screener/screener-results-view'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '#components/ui/dialog'
 import type { components } from '#lib/api/schema.gen'
 import {
   countActiveScreenerFilters,
@@ -190,7 +199,10 @@ export function ScreenerPageView({
     bound: 'min' | 'max',
   ) {
     return (
-      <div key={bound} className="relative min-w-0 flex-1">
+      <div
+        key={bound}
+        className="flex min-w-0 flex-1 items-center gap-1 font-mono"
+      >
         <Input
           aria-label={`${label} ${bound === 'min' ? '下限' : '上限'}`}
           type="number"
@@ -204,17 +216,16 @@ export function ScreenerPageView({
               [field]: value,
             }))
           }}
-          className="h-8 pr-8 text-right font-mono text-xs"
+          className="text-right"
         />
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-muted-foreground">
-          {unit}
-        </span>
+        <span className="shrink-0 text-2xs text-muted-foreground">{unit}</span>
       </div>
     )
   }
 
   function applyDraft(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault()
+    event.stopPropagation()
     const filters = readDraft(draft)
     const error = getScreenerRangeError(filters)
     setValidationError(error)
@@ -246,15 +257,13 @@ export function ScreenerPageView({
               {SCREENER_MARKETS.map((market) => (
                 <label
                   key={market}
-                  className={`flex cursor-pointer items-center border border-border bg-background text-muted-foreground-strong has-checked:border-primary has-checked:text-foreground ${isDesktop ? 'gap-1 whitespace-nowrap px-1 py-1.5 text-3xs' : 'gap-1.5 px-2 py-2 text-2xs'}`}
+                  className="flex cursor-pointer items-center gap-2 border border-border bg-background px-2 py-2 text-muted-foreground-strong"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={draft.markets.includes(market)}
-                    onChange={() => {
+                    onCheckedChange={() => {
                       toggleMarket(market)
                     }}
-                    className="accent-primary"
                   />
                   {market}
                 </label>
@@ -265,7 +274,8 @@ export function ScreenerPageView({
           <fieldset className={isDesktop ? 'min-w-0 space-y-2' : 'space-y-2'}>
             <legend className="font-semibold text-foreground">業種</legend>
             <div
-              className={`space-y-1 overflow-y-auto border border-border bg-background p-2 ${isDesktop ? 'max-h-36' : 'max-h-44'}`}
+              data-layout={layout}
+              className="space-y-1 overflow-y-auto border border-border bg-background p-2 data-[layout=desktop]:max-h-36 data-[layout=mobile]:max-h-44"
             >
               {sectorOptionsPending ? (
                 <p className="text-muted-foreground">業種を読み込み中...</p>
@@ -281,15 +291,13 @@ export function ScreenerPageView({
                 sectorOptions.map((sector) => (
                   <label
                     key={sector.key}
-                    className="flex cursor-pointer items-center gap-2 py-1 text-muted-foreground-strong hover:text-foreground"
+                    className="flex cursor-pointer items-center gap-2 py-2 text-muted-foreground-strong hover:text-foreground"
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={draft.sectors.includes(sector.key)}
-                      onChange={() => {
+                      onCheckedChange={() => {
                         toggleSector(sector.key)
                       }}
-                      className="accent-primary"
                     />
                     <span>{sector.name}</span>
                   </label>
@@ -323,12 +331,9 @@ export function ScreenerPageView({
                 {validationError}
               </p>
             )}
-            <button
-              type="submit"
-              className="w-full border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 sm:w-auto"
-            >
+            <Button type="submit" className="w-full sm:w-auto">
               この条件で絞り込む
-            </button>
+            </Button>
           </div>
         )}
       </>
@@ -340,7 +345,8 @@ export function ScreenerPageView({
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold tracking-tight md:text-2xl">
-            <span className="mr-2 text-primary">&gt;</span>銘柄スクリーナー
+            <span className="mr-2 text-muted-foreground">&gt;</span>
+            銘柄スクリーナー
           </h1>
           <p className="mt-1 text-2xs text-muted-foreground">
             条件を組み合わせて銘柄を探す
@@ -354,7 +360,7 @@ export function ScreenerPageView({
       >
         <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2 md:mb-3">
           <h2 className="hidden font-semibold tracking-wide md:block">
-            <span className="mr-1 text-primary">&gt;</span>条件
+            <span className="mr-1 text-muted-foreground">&gt;</span>条件
           </h2>
           <div className="flex min-w-0 flex-1 items-center justify-between gap-2 md:flex-none md:justify-end">
             <SavedScreensControlView
@@ -379,17 +385,52 @@ export function ScreenerPageView({
               }}
               onDelete={onDeleteSavedScreen}
             />
-            <button
-              type="button"
-              onClick={() => {
-                setMobileFiltersOpen(true)
-              }}
-              className="inline-flex shrink-0 items-center gap-2 border border-border bg-card px-3 py-2 text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground md:hidden"
+            <Dialog
+              open={mobileFiltersOpen}
+              onOpenChange={setMobileFiltersOpen}
             >
-              <SlidersHorizontal aria-hidden="true" className="size-3.5" />
-              条件 ({conditionCount})
-              <ChevronDown aria-hidden="true" className="size-3.5" />
-            </button>
+              <DialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 md:hidden"
+                  />
+                }
+              >
+                <SlidersHorizontal aria-hidden="true" className="size-3.5" />
+                条件 ({conditionCount})
+                <ChevronDown aria-hidden="true" className="size-3.5" />
+              </DialogTrigger>
+              <DialogContent className="flex max-h-screen flex-col overflow-hidden">
+                <DialogHeader className="shrink-0">
+                  <DialogTitle>条件 ({conditionCount})</DialogTitle>
+                </DialogHeader>
+                <form
+                  onSubmit={applyDraft}
+                  className="flex min-h-0 flex-1 flex-col"
+                >
+                  <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+                    {renderFilterFields('mobile')}
+                  </div>
+                  <MobileScreenerFilterActions
+                    validationError={validationError}
+                    onAskAgent={
+                      onAskAgent == null
+                        ? undefined
+                        : () => {
+                            const filters = readDraft(draft)
+                            const error = getScreenerRangeError(filters)
+                            setValidationError(error)
+                            if (error != null) return
+                            setMobileFiltersOpen(false)
+                            onAskAgent({ ...search, ...filters })
+                          }
+                    }
+                  />
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
         <div className="hidden md:block">{renderFilterFields('desktop')}</div>
@@ -414,60 +455,6 @@ export function ScreenerPageView({
               }
         }
       />
-
-      {mobileFiltersOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background md:bg-black/70">
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="screener-mobile-filter-title"
-            className="flex h-full w-full flex-col bg-background p-4 md:h-full md:w-96 md:border md:border-border"
-          >
-            <header className="mb-4 flex items-center justify-between border-b border-border pb-3">
-              <h2
-                id="screener-mobile-filter-title"
-                className="font-semibold tracking-wide"
-              >
-                <span className="mr-1 text-primary">&gt;</span>条件 (
-                {conditionCount})
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileFiltersOpen(false)
-                }}
-                aria-label="条件を閉じる"
-                className="inline-flex size-8 items-center justify-center border border-border text-muted-foreground-strong hover:text-foreground"
-              >
-                <X aria-hidden="true" className="size-4" />
-              </button>
-            </header>
-            <form
-              onSubmit={applyDraft}
-              className="flex min-h-0 flex-1 flex-col"
-            >
-              <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-                {renderFilterFields('mobile')}
-              </div>
-              <MobileScreenerFilterActions
-                validationError={validationError}
-                onAskAgent={
-                  onAskAgent == null
-                    ? undefined
-                    : () => {
-                        const filters = readDraft(draft)
-                        const error = getScreenerRangeError(filters)
-                        setValidationError(error)
-                        if (error != null) return
-                        setMobileFiltersOpen(false)
-                        onAskAgent({ ...search, ...filters })
-                      }
-                }
-              />
-            </form>
-          </section>
-        </div>
-      )}
     </section>
   )
 }

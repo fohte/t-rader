@@ -117,8 +117,10 @@ describe('ScreenerResultsView', () => {
     const sortOrder = await screen.findByRole('combobox', {
       name: '並べ替え順',
     })
-    await user.selectOptions(sortField, 'per')
-    await user.selectOptions(sortOrder, 'asc')
+    await user.click(sortField)
+    await user.click(await screen.findByRole('option', { name: 'PER' }))
+    await user.click(sortOrder)
+    await user.click(await screen.findByRole('option', { name: '昇順' }))
 
     expect(nextSearch).toEqual({
       markets: ['プライム'],

@@ -466,6 +466,55 @@ describe('ScreenerPageView', () => {
     expect(onSelectSavedScreen.mock.calls).toEqual([[savedScreen]])
   })
 
+  it.each([
+    {
+      action: 'rename',
+      accessibleName: '試作条件 の名前を変更',
+      expectedDialog: { type: 'rename' as const, savedScreen },
+    },
+    {
+      action: 'delete',
+      accessibleName: '試作条件 を削除',
+      expectedDialog: { type: 'delete' as const, savedScreen },
+    },
+  ])(
+    'opens the $action action for a saved screen and closes the menu',
+    async ({ accessibleName, expectedDialog }) => {
+      const user = userEvent.setup()
+      const onSavedScreenDialogChange = vi.fn()
+      const args = {
+        search: {},
+        data,
+        stocks: [],
+        sectorOptions: [],
+        sectorOptionsPending: false,
+        sectorOptionsError: false,
+        status: 'results',
+        savedScreens: [savedScreen],
+        savedScreensMenuOpen: true,
+        onSavedScreenDialogChange,
+        onApplyFilters: () => {},
+        onSort: () => {},
+        onSortOrder: () => {},
+        onLoadMore: () => {},
+        onRetryLoadMore: () => {},
+      } satisfies ComponentProps<typeof ScreenerPageView>
+
+      render(<ScreenerPageView {...args} />)
+      await user.click(screen.getByRole('button', { name: accessibleName }))
+
+      const actual = JSON.stringify({
+        dialogChanges: onSavedScreenDialogChange.mock.calls,
+        menuVisible: screen.queryByRole('list') != null,
+      })
+      const expected = JSON.stringify({
+        dialogChanges: [[expectedDialog]],
+        menuVisible: false,
+      })
+      expect(actual).toBe(expected)
+    },
+  )
+
   it('shows overwrite only after the URL conditions differ from the saved screen', async () => {
     const user = userEvent.setup()
     const search: ComponentProps<typeof ScreenerPageView>['search'] = {
