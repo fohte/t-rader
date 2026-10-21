@@ -295,7 +295,9 @@ describe('TriggersTab', () => {
     await waitFor(() => {
       expect(promptInput).toHaveValue('morning briefing')
     })
-    expect(screen.getByLabelText('実行目的')).toHaveValue('')
+    expect(
+      screen.getByRole('combobox', { name: '実行目的' }).textContent,
+    ).toEqual('既定の設定')
   })
 
   it('cron trigger を作成すると一覧に追加され、API に正しい body が送られる', async () => {
@@ -304,9 +306,9 @@ describe('TriggersTab', () => {
 
     await screen.findByTestId('trigger-list')
     await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
-    await user.selectOptions(
-      screen.getByLabelText('実行目的'),
-      'synthetic-purpose',
+    await user.click(screen.getByRole('combobox', { name: '実行目的' }))
+    await user.click(
+      await screen.findByRole('option', { name: 'synthetic-purpose' }),
     )
 
     await user.type(
@@ -459,9 +461,11 @@ describe('TriggersTab', () => {
     await waitFor(() => {
       expect(promptInput).toHaveValue('old')
     })
-    expect(screen.getByLabelText('実行目的')).toHaveValue('synthetic-purpose')
+    const purposeSelect = screen.getByRole('combobox', { name: '実行目的' })
+    expect(purposeSelect.textContent).toEqual('synthetic-purpose')
 
-    await user.selectOptions(screen.getByLabelText('実行目的'), '')
+    await user.click(purposeSelect)
+    await user.click(await screen.findByRole('option', { name: '既定の設定' }))
     await user.clear(promptInput)
     await user.type(promptInput, 'new')
     await user.click(screen.getByRole('button', { name: '保存' }))
@@ -536,7 +540,9 @@ describe('TriggersTab', () => {
     await waitFor(() => {
       expect(promptInput).toHaveValue('synthetic prompt')
     })
-    expect(screen.getByLabelText('実行目的')).toHaveValue('stale-purpose')
+    expect(
+      screen.getByRole('combobox', { name: '実行目的' }).textContent,
+    ).toEqual('stale-purpose')
 
     await user.click(screen.getByRole('button', { name: '保存' }))
 
