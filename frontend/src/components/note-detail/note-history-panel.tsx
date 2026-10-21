@@ -1,3 +1,6 @@
+import { Button } from '@fohte/ui/button'
+import { Chip } from '@fohte/ui/chip'
+
 import {
   groupNoteHistoryEvents,
   type HistoryEventData,
@@ -25,13 +28,7 @@ function HistoryEvent({ event }: { event: HistoryEventData }) {
       <time dateTime={entry.created_at}>
         {formatRelative(entry.created_at)}
       </time>
-      <span
-        className={
-          entry.actor_kind === 'llm'
-            ? 'text-primary'
-            : 'text-muted-foreground-strong'
-        }
-      >
+      <span className="text-muted-foreground-strong">
         {entry.actor_label}が{label}
       </span>
       {entry.summary != null && entry.summary !== '' && (
@@ -76,8 +73,13 @@ export function NoteHistoryPanel({
             const versionEvents = eventsByVersionId.get(version.id) ?? []
             return (
               <li key={version.id}>
-                <button
+                <Button
                   type="button"
+                  variant={
+                    version.version_no === selectedVersionNo
+                      ? 'default'
+                      : 'ghost'
+                  }
                   aria-current={
                     version.version_no === selectedVersionNo
                       ? 'true'
@@ -86,17 +88,13 @@ export function NoteHistoryPanel({
                   onClick={() => {
                     onSelectVersion(version.version_no)
                   }}
-                  className={`flex w-full flex-col gap-2 px-3.5 py-3 text-left hover:bg-surface-strong ${version.version_no === selectedVersionNo ? 'bg-surface-strong' : ''}`}
+                  className="h-auto w-full flex-col gap-2 whitespace-normal px-3.5 py-3 text-left"
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className="font-mono text-xs font-bold text-foreground">
                       v{String(version.version_no)}
                     </span>
-                    {version.is_current && (
-                      <span className="font-mono text-2xs text-primary">
-                        現行
-                      </span>
-                    )}
+                    {version.is_current && <Chip>現行</Chip>}
                   </span>
                   <span className="line-clamp-2 text-sm leading-snug text-foreground">
                     {version.title}
@@ -111,9 +109,9 @@ export function NoteHistoryPanel({
                       {formatRelative(version.created_at)}
                     </span>
                   </span>
-                </button>
+                </Button>
                 {versionEvents.length > 0 && (
-                  <ul className="divide-y divide-border border-t border-border bg-surface px-2">
+                  <ul className="divide-y divide-border border-t border-border bg-bg-tertiary px-2">
                     {versionEvents.map((event, index) => (
                       <HistoryEvent
                         key={`${event.entry.id}:${event.label}:${String(index)}`}

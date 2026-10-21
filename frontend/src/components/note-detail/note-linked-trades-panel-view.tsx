@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
+import { cn } from '#lib/utils'
 
 type NoteLinkedTrade = components['schemas']['NoteLinkedTrade']
 
@@ -39,7 +40,10 @@ export function NoteLinkedTradesPanelView(
           <Skeleton className="h-4 w-3/4" />
         </div>
       ) : props.state === 'error' ? (
-        <p role="alert" className="px-3.5 py-3 font-mono text-xs text-primary">
+        <p
+          role="alert"
+          className="px-3.5 py-3 font-mono text-xs text-destructive"
+        >
           紐付いた取引を読み込めませんでした。
         </p>
       ) : (
@@ -54,7 +58,7 @@ export function NoteLinkedTradesPanelView(
                   <Link
                     to="/trades/$tradeId"
                     params={{ tradeId: trade.id }}
-                    className="flex items-center gap-2 text-muted-foreground-strong hover:text-primary hover:underline"
+                    className="flex items-center gap-2 text-muted-foreground-strong hover:text-foreground hover:underline"
                   >
                     <time dateTime={trade.date} className="tabular-nums">
                       {trade.date}
@@ -79,12 +83,12 @@ export function NoteLinkedTradesPanelView(
 }
 
 function SideBadge({ side, label }: { side: string; label: string }) {
-  const className =
-    side === 'buy' ? 'border-up text-up' : 'border-down text-down'
-
   return (
     <span
-      className={`inline-grid h-5 min-w-6 place-items-center border px-1 text-2xs ${className}`}
+      className={cn(
+        'inline-grid h-5 min-w-6 place-items-center border px-1 text-2xs',
+        side === 'buy' ? 'border-up text-up' : 'border-down text-down',
+      )}
     >
       {label}
     </span>

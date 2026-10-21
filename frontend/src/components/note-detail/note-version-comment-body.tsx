@@ -1,5 +1,9 @@
+import { Button } from '@fohte/ui/button'
+import { Chip } from '@fohte/ui/chip'
+
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 import { formatRelative } from '#lib/note-utils'
+import { cn } from '#lib/utils'
 
 export interface NoteVersionCommentBodyProps {
   comment: NoteVersionComment
@@ -18,20 +22,16 @@ export function NoteVersionCommentBody({
       {comment.resolved && (
         <span className="text-status-approved">✓ 解決済み</span>
       )}
-      <button
+      <Button
         type="button"
+        variant="plain"
         onClick={() => {
           onToggleResolved(comment)
         }}
         disabled={isResolving}
-        className={
-          comment.resolved
-            ? 'text-muted-foreground underline-offset-2 hover:text-primary hover:underline disabled:opacity-50'
-            : 'border border-border px-1.5 py-0.5 text-2xs text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50'
-        }
       >
         {comment.resolved ? '未解決に戻す' : '解決する'}
-      </button>
+      </Button>
     </>
   )
 
@@ -40,13 +40,10 @@ export function NoteVersionCommentBody({
       <div className="flex flex-wrap items-center gap-2 font-mono text-2xs">
         {isLLM ? (
           <>
-            <span className="inline-flex size-4 items-center justify-center border border-primary text-2xs font-bold text-primary">
-              &gt;
-            </span>
             <span className="font-bold text-foreground">
               {comment.author_label}
             </span>
-            <span className="text-muted-foreground">LLM</span>
+            <Chip>LLM</Chip>
             <div className="ml-auto flex items-center gap-2">
               {resolutionControls}
               <span className="text-muted-foreground">
@@ -69,7 +66,12 @@ export function NoteVersionCommentBody({
         )}
       </div>
       <p
-        className={`whitespace-pre-wrap leading-relaxed ${comment.resolved ? 'text-muted-foreground line-through decoration-border' : 'text-foreground'}`}
+        className={cn(
+          'whitespace-pre-wrap leading-relaxed',
+          comment.resolved
+            ? 'text-muted-foreground line-through decoration-border'
+            : 'text-foreground',
+        )}
       >
         {comment.body}
       </p>

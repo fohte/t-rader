@@ -1,4 +1,5 @@
 import { Skeleton } from '#components/ui/skeleton'
+import { cn } from '#lib/utils'
 
 type NoteVersionFallbackState = 'loading' | 'missing' | 'error'
 
@@ -20,7 +21,10 @@ export function NoteVersionFallback({ state }: NoteVersionFallbackProps) {
   return (
     <div
       role={state === 'error' ? 'alert' : undefined}
-      className={`border border-border bg-card px-4 py-4 font-mono text-sm ${state === 'error' ? 'text-primary' : 'text-muted-foreground'}`}
+      className={cn(
+        'border border-border bg-card px-4 py-4 font-mono text-sm',
+        state === 'error' ? 'text-destructive' : 'text-muted-foreground',
+      )}
     >
       {state === 'error'
         ? 'バージョンを読み込めませんでした。'

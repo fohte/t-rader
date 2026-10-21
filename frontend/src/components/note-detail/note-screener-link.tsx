@@ -22,7 +22,7 @@ export function NoteScreenerLink({ screenId }: { screenId?: string }) {
     <Link
       to="/screener"
       search={{ screen: screenId }}
-      className="inline-flex items-center gap-1 border border-border px-2.5 py-1 font-mono text-2xs text-muted-foreground-strong hover:border-primary hover:text-primary"
+      className="inline-flex items-center gap-1 border border-border px-2.5 py-1 font-mono text-2xs text-muted-foreground-strong hover:border-border-strong hover:text-foreground"
     >
       スクリーナーで開く <span aria-hidden="true">→</span>
     </Link>

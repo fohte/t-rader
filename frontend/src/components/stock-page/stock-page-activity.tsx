@@ -1,6 +1,9 @@
+import { Button } from '@fohte/ui/button'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@fohte/ui/tabs'
 import { Link } from '@tanstack/react-router'
 
 import { StockPageFinancials } from '#components/stock-page/stock-page-financials'
+import { StatusPill } from '#components/strategy-home/status-pill'
 import { formatYen } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 import { buildSnippet, formatRelative } from '#lib/note-utils'
@@ -26,6 +29,15 @@ const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
 
 type ActivityTab = 'annotations' | 'notes' | 'trades' | 'financials'
 type ListState = StockPageListState
+
+function isActivityTab(value: unknown): value is ActivityTab {
+  return (
+    value === 'annotations' ||
+    value === 'notes' ||
+    value === 'trades' ||
+    value === 'financials'
+  )
+}
 
 function ActivityMessage({
   kind,
@@ -61,14 +73,10 @@ function getAuthorLabel(kind: string): string {
 }
 
 function ActivityTabs({
-  activeTab,
-  onTabChange,
   annotationCount,
   noteCount,
   tradeCount,
 }: {
-  activeTab: ActivityTab
-  onTabChange: (tab: ActivityTab) => void
   annotationCount: string
   noteCount: string
   tradeCount: string
@@ -85,37 +93,19 @@ function ActivityTabs({
   ]
 
   return (
-    <div
-      className="flex overflow-x-auto border-b border-border"
-      role="tablist"
-      aria-label="銘柄情報"
-    >
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          id={`stock-page-tab-${tab.id}`}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          aria-controls={`stock-page-panel-${tab.id}`}
-          className={cn(
-            'shrink-0 border-b-2 px-3 py-2 font-mono text-xs',
-            activeTab === tab.id
-              ? 'border-primary text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-          onClick={() => {
-            onTabChange(tab.id)
-          }}
-        >
-          {tab.label}
-          {tab.count != null && (
-            <span className="ml-1.5 text-2xs text-muted-foreground">
-              {tab.count}
-            </span>
-          )}
-        </button>
-      ))}
+    <div className="overflow-x-auto">
+      <TabsList aria-label="銘柄情報">
+        {tabs.map((tab) => (
+          <TabsTab key={tab.id} value={tab.id}>
+            {tab.label}
+            {tab.count != null && (
+              <span className="ml-1.5 text-2xs text-muted-foreground">
+                {tab.count}
+              </span>
+            )}
+          </TabsTab>
+        ))}
+      </TabsList>
     </div>
   )
 }
@@ -151,11 +141,7 @@ function NoteRows({ notes, state }: { notes: Note[]; state: ListState }) {
             </span>
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs text-muted-foreground">
               <span>{getAuthorLabel(note.created_by_kind)}</span>
-              {note.status === 'unread' && (
-                <span className="border border-primary/50 px-1 text-primary">
-                  未レビュー
-                </span>
-              )}
+              {note.status === 'unread' && <StatusPill status="unread" />}
               <time className="ml-auto" dateTime={note.updated_at}>
                 {formatRelative(note.updated_at)}
               </time>
@@ -205,14 +191,11 @@ function AnnotationRows({
             key={annotation.id}
             className="flex items-stretch border-b border-border last:border-b-0"
           >
-            <button
+            <Button
               type="button"
+              variant={isSelected ? 'default' : 'ghost'}
               aria-pressed={isSelected}
-              className={cn(
-                'flex min-w-0 flex-1 flex-col gap-1.5 px-3.5 py-3 text-left hover:bg-surface-strong',
-                isSelected &&
-                  'bg-surface-strong ring-1 ring-inset ring-primary/50',
-              )}
+              className="h-auto min-w-0 flex-1 flex-col gap-1.5 whitespace-normal px-3.5 py-3 text-left"
               onClick={() => {
                 onSelectAnnotation(annotation.id)
               }}
@@ -221,15 +204,13 @@ function AnnotationRows({
                 <time dateTime={timestamp}>{formatDate(timestamp)}</time>
                 <span>{getAuthorLabel(annotation.created_by_kind)}</span>
                 {annotation.status === 'unread' && (
-                  <span className="border border-primary/50 px-1 text-primary">
-                    未レビュー
-                  </span>
+                  <StatusPill status="unread" />
                 )}
               </span>
               <span className="line-clamp-2 text-sm text-foreground">
                 {buildSnippet(annotation.text)}
               </span>
-            </button>
+            </Button>
             <Link
               to="/annotations/$annoId"
               params={{ annoId: annotation.id }}
@@ -374,39 +355,40 @@ export function StockPageActivity({
   const tradeCount = getCountLabel(tradeState, trades.length)
 
   return (
-    <section className="border border-border bg-card" aria-label="銘柄の一覧">
-      <ActivityTabs
-        activeTab={activeTab}
-        onTabChange={onTabChange}
-        annotationCount={annotationCount}
-        noteCount={noteCount}
-        tradeCount={tradeCount}
-      />
-      <div
-        id={`stock-page-panel-${activeTab}`}
-        role="tabpanel"
-        aria-labelledby={`stock-page-tab-${activeTab}`}
-      >
-        {activeTab === 'annotations' ? (
-          <AnnotationRows
-            annotations={annotations}
-            selectedAnnotationId={selectedAnnotationId}
-            onSelectAnnotation={onSelectAnnotation}
-            state={annotationState}
-          />
-        ) : activeTab === 'notes' ? (
-          <NoteRows notes={notes} state={noteState} />
-        ) : activeTab === 'trades' ? (
-          <TradeRows trades={trades} state={tradeState} />
-        ) : (
-          <StockPageFinancials
-            summaries={financialSummaries}
-            summariesState={financialSummariesState}
-            groups={groups}
-            groupsState={groupsState}
-          />
-        )}
-      </div>
-    </section>
+    <Tabs
+      value={activeTab}
+      onValueChange={(value: unknown) => {
+        if (isActivityTab(value)) onTabChange(value)
+      }}
+    >
+      <section className="border border-border bg-card" aria-label="銘柄の一覧">
+        <ActivityTabs
+          annotationCount={annotationCount}
+          noteCount={noteCount}
+          tradeCount={tradeCount}
+        />
+        <TabsPanel value={activeTab}>
+          {activeTab === 'annotations' ? (
+            <AnnotationRows
+              annotations={annotations}
+              selectedAnnotationId={selectedAnnotationId}
+              onSelectAnnotation={onSelectAnnotation}
+              state={annotationState}
+            />
+          ) : activeTab === 'notes' ? (
+            <NoteRows notes={notes} state={noteState} />
+          ) : activeTab === 'trades' ? (
+            <TradeRows trades={trades} state={tradeState} />
+          ) : (
+            <StockPageFinancials
+              summaries={financialSummaries}
+              summariesState={financialSummariesState}
+              groups={groups}
+              groupsState={groupsState}
+            />
+          )}
+        </TabsPanel>
+      </section>
+    </Tabs>
   )
 }

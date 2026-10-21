@@ -1,3 +1,7 @@
+import { Button } from '@fohte/ui/button'
+import { Chip } from '@fohte/ui/chip'
+import { Input } from '@fohte/ui/input'
+import { Textarea } from '@fohte/ui/textarea'
 import { Link } from '@tanstack/react-router'
 import type { SyntheticEvent } from 'react'
 
@@ -103,11 +107,13 @@ export function AnnotationDetail({
         <>
           <header className="border border-border bg-card p-5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="inline-grid h-6 min-w-8 place-items-center border border-primary px-1 font-mono text-2xs text-primary">
+              <Chip size="md" tone="strong">
                 ANNOTATION
-              </span>
-              <span className="border border-border bg-surface-strong px-1.5 py-px font-mono text-2xs uppercase text-muted-foreground-strong">
-                {annotation.target_kind}
+              </Chip>
+              <span className="uppercase">
+                <Chip size="md" tone="muted">
+                  {annotation.target_kind}
+                </Chip>
               </span>
               <StatusPill status={annotation.status} />
             </div>
@@ -153,7 +159,7 @@ export function AnnotationDetail({
                 <Link
                   to="/notes/$noteId"
                   params={{ noteId: annotation.linked_note_id }}
-                  className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+                  className="inline-flex items-center gap-1 font-mono text-xs text-foreground hover:underline"
                 >
                   → 紐づくノートを開く
                 </Link>
@@ -168,33 +174,32 @@ export function AnnotationDetail({
             {annotation.status === 'unread' ? (
               <>
                 <div className="mb-3 flex flex-wrap gap-2">
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={onApprove}
                     disabled={isApprovalPending || isRejectionPending}
-                    className="cursor-pointer border border-primary bg-primary px-3 py-1.5 font-mono text-xs text-card hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    ✓ 承認
-                  </button>
-                  <button
+                    {isApprovalPending ? '承認中…' : '✓ 承認'}
+                  </Button>
+                  <Button
                     type="button"
+                    variant="destructive"
+                    size="sm"
                     onClick={onReject}
                     disabled={isApprovalPending || isRejectionPending}
-                    className="cursor-pointer border border-status-rejected px-3 py-1.5 font-mono text-xs text-status-rejected hover:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    ✕ 却下
-                  </button>
+                    {isRejectionPending ? '却下中…' : '✕ 却下'}
+                  </Button>
                 </div>
                 <label className="block space-y-1 font-mono text-2xs text-muted-foreground-strong">
                   <span>却下理由 (任意)</span>
-                  <textarea
+                  <Textarea
                     value={rejectionReason}
                     onChange={(event) => {
                       onRejectionReasonChange(event.target.value)
                     }}
                     disabled={isApprovalPending || isRejectionPending}
-                    rows={2}
-                    className="w-full border border-border bg-surface-strong px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary disabled:opacity-50"
                     placeholder="必要であれば理由を入力してください"
                   />
                 </label>
@@ -222,8 +227,8 @@ export function AnnotationDetail({
                     <span className="text-foreground">
                       {comment.author_label}
                     </span>
-                    <span className="border border-border px-1 text-2xs uppercase">
-                      {comment.author_kind}
+                    <span className="uppercase">
+                      <Chip>{comment.author_kind}</Chip>
                     </span>
                     <span>{formatDateTime(comment.created_at)}</span>
                   </div>
@@ -239,22 +244,22 @@ export function AnnotationDetail({
               )}
             </div>
             <form onSubmit={onAddComment} className="mt-4 flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={commentDraft}
                 onChange={(event) => {
                   onCommentDraftChange(event.target.value)
                 }}
                 placeholder="コメントを追加"
-                className="flex-1 border border-border bg-surface-strong px-2 py-1.5 font-mono text-xs outline-none focus:border-primary"
+                className="flex-1"
               />
-              <button
+              <Button
                 type="submit"
+                size="sm"
                 disabled={commentDraft.trim() === '' || isCommentPending}
-                className="cursor-pointer border border-border bg-surface-strong px-3 py-1.5 font-mono text-xs hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
-                送信
-              </button>
+                {isCommentPending ? '送信中…' : '送信'}
+              </Button>
             </form>
             {commentError != null && (
               <p className="mt-2 font-mono text-2xs text-status-rejected">
@@ -285,8 +290,8 @@ export function AnnotationDetail({
                   >
                     {entry.actor_label}
                   </span>
-                  <span className="border border-border px-1 text-2xs uppercase text-muted-foreground-strong">
-                    {entry.op}
+                  <span className="uppercase">
+                    <Chip>{entry.op}</Chip>
                   </span>
                   {entry.summary != null && entry.summary !== '' && (
                     <span className="text-muted-foreground-strong">
