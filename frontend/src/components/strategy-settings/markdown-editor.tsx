@@ -1,4 +1,6 @@
 import { Button } from '@fohte/ui/button'
+import { Textarea } from '@fohte/ui/textarea'
+import type { CSSProperties } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
@@ -51,10 +53,16 @@ export function MarkdownEditor({
     onSave(value)
   }
 
+  const minHeightStyle: CSSProperties & {
+    '--markdown-editor-min-height': string
+  } = {
+    '--markdown-editor-min-height': `${String(minHeight)}px`,
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" style={minHeightStyle}>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 font-mono">
           <div className="flex items-center justify-between">
             <label
               htmlFor="markdown-source"
@@ -71,14 +79,13 @@ export function MarkdownEditor({
               </span>
             )}
           </div>
-          <textarea
+          <Textarea
             id="markdown-source"
             value={value}
             onChange={(e) => {
               setValue(e.target.value)
             }}
-            style={{ minHeight: `${String(minHeight)}px` }}
-            className="w-full resize-y border border-border bg-bg-secondary p-3 font-mono text-xs leading-relaxed text-foreground outline-none focus:border-muted-foreground"
+            className="min-h-(--markdown-editor-min-height)"
           />
         </div>
         <div className="space-y-1.5">
@@ -89,8 +96,7 @@ export function MarkdownEditor({
           </div>
           <div
             data-testid="markdown-preview"
-            style={{ minHeight: `${String(minHeight)}px` }}
-            className="overflow-auto border border-border bg-bg-secondary px-4 py-2"
+            className="min-h-(--markdown-editor-min-height) overflow-auto border border-border bg-bg-secondary px-4 py-2"
           >
             <MarkdownBody source={value} />
           </div>
@@ -105,7 +111,9 @@ export function MarkdownEditor({
           {isSaving ? '保存中…' : '保存'}
         </Button>
         {saveError != null && (
-          <span className="font-mono text-xs text-primary">{saveError}</span>
+          <span className="font-mono text-xs text-destructive">
+            {saveError}
+          </span>
         )}
       </div>
     </div>

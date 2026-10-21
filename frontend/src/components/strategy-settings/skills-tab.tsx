@@ -1,4 +1,6 @@
 import { Button } from '@fohte/ui/button'
+import { ButtonGroup } from '@fohte/ui/button-group'
+import { Chip } from '@fohte/ui/chip'
 import { Input } from '@fohte/ui/input'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
@@ -169,7 +171,7 @@ export function SkillsTab({ purpose }: SkillsTabProps) {
           {newNameError != null && (
             <p
               data-testid="new-skill-error"
-              className="font-mono text-2xs text-primary"
+              className="font-mono text-2xs text-destructive"
             >
               {newNameError}
             </p>
@@ -185,29 +187,34 @@ export function SkillsTab({ purpose }: SkillsTabProps) {
           {names.map((name) => (
             <li
               key={name}
-              className="flex items-center justify-between border-b border-border px-1 last:border-b-0"
+              className="border-b border-border px-1 py-1 font-mono text-xs last:border-b-0"
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setSelected(name)
-                  setSaveError(null)
-                }}
-                data-active={selected === name}
-                className="flex-1 truncate px-2 py-1.5 text-left font-mono text-xs hover:bg-surface-strong data-[active=true]:text-primary"
-              >
-                {name}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleDelete(name)
-                }}
-                aria-label={`skill "${name}" を削除`}
-                className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-primary"
-              >
-                削除
-              </button>
+              <ButtonGroup className="w-full">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setSelected(name)
+                    setSaveError(null)
+                  }}
+                  aria-pressed={selected === name}
+                  className="min-w-0 flex-1 justify-start"
+                >
+                  <span className="min-w-0 flex-1 truncate">{name}</span>
+                  {selected === name && <Chip tone="strong">選択中</Chip>}
+                </Button>
+                <Button
+                  type="button"
+                  variant="plain"
+                  onClick={() => {
+                    handleDelete(name)
+                  }}
+                  aria-label={`skill "${name}" を削除`}
+                  className="ml-2"
+                >
+                  削除
+                </Button>
+              </ButtonGroup>
             </li>
           ))}
         </ul>
