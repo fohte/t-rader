@@ -50,40 +50,21 @@ const treemapQueries: WidgetQueryDefinitions = {
   change: { metric: 'change', by: 'group' },
 }
 const tableQueries: WidgetQueryDefinitions = {
-  pbr: { metric: 'pbr', by: 'stock' },
-  close: { metric: 'close', by: 'stock' },
-  turnover: { metric: 'turnover', by: 'stock' },
-  per: { metric: 'per', by: 'stock' },
-  indicator_value: {
-    metric: 'indicator',
-    by: 'none',
-    indicator: 'demo-indicator',
-  },
+  metric_a: { metric: 'close', by: 'stock' },
+  metric_b: { metric: 'mkt_cap', by: 'stock' },
 }
 const tableResult: WidgetQueryResponse = {
   as_of: '2099-01-05',
   rows: [
     {
       key: 'stock:DEMO-A',
-      name: '架空銘柄 A',
-      values: {
-        close: 1240,
-        turnover: 2400000,
-        per: 12.5,
-        pbr: 1.3,
-        indicator_value: 4.2,
-      },
+      name: 'サンプル対象 A',
+      values: { metric_a: 1240, metric_b: 24 },
     },
     {
       key: 'stock:DEMO-B',
-      name: '架空銘柄 B',
-      values: {
-        close: null,
-        turnover: null,
-        per: 18.2,
-        pbr: null,
-        indicator_value: null,
-      },
+      name: 'サンプル対象 B',
+      values: { metric_a: null, metric_b: 18 },
     },
   ],
 }
@@ -136,22 +117,19 @@ export const Treemap: Story = {
 }
 
 export const Table: Story = {
-  name: '基準日とともに指定順の追加指標を比較する。',
+  name: '基準日とともに指定順のサンプル値を表示する。',
   args: {
     state: {
       kind: 'ready',
       queries: tableQueries,
       display: {
-        pbr: { label: 'PBR', format: 'number' },
-        close: { label: '終値', format: 'number' },
-        turnover: { label: '売買代金', format: 'number' },
-        per: { label: 'PER', format: 'number' },
-        indicator_value: { label: '指標', format: 'number' },
+        metric_a: { label: '指標 A', format: 'number' },
+        metric_b: { label: '指標 B', format: 'number' },
       },
       result: tableResult,
       viz: {
         type: 'table',
-        columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+        columns: ['metric_b', 'metric_a'],
       },
     },
   },
@@ -213,7 +191,7 @@ export const EmptyTable: Story = {
       kind: 'ready',
       queries: tableQueries,
       result: { as_of: '2099-01-05', rows: [] },
-      viz: { type: 'table', columns: ['pbr', 'close'] },
+      viz: { type: 'table', columns: ['metric_b', 'metric_a'] },
     },
   },
 }

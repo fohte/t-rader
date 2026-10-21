@@ -1,16 +1,12 @@
-import { WidgetTable, WidgetToplist, WidgetTreemap } from '#components/widgets'
+import { WidgetVisualizationView } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
+import type { SupportedWidgetVisualization } from '#lib/widget-definition'
 import type {
   WidgetDisplayDefinitions,
   WidgetQueryDefinitions,
 } from '#lib/widget-value-format'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
-type WidgetVisualization = Extract<
-  components['schemas']['WidgetVisualizationRequest'],
-  { type: 'treemap' | 'toplist' | 'table' }
->
-
 export type MarkdownBodyWidgetState =
   | { kind: 'loading'; asOf: string }
   | {
@@ -28,7 +24,7 @@ export type MarkdownBodyWidgetState =
       queries: WidgetQueryDefinitions
       display?: WidgetDisplayDefinitions
       result: WidgetQueryResponse
-      viz: WidgetVisualization
+      viz: SupportedWidgetVisualization
     }
 
 export function MarkdownBodyWidgetView({
@@ -78,22 +74,8 @@ export function MarkdownBodyWidgetView({
           >
             データを取得できませんでした: {state.message}
           </p>
-        ) : state.viz.type === 'treemap' ? (
-          <WidgetTreemap
-            queries={state.queries}
-            display={state.display}
-            result={state.result}
-            viz={state.viz}
-          />
-        ) : state.viz.type === 'toplist' ? (
-          <WidgetToplist
-            queries={state.queries}
-            display={state.display}
-            result={state.result}
-            viz={state.viz}
-          />
         ) : (
-          <WidgetTable
+          <WidgetVisualizationView
             queries={state.queries}
             display={state.display}
             result={state.result}

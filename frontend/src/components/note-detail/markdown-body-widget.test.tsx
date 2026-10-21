@@ -56,49 +56,18 @@ const DISPLAY_WIDGET_SOURCE = VALID_WIDGET_SOURCE.replace(
 const TABLE_WIDGET_SOURCE = [
   '\x60\x60\x60widget',
   'queries:',
-  '  pbr:',
-  '    metric: pbr',
-  '    by: stock',
-  '    universe:',
-  '      stocks: [DEMO-A]',
-  '  close:',
-  '    metric: close',
-  '    by: stock',
-  '    universe:',
-  '      stocks: [DEMO-A]',
-  '  turnover:',
-  '    metric: turnover',
-  '    by: stock',
-  '    universe:',
-  '      stocks: [DEMO-A]',
-  '  per:',
+  '  sample_metric:',
   '    metric: per',
   '    by: stock',
   '    universe:',
   '      stocks: [DEMO-A]',
-  '  indicator_value:',
-  '    metric: indicator',
-  '    by: none',
-  '    indicator: demo-indicator',
   'display:',
-  '  pbr:',
-  '    label: PBR',
-  '    format: number',
-  '  close:',
-  '    label: 終値',
-  '    format: number',
-  '  turnover:',
-  '    label: 売買代金',
-  '    format: number',
-  '  per:',
-  '    label: PER',
-  '    format: number',
-  '  indicator_value:',
-  '    label: 指標',
+  '  sample_metric:',
+  '    label: サンプル指標',
   '    format: number',
   'viz:',
   '  type: table',
-  '  columns: [pbr, close, turnover, per, indicator_value]',
+  '  columns: [sample_metric]',
   'time:',
   '  as_of: 2099-01-05',
   '\x60\x60\x60',
@@ -140,14 +109,8 @@ const TABLE_RESULT: WidgetQueryResponse = {
   rows: [
     {
       key: 'stock:DEMO-A',
-      name: '架空銘柄 A',
-      values: {
-        close: 1240,
-        turnover: 2400000,
-        per: 12.5,
-        pbr: 1.3,
-        indicator_value: 4.2,
-      },
+      name: 'サンプル対象 A',
+      values: { sample_metric: 12.4 },
     },
   ],
 }
@@ -244,7 +207,7 @@ describe('MarkdownBody widget blocks', () => {
     ])
   })
 
-  it('sends additional metrics and table columns to the widget query API', () => {
+  it('sends a table definition to the widget query API', () => {
     render(<MarkdownBody source={TABLE_WIDGET_SOURCE} />)
 
     expect(useApiQuery.mock.calls).toEqual([
@@ -254,42 +217,18 @@ describe('MarkdownBody widget blocks', () => {
         {
           body: {
             queries: {
-              pbr: {
-                metric: 'pbr',
-                by: 'stock',
-                universe: { stocks: ['DEMO-A'] },
-              },
-              close: {
-                metric: 'close',
-                by: 'stock',
-                universe: { stocks: ['DEMO-A'] },
-              },
-              turnover: {
-                metric: 'turnover',
-                by: 'stock',
-                universe: { stocks: ['DEMO-A'] },
-              },
-              per: {
+              sample_metric: {
                 metric: 'per',
                 by: 'stock',
                 universe: { stocks: ['DEMO-A'] },
               },
-              indicator_value: {
-                metric: 'indicator',
-                by: 'none',
-                indicator: 'demo-indicator',
-              },
             },
             display: {
-              pbr: { label: 'PBR', format: 'number' },
-              close: { label: '終値', format: 'number' },
-              turnover: { label: '売買代金', format: 'number' },
-              per: { label: 'PER', format: 'number' },
-              indicator_value: { label: '指標', format: 'number' },
+              sample_metric: { label: 'サンプル指標', format: 'number' },
             },
             viz: {
               type: 'table',
-              columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+              columns: ['sample_metric'],
             },
             time: { as_of: '2099-01-05' },
           },
@@ -344,7 +283,7 @@ describe('MarkdownBody widget blocks', () => {
     )
   })
 
-  it('renders a table widget with additional metric columns in note content', () => {
+  it('renders a table widget in note content', () => {
     useApiQuery.mockReturnValue({
       data: TABLE_RESULT,
       isPending: false,
@@ -357,8 +296,8 @@ describe('MarkdownBody widget blocks', () => {
 
     expect(readWidgetTableOutput(widget, table)).toEqual({
       asOf: '基準日 2099-01-05',
-      headers: ['対象', 'PBR', '終値', '売買代金', 'PER', '指標'],
-      rows: [['架空銘柄 A', '1.3', '1,240', '2,400,000', '12.5', '4.2']],
+      headers: ['対象', 'サンプル指標'],
+      rows: [['サンプル対象 A', '12.4']],
     })
   })
 

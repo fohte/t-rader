@@ -144,36 +144,26 @@ describe('useDashboardPageData', () => {
     ])
   })
 
-  it('table widget の追加指標と列順を API と表示 state に渡す', async () => {
+  it('table widget の列順と query 定義を API と表示 state に渡す', async () => {
     activeMiddleware = installWidgetQueryCapture()
     const tableConfig: DashboardConfig = {
-      title: '評価指標',
+      title: 'サンプル表',
       widgets: [
         {
-          title: '銘柄の比較',
+          title: '値の比較',
           width: 'full',
           definition: {
             queries: {
-              pbr: { metric: 'pbr', by: 'stock' },
-              close: { metric: 'close', by: 'stock' },
-              turnover: { metric: 'turnover', by: 'stock' },
-              per: { metric: 'per', by: 'stock' },
-              indicator_value: {
-                metric: 'indicator',
-                by: 'none',
-                indicator: 'demo-indicator',
-              },
+              metric_a: { metric: 'close', by: 'stock' },
+              metric_b: { metric: 'mkt_cap', by: 'stock' },
             },
             display: {
-              pbr: { label: 'PBR', format: 'number' },
-              close: { label: '終値', format: 'number' },
-              turnover: { label: '売買代金', format: 'number' },
-              per: { label: 'PER', format: 'number' },
-              indicator_value: { label: '指標', format: 'number' },
+              metric_a: { label: '指標 A', format: 'number' },
+              metric_b: { label: '指標 B', format: 'number' },
             },
             viz: {
               type: 'table',
-              columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+              columns: ['metric_b', 'metric_a'],
             },
           },
         },
@@ -191,26 +181,16 @@ describe('useDashboardPageData', () => {
     })
 
     const queries = {
-      pbr: { metric: 'pbr', by: 'stock' },
-      close: { metric: 'close', by: 'stock' },
-      turnover: { metric: 'turnover', by: 'stock' },
-      per: { metric: 'per', by: 'stock' },
-      indicator_value: {
-        metric: 'indicator',
-        by: 'none',
-        indicator: 'demo-indicator',
-      },
+      metric_a: { metric: 'close', by: 'stock' },
+      metric_b: { metric: 'mkt_cap', by: 'stock' },
     }
     const display = {
-      pbr: { label: 'PBR', format: 'number' },
-      close: { label: '終値', format: 'number' },
-      turnover: { label: '売買代金', format: 'number' },
-      per: { label: 'PER', format: 'number' },
-      indicator_value: { label: '指標', format: 'number' },
+      metric_a: { label: '指標 A', format: 'number' },
+      metric_b: { label: '指標 B', format: 'number' },
     }
     const viz = {
       type: 'table',
-      columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+      columns: ['metric_b', 'metric_a'],
     }
     expect(
       readTableQueryOutput(

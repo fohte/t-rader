@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router'
 
 import type { DashboardConfigIssue } from '#components/dashboard-pages/dashboard-config'
-import { WidgetTable, WidgetToplist, WidgetTreemap } from '#components/widgets'
+import { WidgetVisualizationView } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
+import type { SupportedWidgetVisualization } from '#lib/widget-definition'
 import type {
   WidgetDisplayDefinitions,
   WidgetQueryDefinitions,
@@ -17,10 +18,7 @@ export type DashboardWidgetPageState = {
   definition: {
     queries: WidgetQueryDefinitions
     display?: WidgetDisplayDefinitions
-    viz: Extract<
-      components['schemas']['WidgetVisualizationRequest'],
-      { type: 'treemap' | 'toplist' | 'table' }
-    >
+    viz: SupportedWidgetVisualization
   }
   isPending: boolean
   errorMessage: string | null
@@ -126,22 +124,8 @@ function WidgetCard({ widget }: { widget: DashboardWidgetPageState }) {
         >
           ウィジェットのデータを取得できませんでした。
         </p>
-      ) : widget.definition.viz.type === 'treemap' ? (
-        <WidgetTreemap
-          queries={widget.definition.queries}
-          display={widget.definition.display}
-          result={widget.result}
-          viz={widget.definition.viz}
-        />
-      ) : widget.definition.viz.type === 'toplist' ? (
-        <WidgetToplist
-          queries={widget.definition.queries}
-          display={widget.definition.display}
-          result={widget.result}
-          viz={widget.definition.viz}
-        />
       ) : (
-        <WidgetTable
+        <WidgetVisualizationView
           queries={widget.definition.queries}
           display={widget.definition.display}
           result={widget.result}

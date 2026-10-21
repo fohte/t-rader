@@ -13,20 +13,16 @@ type WidgetTableDefinition = Extract<
 >
 
 const queries: WidgetQueryDefinitions = {
-  close: { metric: 'close', by: 'stock' },
+  value: { metric: 'close', by: 'stock' },
   change: { metric: 'change', period: '1d', by: 'stock' },
-  per: { metric: 'per', by: 'stock' },
-  pbr: { metric: 'pbr', by: 'stock' },
 }
 const display = {
-  close: { label: '終値', format: 'number' },
-  change: { label: '騰落率' },
-  per: { label: 'PER', format: 'number' },
-  pbr: { label: 'PBR', format: 'number' },
+  value: { label: '指標値', format: 'number' },
+  change: { label: '変化率' },
 } satisfies components['schemas']['WidgetQueryRequest']['display']
 const viz: WidgetTableDefinition = {
   type: 'table',
-  columns: ['close', 'change', 'per', 'pbr'],
+  columns: ['change', 'value'],
 }
 
 function readTableOutput() {
@@ -74,6 +70,17 @@ function renderTable(
   )
 }
 
+function createTableRows(prefix: string, count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const number = String(index + 1).padStart(2, '0')
+    return {
+      key: `stock:DEMO-${number}`,
+      name: `${prefix} ${number}`,
+      values: { value: index + 1 },
+    }
+  })
+}
+
 function readEmptyTableOutput() {
   return {
     message: screen.getByRole('status').textContent,
@@ -90,22 +97,22 @@ describe('WidgetTable', () => {
       rows: [
         {
           key: 'stock:DEMO-A',
-          name: '架空銘柄 A',
-          values: { pbr: 1.234, per: 12.345, change: 0.0125, close: 1234.56 },
+          name: 'サンプル対象 A',
+          values: { value: 1234.56, change: 0.0125 },
         },
         {
           key: 'stock:DEMO-B',
-          name: '架空銘柄 B',
-          values: { change: -0.005, per: 0, pbr: null },
+          name: 'サンプル対象 B',
+          values: { change: -0.005, value: null },
         },
       ],
     })
 
     expect(readTableOutput()).toEqual({
-      headers: ['対象', '終値', '騰落率', 'PER', 'PBR'],
+      headers: ['対象', '変化率', '指標値'],
       rows: [
-        ['架空銘柄 A', '1,234.56', '+1.25%', '12.35', '1.23'],
-        ['架空銘柄 B', '—', '-0.50%', '0', '—'],
+        ['サンプル対象 A', '+1.25%', '1,234.56'],
+        ['サンプル対象 B', '-0.50%', '—'],
       ],
       page: null,
       previousDisabled: null,
@@ -115,27 +122,57 @@ describe('WidgetTable', () => {
 
   it('行数が多いときにページ分割し、次ページの残り行を表示する', async () => {
     const user = userEvent.setup()
-    const rows = Array.from({ length: 21 }, (_, index) => {
-      const number = String(index + 1).padStart(2, '0')
-      return {
-        key: 'stock:SAMPLE-' + number,
-        name: '架空銘柄 ' + number,
-        values: { close: index + 1 },
-      }
-    })
+    const rows = createTableRows('サンプル', 21)
 
     renderTable(
       { as_of: '2099-01-05', rows },
-      { type: 'table', columns: ['close'] },
+      { type: 'table', columns: ['value'] },
     )
     await user.click(screen.getByRole('button', { name: '次のページ' }))
 
     expect(readTableOutput()).toEqual({
-      headers: ['対象', '終値'],
-      rows: [['架空銘柄 21', '21']],
+      headers: ['対象', '指標値'],
+      rows: [['サンプル 21', '21']],
       page: '2 / 2',
       previousDisabled: false,
       nextDisabled: true,
+    })
+  })
+
+  it('結果が更新されたときに先頭ページへ戻る', async () => {
+    const user = userEvent.setup()
+    const firstResult = {
+      as_of: '2099-01-05',
+      rows: createTableRows('旧結果', 21),
+    }
+    const nextResult = {
+      as_of: '2099-01-06',
+      rows: createTableRows('新結果', 21),
+    }
+    const { rerender } = renderTable(firstResult, {
+      type: 'table',
+      columns: ['value'],
+    })
+
+    await user.click(screen.getByRole('button', { name: '次のページ' }))
+    rerender(
+      <WidgetTable
+        display={display}
+        queries={queries}
+        result={nextResult}
+        viz={{ type: 'table', columns: ['value'] }}
+      />,
+    )
+
+    expect(readTableOutput()).toEqual({
+      headers: ['対象', '指標値'],
+      rows: Array.from({ length: 20 }, (_, index) => [
+        `新結果 ${String(index + 1).padStart(2, '0')}`,
+        String(index + 1),
+      ]),
+      page: '1 / 2',
+      previousDisabled: true,
+      nextDisabled: false,
     })
   })
 

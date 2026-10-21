@@ -114,19 +114,19 @@ describe('DashboardPageView', () => {
       onAsOfChange: () => undefined,
       widgets: [
         {
-          key: 'valuation-table',
-          title: '評価指標',
+          key: 'sample-table',
+          title: 'サンプル表',
           width: 'full',
           definition: {
             queries: {
-              close: { metric: 'close', by: 'stock' },
-              pbr: { metric: 'pbr', by: 'stock' },
+              metric_a: { metric: 'close', by: 'stock' },
+              metric_b: { metric: 'mkt_cap', by: 'stock' },
             },
             display: {
-              close: { label: '終値', format: 'number' },
-              pbr: { label: 'PBR', format: 'number' },
+              metric_a: { label: '指標 A', format: 'number' },
+              metric_b: { label: '指標 B', format: 'number' },
             },
-            viz: { type: 'table', columns: ['pbr', 'close'] },
+            viz: { type: 'table', columns: ['metric_b', 'metric_a'] },
           },
           isPending: false,
           errorMessage: null,
@@ -135,13 +135,13 @@ describe('DashboardPageView', () => {
             rows: [
               {
                 key: 'stock:DEMO-A',
-                name: '架空銘柄 A',
-                values: { close: 1250, pbr: 1.25 },
+                name: 'サンプル対象 A',
+                values: { metric_a: 1250, metric_b: 1.25 },
               },
               {
                 key: 'stock:DEMO-B',
-                name: '架空銘柄 B',
-                values: { pbr: null },
+                name: 'サンプル対象 B',
+                values: { metric_b: null },
               },
             ],
           },
@@ -152,10 +152,10 @@ describe('DashboardPageView', () => {
     const table = screen.getByRole('table', { name: 'ウィジェットの表' })
 
     expect(readTableOutput(table)).toEqual({
-      headers: ['対象', 'PBR', '終値'],
+      headers: ['対象', '指標 B', '指標 A'],
       rows: [
-        ['架空銘柄 A', '1.25', '1,250'],
-        ['架空銘柄 B', '—', '—'],
+        ['サンプル対象 A', '1.25', '1,250'],
+        ['サンプル対象 B', '—', '—'],
       ],
     })
   })
