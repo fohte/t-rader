@@ -1,7 +1,12 @@
 import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { type MouseEvent, type SyntheticEvent, useState } from 'react'
+import {
+  type ComponentProps,
+  type MouseEvent,
+  type SyntheticEvent,
+  useState,
+} from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
@@ -11,6 +16,7 @@ import { createStoryRouter } from '#storybook/story-router'
 import { getExecutionOriginLinks } from '#test/execution-origin-links.test-helper'
 
 type Annotation = components['schemas']['Annotation']
+type AnnotationDetailProps = ComponentProps<typeof AnnotationDetail>
 
 const annotation: Annotation = {
   id: 'sample-annotation-01',
@@ -35,14 +41,6 @@ const executionOrigin: ExecutionOrigin = {
 }
 
 afterEach(cleanup)
-
-function getActionOutput(
-  approvals: Array<string | null>,
-  rejections: Array<string | null>,
-  comments: boolean[],
-) {
-  return { approvals, rejections, comments }
-}
 
 function StatefulAnnotationDetail({
   onRejectionReasonChange,
@@ -89,36 +87,40 @@ function StatefulAnnotationDetail({
 function renderAnnotationDetail(
   currentAnnotation: Annotation,
   executionOrigin: ExecutionOrigin | null,
+  overrides: Partial<AnnotationDetailProps> = {},
 ) {
   const router = createStoryRouter(
     () => (
       <AnnotationDetail
-        annotation={currentAnnotation}
-        isPending={false}
-        reviewNavigationState={{
-          navigation: null,
+        {...({
+          annotation: currentAnnotation,
           isPending: false,
-          isError: false,
-        }}
-        comments={[]}
-        history={[]}
-        executionOrigin={executionOrigin}
-        stockName={null}
-        commentDraft=""
-        rejectionReason=""
-        isApprovalPending={false}
-        isRejectionPending={false}
-        isCommentPending={false}
-        approvalError={null}
-        rejectionError={null}
-        commentError={null}
-        onApprove={() => {}}
-        onReject={() => {}}
-        onRejectionReasonChange={() => {}}
-        onAddComment={(event) => {
-          event.preventDefault()
-        }}
-        onCommentDraftChange={() => {}}
+          reviewNavigationState: {
+            navigation: null,
+            isPending: false,
+            isError: false,
+          },
+          comments: [],
+          history: [],
+          executionOrigin,
+          stockName: null,
+          commentDraft: '',
+          rejectionReason: '',
+          isApprovalPending: false,
+          isRejectionPending: false,
+          isCommentPending: false,
+          approvalError: null,
+          rejectionError: null,
+          commentError: null,
+          onApprove: () => {},
+          onReject: () => {},
+          onRejectionReasonChange: () => {},
+          onAddComment: (event) => {
+            event.preventDefault()
+          },
+          onCommentDraftChange: () => {},
+          ...overrides,
+        } satisfies AnnotationDetailProps)}
       />
     ),
     {
@@ -163,64 +165,45 @@ describe('AnnotationDetail', () => {
     expect(onRejectionReasonChange.mock.calls).toEqual([['abc']])
   })
 
-  it('sends approval, rejection, and comment actions through their callbacks', async () => {
+  it('sends the approval action through its callback', async () => {
     const user = userEvent.setup()
     const onApprove = vi.fn<(event?: MouseEvent<HTMLButtonElement>) => void>()
+    renderAnnotationDetail(annotation, null, { onApprove })
+
+    await user.click(await screen.findByRole('button', { name: '✓ 承認' }))
+
+    expect(onApprove.mock.calls.map(([event]) => event?.type ?? null)).toEqual([
+      'click',
+    ])
+  })
+
+  it('sends the rejection action through its callback', async () => {
+    const user = userEvent.setup()
     const onReject = vi.fn<(event?: MouseEvent<HTMLButtonElement>) => void>()
+    renderAnnotationDetail(annotation, null, { onReject })
+
+    await user.click(await screen.findByRole('button', { name: '✕ 却下' }))
+
+    expect(onReject.mock.calls.map(([event]) => event?.type ?? null)).toEqual([
+      'click',
+    ])
+  })
+
+  it('prevents submission when sending a comment', async () => {
+    const user = userEvent.setup()
     const onAddComment = vi.fn((event: SyntheticEvent<HTMLFormElement>) => {
       event.preventDefault()
     })
-    const router = createStoryRouter(
-      () => (
-        <AnnotationDetail
-          annotation={annotation}
-          isPending={false}
-          reviewNavigationState={{
-            navigation: null,
-            isPending: false,
-            isError: false,
-          }}
-          comments={[]}
-          history={[]}
-          executionOrigin={null}
-          stockName={null}
-          commentDraft="架空のコメント"
-          rejectionReason=""
-          isApprovalPending={false}
-          isRejectionPending={false}
-          isCommentPending={false}
-          approvalError={null}
-          rejectionError={null}
-          commentError={null}
-          onApprove={onApprove}
-          onReject={onReject}
-          onRejectionReasonChange={() => {}}
-          onAddComment={onAddComment}
-          onCommentDraftChange={() => {}}
-        />
-      ),
-      {
-        paths: ['/annotations/$annoId', '/notes', '/stocks/$stockId'],
-        initialPath: '/annotations/sample-annotation-01',
-      },
-    )
-    render(<RouterProvider router={router} />)
+    renderAnnotationDetail(annotation, null, {
+      commentDraft: '架空のコメント',
+      onAddComment,
+    })
 
-    await user.click(await screen.findByRole('button', { name: '✓ 承認' }))
-    await user.click(screen.getByRole('button', { name: '✕ 却下' }))
-    await user.click(screen.getByRole('button', { name: '送信' }))
+    await user.click(await screen.findByRole('button', { name: '送信' }))
 
     expect(
-      getActionOutput(
-        onApprove.mock.calls.map(([event]) => event?.type ?? null),
-        onReject.mock.calls.map(([event]) => event?.type ?? null),
-        onAddComment.mock.calls.map(([event]) => event.defaultPrevented),
-      ),
-    ).toEqual({
-      approvals: ['click'],
-      rejections: ['click'],
-      comments: [true],
-    })
+      onAddComment.mock.calls.map(([event]) => event.defaultPrevented),
+    ).toEqual([true])
   })
 
   it('shows the strategy and run that generated the annotation', async () => {

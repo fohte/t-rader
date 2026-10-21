@@ -1,6 +1,6 @@
 import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import type { MouseEvent } from 'react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -70,32 +70,21 @@ function getKindPresentation(kindOption: HTMLElement) {
   }
 }
 
-function getReviewActionOutput(
-  typeFilters: readonly unknown[][],
-  itemToggles: readonly unknown[][],
-  approvals: Array<string | null>,
-) {
-  return { typeFilters, itemToggles, approvals }
+function renderReviewPage(overrides: Partial<ReviewPageViewProps> = {}) {
+  const router = createStoryRouter(
+    () => <ReviewPageView {...props} {...overrides} />,
+    { paths: ['/notes/$noteId', '/annotations/$annoId'] },
+  )
+  render(<RouterProvider router={router} />)
 }
 
 describe('ReviewPageView', () => {
   it('shows the display name for the selected note kind', async () => {
-    const router = createStoryRouter(
-      () => (
-        <ReviewPageView
-          {...props}
-          typeFilter="note"
-          noteKindFilter={reviewQueueModel.noteKindFilterKey(
-            'fabricated-kind-key',
-          )}
-          noteKindFilterOpen
-        />
-      ),
-      {
-        paths: ['/notes/$noteId', '/annotations/$annoId'],
-      },
-    )
-    render(<RouterProvider router={router} />)
+    renderReviewPage({
+      typeFilter: 'note',
+      noteKindFilter: reviewQueueModel.noteKindFilterKey('fabricated-kind-key'),
+      noteKindFilterOpen: true,
+    })
     const kindOption = await screen.findByRole('option', {
       name: '架空の種別表示名',
     })
@@ -111,48 +100,90 @@ describe('ReviewPageView', () => {
     })
   }, 15_000)
 
-  it('sends filter, item selection, and approval actions through callbacks', async () => {
-    const onTypeFilterChange = vi.fn()
-    const onToggleItem = vi.fn()
-    const onApproveSelected =
-      vi.fn<(event?: MouseEvent<HTMLButtonElement>) => void>()
-    const router = createStoryRouter(
-      () => (
-        <ReviewPageView
-          {...props}
-          selectedItemIds={['note:fake-version-a']}
-          onTypeFilterChange={onTypeFilterChange}
-          onToggleItem={onToggleItem}
-          onApproveSelected={onApproveSelected}
-        />
-      ),
-      { paths: ['/notes/$noteId', '/annotations/$annoId'] },
+  it('passes the selected note kind to its filter callback', async () => {
+    const user = userEvent.setup()
+    const onNoteKindFilterChange = vi.fn()
+    renderReviewPage({
+      typeFilter: 'note',
+      noteKindFilterOpen: true,
+      onNoteKindFilterChange,
+    })
+
+    await user.click(
+      await screen.findByRole('option', { name: '架空の種別表示名' }),
     )
-    render(<RouterProvider router={router} />)
+
+    expect(onNoteKindFilterChange.mock.calls).toEqual([
+      [reviewQueueModel.noteKindFilterKey('fabricated-kind-key')],
+    ])
+  })
+
+  it('passes the selected item type to its filter callback', async () => {
+    const onTypeFilterChange = vi.fn()
+    renderReviewPage({ onTypeFilterChange })
 
     fireEvent.click(await screen.findByRole('button', { name: 'ノート 1' }))
+
+    expect(onTypeFilterChange.mock.calls).toEqual([['note']])
+  })
+
+  it('passes the selected item key and checked state to its callback', async () => {
+    const onToggleItem = vi.fn()
+    renderReviewPage({ onToggleItem })
+
     fireEvent.click(
       await screen.findByRole('checkbox', {
         name: 'レビュー項目を選択: 架空の確認メモ',
       }),
     )
+
+    expect(onToggleItem.mock.calls).toEqual([['note:fake-version-a', true]])
+  })
+
+  it('passes all visible item keys when selecting every item', async () => {
+    const user = userEvent.setup()
+    const onToggleVisibleItems = vi.fn()
+    renderReviewPage({
+      data: {
+        counts: { notes: 2, annotations: 0, total: 2 },
+        items: [
+          ...(props.data?.items ?? []),
+          {
+            kind: 'note',
+            id: 'fake-version-b',
+            noteId: 'fake-note-b',
+            versionNo: 1,
+            title: '別の架空メモ',
+            createdAt: '2026-01-11T02:00:00Z',
+            noteKind: 'fabricated-kind-key',
+            createdByKind: 'llm',
+            unreadVersionCount: 1,
+          },
+        ],
+      },
+      onToggleVisibleItems,
+    })
+
+    await user.click(await screen.findByLabelText('表示中の項目をすべて選択'))
+
+    expect(onToggleVisibleItems.mock.calls).toEqual([
+      [['note:fake-version-a', 'note:fake-version-b'], true],
+    ])
+  })
+
+  it('sends the approval action through its callback', async () => {
+    const onApproveSelected = vi.fn()
+    renderReviewPage({
+      selectedItemIds: ['note:fake-version-a'],
+      onApproveSelected,
+    })
+
     const [approvalButton] = await screen.findAllByRole('button', {
       name: '選択した 1 件を承認',
     })
-    if (approvalButton === undefined)
-      throw new Error('approval button is missing')
+    if (approvalButton == null) throw new Error('approval button is missing')
     fireEvent.click(approvalButton)
 
-    expect(
-      getReviewActionOutput(
-        onTypeFilterChange.mock.calls,
-        onToggleItem.mock.calls,
-        onApproveSelected.mock.calls.map(([event]) => event?.type ?? null),
-      ),
-    ).toEqual({
-      typeFilters: [['note']],
-      itemToggles: [['note:fake-version-a', false]],
-      approvals: ['click'],
-    })
+    expect(onApproveSelected.mock.calls.length).toEqual(1)
   })
 })
