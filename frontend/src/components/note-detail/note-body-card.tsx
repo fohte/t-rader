@@ -7,6 +7,7 @@ interface NoteBodyCardProps {
 }
 
 export function NoteBodyCard({ children }: NoteBodyCardProps) {
+  // Markdown のガター位置とカード内側を揃える。
   return (
     <article className="space-y-4 border border-border bg-card py-5 pr-5 pl-9 text-foreground">
       {children}
