@@ -356,9 +356,8 @@ impl StrategyExecutionUseCases {
 }
 
 fn validate_schema(schema: &JsonValue) -> Result<(), StrategyExecutionUseCaseError> {
-    jsonschema::validator_for(schema)
-        .map(|_| ())
-        .map_err(|error| StrategyExecutionUseCaseError::InvalidPayloadSchema(error.to_string()))
+    crate::json_schema::validate_definition(schema)
+        .map_err(StrategyExecutionUseCaseError::InvalidPayloadSchema)
 }
 
 fn split_array_chunks(

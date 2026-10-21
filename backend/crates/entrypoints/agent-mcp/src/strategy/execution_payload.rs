@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use core_application::{
-    kata_exec::ExecRequest,
+    custom_indicator::CustomIndicator,
+    kata_exec::{ExecRequest, ExecResult},
     strategy_execution::{
         MAX_PAYLOAD_PAGE_ITEMS, PayloadDefinition, PayloadKind, ReadPayloadQuery,
         StrategyExecutionUseCaseError,
@@ -33,26 +34,7 @@ impl StrategyServer {
         params: ExecuteOperationParams,
     ) -> Result<ExecuteOperationResult, McpError> {
         let name = params.name.trim();
-        if name.is_empty() {
-            return Err(invalid_params("name must not be empty"));
-        }
-        if params.numeric_pointers.is_empty()
-            || params.numeric_pointers.len() > MAX_PAYLOAD_PAGE_ITEMS
-            || params
-                .numeric_pointers
-                .keys()
-                .any(|key| key.trim().is_empty())
-        {
-            return Err(invalid_params(
-                "numeric_pointers must contain bounded non-empty names",
-            ));
-        }
-        check_exec_upper_bound("timeout_secs", params.timeout_secs, EXEC_MAX_TIMEOUT_SECS)?;
-        check_exec_upper_bound(
-            "max_output_bytes",
-            params.max_output_bytes,
-            EXEC_MAX_OUTPUT_BYTES,
-        )?;
+        validate_execute_operation_params(name, &params)?;
 
         let access = self
             .dependencies
@@ -78,93 +60,47 @@ impl StrategyServer {
             },
         )?;
 
-        let executor = self.kata_executor()?;
         let args = params.args.clone();
-        let input = json!({ "args": args });
-        let stdin = serde_json::to_string(&input)
-            .map_err(|_| internal_error("failed to serialize operation input"))?;
-        if stdin.len() > EXEC_MAX_STDIN_BYTES {
-            return Err(invalid_params(format!(
-                "args exceed {EXEC_MAX_STDIN_BYTES} bytes when serialized as JSON"
-            )));
-        }
-
-        let input_schema = json!({
-            "type": "object",
-            "properties": {"args": indicator.input_schema.clone()},
-            "required": ["args"],
-            "additionalProperties": false,
-        });
         let definition_key = format!("custom_indicator:{name}");
         let definition_digest = resolved.digest;
+        let input = json!({ "args": args.clone() });
+        let stdin = serialize_operation_input(&input)?;
         let input_payload = self
             .dependencies
             .strategy_executions
             .write_payload(
                 &access,
-                PayloadDefinition {
-                    kind: PayloadKind::Input,
-                    source: format!("custom_indicator:{name}"),
-                    source_revision: Some(definition_digest.clone()),
-                    source_locator: Some(json!({ "definition_key": definition_key })),
-                    source_metadata: json!({ "definition_digest": definition_digest }),
-                    schema: input_schema,
-                },
+                operation_payload_definition(
+                    &definition_key,
+                    &definition_digest,
+                    PayloadKind::Input,
+                    input_schema(&indicator.input_schema),
+                ),
                 input,
             )
             .await
             .map_err(strategy_execution_error)?;
 
-        let max_output_bytes = params.max_output_bytes.unwrap_or(EXEC_MAX_OUTPUT_BYTES);
-        let result = executor
-            .run(ExecRequest {
-                code: indicator.code.clone(),
-                stdin: Some(stdin),
-                timeout: params
-                    .timeout_secs
-                    .map(|seconds| Duration::from_secs(seconds.into())),
-                max_output_bytes: Some(max_output_bytes as usize),
-            })
-            .await
-            .map_err(|error| kata_exec_error(error, scope.id(), &indicator))?;
-
+        let result = self
+            .run_saved_operation(scope, &indicator, &stdin, &params)
+            .await?;
         let output = if result.exit_code == 0 {
             Some(parse_and_validate_output(&result.stdout, &indicator)?)
         } else {
             None
         };
-        let output_value = json!({
-            "exit_code": result.exit_code,
-            "stdout": result.stdout.clone(),
-            "stderr": result.stderr.clone(),
-            "value": output.clone(),
-        });
-        let output_schema = json!({
-            "type": "object",
-            "properties": {
-                "exit_code": {"type": "integer"},
-                "stdout": {"type": "string"},
-                "stderr": {"type": "string"},
-                "value": {"anyOf": [indicator.output_schema.clone(), {"type": "null"}]},
-            },
-            "required": ["exit_code", "stdout", "stderr", "value"],
-            "additionalProperties": false,
-        });
+        let output_value = operation_output_value(&result, output.as_ref());
         let output_payload = self
             .dependencies
             .strategy_executions
             .write_payload(
                 &access,
-                PayloadDefinition {
-                    kind: PayloadKind::Output,
-                    source: format!("custom_indicator:{name}"),
-                    source_revision: Some(definition_digest.clone()),
-                    source_locator: Some(json!({
-                        "definition_key": format!("custom_indicator:{name}")
-                    })),
-                    source_metadata: json!({ "definition_digest": definition_digest }),
-                    schema: output_schema,
-                },
+                operation_payload_definition(
+                    &definition_key,
+                    &definition_digest,
+                    PayloadKind::Output,
+                    output_schema(&indicator.output_schema),
+                ),
                 output_value.clone(),
             )
             .await
@@ -195,6 +131,27 @@ impl StrategyServer {
             exit_code: result.exit_code,
             stderr: result.stderr,
         })
+    }
+
+    async fn run_saved_operation(
+        &self,
+        scope: StrategyScope,
+        indicator: &CustomIndicator,
+        stdin: &str,
+        params: &ExecuteOperationParams,
+    ) -> Result<ExecResult, McpError> {
+        let max_output_bytes = params.max_output_bytes.unwrap_or(EXEC_MAX_OUTPUT_BYTES);
+        self.kata_executor()?
+            .run(ExecRequest {
+                code: indicator.code.clone(),
+                stdin: Some(stdin.to_string()),
+                timeout: params
+                    .timeout_secs
+                    .map(|seconds| Duration::from_secs(seconds.into())),
+                max_output_bytes: Some(max_output_bytes as usize),
+            })
+            .await
+            .map_err(|error| kata_exec_error(error, scope.id(), indicator))
     }
 
     pub(crate) async fn read_execution_payload_inner(
@@ -234,6 +191,94 @@ impl StrategyServer {
             digest: page.digest,
         })
     }
+}
+
+fn validate_execute_operation_params(
+    name: &str,
+    params: &ExecuteOperationParams,
+) -> Result<(), McpError> {
+    if name.is_empty() {
+        return Err(invalid_params("name must not be empty"));
+    }
+    if params.numeric_pointers.is_empty()
+        || params.numeric_pointers.len() > MAX_PAYLOAD_PAGE_ITEMS
+        || params
+            .numeric_pointers
+            .keys()
+            .any(|key| key.trim().is_empty())
+    {
+        return Err(invalid_params(
+            "numeric_pointers must contain bounded non-empty names",
+        ));
+    }
+    check_exec_upper_bound("timeout_secs", params.timeout_secs, EXEC_MAX_TIMEOUT_SECS)?;
+    check_exec_upper_bound(
+        "max_output_bytes",
+        params.max_output_bytes,
+        EXEC_MAX_OUTPUT_BYTES,
+    )
+}
+
+fn serialize_operation_input(input: &serde_json::Value) -> Result<String, McpError> {
+    let stdin = serde_json::to_string(input)
+        .map_err(|_| internal_error("failed to serialize operation input"))?;
+    if stdin.len() > EXEC_MAX_STDIN_BYTES {
+        return Err(invalid_params(format!(
+            "args exceed {EXEC_MAX_STDIN_BYTES} bytes when serialized as JSON"
+        )));
+    }
+    Ok(stdin)
+}
+
+fn operation_payload_definition(
+    definition_key: &str,
+    digest: &str,
+    kind: PayloadKind,
+    schema: serde_json::Value,
+) -> PayloadDefinition {
+    PayloadDefinition {
+        kind,
+        source: definition_key.to_string(),
+        source_revision: Some(digest.to_string()),
+        source_locator: Some(json!({ "definition_key": definition_key })),
+        source_metadata: json!({ "definition_digest": digest }),
+        schema,
+    }
+}
+
+fn input_schema(argument_schema: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "type": "object",
+        "properties": {"args": argument_schema},
+        "required": ["args"],
+        "additionalProperties": false,
+    })
+}
+
+fn output_schema(value_schema: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "exit_code": {"type": "integer"},
+            "stdout": {"type": "string"},
+            "stderr": {"type": "string"},
+            "value": {"anyOf": [value_schema, {"type": "null"}]},
+        },
+        "required": ["exit_code", "stdout", "stderr", "value"],
+        "additionalProperties": false,
+    })
+}
+
+fn operation_output_value(
+    result: &ExecResult,
+    value: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    json!({
+        "exit_code": result.exit_code,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "value": value,
+    })
 }
 
 impl From<core_application::strategy_execution::PayloadRef> for ExecutionPayloadRefDto {

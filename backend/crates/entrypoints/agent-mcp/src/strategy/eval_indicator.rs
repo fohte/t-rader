@@ -147,16 +147,14 @@ pub(super) fn validate_with_schema(
     schema: &JsonValue,
     instance: &JsonValue,
 ) -> Result<(), SchemaCheckError> {
-    let validator = jsonschema::validator_for(schema)
-        .map_err(|e| SchemaCheckError::BrokenSchema(e.to_string()))?;
-    let errors: Vec<String> = validator
-        .iter_errors(instance)
-        .map(|e| format!("{} at {}", e, e.instance_path()))
-        .collect();
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(SchemaCheckError::Mismatch(errors.join("; ")))
+    match core_application::json_schema::validate_instance(schema, instance) {
+        Ok(()) => Ok(()),
+        Err(core_application::json_schema::JsonSchemaError::InvalidSchema(message)) => {
+            Err(SchemaCheckError::BrokenSchema(message))
+        }
+        Err(core_application::json_schema::JsonSchemaError::Mismatch(message)) => {
+            Err(SchemaCheckError::Mismatch(message))
+        }
     }
 }
 

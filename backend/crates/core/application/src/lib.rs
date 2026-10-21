@@ -26,6 +26,7 @@ pub mod indicator_observation_batch_source;
 pub mod indicator_observation_source;
 pub mod ingest_run_log;
 pub mod ingest_status;
+pub mod json_schema;
 pub mod kata_exec;
 pub mod llm_client;
 pub mod margin;

@@ -25,6 +25,13 @@ use uuid::Uuid;
 use super::tests_common;
 
 const DATASET_REVISION: &str = "sample-revision-a";
+const DATASET_DIGEST: &str = "b52cddda5a045faaee6394056f35404ef21a3b843edfbe739fc30fd52933c8ca";
+const OPERATION_INPUT_DIGEST: &str =
+    "e9551a737fab4cb4e4ad3eefdf6a95ab79ad7c934046f46f145bdaad56720d9b";
+const OPERATION_OUTPUT_DIGEST: &str =
+    "02e3edf64da0a6e80a2df605decdb64605cd8a66b71be923c8148c945955b615";
+const OPERATION_FAILURE_DIGEST: &str =
+    "6ee28d7049e92a25b270e9f8d805a635d27e957420d6bb1c4f6270a10515d804";
 
 #[derive(Clone, Copy)]
 enum ProviderMode {
@@ -112,13 +119,11 @@ async fn create_running_task(
 fn normalize_payload_ref(mut payload: PayloadRef) -> PayloadRef {
     payload.id = Uuid::nil();
     payload.task_id = Uuid::nil();
-    payload.digest = "<digest>".into();
     payload
 }
 
 fn normalize_page(mut page: PayloadPage) -> PayloadPage {
     page.payload_id = Uuid::nil();
-    page.digest = "<digest>".into();
     page
 }
 
@@ -250,7 +255,7 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
                 id: Uuid::nil(),
                 task_id: Uuid::nil(),
                 kind: PayloadKind::Input,
-                digest: "<digest>".into(),
+                digest: DATASET_DIGEST.into(),
                 item_count: 3,
                 byte_count: 40,
                 source_revision: Some(DATASET_REVISION.into()),
@@ -264,7 +269,7 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
                 cursor: 0,
                 next_cursor: Some(2),
                 total_count: 3,
-                digest: "<digest>".into(),
+                digest: DATASET_DIGEST.into(),
             },
             PayloadPage {
                 payload_id: Uuid::nil(),
@@ -273,7 +278,7 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
                 cursor: 0,
                 next_cursor: Some(2),
                 total_count: 3,
-                digest: "<digest>".into(),
+                digest: DATASET_DIGEST.into(),
             },
             PayloadPage {
                 payload_id: Uuid::nil(),
@@ -282,7 +287,7 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
                 cursor: 2,
                 next_cursor: None,
                 total_count: 3,
-                digest: "<digest>".into(),
+                digest: DATASET_DIGEST.into(),
             },
         ),
     );
@@ -447,13 +452,53 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
         .invoke::<_, Value>(
             "execute_operation",
             strategy_id,
-            params,
+            params.clone(),
             Some(execution_id.clone()),
             None,
         )
         .await
         .expect("reuse task definition snapshot")
         .into_value();
+    executor
+        .set_response(Ok(ExecResult {
+            stdout: "synthetic output".into(),
+            stderr: "synthetic failure".into(),
+            exit_code: 17,
+        }))
+        .await;
+    let failure: Value = server
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            params,
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("persist nonzero operation result")
+        .into_value();
+    let failure_payload_id = Uuid::parse_str(
+        failure["output_payload"]["id"]
+            .as_str()
+            .expect("failed output payload ID"),
+    )
+    .expect("valid failed output payload ID");
+    let failure_page: Value = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({"payload_id": failure_payload_id, "pointer": "", "cursor": 0, "limit": 1}),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("read failed operation payload")
+        .into_value();
+    let failure_evaluations = custom_indicator_evaluation::Entity::find()
+        .filter(custom_indicator_evaluation::Column::PayloadId.eq(failure_payload_id))
+        .all(&db)
+        .await
+        .expect("query evaluations linked to failed output");
 
     let first_query =
         json!({"payload_id": output_payload_id, "pointer": "/value", "cursor": 0, "limit": 1});
@@ -511,16 +556,20 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
         .all(&db)
         .await
         .expect("query definition snapshots");
-    let mut requests: Vec<ExecRequest> = executor.requests.lock().await.clone();
-    requests
-        .iter_mut()
-        .for_each(|request| request.code = "<pinned-code>".into());
+    let definition_digest = definition_snapshots
+        .first()
+        .expect("pinned definition snapshot exists")
+        .digest
+        .clone();
+    let requests: Vec<ExecRequest> = executor.requests.lock().await.clone();
     let first = normalize_operation(first);
     let second = normalize_operation(second);
+    let failure = normalize_operation(failure);
     let first_page = normalize_mcp_page(first_page);
     let first_page_again = normalize_mcp_page(first_page_again);
     let second_page = normalize_mcp_page(second_page);
     let input_page = normalize_mcp_page(input_page);
+    let failure_page = normalize_mcp_page(failure_page);
     let evaluation = normalize_evaluation(evaluation);
     let output_byte_count = serde_json::to_vec(&json!({
         "exit_code": 0,
@@ -530,15 +579,27 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
     }))
     .expect("serialize expected output")
     .len() as u64;
+    let failure_output = json!({
+        "exit_code": 17,
+        "stderr": "synthetic failure",
+        "stdout": "synthetic output",
+        "value": null,
+    });
+    let failure_byte_count = serde_json::to_vec(&failure_output)
+        .expect("serialize expected failed output")
+        .len() as u64;
 
     assert_eq!(
         (
             first,
             second,
+            failure,
             first_page,
             first_page_again,
             second_page,
             input_page,
+            failure_page,
+            failure_evaluations,
             evaluation,
             definition_snapshots.len(),
             requests,
@@ -546,43 +607,59 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
         (
             json!({
                 "input_payload": {"id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "input",
-                    "digest": "<digest>", "item_count": 1, "byte_count": 27,
-                    "source_revision": "<definition-digest>",
+                    "digest": OPERATION_INPUT_DIGEST, "item_count": 1, "byte_count": 27,
+                    "source_revision": definition_digest,
                     "source_locator": {"definition_key": "custom_indicator:sample-operation"},
-                    "source_metadata": {"definition_digest": "<definition-digest>"}},
+                    "source_metadata": {"definition_digest": definition_digest}},
                 "output_payload": {"id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "output",
-                    "digest": "<digest>", "item_count": 1, "byte_count": output_byte_count,
-                    "source_revision": "<definition-digest>",
+                    "digest": OPERATION_OUTPUT_DIGEST, "item_count": 1, "byte_count": output_byte_count,
+                    "source_revision": definition_digest,
                     "source_locator": {"definition_key": "custom_indicator:sample-operation"},
-                    "source_metadata": {"definition_digest": "<definition-digest>"}},
+                    "source_metadata": {"definition_digest": definition_digest}},
                 "evaluation_id": Uuid::nil(), "exit_code": 0, "stderr": "",
             }),
             json!({
                 "input_payload": {"id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "input",
-                    "digest": "<digest>", "item_count": 1, "byte_count": 27,
-                    "source_revision": "<definition-digest>",
+                    "digest": OPERATION_INPUT_DIGEST, "item_count": 1, "byte_count": 27,
+                    "source_revision": definition_digest,
                     "source_locator": {"definition_key": "custom_indicator:sample-operation"},
-                    "source_metadata": {"definition_digest": "<definition-digest>"}},
+                    "source_metadata": {"definition_digest": definition_digest}},
                 "output_payload": {"id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "output",
-                    "digest": "<digest>", "item_count": 1, "byte_count": output_byte_count,
-                    "source_revision": "<definition-digest>",
+                    "digest": OPERATION_OUTPUT_DIGEST, "item_count": 1, "byte_count": output_byte_count,
+                    "source_revision": definition_digest,
                     "source_locator": {"definition_key": "custom_indicator:sample-operation"},
-                    "source_metadata": {"definition_digest": "<definition-digest>"}},
+                    "source_metadata": {"definition_digest": definition_digest}},
                 "evaluation_id": Uuid::nil(), "exit_code": 0, "stderr": "",
             }),
+            json!({
+                "input_payload": {"id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "input",
+                    "digest": OPERATION_INPUT_DIGEST, "item_count": 1, "byte_count": 27,
+                    "source_revision": definition_digest,
+                    "source_locator": {"definition_key": "custom_indicator:sample-operation"},
+                    "source_metadata": {"definition_digest": definition_digest}},
+                "output_payload": {"id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "output",
+                    "digest": OPERATION_FAILURE_DIGEST, "item_count": 1, "byte_count": failure_byte_count,
+                    "source_revision": definition_digest,
+                    "source_locator": {"definition_key": "custom_indicator:sample-operation"},
+                    "source_metadata": {"definition_digest": definition_digest}},
+                "evaluation_id": null, "exit_code": 17, "stderr": "synthetic failure",
+            }),
             json!({"payload_id": Uuid::nil(), "pointer": "/value", "data": [{"score": 12.5}],
-                "cursor": 0, "next_cursor": 1, "total_count": 3, "digest": "<digest>"}),
+                "cursor": 0, "next_cursor": 1, "total_count": 3, "digest": OPERATION_OUTPUT_DIGEST}),
             json!({"payload_id": Uuid::nil(), "pointer": "/value", "data": [{"score": 12.5}],
-                "cursor": 0, "next_cursor": 1, "total_count": 3, "digest": "<digest>"}),
+                "cursor": 0, "next_cursor": 1, "total_count": 3, "digest": OPERATION_OUTPUT_DIGEST}),
             json!({"payload_id": Uuid::nil(), "pointer": "/value", "data": [{"score": 20}],
-                "cursor": 1, "next_cursor": 2, "total_count": 3, "digest": "<digest>"}),
+                "cursor": 1, "next_cursor": 2, "total_count": 3, "digest": OPERATION_OUTPUT_DIGEST}),
             json!({"payload_id": Uuid::nil(), "pointer": "/args", "data": {"sample": "value"},
-                "cursor": 0, "next_cursor": null, "total_count": 1, "digest": "<digest>"}),
+                "cursor": 0, "next_cursor": null, "total_count": 1, "digest": OPERATION_INPUT_DIGEST}),
+            json!({"payload_id": Uuid::nil(), "pointer": "", "data": failure_output,
+                "cursor": 0, "next_cursor": null, "total_count": 1, "digest": OPERATION_FAILURE_DIGEST}),
+            Vec::<custom_indicator_evaluation::Model>::new(),
             custom_indicator_evaluation::Model {
                 id: Uuid::nil(),
                 indicator_id,
                 indicator_name: "sample-operation".into(),
-                code: "<pinned-code>".into(),
+                code: "synthetic source A".into(),
                 args: json!({"payload_id": Uuid::nil(), "pointers": {"result": "/value/1/score"},
                     "args": {"sample": "value"}}),
                 output: json!({"result": 20}),
@@ -594,13 +671,19 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
             1,
             vec![
                 ExecRequest {
-                    code: "<pinned-code>".into(),
+                    code: "synthetic source A".into(),
                     stdin: Some(r#"{"args":{"sample":"value"}}"#.into()),
                     timeout: None,
                     max_output_bytes: Some(1024 * 1024),
                 },
                 ExecRequest {
-                    code: "<pinned-code>".into(),
+                    code: "synthetic source A".into(),
+                    stdin: Some(r#"{"args":{"sample":"value"}}"#.into()),
+                    timeout: None,
+                    max_output_bytes: Some(1024 * 1024),
+                },
+                ExecRequest {
+                    code: "synthetic source A".into(),
                     stdin: Some(r#"{"args":{"sample":"value"}}"#.into()),
                     timeout: None,
                     max_output_bytes: Some(1024 * 1024),
@@ -652,17 +735,15 @@ fn normalize_operation(mut operation: Value) -> Value {
     for kind in ["input_payload", "output_payload"] {
         operation[kind]["id"] = json!(Uuid::nil());
         operation[kind]["task_id"] = json!(Uuid::nil());
-        operation[kind]["digest"] = json!("<digest>");
-        operation[kind]["source_revision"] = json!("<definition-digest>");
-        operation[kind]["source_metadata"]["definition_digest"] = json!("<definition-digest>");
     }
-    operation["evaluation_id"] = json!(Uuid::nil());
+    if operation["evaluation_id"].is_string() {
+        operation["evaluation_id"] = json!(Uuid::nil());
+    }
     operation
 }
 
 fn normalize_mcp_page(mut page: Value) -> Value {
     page["payload_id"] = json!(Uuid::nil());
-    page["digest"] = json!("<digest>");
     page
 }
 
@@ -670,7 +751,6 @@ fn normalize_evaluation(
     mut evaluation: custom_indicator_evaluation::Model,
 ) -> custom_indicator_evaluation::Model {
     evaluation.id = Uuid::nil();
-    evaluation.code = "<pinned-code>".into();
     evaluation.args["payload_id"] = json!(Uuid::nil());
     evaluation.payload_id = Some(Uuid::nil());
     evaluation.evaluated_at = tests_common::ts_sentinel();

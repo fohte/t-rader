@@ -220,18 +220,14 @@ pub(super) fn validate_instance(
     schema: &JsonValue,
     instance: &JsonValue,
 ) -> Result<(), StrategyExecutionUseCaseError> {
-    let validator = jsonschema::validator_for(schema)
-        .map_err(|error| StrategyExecutionUseCaseError::InvalidPayloadSchema(error.to_string()))?;
-    let errors = validator
-        .iter_errors(instance)
-        .map(|error| format!("{} at {}", error, error.instance_path()))
-        .collect::<Vec<_>>();
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(StrategyExecutionUseCaseError::PayloadSchemaMismatch(
-            errors.join("; "),
-        ))
+    match crate::json_schema::validate_instance(schema, instance) {
+        Ok(()) => Ok(()),
+        Err(crate::json_schema::JsonSchemaError::InvalidSchema(message)) => {
+            Err(StrategyExecutionUseCaseError::InvalidPayloadSchema(message))
+        }
+        Err(crate::json_schema::JsonSchemaError::Mismatch(message)) => Err(
+            StrategyExecutionUseCaseError::PayloadSchemaMismatch(message),
+        ),
     }
 }
 

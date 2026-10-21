@@ -4,6 +4,7 @@
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
 
 mod calendar;
+mod execution_payload;
 mod movers;
 mod news;
 mod paper_trade;
@@ -27,17 +28,16 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use super::dto::{
     CheckBuyableQtyParams, CheckBuyableQtyResult, CreateAnnotationParams, CreateAnnotationResult,
     EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult,
-    ExecuteOperationParams, ExecuteOperationResult, ListNoteKindsResult, ListNotesParams,
-    ListNotesResult, NoteDto, QueryDataParams, QueryDataResult, QueryYoutubeParams,
-    QueryYoutubeResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
-    ReadCommentsResult, ReadExecutionPayloadParams, ReadExecutionPayloadResult,
-    ReadFinSummaryParams, ReadFinSummaryResult, ReadMacroIndicatorParams, ReadMacroIndicatorResult,
-    ReadNoteParams, ReadPageParams, ReadPageResult, ReadPortfolioResult,
-    ReadSectorShortRatioParams, ReadSectorShortRatioResult, ReadShareholdingStructureParams,
-    ReadShareholdingStructureResult, ReadShortSaleReportsParams, ReadShortSaleReportsResult,
-    ReadTradesParams, ReadTradesResult, ReadValuationParams, ReadValuationResult,
-    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
-    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, QueryDataParams,
+    QueryDataResult, QueryYoutubeParams, QueryYoutubeResult, ReadAnnotationsParams,
+    ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams,
+    ReadFinSummaryResult, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams,
+    ReadPageParams, ReadPageResult, ReadPortfolioResult, ReadSectorShortRatioParams,
+    ReadSectorShortRatioResult, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
+    ReadShortSaleReportsParams, ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult,
+    ReadValuationParams, ReadValuationResult, ReplyCommentParams, ReplyCommentResult,
+    ResolveCommentParams, ResolveCommentResult, SearchWebParams, SearchWebResult, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::read_page::READ_PAGE_MAX_CALLS_PER_TASK;
@@ -49,8 +49,7 @@ use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::web_search::{SEARCH_WEB_MAX_CALLS_PER_TASK, TOOL_NAME as SEARCH_WEB_TOOL_NAME};
 use super::youtube::TOOL_NAME as QUERY_YOUTUBE_TOOL_NAME;
 use super::{
-    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, invalid_params,
-    tool_model_from_ctx,
+    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
 };
 
 #[tool_router(router = base_tool_router, vis = "pub(super)")]
@@ -236,46 +235,6 @@ impl StrategyServer {
     ) -> Result<Json<EvalIndicatorResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         self.eval_indicator_inner(scope, params).await.map(Json)
-    }
-
-    /// 保存済み定義を task に紐付けて実行し、入力・出力 payload の参照を返す
-    #[tool(
-        name = "execute_operation",
-        description = "Execute a saved custom indicator within the current task. The definition is pinned on first use, the complete input and output are sealed as task-scoped payloads, and numeric_pointers selects values for the existing evaluation citation. Pointers address the output payload's value field. Use read_execution_payload to read sealed data in bounded pages."
-    )]
-    async fn execute_operation(
-        &self,
-        Parameters(params): Parameters<ExecuteOperationParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ExecuteOperationResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let a2a_task_id = execution_task_id_from_ctx(&ctx)
-            .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
-        let execution_step_id = execution_step_id_from_ctx(&ctx).ok_or_else(|| {
-            invalid_params("x-execution-id must include a valid execution step ID")
-        })?;
-        self.execute_operation_inner(scope, &a2a_task_id, execution_step_id, params)
-            .await
-            .map(Json)
-    }
-
-    /// task 内で seal 済み payload の有限ページを読む
-    #[tool(
-        name = "read_execution_payload",
-        description = "Read a sealed payload belonging to the current task. JSON Pointer selects a value and cursor/limit return a finite page. Staging and incomplete payloads cannot be read."
-    )]
-    async fn read_execution_payload(
-        &self,
-        Parameters(params): Parameters<ReadExecutionPayloadParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ReadExecutionPayloadResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let a2a_task_id = execution_task_id_from_ctx(&ctx)
-            .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
-        let execution_step_id = execution_step_id_from_ctx(&ctx);
-        self.read_execution_payload_inner(scope, &a2a_task_id, execution_step_id, params)
-            .await
-            .map(Json)
     }
 
     /// YouTube 動画について複数の質問にまとめて回答する
@@ -558,6 +517,7 @@ impl StrategyServer {
             + Self::paper_trade_tool_router()
             + Self::news_tool_router()
             + Self::widget_tool_router()
+            + Self::execution_payload_tool_router()
     }
 
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
