@@ -21,6 +21,7 @@ import {
   isValidChartIndicatorPeriod,
   MAX_CHART_INDICATOR_PERIOD,
 } from '#lib/chart-indicator-settings'
+import { cn } from '#lib/utils'
 
 type ChartIndicatorControlProps = {
   indicators: ChartIndicatorConfig[]
@@ -77,18 +78,16 @@ function IndicatorPeriodInput({
   value,
   onCommit,
   isValid = isValidChartIndicatorPeriod,
-  width = 'regular',
 }: {
   label: string
   value: number
   onCommit: (period: number) => void
   isValid?: (period: number) => boolean
-  width?: 'narrow' | 'regular'
 }) {
   return (
     <Input
       aria-label={label}
-      className={width === 'narrow' ? 'w-12 text-right' : 'w-16 text-right'}
+      className="w-16 text-right"
       defaultValue={value}
       max={MAX_CHART_INDICATOR_PERIOD}
       min={1}
@@ -124,6 +123,7 @@ export function ChartIndicatorControl({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
   const isOpen = controlledOpen ?? uncontrolledOpen
   const isMobile = useIsMobileViewport()
+  const hasMacd = indicators.some((indicator) => indicator.kind === 'macd')
   const useDialog = layout === 'dialog' || (layout === 'responsive' && isMobile)
   const setOpen = (nextOpen: boolean) => {
     if (controlledOpen === undefined) setUncontrolledOpen(nextOpen)
@@ -156,7 +156,12 @@ export function ChartIndicatorControl({
     return (
       <Dialog open={isOpen} onOpenChange={setOpen}>
         <DialogTrigger render={trigger} />
-        <DialogContent className="max-h-screen overflow-y-auto">
+        <DialogContent
+          className={cn(
+            'max-h-screen overflow-y-auto',
+            hasMacd && 'sm:max-w-md',
+          )}
+        >
           <DialogHeader>
             <DialogTitle>指標</DialogTitle>
           </DialogHeader>
@@ -172,7 +177,7 @@ export function ChartIndicatorControl({
       <PopoverContent
         align="end"
         padding="md"
-        className="max-h-96 w-80 overflow-y-auto"
+        className={cn('max-h-96 overflow-y-auto', hasMacd ? 'w-96' : 'w-80')}
       >
         {menu}
       </PopoverContent>
@@ -246,7 +251,6 @@ function ChartIndicatorMenu({
                         onCommit={(period) => {
                           onUpdateMacdPeriod(indicator.id, 'fastPeriod', period)
                         }}
-                        width="narrow"
                       />
                       <span
                         aria-hidden="true"
@@ -268,7 +272,6 @@ function ChartIndicatorMenu({
                         onCommit={(period) => {
                           onUpdateMacdPeriod(indicator.id, 'slowPeriod', period)
                         }}
-                        width="narrow"
                       />
                       <span
                         aria-hidden="true"
@@ -287,7 +290,6 @@ function ChartIndicatorMenu({
                             period,
                           )
                         }}
-                        width="narrow"
                       />
                     </div>
                   ) : (
