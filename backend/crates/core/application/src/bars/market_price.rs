@@ -407,6 +407,14 @@ mod tests {
             Err(database_error())
         }
 
+        async fn mark_us_stock_minute_bar_history_completed(
+            &self,
+            _: &[String],
+            _: chrono::DateTime<Utc>,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
         async fn compress_bars_older_than_policy(
             &self,
             _: chrono::DateTime<Utc>,

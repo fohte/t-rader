@@ -10,10 +10,12 @@ use super::us_stock_source::{
 use super::use_cases::UsStockBarsIngestUseCases;
 use super::write_throttle::WriteThrottle;
 use super::{us_stock_hourly_history_cutoff, us_stock_sip_bars_history_cutoff};
+use minute_ingest_window::should_ingest_us_stock_minute_bars;
 use request_budget::RequestBudget;
 
 mod adjustment;
 mod hourly;
+mod minute_ingest_window;
 mod page_write;
 mod request_budget;
 mod sip_refetch;
@@ -146,6 +148,16 @@ impl UsStockBarsIngestUseCases {
                 .await
                 .map_err(|error| Box::new((UsStockBarsIngestStats::default(), error.into())))?,
         };
+        let targets = if timeframe == UsStockBarTimeframe::Minute {
+            targets
+                .into_iter()
+                .filter(|target| {
+                    should_ingest_us_stock_minute_bars(now, target.minute_history_completed_through)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            targets
+        };
         let mut context = IngestContext {
             budget,
             stats: UsStockBarsIngestStats {
@@ -260,6 +272,7 @@ impl UsStockBarsIngestUseCases {
         range: UsStockBarRange,
         context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
+        let requests_attempted_before = context.stats.requests_attempted;
         let (completed, skipped_instrument_ids) = {
             let mut batch_context = BatchIngestContext::new(context);
             let completed = self
@@ -269,6 +282,20 @@ impl UsStockBarsIngestUseCases {
         };
         if completed && timeframe == UsStockBarTimeframe::Hourly {
             self.mark_hourly_history_completed(instrument_ids, range.to, &skipped_instrument_ids)
+                .await?;
+        }
+        if completed
+            && timeframe == UsStockBarTimeframe::Minute
+            && context.stats.requests_attempted > requests_attempted_before
+        {
+            let completed_instrument_ids = instrument_ids
+                .iter()
+                .filter(|instrument_id| !skipped_instrument_ids.contains(*instrument_id))
+                .cloned()
+                .collect::<Vec<_>>();
+            self.bars
+                .repository
+                .mark_us_stock_minute_bar_history_completed(&completed_instrument_ids, range.to)
                 .await?;
         }
         Ok(completed)
@@ -959,6 +986,7 @@ mod tests {
         pagination: Option<PaginatedPages>,
         rejected_instruments: Vec<String>,
         skipped_instruments: Vec<String>,
+        empty_results: bool,
         rejected_split_instruments: Vec<String>,
         fetch_error: Option<String>,
         fetch_error_at_call: Option<usize>,
@@ -1053,7 +1081,7 @@ mod tests {
                 });
             }
             let configured_bars = self.bars.lock().await.clone();
-            let has_configured_bars = !configured_bars.is_empty();
+            let has_configured_bars = !configured_bars.is_empty() || self.empty_results;
             let mut matching_bars = if has_configured_bars {
                 configured_bars
                     .into_iter()
@@ -2543,6 +2571,10 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn minute_ingestion_requests_compression_using_current_time(harness: Harness) {
+        harness
+            .repository
+            .seed_us_stock_targets(vec!["US:QZ-COMPRESS".to_owned()])
+            .await;
         let now = date("2040-01-02T12:00:00Z");
 
         harness
@@ -2560,6 +2592,10 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn minute_ingestion_returns_ingest_stats_when_compression_fails(harness: Harness) {
+        harness
+            .repository
+            .seed_us_stock_targets(vec!["US:QZ-COMPRESS-ERROR".to_owned()])
+            .await;
         let now = date("2040-01-02T12:00:00Z");
         harness
             .repository
@@ -2576,6 +2612,9 @@ mod tests {
         assert_eq!(
             stats,
             UsStockBarsIngestStats {
+                symbols_attempted: 1,
+                requests_attempted: 1,
+                minute_bars_upserted: 1,
                 compression_error: Some("compression failed".to_owned()),
                 ..UsStockBarsIngestStats::default()
             },
@@ -2584,24 +2623,267 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn minute_ingestion_preserves_ingest_error_when_compression_fails(mut harness: Harness) {
+    async fn skips_a_closed_range_without_fetching_writing_or_compressing(harness: Harness) {
+        let instrument_id = "US:QZ-CLOSED";
+        let completed_through = date("2040-01-07T01:04:00Z");
+        let now = date("2040-01-08T18:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_us_stock_minute_bar_history_completed_through(instrument_id, completed_through)
+            .await;
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("completed closed range is skipped")
+            .stats;
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.clone(),
+            harness.repository.bars.lock().await.clone(),
+            harness
+                .repository
+                .write_transaction_ids
+                .lock()
+                .await
+                .clone(),
+            harness
+                .repository
+                .bar_compression_times
+                .lock()
+                .await
+                .clone(),
+            harness
+                .repository
+                .us_stock_minute_bar_history_completed_through
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats::default(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                HashMap::from([(instrument_id.to_owned(), completed_through)]),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn empty_results_advance_progress_and_resume_from_the_saved_cursor(mut harness: Harness) {
+        let instrument_id = "US:QZ-EMPTY";
+        let first_now = date("2040-01-02T12:00:00Z");
+        let second_now = date("2040-01-02T13:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.source.empty_results = true;
+
+        let first_stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, first_now)
+            .await
+            .expect("empty history fetch succeeds")
+            .stats;
+        let saved_cursor = us_stock_sip_bars_history_cutoff(first_now);
+        let second_stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, second_now)
+            .await
+            .expect("empty history resumes from its saved cursor")
+            .stats;
+        let actual = (
+            first_stats,
+            second_stats,
+            harness.source.calls.lock().await.clone(),
+            harness.repository.bars.lock().await.clone(),
+            harness
+                .repository
+                .us_stock_minute_bar_history_completed_through
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    ..UsStockBarsIngestStats::default()
+                },
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: us_stock_hourly_history_cutoff(first_now),
+                        to: saved_cursor,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: saved_cursor,
+                        to: us_stock_sip_bars_history_cutoff(second_now),
+                        page_token: None,
+                    },
+                ],
+                Vec::new(),
+                HashMap::from([(
+                    instrument_id.to_owned(),
+                    us_stock_sip_bars_history_cutoff(second_now),
+                )]),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn continues_closed_ingestion_for_untracked_stale_and_new_targets(mut harness: Harness) {
+        let existing_id = "US:QZ-EXISTING";
+        let stale_id = "US:QZ-STALE";
+        let new_id = "US:QZ-NEW";
+        let latest_bar = date("2040-01-07T01:03:00Z");
+        let stale_progress = date("2040-01-07T01:02:00Z");
+        let now = date("2040-01-08T18:00:00Z");
+        let completed_through = us_stock_sip_bars_history_cutoff(now);
+        harness
+            .repository
+            .seed_us_stock_targets(vec![
+                existing_id.to_owned(),
+                stale_id.to_owned(),
+                new_id.to_owned(),
+            ])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![bar(existing_id, Timeframe::Minute, latest_bar)])
+            .await;
+        harness
+            .repository
+            .seed_us_stock_minute_bar_history_completed_through(stale_id, stale_progress)
+            .await;
+        harness.source.empty_results = true;
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("untracked closed ranges continue ingesting")
+            .stats;
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.clone(),
+            harness.repository.bars.lock().await.clone(),
+            harness
+                .repository
+                .us_stock_minute_bar_history_completed_through
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 3,
+                    requests_attempted: 2,
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![stale_id.to_owned(), existing_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: stale_progress,
+                        to: completed_through,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![new_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: us_stock_hourly_history_cutoff(now),
+                        to: completed_through,
+                        page_token: None,
+                    },
+                ],
+                vec![bar(existing_id, Timeframe::Minute, latest_bar)],
+                HashMap::from([
+                    (existing_id.to_owned(), completed_through),
+                    (stale_id.to_owned(), completed_through),
+                    (new_id.to_owned(), completed_through),
+                ]),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_does_not_advance_progress_after_a_later_page_fails(
+        mut harness: Harness,
+    ) {
+        let instrument_id = "US:QZ-PAGE-FAILURE";
         let now = date("2040-01-02T12:00:00Z");
         harness
             .repository
-            .seed_us_stock_targets(vec!["US:QZ-MINUTE".to_owned()])
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
             .await;
+        let first_bar = bar(
+            instrument_id,
+            Timeframe::Minute,
+            date("2040-01-02T11:40:00Z"),
+        );
+        *harness.source.bars.lock().await = vec![
+            first_bar.clone(),
+            bar(
+                instrument_id,
+                Timeframe::Minute,
+                date("2040-01-02T11:41:00Z"),
+            ),
+        ];
+        harness.source.page_size = Some(1);
         harness.source.fetch_error = Some("minute fetch failed".to_owned());
+        harness.source.fetch_error_at_call = Some(2);
         harness
             .repository
             .fail_bar_compression_with("compression failed")
             .await;
 
+        let failure = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect_err("minute source failure is returned");
+        let (result, error) = failure.into_parts();
         let actual = (
+            result.stats.clone(),
+            error.to_string(),
+            harness.source.calls.lock().await.len(),
+            harness.repository.bars.lock().await.clone(),
             harness
-                .use_cases
-                .ingest_us_stock_minute_bars(&harness.source, now)
+                .repository
+                .us_stock_minute_bar_history_completed_through
+                .lock()
                 .await
-                .expect_err("minute source failure is returned"),
+                .clone(),
             harness
                 .repository
                 .bar_compression_times
@@ -2611,10 +2893,20 @@ mod tests {
         );
 
         assert_eq!(
-            (actual.0.to_string(), actual.1),
+            actual,
             (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 2,
+                    minute_bars_upserted: 1,
+                    compression_error: Some("compression failed".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
                 "US stock bar source error: minute fetch failed".to_owned(),
-                vec![now]
+                2,
+                vec![first_bar],
+                HashMap::new(),
+                vec![now],
             ),
         );
     }
@@ -2692,6 +2984,55 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
+    async fn does_not_mark_a_skipped_minute_target_as_completed(mut harness: Harness) {
+        let skipped_id = "US:QZ-SKIPPED";
+        let accepted_id = "US:QZ-ACCEPTED";
+        let now = date("2040-01-02T12:30:00Z");
+        let cutoff = us_stock_sip_bars_history_cutoff(now);
+        harness
+            .repository
+            .seed_us_stock_targets(vec![skipped_id.to_owned(), accepted_id.to_owned()])
+            .await;
+        harness.source.skipped_instruments = vec![skipped_id.to_owned()];
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("one skipped instrument does not fail minute ingestion")
+            .stats;
+        let actual = (
+            stats,
+            harness.repository.bars.lock().await.clone(),
+            harness
+                .repository
+                .us_stock_minute_bar_history_completed_through
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 2,
+                    requests_attempted: 1,
+                    minute_bars_upserted: 1,
+                    skipped_instruments: vec![SkippedUsStockInstrument {
+                        instrument_id: skipped_id.to_owned(),
+                        reason: "synthetic symbol conversion failure".to_owned(),
+                    }],
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![bar(accepted_id, Timeframe::Minute, cutoff)],
+                HashMap::from([(accepted_id.to_owned(), cutoff)]),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
     async fn groups_existing_symbols_by_their_own_latest_bar(harness: Harness) {
         let instrument_ids = (0..101)
             .map(|index| format!("US:QZ{index:03}"))
@@ -2714,6 +3055,13 @@ mod tests {
             .seed_us_stock_targets(instrument_ids.clone())
             .await;
         harness.repository.seed_bars(saved_bars).await;
+        harness
+            .repository
+            .seed_us_stock_minute_bar_history_completed_through(
+                instrument_ids[0].clone(),
+                date("2040-01-02T10:00:00Z"),
+            )
+            .await;
         let now = Utc
             .with_ymd_and_hms(2040, 1, 2, 12, 0, 0)
             .single()
@@ -2798,6 +3146,12 @@ mod tests {
             .await
             .expect("bounded ingestion succeeds")
             .stats;
+        let first_progress = harness
+            .repository
+            .us_stock_minute_bar_history_completed_through
+            .lock()
+            .await
+            .clone();
         harness.source.pagination = None;
         let second_stats = harness
             .use_cases
@@ -2805,6 +3159,12 @@ mod tests {
             .await
             .expect("resumed ingestion succeeds")
             .stats;
+        let final_progress = harness
+            .repository
+            .us_stock_minute_bar_history_completed_through
+            .lock()
+            .await
+            .clone();
 
         let expected_calls = vec![
             BarQueryRun {
@@ -2848,6 +3208,8 @@ mod tests {
                 second_stats,
                 summarize_query_runs(&harness.source.calls.lock().await),
                 stored_bars,
+                first_progress,
+                final_progress,
             ),
             (
                 UsStockBarsIngestStats {
@@ -2881,6 +3243,11 @@ mod tests {
                     bar(missing_id, Timeframe::Minute, missing_latest),
                     bar(missing_id, Timeframe::Minute, cutoff,),
                 ],
+                HashMap::from([(existing_id.to_owned(), cutoff)]),
+                HashMap::from([
+                    (existing_id.to_owned(), cutoff),
+                    (missing_id.to_owned(), cutoff),
+                ]),
             ),
         );
     }

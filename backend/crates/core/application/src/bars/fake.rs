@@ -28,6 +28,7 @@ pub struct FakeBarsRepository {
     pub us_stock_sip_refetch_skipped: Mutex<HashMap<String, String>>,
     pub us_stock_sip_refetch_cursors: Mutex<HashMap<String, UsStockSipBarRefetchCursor>>,
     pub us_stock_sip_refetch_rows_reserved: Mutex<u64>,
+    pub us_stock_minute_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub bar_compression_times: Mutex<Vec<DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
@@ -80,6 +81,17 @@ impl FakeBarsRepository {
             .extend(instrument_ids);
     }
 
+    pub async fn seed_us_stock_minute_bar_history_completed_through(
+        &self,
+        instrument_id: impl Into<String>,
+        completed_through: DateTime<Utc>,
+    ) {
+        self.us_stock_minute_bar_history_completed_through
+            .lock()
+            .await
+            .insert(instrument_id.into(), completed_through);
+    }
+
     pub async fn seed_daily_adjustment_factors(
         &self,
         instrument_id: impl Into<String>,
@@ -127,6 +139,10 @@ impl FakeBarsRepository {
             .us_stock_hourly_bar_history_completed_through
             .lock()
             .await;
+        let minute_progress = self
+            .us_stock_minute_bar_history_completed_through
+            .lock()
+            .await;
         let mut targets = target_ids
             .into_iter()
             .map(|instrument_id| UsStockBarTarget {
@@ -144,6 +160,7 @@ impl FakeBarsRepository {
                     })
                     .max_by_key(|bar| bar.timestamp)
                     .map(|bar| bar.timestamp),
+                minute_history_completed_through: minute_progress.get(&instrument_id).copied(),
                 latest_hourly_bar: bars
                     .iter()
                     .filter(|bar| {
@@ -457,6 +474,24 @@ impl BarsRepository for FakeBarsRepository {
     ) -> Result<(), BarsRepositoryError> {
         let mut progress = self
             .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await;
+        for instrument_id in instrument_ids {
+            progress
+                .entry(instrument_id.clone())
+                .and_modify(|saved| *saved = (*saved).max(completed_through))
+                .or_insert(completed_through);
+        }
+        Ok(())
+    }
+
+    async fn mark_us_stock_minute_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        let mut progress = self
+            .us_stock_minute_bar_history_completed_through
             .lock()
             .await;
         for instrument_id in instrument_ids {

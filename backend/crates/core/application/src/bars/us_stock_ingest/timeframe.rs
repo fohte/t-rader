@@ -26,7 +26,9 @@ impl UsStockBarTimeframe {
     pub(super) fn history_cursor(self, target: &UsStockBarTarget) -> Option<DateTime<Utc>> {
         match self {
             Self::Daily => target.latest_daily_bar,
-            Self::Minute => target.latest_minute_bar,
+            Self::Minute => target
+                .latest_minute_bar
+                .or(target.minute_history_completed_through),
             Self::Hourly => target.latest_hourly_bar,
         }
     }

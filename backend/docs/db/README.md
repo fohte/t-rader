@@ -68,6 +68,7 @@
 | [public.bars_timestamp_coverage](public.bars_timestamp_coverage.md)                             | 4       | 銘柄と時間足ごとの最古・最新のバー時刻を保持する。                                                                                                 | BASE TABLE        |
 | [public.us_stock_sip_bar_refetch_progress](public.us_stock_sip_bar_refetch_progress.md)         | 7       | 米国株の SIP 足を再取得した銘柄と、再取得できない理由を保持する。                                                                                  | BASE TABLE        |
 | [public.us_stock_sip_bar_refetch_write_budget](public.us_stock_sip_bar_refetch_write_budget.md) | 3       | 米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。                                                                                        | BASE TABLE        |
+| [public.us_stock_minute_bar_ingest_progress](public.us_stock_minute_bar_ingest_progress.md)     | 2       | 米国株の 1 分足を取得済みの終端時刻を保持する。                                                                                                    | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -235,6 +236,7 @@ erDiagram
 "public.us_stock_hourly_bar_ingest_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 "public.bars_timestamp_coverage" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 "public.us_stock_sip_bar_refetch_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
+"public.us_stock_minute_bar_ingest_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -866,6 +868,10 @@ erDiagram
   smallint id
   timestamp_with_time_zone hour_started_at
   bigint rows_written
+}
+"public.us_stock_minute_bar_ingest_progress" {
+  text instrument_id FK
+  timestamp_with_time_zone completed_through
 }
 ```
 

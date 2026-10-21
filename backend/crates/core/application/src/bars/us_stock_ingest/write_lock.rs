@@ -108,6 +108,7 @@ impl UsStockBarsIngestUseCases {
         stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
 
         if timeframe == UsStockBarTimeframe::Minute
+            && stats.symbols_attempted > 0
             && let Err(error) = self
                 .bars
                 .repository

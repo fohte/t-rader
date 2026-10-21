@@ -18,6 +18,7 @@ use sea_orm::{
 use crate::DatabaseHandle;
 use crate::entities::{
     instruments, jquants_daily_bars_ingested_date, us_stock_hourly_bar_ingest_progress,
+    us_stock_minute_bar_ingest_progress,
 };
 use crate::persistence::persistence_error;
 use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQuery};
@@ -297,6 +298,39 @@ impl BarsRepository for PostgresBarsRepository {
                     us_stock_hourly_bar_ingest_progress::Column::CompletedThrough,
                     Expr::cust(
                         "GREATEST(us_stock_hourly_bar_ingest_progress.completed_through, EXCLUDED.completed_through)",
+                    ),
+                )
+                .to_owned(),
+        )
+        .exec_without_returning(&self.db)
+        .await
+        .map(|_| ())
+        .map_err(repository_error)
+    }
+
+    async fn mark_us_stock_minute_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        if instrument_ids.is_empty() {
+            return Ok(());
+        }
+
+        us_stock_minute_bar_ingest_progress::Entity::insert_many(
+            instrument_ids.iter().map(|instrument_id| {
+                us_stock_minute_bar_ingest_progress::ActiveModel {
+                    instrument_id: Set(instrument_id.clone()),
+                    completed_through: Set(completed_through.fixed_offset()),
+                }
+            }),
+        )
+        .on_conflict(
+            OnConflict::column(us_stock_minute_bar_ingest_progress::Column::InstrumentId)
+                .value(
+                    us_stock_minute_bar_ingest_progress::Column::CompletedThrough,
+                    Expr::cust(
+                        "GREATEST(us_stock_minute_bar_ingest_progress.completed_through, EXCLUDED.completed_through)",
                     ),
                 )
                 .to_owned(),
@@ -868,6 +902,18 @@ mod tests {
             .with_ymd_and_hms(2040, 1, 2, 15, 0, 0)
             .single()
             .expect("older hourly progress timestamp");
+        let initial_minute_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 6, 0)
+            .single()
+            .expect("minute progress timestamp");
+        let later_minute_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 12, 0)
+            .single()
+            .expect("later minute progress timestamp");
+        let older_minute_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 0, 0)
+            .single()
+            .expect("older minute progress timestamp");
         repository
             .mark_us_stock_hourly_bar_history_completed(
                 std::slice::from_ref(&group_stock_id),
@@ -889,6 +935,27 @@ mod tests {
             )
             .await
             .expect("ignore older hourly progress");
+        repository
+            .mark_us_stock_minute_bar_history_completed(
+                std::slice::from_ref(&note_stock_id),
+                initial_minute_progress,
+            )
+            .await
+            .expect("mark initial minute progress");
+        repository
+            .mark_us_stock_minute_bar_history_completed(
+                std::slice::from_ref(&note_stock_id),
+                later_minute_progress,
+            )
+            .await
+            .expect("mark later minute progress");
+        repository
+            .mark_us_stock_minute_bar_history_completed(
+                std::slice::from_ref(&note_stock_id),
+                older_minute_progress,
+            )
+            .await
+            .expect("ignore older minute progress");
 
         let actual = repository
             .find_us_stock_minute_bar_targets()
@@ -907,6 +974,7 @@ mod tests {
                             .single()
                             .expect("latest hourly timestamp"),
                     ),
+                    minute_history_completed_through: None,
                     hourly_history_completed_through: Some(later_hourly_progress),
                     earliest_daily_bar: Some(
                         Utc.with_ymd_and_hms(2040, 1, 1, 0, 0, 0)
@@ -929,6 +997,7 @@ mod tests {
                     latest_daily_bar: Some(note_daily_latest),
                     latest_minute_bar: None,
                     latest_hourly_bar: None,
+                    minute_history_completed_through: Some(later_minute_progress),
                     hourly_history_completed_through: None,
                     earliest_daily_bar: Some(note_daily_latest),
                     earliest_minute_bar: None,
@@ -1013,6 +1082,7 @@ mod tests {
                     latest_daily_bar: None,
                     latest_minute_bar: None,
                     latest_hourly_bar: None,
+                    minute_history_completed_through: None,
                     hourly_history_completed_through: None,
                     earliest_daily_bar: None,
                     earliest_minute_bar: None,
@@ -1023,6 +1093,7 @@ mod tests {
                     latest_daily_bar: None,
                     latest_minute_bar: None,
                     latest_hourly_bar: None,
+                    minute_history_completed_through: None,
                     hourly_history_completed_through: None,
                     earliest_daily_bar: None,
                     earliest_minute_bar: None,
@@ -1033,6 +1104,7 @@ mod tests {
                     latest_daily_bar: None,
                     latest_minute_bar: None,
                     latest_hourly_bar: None,
+                    minute_history_completed_through: None,
                     hourly_history_completed_through: None,
                     earliest_daily_bar: None,
                     earliest_minute_bar: None,
@@ -1762,6 +1834,7 @@ mod tests {
                 latest_daily_bar: None,
                 latest_minute_bar: None,
                 latest_hourly_bar: None,
+                minute_history_completed_through: None,
                 hourly_history_completed_through: None,
                 earliest_daily_bar: None,
                 earliest_minute_bar: None,

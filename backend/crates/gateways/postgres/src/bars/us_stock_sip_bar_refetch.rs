@@ -129,6 +129,7 @@ impl PostgresBarsRepository {
                         latest_hourly_bar: row
                             .latest_hourly_bar
                             .map(|timestamp| timestamp.to_utc()),
+                        minute_history_completed_through: None,
                         hourly_history_completed_through: row
                             .hourly_history_completed_through
                             .map(|timestamp| timestamp.to_utc()),
@@ -411,6 +412,7 @@ mod tests {
                         latest_daily_bar: Some(bar("", Timeframe::Daily).timestamp),
                         latest_minute_bar: Some(bar("", Timeframe::Minute).timestamp),
                         latest_hourly_bar: Some(bar("", Timeframe::Hourly).timestamp),
+                        minute_history_completed_through: None,
                         hourly_history_completed_through: None,
                         earliest_daily_bar: Some(bar("", Timeframe::Daily).timestamp),
                         earliest_minute_bar: Some(bar("", Timeframe::Minute).timestamp),
@@ -429,6 +431,7 @@ mod tests {
                         latest_daily_bar: Some(bar("", Timeframe::Daily).timestamp),
                         latest_minute_bar: Some(bar("", Timeframe::Minute).timestamp),
                         latest_hourly_bar: Some(bar("", Timeframe::Hourly).timestamp),
+                        minute_history_completed_through: None,
                         hourly_history_completed_through: None,
                         earliest_daily_bar: Some(bar("", Timeframe::Daily).timestamp),
                         earliest_minute_bar: Some(bar("", Timeframe::Minute).timestamp),

@@ -40,6 +40,7 @@ pub struct UsStockBarTarget {
     pub latest_daily_bar: Option<DateTime<Utc>>,
     pub latest_minute_bar: Option<DateTime<Utc>>,
     pub latest_hourly_bar: Option<DateTime<Utc>>,
+    pub minute_history_completed_through: Option<DateTime<Utc>>,
     pub hourly_history_completed_through: Option<DateTime<Utc>>,
     pub earliest_daily_bar: Option<DateTime<Utc>>,
     pub earliest_minute_bar: Option<DateTime<Utc>>,
