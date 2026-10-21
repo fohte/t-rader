@@ -16,6 +16,26 @@ export function getChartThemeColors(isDark: boolean): ChartThemeColors {
   }
 }
 
+function resolveChartCssColor(
+  variableName: `--${string}`,
+  fallbackColor: string,
+): string {
+  if (typeof document === 'undefined') return fallbackColor
+
+  return (
+    getComputedStyle(document.documentElement)
+      .getPropertyValue(variableName)
+      .trim() || fallbackColor
+  )
+}
+
+export function getAnnotationSelectionColor(isDark: boolean): string {
+  return resolveChartCssColor(
+    '--muted-foreground',
+    getChartThemeColors(isDark).textColor,
+  )
+}
+
 export function getChartThemeOptions(colors: ChartThemeColors) {
   return {
     layout: {

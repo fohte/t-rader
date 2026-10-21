@@ -31,6 +31,7 @@ import {
   type ChartIndicatorConfig,
 } from '#lib/chart-indicator-settings'
 import {
+  getAnnotationSelectionColor,
   getChartThemeColors,
   getChartThemeOptions,
   observeChartResize,
@@ -186,7 +187,7 @@ export function CandlestickChart({
     tradeMarkersRef.current = createSeriesMarkers(candlestickSeries)
 
     const annotationPriceSeries = chart.addSeries(LineSeries, {
-      color: '#ef4444',
+      color: getAnnotationSelectionColor(isDark),
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       priceScaleId: 'right',
@@ -387,6 +388,18 @@ export function CandlestickChart({
         pendingTrendLinePreviewPoint ?? trendLineCursorPoint,
       highlightedTimestamp,
     })
+  const dateMarkerStyle:
+    | (CSSProperties & {
+        '--chart-date-marker-left': string
+        '--chart-date-marker-bottom': string
+      })
+    | undefined =
+    dateMarkerLayout == null
+      ? undefined
+      : {
+          '--chart-date-marker-left': `${dateMarkerLayout.x.toString()}px`,
+          '--chart-date-marker-bottom': `${dateMarkerLayout.bottom.toString()}px`,
+        }
 
   return (
     <div className={cn('relative min-w-0', className)} style={style}>
@@ -401,9 +414,9 @@ export function CandlestickChart({
       {dateMarkerLayout != null && (
         <span
           aria-label={`${dateMarkerLayout.date} のチャート上の位置`}
-          className="pointer-events-none absolute top-0 z-10 border-l border-dashed border-amber-400"
+          className="pointer-events-none absolute top-0 z-10 border-l border-dashed border-chart-3 [left:var(--chart-date-marker-left)] [bottom:var(--chart-date-marker-bottom)]"
           role="img"
-          style={{ left: dateMarkerLayout.x, bottom: dateMarkerLayout.bottom }}
+          style={dateMarkerStyle}
         />
       )}
       {bandLayout != null && (

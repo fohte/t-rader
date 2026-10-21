@@ -172,7 +172,7 @@ describe('ChartIndicatorControl', () => {
     expect(onRemove.mock.calls).toEqual([['indicator-sma']])
   })
 
-  it('opens the menu as a bottom sheet on a mobile viewport', () => {
+  it('opens the menu as a dialog on a mobile viewport', () => {
     const eventTarget = new EventTarget()
     const mediaQuery: MediaQueryList = {
       matches: true,
@@ -189,6 +189,8 @@ describe('ChartIndicatorControl', () => {
       value: vi.fn(() => mediaQuery),
     })
 
+    const onOpenChange = vi.fn()
+
     render(
       <ChartIndicatorControl
         indicators={[]}
@@ -197,12 +199,21 @@ describe('ChartIndicatorControl', () => {
         onRemove={vi.fn()}
         onUpdateDeviation={vi.fn()}
         onUpdatePeriod={vi.fn()}
-        defaultOpen
+        onOpenChange={onOpenChange}
       />,
     )
+    fireEvent.click(screen.getByRole('button', { name: '指標 0' }))
 
-    expect(screen.getByRole('heading', { name: '指標' }).textContent).toEqual(
-      '指標',
-    )
+    function readOpenState() {
+      return {
+        onOpenChangeCalls: onOpenChange.mock.calls,
+        dialogIsOpen: screen.queryByRole('dialog') != null,
+      }
+    }
+
+    expect(readOpenState()).toEqual({
+      onOpenChangeCalls: [[true]],
+      dialogIsOpen: true,
+    })
   })
 })
