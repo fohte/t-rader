@@ -127,6 +127,7 @@ erDiagram
   text incomplete_reason
   timestamp_with_time_zone created_at
   timestamp_with_time_zone sealed_at
+  jsonb capture_metadata
 }
 "public.strategy" {
   uuid id

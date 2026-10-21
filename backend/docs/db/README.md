@@ -70,7 +70,7 @@
 | [public.us_stock_sip_bar_refetch_write_budget](public.us_stock_sip_bar_refetch_write_budget.md) | 3       | 米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。                                                                                        | BASE TABLE        |
 | [public.us_stock_minute_bar_ingest_progress](public.us_stock_minute_bar_ingest_progress.md)     | 2       | 米国株の 1 分足を取得済みの終端時刻を保持する。                                                                                                    | BASE TABLE        |
 | [public.task_execution_definition_snapshot](public.task_execution_definition_snapshot.md)       | 5       | task 開始時の設定と初回参照した定義を不変 snapshot として保持する。                                                                                | BASE TABLE        |
-| [public.task_execution_payload](public.task_execution_payload.md)                               | 18      | task に属する input/output payload の revision、schema、完全性状態を保持する。                                                                     | BASE TABLE        |
+| [public.task_execution_payload](public.task_execution_payload.md)                               | 19      | task に属する input/output payload の revision、schema、完全性状態を保持する。                                                                     | BASE TABLE        |
 | [public.task_execution_payload_chunk](public.task_execution_payload_chunk.md)                   | 6       | payload の順序付き JSON chunk を追記専用で保持する。                                                                                               | BASE TABLE        |
 
 ## Stored procedures and functions
@@ -912,6 +912,7 @@ erDiagram
   text incomplete_reason
   timestamp_with_time_zone created_at
   timestamp_with_time_zone sealed_at
+  jsonb capture_metadata
 }
 "public.task_execution_payload_chunk" {
   uuid payload_id FK
