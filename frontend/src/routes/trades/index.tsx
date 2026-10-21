@@ -1,6 +1,4 @@
-import { Button } from '@fohte/ui/button'
 import { createFileRoute } from '@tanstack/react-router'
-import { Plus, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { AssetTabs } from '#components/assets/asset-tabs'
@@ -9,12 +7,14 @@ import {
   type StrategyFilter,
   StrategyFilterBar,
 } from '#components/trades/strategy-filter-bar'
+import { TradeDeleteError } from '#components/trades/trade-delete-error'
 import { TradeFormDialog } from '#components/trades/trade-form-dialog'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { TradeStats } from '#components/trades/trade-stats'
+import { TradesPageHeader } from '#components/trades/trades-page-header'
+import { TradesPageLoadingState } from '#components/trades/trades-page-loading-state'
 import { TradesTable } from '#components/trades/trades-table'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
-import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 
@@ -96,36 +96,15 @@ function TradesPage() {
     <div className="space-y-5 font-sans text-foreground">
       <AssetTabs activeTab="trades" />
 
-      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0 flex-1">
-          <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-            取引履歴
-          </h1>
-          <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
-            全戦略横断の約定記録。入力ソースは証券会社 API / CSV 取込 /
-            手入力に非依存のモデル。成績・保有はここから導出します。
-          </p>
-        </div>
-        <div className="flex flex-shrink-0 gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setImportOpen(true)
-            }}
-          >
-            <Upload />
-            SBI CSV 取込
-          </Button>
-          <Button type="button" onClick={handleAdd}>
-            <Plus />
-            取引を追加
-          </Button>
-        </div>
-      </header>
+      <TradesPageHeader
+        onImport={() => {
+          setImportOpen(true)
+        }}
+        onAdd={handleAdd}
+      />
 
       {tradesPending ? (
-        <Skeleton className="h-22 w-full" />
+        <TradesPageLoadingState kind="summary" />
       ) : (
         <TradeStats
           realizedPnl={summary?.realized_pnl ?? 0}
@@ -145,12 +124,10 @@ function TradesPage() {
         onOnlyUnlinkedChange={setOnlyUnlinked}
       />
 
-      {deleteError != null && (
-        <p className="text-xs text-primary">{deleteError}</p>
-      )}
+      {deleteError != null && <TradeDeleteError message={deleteError} />}
 
       {tradesPending ? (
-        <Skeleton className="h-50 w-full" />
+        <TradesPageLoadingState kind="table" />
       ) : (
         <TradesTable
           trades={shown}

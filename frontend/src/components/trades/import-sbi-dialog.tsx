@@ -1,7 +1,12 @@
 import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import { ResultAsync } from 'neverthrow'
 import { useState } from 'react'
 
+import {
+  ImportSbiReview,
+  type ImportSbiRow,
+} from '#components/trades/import-sbi-review'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
 import {
   Dialog,
@@ -15,16 +20,8 @@ import { fetchClient } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
-type SbiPreviewRow = components['schemas']['SbiPreviewRow']
 type SbiPreviewResponse = components['schemas']['SbiPreviewResponse']
 type SbiCommitResponse = components['schemas']['SbiCommitResponse']
-
-type RowState = SbiPreviewRow & {
-  /** 取込時の戦略 ID。空文字 = 未割当 */
-  strategyId: string
-  /** ユーザが除外チェックを入れた行は INSERT 対象から外す */
-  excluded: boolean
-}
 
 type Phase = 'select' | 'previewing' | 'review' | 'committing' | 'done'
 
@@ -40,7 +37,7 @@ export function ImportSbiDialog({
   const invalidateTrades = useInvalidateTrades()
   const [phase, setPhase] = useState<Phase>('select')
   const [error, setError] = useState<string | null>(null)
-  const [rows, setRows] = useState<RowState[]>([])
+  const [rows, setRows] = useState<ImportSbiRow[]>([])
   const [issues, setIssues] = useState<SbiPreviewResponse['issues']>([])
   const [bulkStrategy, setBulkStrategy] = useState<string>('')
   const [summary, setSummary] = useState<SbiCommitResponse | null>(null)
@@ -116,7 +113,10 @@ export function ImportSbiDialog({
     setRows((prev) => prev.map((r) => ({ ...r, strategyId: id })))
   }
 
-  function updateRow(idx: number, patch: Partial<RowState>) {
+  function updateRow(
+    idx: number,
+    patch: Partial<Pick<ImportSbiRow, 'strategyId' | 'excluded'>>,
+  ) {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
   }
 
@@ -170,7 +170,7 @@ export function ImportSbiDialog({
         </DialogHeader>
 
         {error != null && (
-          <p className="rounded-md border border-primary bg-primary/10 px-3 py-2 text-sm text-primary">
+          <p className="border border-primary bg-primary/10 px-3 py-2 text-sm text-primary">
             {error}
           </p>
         )}
@@ -179,7 +179,7 @@ export function ImportSbiDialog({
           <div className="flex flex-col gap-3 py-2">
             <label className="text-sm text-muted-foreground-strong">
               CSV ファイルを選択
-              <input
+              <Input
                 type="file"
                 accept=".csv,text/csv"
                 disabled={phase === 'previewing'}
@@ -187,7 +187,7 @@ export function ImportSbiDialog({
                   const f = e.target.files?.[0]
                   if (f != null) void handleFile(f)
                 }}
-                className="mt-1 block w-full text-sm"
+                className="mt-1 block w-full"
               />
             </label>
             {phase === 'previewing' && (
@@ -197,126 +197,15 @@ export function ImportSbiDialog({
         ) : null}
 
         {(phase === 'review' || phase === 'committing') && (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 text-sm">
-              <label className="flex items-center gap-2">
-                <span className="text-muted-foreground-strong">
-                  全行を戦略にまとめて割当:
-                </span>
-                <select
-                  value={bulkStrategy}
-                  onChange={(e) => {
-                    applyBulkStrategy(e.target.value)
-                  }}
-                  className="rounded border bg-transparent px-2 py-1"
-                >
-                  <option value="">(未選択)</option>
-                  {strategies.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span className="text-muted-foreground">
-                取込対象: {importableCount} / {rows.length}
-              </span>
-            </div>
-
-            <div className="max-h-105 overflow-auto rounded border border-border">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-bg-tertiary text-left text-muted-foreground-strong">
-                  <tr>
-                    <th className="px-2 py-1.5">除外</th>
-                    <th className="px-2 py-1.5">日付</th>
-                    <th className="px-2 py-1.5">銘柄</th>
-                    <th className="px-2 py-1.5">売買</th>
-                    <th className="px-2 py-1.5 text-right">数量</th>
-                    <th className="px-2 py-1.5 text-right">単価</th>
-                    <th className="px-2 py-1.5 text-right">手数料</th>
-                    <th className="px-2 py-1.5">戦略</th>
-                    <th className="px-2 py-1.5">状態</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, idx) => (
-                    <tr
-                      key={`${String(r.row_index)}-${r.symbol}`}
-                      className={
-                        r.is_duplicate
-                          ? 'bg-bg-tertiary/40 text-muted-foreground'
-                          : ''
-                      }
-                    >
-                      <td className="px-2 py-1">
-                        <input
-                          type="checkbox"
-                          checked={r.excluded}
-                          onChange={(e) => {
-                            updateRow(idx, { excluded: e.target.checked })
-                          }}
-                        />
-                      </td>
-                      <td className="px-2 py-1 font-mono">{r.date}</td>
-                      <td className="px-2 py-1">
-                        <span className="font-mono">{r.symbol}</span>{' '}
-                        <span className="text-muted-foreground">
-                          {r.stock_name}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1">
-                        {r.side === 'buy' ? '買' : '売'}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono">
-                        {r.qty}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono">
-                        {r.price}
-                      </td>
-                      <td className="px-2 py-1 text-right font-mono">
-                        {r.fee}
-                      </td>
-                      <td className="px-2 py-1">
-                        <select
-                          value={r.strategyId}
-                          onChange={(e) => {
-                            updateRow(idx, { strategyId: e.target.value })
-                          }}
-                          disabled={r.excluded}
-                          className="rounded border bg-transparent px-1 py-0.5"
-                        >
-                          <option value="">(未選択)</option>
-                          {strategies.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-2 py-1 text-2xs">
-                        {r.is_duplicate ? '重複 (skip 推奨)' : '新規'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {issues.length > 0 && (
-              <details className="text-xs">
-                <summary className="cursor-pointer text-muted-foreground-strong">
-                  パース不能行: {issues.length}
-                </summary>
-                <ul className="mt-1 list-disc pl-5">
-                  {issues.map((i) => (
-                    <li key={i.row_index}>
-                      row {i.row_index}: {i.message}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
+          <ImportSbiReview
+            rows={rows}
+            strategies={strategies}
+            issues={issues}
+            bulkStrategy={bulkStrategy}
+            importableCount={importableCount}
+            onBulkStrategyChange={applyBulkStrategy}
+            onRowChange={updateRow}
+          />
         )}
 
         {phase === 'done' && summary != null && (

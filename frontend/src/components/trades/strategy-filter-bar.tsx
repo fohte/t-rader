@@ -1,6 +1,7 @@
+import { Checkbox } from '@fohte/ui/checkbox'
+import { SegmentedControl } from '@fohte/ui/segmented-control'
 import { useMemo } from 'react'
 
-import { FilterBar, type FilterOption } from '#components/runs/filter-bar'
 import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
@@ -26,45 +27,46 @@ export function StrategyFilterBar({
   onlyUnlinked: boolean
   onOnlyUnlinkedChange: (value: boolean) => void
 }) {
-  const options = useMemo<FilterOption[]>(() => {
+  const options = useMemo(() => {
     const countByStrategy = new Map<string, number>()
-    for (const t of trades) {
+    for (const trade of trades) {
       countByStrategy.set(
-        t.strategy_id,
-        (countByStrategy.get(t.strategy_id) ?? 0) + 1,
+        trade.strategy_id,
+        (countByStrategy.get(trade.strategy_id) ?? 0) + 1,
       )
     }
-    return strategies.map((s) => ({
-      id: s.id,
-      label: s.name,
-      count: countByStrategy.get(s.id) ?? 0,
-    }))
+    return [
+      { value: 'all', label: 'すべて (' + String(trades.length) + ')' },
+      ...strategies.map((strategy) => ({
+        value: strategy.id,
+        label:
+          strategy.name +
+          ' (' +
+          String(countByStrategy.get(strategy.id) ?? 0) +
+          ')',
+      })),
+    ]
   }, [trades, strategies])
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <FilterBar
-        options={options}
+      <SegmentedControl
+        aria-label="戦略"
         value={value}
-        onChange={onChange}
-        allLabel="すべて"
-        allCount={trades.length}
+        options={options}
+        onValueChange={onChange}
       />
-      <button
-        type="button"
-        aria-pressed={onlyUnlinked}
-        onClick={() => {
-          onOnlyUnlinkedChange(!onlyUnlinked)
-        }}
-        className={`inline-flex items-center gap-1.5 border px-2.5 py-1 font-mono text-xs ${
-          onlyUnlinked
-            ? 'border-muted-foreground bg-surface-strong text-foreground'
-            : 'border-border text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground'
-        }`}
-      >
+      <label className="inline-flex items-center gap-2 font-mono text-xs text-muted-foreground-strong">
+        <Checkbox
+          aria-label="未紐付けのみ"
+          checked={onlyUnlinked}
+          onCheckedChange={(checked) => {
+            onOnlyUnlinkedChange(checked)
+          }}
+        />
         <span>未紐付けのみ</span>
         <span className="text-2xs text-muted-foreground">{unlinkedCount}</span>
-      </button>
+      </label>
     </div>
   )
 }
