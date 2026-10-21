@@ -35,8 +35,8 @@ describe('TimeframeSelector compact variant', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'その他の時間足' }))
-    const menu = await screen.findByRole('group', { name: 'その他の時間足' })
-    await user.click(within(menu).getByRole('button', { name: '5m' }))
+    const menu = await screen.findByRole('listbox', { name: 'その他の時間足' })
+    await user.click(within(menu).getByRole('option', { name: '5m' }))
 
     expect(onChange.mock.calls).toEqual([['5m']])
   })
@@ -53,10 +53,10 @@ describe('TimeframeSelector compact variant', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'その他の時間足' }))
-    const menu = await screen.findByRole('group', { name: 'その他の時間足' })
-    await user.click(within(menu).getByRole('button', { name: '5m' }))
+    const menu = await screen.findByRole('listbox', { name: 'その他の時間足' })
+    await user.click(within(menu).getByRole('option', { name: '5m' }))
 
-    expect(screen.queryByRole('group', { name: 'その他の時間足' })).toBeNull()
+    expect(screen.queryByRole('listbox', { name: 'その他の時間足' })).toBeNull()
   })
 
   it('selects the weekly timeframe from its menu', async () => {
@@ -71,8 +71,8 @@ describe('TimeframeSelector compact variant', () => {
         moreTimeframesDefaultOpen
       />,
     )
-    const menu = screen.getByRole('group', { name: 'その他の時間足' })
-    await user.click(within(menu).getByRole('button', { name: '1W' }))
+    const menu = screen.getByRole('listbox', { name: 'その他の時間足' })
+    await user.click(within(menu).getByRole('option', { name: '1W' }))
 
     expect(onChange.mock.calls).toEqual([['1w']])
   })

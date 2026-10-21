@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import type { CSSProperties } from 'react'
 
 import { CandlestickChart } from '#components/candlestick-chart'
 import { ChartIndicatorControl } from '#components/chart-indicator-control'
@@ -95,10 +96,10 @@ export function StockPageChart({
   const savedIndicators = useChartIndicators()
   const indicators = configuredIndicators ?? savedIndicators
   const lowerPaneCount = getChartIndicatorPaneCount(indicators)
-  const chartHeightStyle = {
-    height: `calc(var(--stock-chart-base-height) + ${(
-      lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT
-    ).toString()}px)`,
+  const chartHeightStyle: CSSProperties & {
+    '--stock-chart-height': string
+  } = {
+    '--stock-chart-height': `calc(var(--stock-chart-base-height) + ${(lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT).toString()}px)`,
   }
   const selectedDateStatus = getSelectedDateStatus(
     selectedDate,
@@ -111,7 +112,7 @@ export function StockPageChart({
     <section className="min-w-0 space-y-2" aria-label="銘柄チャート">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
-          <span className="mr-2 text-primary">&gt;</span>
+          <span className="mr-2 text-muted-foreground">&gt;</span>
           チャート
         </h2>
         <TimeframeSelector
@@ -137,19 +138,19 @@ export function StockPageChart({
           to="/stocks/$stockId/chart"
           params={{ stockId }}
           aria-label="全画面チャートを開く"
-          className="shrink-0 font-mono text-xs text-muted-foreground-strong underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-primary"
+          className="shrink-0 font-mono text-xs text-muted-foreground-strong underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-foreground"
         >
           全画面 ↗
         </Link>
       </div>
       {isLoading ? (
         <Skeleton
-          className="[--stock-chart-base-height:220px] w-full sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
+          className="[--stock-chart-base-height:220px] h-(--stock-chart-height) w-full sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
           style={chartHeightStyle}
         />
       ) : hasError ? (
         <div
-          className="flex items-center justify-center border border-border bg-card font-mono text-xs text-destructive [--stock-chart-base-height:220px] sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
+          className="flex h-(--stock-chart-height) items-center justify-center border border-border bg-card font-mono text-xs text-destructive [--stock-chart-base-height:220px] sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
           style={chartHeightStyle}
         >
           チャートの取得に失敗しました
@@ -166,7 +167,7 @@ export function StockPageChart({
           highlightedTimestamp={selectedDateBar?.timestamp}
           currency={currency}
           intraday={timeframe !== '1d' && timeframe !== '1w'}
-          className="w-full min-w-0 [--stock-chart-base-height:220px] sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
+          className="h-(--stock-chart-height) w-full min-w-0 [--stock-chart-base-height:220px] sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
           style={chartHeightStyle}
         />
       )}

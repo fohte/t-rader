@@ -1,4 +1,4 @@
-import { Button } from '@fohte/ui/button'
+import { SegmentedControl } from '@fohte/ui/segmented-control'
 import {
   createChart,
   type IChartApi,
@@ -121,21 +121,12 @@ export function IndicatorObservationChart({
         >
           推移
         </h2>
-        <div className="inline-flex gap-1" role="group" aria-label="表示期間">
-          {PERIODS.map((option) => (
-            <Button
-              key={option.value}
-              variant={period === option.value ? 'default' : 'outline'}
-              size="xs"
-              onClick={() => {
-                onPeriodChange(option.value)
-              }}
-              aria-pressed={period === option.value}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-label="表示期間"
+          value={period}
+          options={PERIODS}
+          onValueChange={onPeriodChange}
+        />
       </div>
       {shouldShowChart ? (
         <div
@@ -147,7 +138,7 @@ export function IndicatorObservationChart({
           <p
             className={cn(
               'font-mono text-xs',
-              isError ? 'text-primary' : 'text-muted-foreground',
+              isError ? 'text-destructive' : 'text-muted-foreground',
             )}
             role={isPending ? 'status' : isError ? 'alert' : undefined}
           >

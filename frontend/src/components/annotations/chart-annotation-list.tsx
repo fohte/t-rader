@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react'
+import { Button } from '@fohte/ui/button'
+import { Chip } from '@fohte/ui/chip'
 
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import { buildSnippet } from '#lib/note-utils'
@@ -11,7 +12,6 @@ interface ChartAnnotationListProps {
   isDeleting?: boolean
   deleteError?: string | null
   className?: string
-  style?: CSSProperties
   onSelectAnnotation: (id: string) => void
   onDeleteAnnotation?: (id: string) => void
 }
@@ -29,7 +29,6 @@ export function ChartAnnotationList({
   isDeleting = false,
   deleteError,
   className,
-  style,
   onSelectAnnotation,
   onDeleteAnnotation,
 }: ChartAnnotationListProps) {
@@ -40,7 +39,6 @@ export function ChartAnnotationList({
         'flex min-h-0 w-72 shrink-0 flex-col border border-border bg-card',
         className,
       )}
-      style={style}
     >
       <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
@@ -75,59 +73,69 @@ export function ChartAnnotationList({
               <div
                 key={annotation.id}
                 className={cn(
-                  'flex items-stretch border-b border-border last:border-b-0',
+                  'flex items-stretch border-b border-border last:border-b-0 hover:bg-surface-strong',
                   isSelected &&
-                    'bg-surface-strong ring-1 ring-inset ring-primary/50',
+                    'bg-surface-strong ring-1 ring-inset ring-border-strong/50',
                 )}
               >
-                <button
+                <Button
+                  variant="plain"
                   type="button"
                   aria-pressed={isSelected}
-                  className="flex min-w-0 flex-1 flex-col gap-1 px-3.5 py-2.5 text-left hover:bg-surface-strong"
+                  className="flex min-w-0 flex-1 shrink flex-col items-stretch justify-start text-left"
                   onClick={() => {
                     onSelectAnnotation(annotation.id)
                   }}
                 >
-                  <span className="flex min-w-0 items-center gap-2 font-mono text-2xs">
-                    <span className="max-w-36 truncate border border-border bg-background px-1 text-muted-foreground-strong">
-                      {annotation.target_kind}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {annotation.timestamp_start == null
-                        ? dateFormatter.format(new Date(annotation.timestamp))
-                        : `${dateFormatter.format(new Date(annotation.timestamp_start))} ～ ${dateFormatter.format(new Date(annotation.timestamp))}`}
-                    </span>
-                    {annotation.price != null && (
-                      <span className="ml-auto text-muted-foreground">
-                        {annotation.price.toLocaleString('ja-JP')}
+                  <span className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5">
+                    <span className="flex min-w-0 items-center gap-2 font-mono text-2xs">
+                      <Chip tone="strong">
+                        <span className="max-w-36 truncate">
+                          {annotation.target_kind}
+                        </span>
+                      </Chip>
+                      <span className="text-muted-foreground">
+                        {annotation.timestamp_start == null
+                          ? dateFormatter.format(new Date(annotation.timestamp))
+                          : `${dateFormatter.format(new Date(annotation.timestamp_start))} ～ ${dateFormatter.format(new Date(annotation.timestamp))}`}
                       </span>
-                    )}
-                  </span>
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="line-clamp-2 text-sm text-foreground">
-                      {buildSnippet(annotation.text)}
+                      {annotation.price != null && (
+                        <span className="ml-auto text-muted-foreground">
+                          {annotation.price.toLocaleString('ja-JP')}
+                        </span>
+                      )}
                     </span>
-                    {annotation.created_by_kind === 'human' && (
-                      <span className="shrink-0 font-mono text-2xs text-muted-foreground">
-                        自分
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="line-clamp-2 text-sm text-foreground">
+                        {buildSnippet(annotation.text)}
                       </span>
-                    )}
+                      {annotation.created_by_kind === 'human' && (
+                        <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                          自分
+                        </span>
+                      )}
+                    </span>
                   </span>
-                </button>
+                </Button>
                 {isSelected &&
                   annotation.created_by_kind === 'human' &&
                   onDeleteAnnotation != null && (
-                    <button
+                    <Button
+                      variant="plain"
                       type="button"
                       aria-label={`${annotation.target_kind} のアノテーションを削除`}
-                      className="shrink-0 self-center px-3 font-mono text-xs text-destructive hover:underline disabled:opacity-50"
+                      className="self-center"
                       disabled={isDeleting}
                       onClick={() => {
                         onDeleteAnnotation(annotation.id)
                       }}
                     >
-                      削除
-                    </button>
+                      <span className="inline-flex px-3">
+                        <span className="font-mono text-xs text-destructive group-hover/button:underline">
+                          削除
+                        </span>
+                      </span>
+                    </Button>
                   )}
               </div>
             )

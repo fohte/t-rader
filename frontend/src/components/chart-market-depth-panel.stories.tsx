@@ -8,7 +8,7 @@ const meta = {
   component: ChartMarketDepthPanel,
   decorators: [
     (Story) => (
-      <div style={{ height: '400px' }}>
+      <div className="h-96">
         <Story />
       </div>
     ),
@@ -24,7 +24,7 @@ type Story = StoryObj<typeof meta>
 export const Open: Story = {
   name: 'shows the open market depth panel for a selected instrument.',
   args: {
-    instrumentId: '7203',
+    instrumentId: 'demo-code',
     isOpen: true,
   },
 }

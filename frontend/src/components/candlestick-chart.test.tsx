@@ -51,6 +51,7 @@ const chartMocks = vi.hoisted(() => {
     setData: vi.fn(),
   }
   const annotationPriceSeries = {
+    applyOptions: vi.fn(),
     setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
   }
   const trendLinePreviewSeries = {
@@ -164,6 +165,12 @@ const secondBar: components['schemas']['Bar'] = {
 
 const bars: components['schemas']['Bar'][] = [firstBar]
 type Trade = components['schemas']['TradeListItem']
+
+function getSelectionColor(): string {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue('--muted-foreground')
+    .trim()
+}
 
 function makeTrade(overrides: Partial<Trade> = {}): Trade {
   return {
@@ -352,8 +359,12 @@ describe('CandlestickChart', () => {
         screen.getByRole('list', { name: '下段 2 の表示中の指標' }).textContent,
       ],
       lowerPaneLegendTops: [
-        screen.getByRole('list', { name: '下段 1 の表示中の指標' }).style.top,
-        screen.getByRole('list', { name: '下段 2 の表示中の指標' }).style.top,
+        screen
+          .getByRole('list', { name: '下段 1 の表示中の指標' })
+          .style.getPropertyValue('--pane-top'),
+        screen
+          .getByRole('list', { name: '下段 2 の表示中の指標' })
+          .style.getPropertyValue('--pane-top'),
       ],
       resizeHeight: chartMocks.chart.applyOptions.mock.calls.at(-1),
     })
@@ -415,16 +426,21 @@ describe('CandlestickChart', () => {
     )
 
     const readRenderedState = () => ({
-      markerStyle: screen
-        .getByRole('img', { name: '2025-04-10 のチャート上の位置' })
-        .getAttribute('style'),
+      markerStyle: {
+        left: screen
+          .getByRole('img', { name: '2025-04-10 のチャート上の位置' })
+          .style.getPropertyValue('--chart-date-marker-left'),
+        bottom: screen
+          .getByRole('img', { name: '2025-04-10 のチャート上の位置' })
+          .style.getPropertyValue('--chart-date-marker-bottom'),
+      },
       targetTimes: chartMocks.timeScale.timeToCoordinate.mock.calls.map(
         ([time]) => time,
       ),
     })
 
     expect(readRenderedState()).toEqual({
-      markerStyle: 'left: 36px; bottom: 24px;',
+      markerStyle: { left: '36px', bottom: '24px' },
       targetTimes: [1744243200],
     })
   })
@@ -916,13 +932,13 @@ describe('CandlestickChart', () => {
       priceLines: [
         {
           price: 100,
-          color: '#ef4444',
+          color: getSelectionColor(),
           lineWidth: 2,
           lineStyle: 2,
           lineVisible: false,
           axisLabelVisible: true,
           title: '架空分類',
-          axisLabelColor: '#ef4444',
+          axisLabelColor: getSelectionColor(),
           axisLabelTextColor: '#ffffff',
         },
       ],
@@ -964,13 +980,13 @@ describe('CandlestickChart', () => {
       priceLines: [
         {
           price: 100,
-          color: '#ef4444',
+          color: getSelectionColor(),
           lineWidth: 2,
           lineStyle: 2,
           lineVisible: false,
           axisLabelVisible: true,
           title: '架空分類',
-          axisLabelColor: '#ef4444',
+          axisLabelColor: getSelectionColor(),
           axisLabelTextColor: '#ffffff',
         },
       ],
@@ -1063,24 +1079,24 @@ describe('CandlestickChart', () => {
       priceLines: [
         {
           price: 100,
-          color: '#ef4444',
+          color: getSelectionColor(),
           lineWidth: 2,
           lineStyle: 2,
           lineVisible: false,
           axisLabelVisible: true,
           title: '架空分類',
-          axisLabelColor: '#ef4444',
+          axisLabelColor: getSelectionColor(),
           axisLabelTextColor: '#ffffff',
         },
         {
           price: 100,
-          color: '#ef4444',
+          color: getSelectionColor(),
           lineWidth: 2,
           lineStyle: 2,
           lineVisible: true,
           axisLabelVisible: true,
           title: '架空分類',
-          axisLabelColor: '#ef4444',
+          axisLabelColor: getSelectionColor(),
           axisLabelTextColor: '#ffffff',
         },
       ],

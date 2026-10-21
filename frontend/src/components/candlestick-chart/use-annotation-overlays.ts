@@ -22,6 +22,7 @@ import {
   type TrendLinePoint,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import { observeChartTheme } from '#lib/chart-theme'
 import {
   getChartBarDate,
   toCandlestickData,
@@ -53,6 +54,15 @@ interface DateMarkerLayout {
 
 interface ChartRef<T> {
   current: T | null
+}
+
+export function getAnnotationSelectionColor(): string {
+  // Lightweight Charts は canvas 描画のため、CSS token を色値に解決して渡す。
+  if (typeof document === 'undefined') return 'var(--muted-foreground)'
+
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue('--muted-foreground')
+    .trim()
 }
 
 export function useAnnotationOverlays({
@@ -91,6 +101,9 @@ export function useAnnotationOverlays({
     [],
   )
   const [bandPeriods, setBandPeriods] = useState<AnnotationBandPeriod[]>([])
+  const [selectionColor, setSelectionColor] = useState(
+    getAnnotationSelectionColor,
+  )
   const bandAnnotations = useMemo(() => {
     const allAnnotations = annotations ?? []
     const fallbackTrendLines = allAnnotations.flatMap<ChartAnnotation>(
@@ -123,6 +136,18 @@ export function useAnnotationOverlays({
     ]
   }, [annotations, bars])
   const hasAnnotations = bandAnnotations.length > 0
+
+  useEffect(() => {
+    const updateSelectionColor = () => {
+      setSelectionColor(getAnnotationSelectionColor())
+    }
+    updateSelectionColor()
+    return observeChartTheme(updateSelectionColor)
+  }, [])
+
+  useEffect(() => {
+    annotationPriceSeriesRef.current?.applyOptions({ color: selectionColor })
+  }, [annotationPriceSeriesRef, selectionColor])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -409,13 +434,13 @@ export function useAnnotationOverlays({
 
     priceLineRef.current = series.createPriceLine({
       price: selectedAnnotation.price,
-      color: '#ef4444',
+      color: selectionColor,
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       lineVisible: !isPeriod,
       axisLabelVisible: true,
       title: selectedAnnotation.target_kind,
-      axisLabelColor: '#ef4444',
+      axisLabelColor: selectionColor,
       axisLabelTextColor: '#ffffff',
     })
 
@@ -431,6 +456,7 @@ export function useAnnotationOverlays({
     bars,
     candlestickSeriesRef,
     priceLineRef,
+    selectionColor,
     selectedAnnotationId,
   ])
 
