@@ -22,6 +22,9 @@ pub struct CustomIndicatorEvaluation {
     pub code: String,
     pub args: JsonValue,
     pub output: JsonValue,
+    pub payload_id: Option<Uuid>,
+    pub payload_pointers: Option<JsonValue>,
+    pub execution_step_id: Option<Uuid>,
     pub evaluated_at: DateTime<FixedOffset>,
 }
 
@@ -59,6 +62,9 @@ pub struct RecordCustomIndicatorEvaluationCommand {
     pub code: String,
     pub args: JsonValue,
     pub output: JsonValue,
+    pub payload_id: Option<Uuid>,
+    pub payload_pointers: Option<JsonValue>,
+    pub execution_step_id: Option<Uuid>,
 }
 
 #[derive(Clone)]
@@ -82,6 +88,9 @@ impl CustomIndicatorEvaluationUseCases {
             code: command.code,
             args: command.args,
             output: command.output,
+            payload_id: command.payload_id,
+            payload_pointers: command.payload_pointers,
+            execution_step_id: command.execution_step_id,
             evaluated_at: Utc::now().fixed_offset(),
         };
         let id = evaluation.id;

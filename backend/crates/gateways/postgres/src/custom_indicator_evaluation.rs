@@ -34,6 +34,9 @@ impl CustomIndicatorEvaluationRepository for PostgresCustomIndicatorEvaluationRe
             code: Set(evaluation.code),
             args: Set(evaluation.args),
             output: Set(evaluation.output),
+            payload_id: Set(evaluation.payload_id),
+            payload_pointers: Set(evaluation.payload_pointers),
+            execution_step_id: Set(evaluation.execution_step_id),
             evaluated_at: Set(evaluation.evaluated_at),
         }
         .insert(&self.db)
@@ -67,6 +70,9 @@ impl From<custom_indicator_evaluation::Model> for CustomIndicatorEvaluation {
             code: model.code,
             args: model.args,
             output: model.output,
+            payload_id: model.payload_id,
+            payload_pointers: model.payload_pointers,
+            execution_step_id: model.execution_step_id,
             evaluated_at: model.evaluated_at,
         }
     }
@@ -102,6 +108,9 @@ mod tests {
             args: Set(json!({})),
             output: Set(json!({"result": 18.5})),
             evaluated_at: Set(evaluated_at()),
+            payload_id: Set(None),
+            payload_pointers: Set(None),
+            execution_step_id: Set(None),
         }
         .insert(db)
         .await
@@ -129,6 +138,9 @@ mod tests {
                     code: "return 1".into(),
                     args: json!({}),
                     output: json!({"result": 18.5}),
+                    payload_id: None,
+                    payload_pointers: None,
+                    execution_step_id: None,
                     evaluated_at: evaluated_at(),
                 }
             )),

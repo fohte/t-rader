@@ -388,6 +388,44 @@ comments:
       args: '計算に渡した入力引数を保持する JSON 値。'
       output: '自作指標が返した JSON 値。'
       evaluated_at: '計算が成功した時刻。'
+      payload_id: '完全な評価出力を保持する task payload。'
+      payload_pointers: 'evaluation の数値出力名と payload 内 JSON Pointer の対応。'
+      execution_step_id: '評価を実行した task step の UUID。'
+  - table: task_execution_definition_snapshot
+    tableComment: 'task 開始時の設定と初回参照した定義を不変 snapshot として保持する。'
+    columnComments:
+      task_id: '定義 snapshot を所有する task。'
+      definition_key: 'snapshot 内の定義を識別するキー。'
+      definition: '実行で使う定義の保存時点の JSON 内容。'
+      digest: 'definition の SHA-256 digest。'
+  - table: task_execution_payload
+    tableComment: 'task に属する input/output payload の revision、schema、完全性状態を保持する。'
+    columnComments:
+      task_id: 'payload を所有する task。'
+      execution_step_id: 'payload を生成した task step の UUID。'
+      kind: 'payload の区分。input または output。'
+      source: 'payload を取得または生成した操作。'
+      source_revision: '取得元が返す revision または保存した定義 digest。'
+      source_locator: '取得元の revision に対応する locator。'
+      source_metadata: '取得元が返す補足情報。'
+      schema: 'seal 前に payload 全体へ適用する JSON Schema。'
+      root_is_array: 'payload の root が配列かどうか。'
+      chunk_count: '保存した順序付き chunk 数。'
+      item_count: 'payload に含まれる配列要素数。'
+      byte_count: 'payload の JSON byte 数。'
+      digest: 'seal 済み payload の SHA-256 digest。'
+      status: 'staging、sealed、incomplete のいずれか。'
+      incomplete_reason: 'payload を完了扱いにできなかった理由。'
+      sealed_at: 'payload を immutable な sealed 状態にした時刻。'
+  - table: task_execution_payload_chunk
+    tableComment: 'payload の順序付き JSON chunk を追記専用で保持する。'
+    columnComments:
+      payload_id: 'chunk が属する payload。'
+      sequence: 'payload 内の 0 始まりの chunk 順序。'
+      start_item: '配列 payload 内で chunk が始まる要素位置。'
+      data: 'chunk に含まれる JSON 値。'
+      byte_count: 'chunk の JSON byte 数。'
+      item_count: 'chunk に含まれる配列要素数。'
   - table: dashboard
     tableComment: 'ユーザーが作成したダッシュボードの YAML 設定を保持する。'
     columnComments:

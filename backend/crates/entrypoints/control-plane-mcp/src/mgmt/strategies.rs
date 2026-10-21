@@ -103,6 +103,10 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
         SubmitTaskError::Repository(error) => map_repository_error(error),
         SubmitTaskError::UnitOfWork(error) => map_unit_of_work_error(error),
         SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
+        SubmitTaskError::ExecutionSnapshot(error) => {
+            tracing::error!(error = %error, "failed to capture task execution definitions");
+            McpError::internal_error("failed to capture task execution definitions", None)
+        }
     }
 }
 

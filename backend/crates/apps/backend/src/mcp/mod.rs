@@ -126,6 +126,7 @@ pub(crate) fn strategy_server_dependencies(
         strategies: use_cases.strategies(),
         strategy_scope: Arc::new(use_cases.strategy_scope()),
         strategy_tasks: use_cases.strategy_tasks(),
+        strategy_executions: use_cases.strategy_executions(),
         subagent_definitions: use_cases.subagent_definitions(),
         strategy_task_step_evidence: use_cases.strategy_task_step_evidence(),
         trades: use_cases.trades(),

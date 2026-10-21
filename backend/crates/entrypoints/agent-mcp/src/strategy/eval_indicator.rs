@@ -26,7 +26,7 @@ use super::{
 
 /// JSON Schema validation の失敗種別。stored schema 自体の不正と instance の不一致を
 /// 呼び出し側で別の MCP error に振り分けるために区別する。
-enum SchemaCheckError {
+pub(super) enum SchemaCheckError {
     /// schema 自体が JSON Schema として不正 (operator 側の保存ミス)。
     BrokenSchema(String),
     /// instance が schema に合致しない (caller 側の入力ミス、もしくは indicator 出力の問題)。
@@ -118,6 +118,9 @@ impl StrategyServer {
                         code: indicator.code.clone(),
                         args,
                         output: output.clone(),
+                        payload_id: None,
+                        payload_pointers: None,
+                        execution_step_id: None,
                     })
                     .await
                     .map_err(|e| {
@@ -140,7 +143,10 @@ impl StrategyServer {
     }
 }
 
-fn validate_with_schema(schema: &JsonValue, instance: &JsonValue) -> Result<(), SchemaCheckError> {
+pub(super) fn validate_with_schema(
+    schema: &JsonValue,
+    instance: &JsonValue,
+) -> Result<(), SchemaCheckError> {
     let validator = jsonschema::validator_for(schema)
         .map_err(|e| SchemaCheckError::BrokenSchema(e.to_string()))?;
     let errors: Vec<String> = validator
@@ -154,7 +160,7 @@ fn validate_with_schema(schema: &JsonValue, instance: &JsonValue) -> Result<(), 
     }
 }
 
-fn parse_and_validate_output(
+pub(super) fn parse_and_validate_output(
     stdout: &str,
     indicator: &CustomIndicator,
 ) -> Result<JsonValue, McpError> {
@@ -184,7 +190,11 @@ fn parse_and_validate_output(
     Ok(parsed)
 }
 
-fn kata_exec_error(err: KataExecError, strategy_id: Uuid, indicator: &CustomIndicator) -> McpError {
+pub(super) fn kata_exec_error(
+    err: KataExecError,
+    strategy_id: Uuid,
+    indicator: &CustomIndicator,
+) -> McpError {
     tracing::warn!(
         strategy_id = %strategy_id,
         indicator_id = %indicator.indicator_id,
