@@ -29,6 +29,20 @@ const NO_KIND_VALUE = '__no-kind__'
 const LOADING_KIND_VALUE = '__loading-kind__'
 const KIND_VALUE_PREFIX = 'kind:'
 
+function getSelectedKindLabel(
+  kind: string,
+  noteKinds: NoteKind[],
+  noteKindsPending: boolean,
+) {
+  if (kind === '') {
+    return noteKindsPending ? '読み込み中…' : '種別なし'
+  }
+
+  return (
+    noteKinds.find((noteKind) => noteKind.key === kind)?.display_name ?? kind
+  )
+}
+
 export interface CreateNoteDialogViewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -66,6 +80,12 @@ export function CreateNoteDialogView({
   onKindChange,
   onSubmit,
 }: CreateNoteDialogViewProps) {
+  const selectedKindLabel = getSelectedKindLabel(
+    kind,
+    noteKinds,
+    noteKindsPending,
+  )
+
   return (
     <>
       {showTrigger && (
@@ -149,9 +169,7 @@ export function CreateNoteDialogView({
                   id="create-note-kind"
                   disabled={noteKindsPending}
                 >
-                  <SelectValue
-                    placeholder={noteKindsPending ? '読み込み中…' : '種別なし'}
-                  />
+                  <SelectValue>{selectedKindLabel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {noteKindsPending ? (

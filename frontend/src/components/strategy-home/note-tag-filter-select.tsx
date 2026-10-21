@@ -27,6 +27,9 @@ export function NoteTagFilterSelect({
   defaultOpen,
   onChange,
 }: NoteTagFilterSelectProps) {
+  const selectedTagLabel =
+    value == null || value === '' ? 'すべてのタグ' : value
+
   return (
     <Select
       value={encodePrefixedSelectValue(value, TAG_VALUE_PREFIX, ALL_TAGS_VALUE)}
@@ -40,7 +43,7 @@ export function NoteTagFilterSelect({
       }}
     >
       <SelectTrigger aria-label="タグで絞り込み">
-        <SelectValue />
+        <SelectValue>{selectedTagLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={ALL_TAGS_VALUE}>すべてのタグ</SelectItem>

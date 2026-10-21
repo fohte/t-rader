@@ -7,6 +7,26 @@ import { NoteTagFilterSelect } from '#components/strategy-home/note-tag-filter-s
 afterEach(cleanup)
 
 describe('NoteTagFilterSelect', () => {
+  it.each([
+    { value: undefined, expected: 'すべてのタグ' },
+    { value: '架空タグ', expected: '架空タグ' },
+  ])(
+    '閉じた selector に選択ラベルを表示する: $value',
+    ({ value, expected }) => {
+      render(
+        <NoteTagFilterSelect
+          tags={['架空タグ']}
+          value={value}
+          onChange={() => {}}
+        />,
+      )
+
+      expect(
+        screen.getByRole('combobox', { name: 'タグで絞り込み' }).textContent,
+      ).toEqual(expected)
+    },
+  )
+
   it('選択したタグを callback に渡す', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
