@@ -195,7 +195,7 @@ function AnnotationRows({
               type="button"
               variant={isSelected ? 'default' : 'ghost'}
               aria-pressed={isSelected}
-              className="h-auto min-w-0 flex-1 flex-col gap-1.5 whitespace-normal px-3.5 py-3 text-left"
+              className="h-auto min-w-0 flex-1 flex-col items-start gap-1.5 whitespace-normal px-3.5 py-3 text-left"
               onClick={() => {
                 onSelectAnnotation(annotation.id)
               }}
