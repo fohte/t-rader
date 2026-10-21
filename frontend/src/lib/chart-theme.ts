@@ -16,7 +16,7 @@ export function getChartThemeColors(isDark: boolean): ChartThemeColors {
   }
 }
 
-export function resolveChartCssColor(
+function resolveChartCssColor(
   variableName: `--${string}`,
   fallbackColor: string,
 ): string {
