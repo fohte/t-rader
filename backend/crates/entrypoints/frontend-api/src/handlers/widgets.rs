@@ -14,6 +14,9 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
         WidgetUseCaseError::NoData => AppError::NotFound(
             "no widget data is available on or before the requested date".to_string(),
         ),
+        WidgetUseCaseError::Timeout => {
+            AppError::ServiceUnavailable("widget query exceeded its time limit".to_string())
+        }
         WidgetUseCaseError::Query(WidgetQueryError::Database(error)) => match error {
             database_error @ PersistenceError::Database(_) => {
                 AppError::Internal(database_error.to_string())
@@ -23,8 +26,15 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
         WidgetUseCaseError::Query(WidgetQueryError::StockGroups(error)) => {
             AppError::Internal(error.to_string())
         }
-        WidgetUseCaseError::Query(error @ WidgetQueryError::IncompatibleCurrencies) => {
-            AppError::Validation(error.to_string())
+        WidgetUseCaseError::Query(
+            error @ (WidgetQueryError::IncompatibleCurrencies
+            | WidgetQueryError::InputLimitExceeded { .. }),
+        ) => AppError::Validation(error.to_string()),
+        WidgetUseCaseError::Query(WidgetQueryError::Timeout) => {
+            AppError::ServiceUnavailable("widget query exceeded its time limit".to_string())
+        }
+        WidgetUseCaseError::Query(WidgetQueryError::SeriesUnsupported) => {
+            AppError::Internal("widget series query source is not configured".to_string())
         }
     }
 }

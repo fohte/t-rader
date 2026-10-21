@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use chrono::NaiveDate;
 use core_application::widget::{
     WidgetAggregation, WidgetBy, WidgetDefinition, WidgetHierarchy, WidgetMetric, WidgetPeriod,
-    WidgetQuery, WidgetScale, WidgetTime, WidgetUniverse, WidgetValueDisplay, WidgetValueFormat,
-    WidgetVisualization, WidgetVisualizationOrder,
+    WidgetQuery, WidgetScale, WidgetSeries, WidgetSeriesPoint, WidgetSeriesTarget, WidgetTime,
+    WidgetUniverse, WidgetValueDisplay, WidgetValueFormat, WidgetVisualization,
+    WidgetVisualizationOrder,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -342,7 +343,7 @@ impl From<WidgetVisualizationOrderRequest> for WidgetVisualizationOrder {
 #[serde(deny_unknown_fields)]
 pub struct WidgetTimeRequest {
     pub as_of: Option<NaiveDate>,
-    /// 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。
+    /// `line` では `3m`、`1y`、または両端を含む `YYYY-MM-DD..YYYY-MM-DD` を指定します。
     pub range: Option<String>,
 }
 
@@ -359,6 +360,8 @@ impl From<WidgetTimeRequest> for WidgetTime {
 pub struct WidgetQueryResponse {
     pub as_of: NaiveDate,
     pub rows: Vec<WidgetQueryResultRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<Vec<WidgetSeriesDto>>,
 }
 
 impl From<core_application::widget::WidgetQueryResponse> for WidgetQueryResponse {
@@ -370,6 +373,65 @@ impl From<core_application::widget::WidgetQueryResponse> for WidgetQueryResponse
                 .into_iter()
                 .map(WidgetQueryResultRow::from)
                 .collect(),
+            series: response
+                .series
+                .map(|series| series.into_iter().map(WidgetSeriesDto::from).collect()),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetSeriesDto {
+    pub key: String,
+    pub query: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<WidgetSeriesTargetDto>,
+    pub points: Vec<WidgetSeriesPointDto>,
+}
+
+impl From<WidgetSeries> for WidgetSeriesDto {
+    fn from(series: WidgetSeries) -> Self {
+        Self {
+            key: series.key,
+            query: series.query,
+            name: series.name,
+            target: series.target.map(WidgetSeriesTargetDto::from),
+            points: series
+                .points
+                .into_iter()
+                .map(WidgetSeriesPointDto::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetSeriesTargetDto {
+    pub key: String,
+    pub name: String,
+}
+
+impl From<WidgetSeriesTarget> for WidgetSeriesTargetDto {
+    fn from(target: WidgetSeriesTarget) -> Self {
+        Self {
+            key: target.key,
+            name: target.name,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetSeriesPointDto {
+    pub date: NaiveDate,
+    pub value: Option<Decimal>,
+}
+
+impl From<WidgetSeriesPoint> for WidgetSeriesPointDto {
+    fn from(point: WidgetSeriesPoint) -> Self {
+        Self {
+            date: point.date,
+            value: point.value.map(|value| value.normalize()),
         }
     }
 }

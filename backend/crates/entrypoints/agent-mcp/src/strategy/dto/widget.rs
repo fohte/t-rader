@@ -14,6 +14,34 @@ pub struct QueryWidgetParams {
 pub struct QueryWidgetResult {
     pub as_of: NaiveDate,
     pub rows: Vec<QueryWidgetRowDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<Vec<QueryWidgetSeriesDto>>,
+}
+
+#[cfg_attr(test, derive(Deserialize))]
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct QueryWidgetSeriesDto {
+    pub key: String,
+    pub query: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<QueryWidgetSeriesTargetDto>,
+    pub points: Vec<QueryWidgetSeriesPointDto>,
+}
+
+#[cfg_attr(test, derive(Deserialize))]
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct QueryWidgetSeriesTargetDto {
+    pub key: String,
+    pub name: String,
+}
+
+#[cfg_attr(test, derive(Deserialize))]
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct QueryWidgetSeriesPointDto {
+    pub date: NaiveDate,
+    #[schemars(with = "Option<f64>")]
+    pub value: Option<rust_decimal::Decimal>,
 }
 
 #[cfg_attr(test, derive(Deserialize))]

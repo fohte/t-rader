@@ -7,11 +7,16 @@ use core_application::widget::{
     WidgetRowKey,
 };
 use rust_decimal::Decimal;
-use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
+use sea_orm::{DatabaseBackend, FromQueryResult, Statement};
 
 use crate::DatabaseHandle;
 use crate::group_query_sql::with_shared_market_ctes;
 use crate::persistence::persistence_error;
+
+mod series;
+mod timeout;
+
+use timeout::query_all_with_timeout;
 
 const RESOLVE_AS_OF_SQL: &str = r#"
     SELECT (MAX(latest_timestamp) AT TIME ZONE 'UTC')::date AS as_of
@@ -290,11 +295,7 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
             ),
             None => Statement::from_string(DatabaseBackend::Postgres, RESOLVE_AS_OF_SQL.to_owned()),
         };
-        let rows = self
-            .db
-            .query_all_raw(statement)
-            .await
-            .map_err(query_error)?;
+        let rows = query_all_with_timeout(&self.db, statement).await?;
 
         rows.first()
             .map(|row| AsOfRow::from_query_result(row, "").map(|value| value.as_of))
@@ -322,15 +323,15 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
             .iter()
             .filter_map(|query| query.indicator.clone())
             .collect::<Vec<_>>();
-        let rows = self
-            .db
-            .query_all_raw(Statement::from_sql_and_values(
+        let rows = query_all_with_timeout(
+            &self.db,
+            Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 RESOLVE_INDICATOR_AS_OF_SQL,
                 [indicator_ids.into(), requested.into()],
-            ))
-            .await
-            .map_err(query_error)?;
+            ),
+        )
+        .await?;
 
         rows.first()
             .map(|row| AsOfRow::from_query_result(row, "").map(|value| value.as_of))
@@ -347,18 +348,18 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
         use core_application::widget::WidgetMetric;
 
         if definition.metric == WidgetMetric::Indicator {
-            let rows = self
-                .db
-                .query_all_raw(Statement::from_sql_and_values(
+            let rows = query_all_with_timeout(
+                &self.db,
+                Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     QUERY_INDICATOR_SQL,
                     [
                         definition.indicator.clone().unwrap_or_default().into(),
                         as_of.into(),
                     ],
-                ))
-                .await
-                .map_err(query_error)?;
+                ),
+            )
+            .await?;
             return rows
                 .iter()
                 .map(|row| {
@@ -401,9 +402,9 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
             Some(WidgetAggregation::Count) | None => false,
         } && definition.by != WidgetBy::Stock;
 
-        let rows = self
-            .db
-            .query_all_raw(Statement::from_sql_and_values(
+        let rows = query_all_with_timeout(
+            &self.db,
+            Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 QUERY_WIDGET_SQL.as_str(),
                 [
@@ -418,9 +419,9 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
                     stock_ids.into(),
                     requires_currency_consistency.into(),
                 ],
-            ))
-            .await
-            .map_err(query_error)?;
+            ),
+        )
+        .await?;
 
         let rows = rows
             .iter()
@@ -448,6 +449,14 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
             })
             .collect()
     }
+
+    async fn query_series(
+        &self,
+        range: core_application::widget::ResolvedWidgetTimeRange,
+        definition: &WidgetQuery,
+    ) -> Result<Vec<core_application::widget::WidgetSeriesQueryRow>, WidgetQueryError> {
+        series::query_series(self, range, definition).await
+    }
 }
 
 fn query_by_sql(by: WidgetBy) -> &'static str {
@@ -458,16 +467,29 @@ fn query_by_sql(by: WidgetBy) -> &'static str {
 }
 
 fn query_error(error: sea_orm::DbErr) -> WidgetQueryError {
+    use sea_orm::RuntimeErr;
+
+    let is_statement_timeout = match &error {
+        sea_orm::DbErr::Exec(RuntimeErr::SqlxError(error))
+        | sea_orm::DbErr::Query(RuntimeErr::SqlxError(error)) => error
+            .as_database_error()
+            .and_then(|error| error.code())
+            .is_some_and(|code| code.as_ref() == "57014"),
+        _ => false,
+    };
+    if is_statement_timeout {
+        return WidgetQueryError::Timeout;
+    }
     WidgetQueryError::Database(persistence_error(error))
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::{NaiveDate, TimeZone};
+    use chrono::{Datelike, Days, NaiveDate, TimeZone, Weekday};
     use core_application::group_movers::{GroupMoversQuery, GroupMoversQuerySource};
     use core_application::widget::{
         WidgetAggregation, WidgetBy, WidgetMetric, WidgetPeriod, WidgetQuery, WidgetQueryRow,
-        WidgetQuerySource, WidgetRowKey, WidgetUniverse,
+        WidgetQuerySource, WidgetRowKey, WidgetSeriesQueryRow, WidgetTimeRange, WidgetUniverse,
     };
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
@@ -510,7 +532,11 @@ mod tests {
     }
 
     async fn insert_bar(db: &DatabaseHandle, id: &str, day: u32, close: i64) {
-        let timestamp = date(day)
+        insert_bar_on_date(db, id, date(day), close).await;
+    }
+
+    async fn insert_bar_on_date(db: &DatabaseHandle, id: &str, date: NaiveDate, close: i64) {
+        let timestamp = date
             .and_hms_opt(0, 0, 0)
             .map(|timestamp| chrono::Utc.from_utc_datetime(&timestamp))
             .expect("valid timestamp");
@@ -531,6 +557,46 @@ mod tests {
         )
         .await
         .expect("upsert widget bar");
+    }
+
+    async fn insert_bars_on_dates(db: &DatabaseHandle, id: &str, values: &[(NaiveDate, i64)]) {
+        let bars = values
+            .iter()
+            .map(|(date, close)| {
+                let timestamp = date
+                    .and_hms_opt(0, 0, 0)
+                    .map(|timestamp| chrono::Utc.from_utc_datetime(&timestamp))
+                    .expect("valid timestamp");
+                let close = Decimal::from(*close);
+                Bar {
+                    instrument_id: id.to_string(),
+                    timeframe: Timeframe::Daily,
+                    timestamp,
+                    open: close,
+                    high: close,
+                    low: close,
+                    close,
+                    volume: 100,
+                    adjustment_factor: Decimal::ONE,
+                }
+            })
+            .collect();
+        crate::repositories::bars::upsert_bars(db, bars)
+            .await
+            .expect("upsert widget bars");
+    }
+
+    fn weekdays_ending(end: NaiveDate, count: usize) -> Vec<NaiveDate> {
+        let mut dates = Vec::with_capacity(count);
+        let mut current = end;
+        while dates.len() < count {
+            if !matches!(current.weekday(), Weekday::Sat | Weekday::Sun) {
+                dates.push(current);
+            }
+            current = current.pred_opt().expect("date remains in range");
+        }
+        dates.reverse();
+        dates
     }
 
     async fn insert_hourly_bar(db: &DatabaseHandle, id: &str, day: u32) {
@@ -569,9 +635,20 @@ mod tests {
         pbr: Option<i64>,
         mkt_cap: Option<i64>,
     ) {
+        insert_valuation_values_on_date(db, id, date(day), per, pbr, mkt_cap).await;
+    }
+
+    async fn insert_valuation_values_on_date(
+        db: &DatabaseHandle,
+        id: &str,
+        valuation_date: NaiveDate,
+        per: Option<i64>,
+        pbr: Option<i64>,
+        mkt_cap: Option<i64>,
+    ) {
         valuation::ActiveModel {
             code: Set(format!("{id}0")),
-            date: Set(date(day)),
+            date: Set(valuation_date),
             eps: Set(None),
             fwd_eps: Set(None),
             bps: Set(None),
@@ -599,14 +676,193 @@ mod tests {
     }
 
     async fn insert_indicator_observation(db: &DatabaseHandle, id: &str, day: u32, value: i64) {
+        insert_indicator_observation_on_date(db, id, date(day), value).await;
+    }
+
+    async fn insert_indicator_observation_on_date(
+        db: &DatabaseHandle,
+        id: &str,
+        observation_date: NaiveDate,
+        value: i64,
+    ) {
         indicator_observation::ActiveModel {
             indicator_id: Set(id.to_string()),
-            date: Set(date(day)),
+            date: Set(observation_date),
             value: Set(Decimal::from(value)),
         }
         .insert(db)
         .await
         .expect("insert widget indicator observation");
+    }
+
+    #[backend_test_macros::database_test]
+    async fn series_uses_sixty_day_returns_and_date_specific_market_caps(db: DatabaseHandle) {
+        let end = date(5);
+        let dates = weekdays_ending(end, 61);
+        let first_valuation_date = dates[0]
+            .checked_sub_days(Days::new(1))
+            .expect("valuation date remains in range");
+        let stock_ids = ["D021", "D022"];
+
+        for stock_id in stock_ids {
+            insert_stock(&db, stock_id, stock_id).await;
+            let final_close = if stock_id == "D021" { 200 } else { 50 };
+            let bars = dates
+                .iter()
+                .enumerate()
+                .map(|(index, date)| {
+                    (
+                        *date,
+                        if index == dates.len() - 1 {
+                            final_close
+                        } else {
+                            100
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+            insert_bars_on_dates(&db, stock_id, &bars).await;
+        }
+
+        insert_valuation_values_on_date(
+            &db,
+            "D021",
+            first_valuation_date,
+            Some(10),
+            Some(2),
+            Some(1_000),
+        )
+        .await;
+        insert_valuation_values_on_date(
+            &db,
+            "D022",
+            first_valuation_date,
+            Some(20),
+            Some(4),
+            Some(3_000),
+        )
+        .await;
+        let axis_id = insert_group_axis(&db, "demo-axis", "Demo Axis").await;
+        let group_id = insert_group(&db, axis_id, "group-alpha", "Group Alpha").await;
+        for stock_id in stock_ids {
+            insert_group_member(&db, stock_id, group_id).await;
+        }
+        insert_indicator(&db, "demo-indicator", "Demo Indicator").await;
+        insert_indicator_observation_on_date(&db, "demo-indicator", dates[0], 7).await;
+        insert_indicator_observation_on_date(&db, "demo-indicator", dates[60], 19).await;
+
+        let query = WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::SixtyDays),
+            by: WidgetBy::None,
+            axis: None,
+            indicator: None,
+            universe: Some(WidgetUniverse::Group {
+                group: "demo-axis/group-alpha".to_string(),
+            }),
+            agg: Some(WidgetAggregation::MarketCapWeighted),
+        };
+        let range = WidgetTimeRange::OneYear
+            .resolve(end, Some(WidgetPeriod::SixtyDays))
+            .expect("resolve one-year range");
+        let source = PostgresWidgetQuerySource::new(db);
+        let result = source
+            .query_series(range, &query)
+            .await
+            .expect("query weighted 60-day series");
+        let expected = dates
+            .iter()
+            .enumerate()
+            .map(|(index, date)| WidgetSeriesQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                date: *date,
+                value: (index == dates.len() - 1).then_some(Decimal::new(-125, 3)),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(result, expected);
+
+        let warmup_range = WidgetTimeRange::Dates {
+            from: dates[60],
+            to: dates[60],
+        }
+        .resolve(dates[60], Some(WidgetPeriod::SixtyDays))
+        .expect("resolve single-day range with warmup");
+        let warmup_result = source
+            .query_series(warmup_range, &query)
+            .await
+            .expect("query weighted return using pre-range bars");
+        assert_eq!(
+            warmup_result,
+            vec![WidgetSeriesQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                date: dates[60],
+                value: Some(Decimal::new(-125, 3)),
+            }]
+        );
+
+        let per_query = WidgetQuery {
+            metric: WidgetMetric::Per,
+            period: None,
+            by: WidgetBy::None,
+            axis: None,
+            indicator: None,
+            universe: query.universe.clone(),
+            agg: Some(WidgetAggregation::Mean),
+        };
+        let per_range = WidgetTimeRange::OneYear
+            .resolve(end, None)
+            .expect("resolve valuation range");
+        let per_result = source
+            .query_series(per_range, &per_query)
+            .await
+            .expect("query historical valuation series");
+        let expected_per = dates
+            .iter()
+            .map(|date| WidgetSeriesQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                date: *date,
+                value: Some(Decimal::from(15)),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(per_result, expected_per);
+
+        let indicator_query = WidgetQuery {
+            metric: WidgetMetric::Indicator,
+            period: None,
+            by: WidgetBy::None,
+            axis: None,
+            indicator: Some("demo-indicator".to_string()),
+            universe: None,
+            agg: None,
+        };
+        let indicator_range = WidgetTimeRange::OneYear
+            .resolve(end, None)
+            .expect("resolve indicator range");
+        let indicator_result = source
+            .query_series(indicator_range, &indicator_query)
+            .await
+            .expect("query indicator observation series");
+        assert_eq!(
+            indicator_result,
+            vec![
+                WidgetSeriesQueryRow {
+                    key: WidgetRowKey::Market,
+                    name: "Demo Indicator".to_string(),
+                    date: dates[0],
+                    value: Some(Decimal::from(7)),
+                },
+                WidgetSeriesQueryRow {
+                    key: WidgetRowKey::Market,
+                    name: "Demo Indicator".to_string(),
+                    date: dates[60],
+                    value: Some(Decimal::from(19)),
+                },
+            ],
+        );
     }
 
     async fn insert_market_aggregate_fixture(db: &DatabaseHandle) {

@@ -429,6 +429,204 @@ async fn query_widget_returns_snapshot_metrics_and_table_columns(db: DatabaseHan
 }
 
 #[backend_test_macros::database_test]
+async fn query_widget_returns_line_series_and_same_date_formula_gaps(db: DatabaseHandle) {
+    insert_stock(&db, "DEMO", "Demo Stock").await;
+    for (day, close) in [(1, 100), (2, 200), (3, 300), (4, 600)] {
+        insert_bar(&db, "DEMO", day, close).await;
+    }
+    insert_valuation_values(&db, "DEMO", 1, Some(10), Some(2), Some(1_000)).await;
+    insert_valuation_values(&db, "DEMO", 3, Some(30), Some(3), Some(3_000)).await;
+    insert_indicator(&db, "demo-indicator", "Demo Indicator").await;
+    for (day, value) in [(1, 7), (3, 11), (4, 99)] {
+        insert_indicator_observation(&db, "demo-indicator", day, value).await;
+    }
+
+    let server = create_test_server(db).await;
+    let response = server
+        .post("/api/widgets/query")
+        .json(&json!({
+            "queries": {
+                "close": {"metric": "close", "by": "stock", "universe": {"stocks": ["DEMO"]}},
+                "turnover": {"metric": "turnover", "by": "stock", "universe": {"stocks": ["DEMO"]}},
+                "market_cap": {"metric": "mkt_cap", "by": "stock", "universe": {"stocks": ["DEMO"]}},
+                "per": {"metric": "per", "by": "stock", "universe": {"stocks": ["DEMO"]}},
+                "pbr": {"metric": "pbr", "by": "stock", "universe": {"stocks": ["DEMO"]}},
+                "indicator_value": {"metric": "indicator", "by": "none", "indicator": "demo-indicator"}
+            },
+            "formulas": {"adjusted": "close + indicator_value"},
+            "display": {"close": {"label": "Closing value"}, "adjusted": {"label": "Adjusted value"}},
+            "viz": {"type": "line", "series": ["close", "turnover", "market_cap", "per", "pbr", "adjusted"]},
+            "time": {"range": "2098-01-02..2098-01-04"}
+        }))
+        .await;
+    let body = response.json::<Value>();
+
+    assert_eq!(
+        (response.status_code(), body),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "as_of": "2098-01-04",
+                "rows": [],
+                "series": [
+                    {
+                        "key": "close:stock:DEMO",
+                        "query": "close",
+                        "name": "Closing value",
+                        "target": {"key": "stock:DEMO", "name": "Demo Stock"},
+                        "points": [
+                            {"date": "2098-01-02", "value": 200},
+                            {"date": "2098-01-03", "value": 300},
+                            {"date": "2098-01-04", "value": 600}
+                        ]
+                    },
+                    {
+                        "key": "turnover:stock:DEMO",
+                        "query": "turnover",
+                        "name": "turnover",
+                        "target": {"key": "stock:DEMO", "name": "Demo Stock"},
+                        "points": [
+                            {"date": "2098-01-02", "value": 20000},
+                            {"date": "2098-01-03", "value": 30000},
+                            {"date": "2098-01-04", "value": 60000}
+                        ]
+                    },
+                    {
+                        "key": "market_cap:stock:DEMO",
+                        "query": "market_cap",
+                        "name": "market_cap",
+                        "target": {"key": "stock:DEMO", "name": "Demo Stock"},
+                        "points": [
+                            {"date": "2098-01-02", "value": 1000},
+                            {"date": "2098-01-03", "value": 3000},
+                            {"date": "2098-01-04", "value": 3000}
+                        ]
+                    },
+                    {
+                        "key": "per:stock:DEMO",
+                        "query": "per",
+                        "name": "per",
+                        "target": {"key": "stock:DEMO", "name": "Demo Stock"},
+                        "points": [
+                            {"date": "2098-01-02", "value": 10},
+                            {"date": "2098-01-03", "value": 30},
+                            {"date": "2098-01-04", "value": 30}
+                        ]
+                    },
+                    {
+                        "key": "pbr:stock:DEMO",
+                        "query": "pbr",
+                        "name": "pbr",
+                        "target": {"key": "stock:DEMO", "name": "Demo Stock"},
+                        "points": [
+                            {"date": "2098-01-02", "value": 2},
+                            {"date": "2098-01-03", "value": 3},
+                            {"date": "2098-01-04", "value": 3}
+                        ]
+                    },
+                    {
+                        "key": "adjusted:stock:DEMO",
+                        "query": "adjusted",
+                        "name": "Adjusted value",
+                        "target": {"key": "stock:DEMO", "name": "Demo Stock"},
+                        "points": [
+                            {"date": "2098-01-02", "value": null},
+                            {"date": "2098-01-03", "value": 311},
+                            {"date": "2098-01-04", "value": 699}
+                        ]
+                    }
+                ]
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn query_widget_uses_latest_indicator_observation_for_relative_line_range(
+    db: DatabaseHandle,
+) {
+    insert_indicator(&db, "demo-indicator", "Demo Indicator").await;
+    for (day, value) in [(1, 7), (3, 11), (4, 99)] {
+        insert_indicator_observation(&db, "demo-indicator", day, value).await;
+    }
+
+    let server = create_test_server(db).await;
+    let response = server
+        .post("/api/widgets/query")
+        .json(&json!({
+            "queries": {
+                "indicator_value": {"metric": "indicator", "by": "none", "indicator": "demo-indicator"}
+            },
+            "viz": {"type": "line", "series": ["indicator_value"]},
+            "time": {"range": "3m"}
+        }))
+        .await;
+    let body = response.json::<Value>();
+
+    assert_eq!(
+        (response.status_code(), body),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "as_of": "2098-01-04",
+                "rows": [],
+                "series": [{
+                    "key": "indicator_value",
+                    "query": "indicator_value",
+                    "name": "indicator_value",
+                    "points": [
+                        {"date": "2098-01-01", "value": 7},
+                        {"date": "2098-01-03", "value": 11},
+                        {"date": "2098-01-04", "value": 99}
+                    ]
+                }]
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn query_widget_uses_latest_daily_bar_for_relative_line_range(db: DatabaseHandle) {
+    insert_stock(&db, "DEMO", "Demo Stock").await;
+    insert_bar(&db, "DEMO", 1, 100).await;
+    insert_bar(&db, "DEMO", 3, 120).await;
+
+    let server = create_test_server(db).await;
+    let response = server
+        .post("/api/widgets/query")
+        .json(&json!({
+            "queries": {
+                "close": {"metric": "close", "by": "stock", "universe": {"stocks": ["DEMO"]}}
+            },
+            "viz": {"type": "line", "series": ["close"]},
+            "time": {"range": "3m"}
+        }))
+        .await;
+    let body = response.json::<Value>();
+
+    assert_eq!(
+        (response.status_code(), body),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "as_of": "2098-01-03",
+                "rows": [],
+                "series": [{
+                    "key": "close:stock:DEMO",
+                    "query": "close",
+                    "name": "close",
+                    "target": {"key": "stock:DEMO", "name": "Demo Stock"},
+                    "points": [
+                        {"date": "2098-01-01", "value": 100},
+                        {"date": "2098-01-03", "value": 120}
+                    ]
+                }]
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn query_widget_rejects_amount_aggregation_with_unconfirmed_currency(db: DatabaseHandle) {
     for (id, name) in [
         ("US:DEMO-A", "Demo Foreign A"),

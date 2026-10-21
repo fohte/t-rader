@@ -182,6 +182,33 @@ SELECT synthetic_stocks.id || '0', latest_trading_day.latest_trading_day, 1000 +
 FROM synthetic_stocks
 CROSS JOIN (SELECT max(bar_date) AS latest_trading_day FROM synthetic_trading_days) AS latest_trading_day;
 
+CREATE TEMP TABLE synthetic_valuation_dates AS
+SELECT valuation_date.bar_date,
+       row_number() OVER (ORDER BY valuation_date.bar_date)::integer AS month_number
+FROM (
+    SELECT DISTINCT ON (date_trunc('month', bar_date)) bar_date
+    FROM synthetic_trading_days
+    WHERE bar_date >= current_date - INTERVAL '2 years'
+      AND bar_date < current_date - INTERVAL '30 days'
+    ORDER BY date_trunc('month', bar_date), bar_date
+) AS valuation_date;
+
+INSERT INTO valuation (code, date, mkt_cap, per, pbr)
+SELECT synthetic_stocks.id || '0',
+       synthetic_valuation_dates.bar_date,
+       1000 + synthetic_stocks.n * 10 + synthetic_valuation_dates.month_number,
+       8 + synthetic_stocks.n % 32 + synthetic_valuation_dates.month_number % 3,
+       1 + synthetic_stocks.n % 6 + synthetic_valuation_dates.month_number % 2
+FROM synthetic_stocks
+CROSS JOIN synthetic_valuation_dates;
+
+INSERT INTO indicator (id, name, kind)
+VALUES ('demo-indicator', 'Demo Indicator', 'sample-kind');
+
+INSERT INTO indicator_observation (indicator_id, date, value)
+SELECT 'demo-indicator', bar_date, 10 + day_number % 25
+FROM synthetic_trading_days;
+
 SELECT compress_chunk(format('%I.%I', chunk_schema, chunk_name)::regclass)
 FROM timescaledb_information.chunks
 WHERE hypertable_schema = 'public'
@@ -193,6 +220,8 @@ ANALYZE stock;
 ANALYZE instruments;
 ANALYZE bars;
 ANALYZE valuation;
+ANALYZE indicator;
+ANALYZE indicator_observation;
 ANALYZE group_axis;
 ANALYZE stock_group;
 ANALYZE stock_group_member;

@@ -3,7 +3,7 @@ use rmcp::ErrorData as McpError;
 
 use super::dto::{
     QueryWidgetGroupDto, QueryWidgetParams, QueryWidgetResult, QueryWidgetRowClassificationDto,
-    QueryWidgetRowDto,
+    QueryWidgetRowDto, QueryWidgetSeriesDto, QueryWidgetSeriesPointDto, QueryWidgetSeriesTargetDto,
 };
 use super::{StrategyServer, internal_error, invalid_params};
 
@@ -20,9 +20,14 @@ fn widget_use_case_to_mcp(error: WidgetUseCaseError) -> McpError {
             tracing::error!(error = %error, "strategy mcp widget stock group membership query failed");
             internal_error(format!("stock group membership query failed: {error}"))
         }
-        WidgetUseCaseError::Query(error @ WidgetQueryError::IncompatibleCurrencies) => {
-            invalid_params(error.to_string())
-        }
+        WidgetUseCaseError::Query(
+            error @ (WidgetQueryError::IncompatibleCurrencies
+            | WidgetQueryError::InputLimitExceeded { .. }),
+        ) => invalid_params(error.to_string()),
+        WidgetUseCaseError::Timeout => internal_error("widget query exceeded its time limit"),
+        WidgetUseCaseError::Query(
+            error @ (WidgetQueryError::Timeout | WidgetQueryError::SeriesUnsupported),
+        ) => internal_error(error.to_string()),
     }
 }
 
@@ -60,6 +65,28 @@ impl StrategyServer {
                     }),
                 })
                 .collect(),
+            series: response.series.map(|series| {
+                series
+                    .into_iter()
+                    .map(|series| QueryWidgetSeriesDto {
+                        key: series.key,
+                        query: series.query,
+                        name: series.name,
+                        target: series.target.map(|target| QueryWidgetSeriesTargetDto {
+                            key: target.key,
+                            name: target.name,
+                        }),
+                        points: series
+                            .points
+                            .into_iter()
+                            .map(|point| QueryWidgetSeriesPointDto {
+                                date: point.date,
+                                value: point.value,
+                            })
+                            .collect(),
+                    })
+                    .collect()
+            }),
         })
     }
 }

@@ -14572,6 +14572,15 @@
             "items": {
               "$ref": "#/components/schemas/WidgetQueryResultRow"
             }
+          },
+          "series": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/WidgetSeriesDto"
+            }
           }
         }
       },
@@ -14653,6 +14662,76 @@
         },
         "additionalProperties": false
       },
+      "WidgetSeriesDto": {
+        "type": "object",
+        "required": [
+          "key",
+          "query",
+          "name",
+          "points"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WidgetSeriesPointDto"
+            }
+          },
+          "query": {
+            "type": "string"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetSeriesTargetDto"
+              }
+            ]
+          }
+        }
+      },
+      "WidgetSeriesPointDto": {
+        "type": "object",
+        "required": [
+          "date"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "WidgetSeriesTargetDto": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "WidgetTimeRequest": {
         "type": "object",
         "properties": {
@@ -14668,7 +14747,7 @@
               "string",
               "null"
             ],
-            "description": "時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。"
+            "description": "`line` では `3m`、`1y`、または両端を含む `YYYY-MM-DD..YYYY-MM-DD` を指定します。"
           }
         },
         "additionalProperties": false

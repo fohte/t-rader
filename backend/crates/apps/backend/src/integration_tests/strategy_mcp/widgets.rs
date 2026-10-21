@@ -150,6 +150,50 @@ async fn query_widget_returns_resolved_date_and_values_as_rows(db: DatabaseHandl
 }
 
 #[backend_test_macros::database_test]
+async fn query_widget_returns_date_series_for_line_visualization(db: DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "widget-line-series").await;
+    insert_stock(&db, "F002", "Demo Stock").await;
+    insert_bars(&db, &["F002"]).await;
+    let server = build_server(db);
+    let definition_yaml = indoc::indoc! {"
+        queries:
+          close:
+            metric: close
+            by: stock
+            universe:
+              stocks:
+                - F002
+        viz:
+          type: line
+          series:
+            - close
+        time:
+          as_of: 2099-01-05
+          range: 2099-01-05..2099-01-05
+    "};
+
+    let result = server
+        .query_widget(strategy_id, definition_yaml)
+        .await
+        .expect("query line widget");
+
+    assert_eq!(
+        result.as_json().clone(),
+        json!({
+            "as_of": "2099-01-05",
+            "rows": [],
+            "series": [{
+                "key": "close:stock:F002",
+                "query": "close",
+                "name": "close",
+                "target": {"key": "stock:F002", "name": "Demo Stock"},
+                "points": [{"date": "2099-01-05", "value": 100}]
+            }]
+        }),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn query_widget_rejects_when_no_daily_bar_date_can_be_resolved(db: DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "widget-no-data").await;
     let server = build_server(db);
