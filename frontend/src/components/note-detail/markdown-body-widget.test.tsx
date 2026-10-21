@@ -53,6 +53,56 @@ const DISPLAY_WIDGET_SOURCE = VALID_WIDGET_SOURCE.replace(
   'viz:',
   'display:\n  daily:\n    label: Daily movement\n    format: percent\nviz:',
 ).replace('  limit: 5', '  limit: 5\n  bar_scale:\n    min: -0.1\n    max: 0.1')
+const TABLE_WIDGET_SOURCE = [
+  '\x60\x60\x60widget',
+  'queries:',
+  '  pbr:',
+  '    metric: pbr',
+  '    by: stock',
+  '    universe:',
+  '      stocks: [DEMO-A]',
+  '  close:',
+  '    metric: close',
+  '    by: stock',
+  '    universe:',
+  '      stocks: [DEMO-A]',
+  '  turnover:',
+  '    metric: turnover',
+  '    by: stock',
+  '    universe:',
+  '      stocks: [DEMO-A]',
+  '  per:',
+  '    metric: per',
+  '    by: stock',
+  '    universe:',
+  '      stocks: [DEMO-A]',
+  '  indicator_value:',
+  '    metric: indicator',
+  '    by: none',
+  '    indicator: demo-indicator',
+  'display:',
+  '  pbr:',
+  '    label: PBR',
+  '    format: number',
+  '  close:',
+  '    label: 終値',
+  '    format: number',
+  '  turnover:',
+  '    label: 売買代金',
+  '    format: number',
+  '  per:',
+  '    label: PER',
+  '    format: number',
+  '  indicator_value:',
+  '    label: 指標',
+  '    format: number',
+  'viz:',
+  '  type: table',
+  '  columns: [pbr, close, turnover, per, indicator_value]',
+  'time:',
+  '  as_of: 2099-01-05',
+  '\x60\x60\x60',
+].join('\n')
 
 const WIDGET_SOURCES_WITHOUT_AS_OF = [
   {
@@ -84,6 +134,36 @@ const RESULT: WidgetQueryResponse = {
       values: { doubled: 2.1 },
     },
   ],
+}
+const TABLE_RESULT: WidgetQueryResponse = {
+  as_of: '2099-01-05',
+  rows: [
+    {
+      key: 'stock:DEMO-A',
+      name: '架空銘柄 A',
+      values: {
+        close: 1240,
+        turnover: 2400000,
+        per: 12.5,
+        pbr: 1.3,
+        indicator_value: 4.2,
+      },
+    },
+  ],
+}
+
+function readWidgetTableOutput(widget: HTMLElement, table: HTMLElement) {
+  return {
+    asOf: widget.querySelector('time')?.textContent,
+    headers: Array.from(table.querySelectorAll('thead th'), (cell) =>
+      cell.textContent.trim(),
+    ),
+    rows: Array.from(table.querySelectorAll('tbody tr'), (row) =>
+      Array.from(row.querySelectorAll('th, td'), (cell) =>
+        cell.textContent.trim(),
+      ),
+    ),
+  }
 }
 
 beforeEach(() => {
@@ -164,6 +244,61 @@ describe('MarkdownBody widget blocks', () => {
     ])
   })
 
+  it('sends additional metrics and table columns to the widget query API', () => {
+    render(<MarkdownBody source={TABLE_WIDGET_SOURCE} />)
+
+    expect(useApiQuery.mock.calls).toEqual([
+      [
+        'post',
+        '/api/widgets/query',
+        {
+          body: {
+            queries: {
+              pbr: {
+                metric: 'pbr',
+                by: 'stock',
+                universe: { stocks: ['DEMO-A'] },
+              },
+              close: {
+                metric: 'close',
+                by: 'stock',
+                universe: { stocks: ['DEMO-A'] },
+              },
+              turnover: {
+                metric: 'turnover',
+                by: 'stock',
+                universe: { stocks: ['DEMO-A'] },
+              },
+              per: {
+                metric: 'per',
+                by: 'stock',
+                universe: { stocks: ['DEMO-A'] },
+              },
+              indicator_value: {
+                metric: 'indicator',
+                by: 'none',
+                indicator: 'demo-indicator',
+              },
+            },
+            display: {
+              pbr: { label: 'PBR', format: 'number' },
+              close: { label: '終値', format: 'number' },
+              turnover: { label: '売買代金', format: 'number' },
+              per: { label: 'PER', format: 'number' },
+              indicator_value: { label: '指標', format: 'number' },
+            },
+            viz: {
+              type: 'table',
+              columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+            },
+            time: { as_of: '2099-01-05' },
+          },
+        },
+        { enabled: true },
+      ],
+    ])
+  })
+
   it('renders the toplist with the resolved base date', () => {
     useApiQuery.mockReturnValue({
       data: RESULT,
@@ -207,6 +342,24 @@ describe('MarkdownBody widget blocks', () => {
       'aria-label',
       'change の toplist。基準日 2099-01-05。1 件を降順で表示。1 位 デモグループ、demo-axis/demo-group、+0.42%',
     )
+  })
+
+  it('renders a table widget with additional metric columns in note content', () => {
+    useApiQuery.mockReturnValue({
+      data: TABLE_RESULT,
+      isPending: false,
+      isError: false,
+      error: undefined,
+    })
+    render(<MarkdownBody source={TABLE_WIDGET_SOURCE} />)
+    const widget = screen.getByRole('region', { name: 'ノート内ウィジェット' })
+    const table = screen.getByRole('table', { name: 'ウィジェットの表' })
+
+    expect(readWidgetTableOutput(widget, table)).toEqual({
+      asOf: '基準日 2099-01-05',
+      headers: ['対象', 'PBR', '終値', '売買代金', 'PER', '指標'],
+      rows: [['架空銘柄 A', '1.3', '1,240', '2,400,000', '12.5', '4.2']],
+    })
   })
 
   it.each(WIDGET_SOURCES_WITHOUT_AS_OF)(

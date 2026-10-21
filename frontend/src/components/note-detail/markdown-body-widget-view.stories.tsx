@@ -49,6 +49,44 @@ const toplistQueries: WidgetQueryDefinitions = {
 const treemapQueries: WidgetQueryDefinitions = {
   change: { metric: 'change', by: 'group' },
 }
+const tableQueries: WidgetQueryDefinitions = {
+  pbr: { metric: 'pbr', by: 'stock' },
+  close: { metric: 'close', by: 'stock' },
+  turnover: { metric: 'turnover', by: 'stock' },
+  per: { metric: 'per', by: 'stock' },
+  indicator_value: {
+    metric: 'indicator',
+    by: 'none',
+    indicator: 'demo-indicator',
+  },
+}
+const tableResult: WidgetQueryResponse = {
+  as_of: '2099-01-05',
+  rows: [
+    {
+      key: 'stock:DEMO-A',
+      name: '架空銘柄 A',
+      values: {
+        close: 1240,
+        turnover: 2400000,
+        per: 12.5,
+        pbr: 1.3,
+        indicator_value: 4.2,
+      },
+    },
+    {
+      key: 'stock:DEMO-B',
+      name: '架空銘柄 B',
+      values: {
+        close: null,
+        turnover: null,
+        per: 18.2,
+        pbr: null,
+        indicator_value: null,
+      },
+    },
+  ],
+}
 
 function withGroupRouter(Story: ComponentType) {
   return (
@@ -93,6 +131,28 @@ export const Treemap: Story = {
       queries: treemapQueries,
       result: treemapResult,
       viz: { type: 'treemap', size: 'size', color: 'change' },
+    },
+  },
+}
+
+export const Table: Story = {
+  name: '基準日とともに指定順の追加指標を比較する。',
+  args: {
+    state: {
+      kind: 'ready',
+      queries: tableQueries,
+      display: {
+        pbr: { label: 'PBR', format: 'number' },
+        close: { label: '終値', format: 'number' },
+        turnover: { label: '売買代金', format: 'number' },
+        per: { label: 'PER', format: 'number' },
+        indicator_value: { label: '指標', format: 'number' },
+      },
+      result: tableResult,
+      viz: {
+        type: 'table',
+        columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+      },
     },
   },
 }
@@ -142,6 +202,18 @@ export const Empty: Story = {
       queries: toplistQueries,
       result: { as_of: '2099-01-05', rows: [] },
       viz: { type: 'toplist', value: 'daily', order: 'desc', limit: 5 },
+    },
+  },
+}
+
+export const EmptyTable: Story = {
+  name: '値のない table widget の状態を表示する。',
+  args: {
+    state: {
+      kind: 'ready',
+      queries: tableQueries,
+      result: { as_of: '2099-01-05', rows: [] },
+      viz: { type: 'table', columns: ['pbr', 'close'] },
     },
   },
 }

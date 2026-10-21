@@ -8,7 +8,7 @@ type WidgetUniverse = components['schemas']['WidgetUniverseRequest']
 type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
 export type SupportedWidgetVisualization = Extract<
   WidgetVisualization,
-  { type: 'treemap' | 'toplist' }
+  { type: 'treemap' | 'toplist' | 'table' }
 >
 
 export type WidgetDefinitionResult =
@@ -180,5 +180,7 @@ export function parseWidgetDefinition(source: string): WidgetDefinitionResult {
 export function isSupportedWidgetVisualization(
   viz: WidgetVisualization,
 ): viz is SupportedWidgetVisualization {
-  return viz.type === 'treemap' || viz.type === 'toplist'
+  return (
+    viz.type === 'treemap' || viz.type === 'toplist' || viz.type === 'table'
+  )
 }

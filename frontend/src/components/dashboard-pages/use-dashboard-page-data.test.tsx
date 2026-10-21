@@ -81,6 +81,10 @@ function installWidgetQueryCapture() {
   }
 }
 
+function readTableQueryOutput(requests: unknown[], widgets: unknown[]) {
+  return { requests, widgets }
+}
+
 let activeMiddleware: ReturnType<typeof installWidgetQueryCapture> | null = null
 
 afterEach(() => {
@@ -138,6 +142,85 @@ describe('useDashboardPageData', () => {
       },
       { movement: { label: 'Movement', format: 'percent' } },
     ])
+  })
+
+  it('table widget の追加指標と列順を API と表示 state に渡す', async () => {
+    activeMiddleware = installWidgetQueryCapture()
+    const tableConfig: DashboardConfig = {
+      title: '評価指標',
+      widgets: [
+        {
+          title: '銘柄の比較',
+          width: 'full',
+          definition: {
+            queries: {
+              pbr: { metric: 'pbr', by: 'stock' },
+              close: { metric: 'close', by: 'stock' },
+              turnover: { metric: 'turnover', by: 'stock' },
+              per: { metric: 'per', by: 'stock' },
+              indicator_value: {
+                metric: 'indicator',
+                by: 'none',
+                indicator: 'demo-indicator',
+              },
+            },
+            display: {
+              pbr: { label: 'PBR', format: 'number' },
+              close: { label: '終値', format: 'number' },
+              turnover: { label: '売買代金', format: 'number' },
+              per: { label: 'PER', format: 'number' },
+              indicator_value: { label: '指標', format: 'number' },
+            },
+            viz: {
+              type: 'table',
+              columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+            },
+          },
+        },
+      ],
+    }
+    const hook = renderHook(
+      () => useDashboardPageData(tableConfig, 'sample-market'),
+      { wrapper: createQueryClientWrapper() },
+    )
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 1) {
+        throw new Error('widget request is not complete')
+      }
+    })
+
+    const queries = {
+      pbr: { metric: 'pbr', by: 'stock' },
+      close: { metric: 'close', by: 'stock' },
+      turnover: { metric: 'turnover', by: 'stock' },
+      per: { metric: 'per', by: 'stock' },
+      indicator_value: {
+        metric: 'indicator',
+        by: 'none',
+        indicator: 'demo-indicator',
+      },
+    }
+    const display = {
+      pbr: { label: 'PBR', format: 'number' },
+      close: { label: '終値', format: 'number' },
+      turnover: { label: '売買代金', format: 'number' },
+      per: { label: 'PER', format: 'number' },
+      indicator_value: { label: '指標', format: 'number' },
+    }
+    const viz = {
+      type: 'table',
+      columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+    }
+    expect(
+      readTableQueryOutput(
+        activeMiddleware.requests,
+        hook.result.current.widgets.map((widget) => widget.definition),
+      ),
+    ).toEqual({
+      requests: [{ queries, display, viz }],
+      widgets: [{ queries, display, viz }],
+    })
   })
 
   it('初期表示では最新を使い、日付指定後に最新へ戻せる', async () => {

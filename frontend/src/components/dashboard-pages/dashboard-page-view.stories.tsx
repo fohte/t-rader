@@ -77,6 +77,66 @@ const queries: WidgetQueryDefinitions = {
 const groupQueries: WidgetQueryDefinitions = {
   movement: { metric: 'change', by: 'group' },
 }
+const tableQueries: WidgetQueryDefinitions = {
+  pbr: { metric: 'pbr', by: 'stock' },
+  close: { metric: 'close', by: 'stock' },
+  turnover: { metric: 'turnover', by: 'stock' },
+  per: { metric: 'per', by: 'stock' },
+  indicator_value: {
+    metric: 'indicator',
+    by: 'none',
+    indicator: 'demo-indicator',
+  },
+}
+
+const tableWidget: DashboardWidgetPageState = {
+  key: 'valuation-table',
+  title: '評価指標',
+  width: 'full',
+  definition: {
+    queries: tableQueries,
+    display: {
+      pbr: { label: 'PBR', format: 'number' },
+      close: { label: '終値', format: 'number' },
+      turnover: { label: '売買代金', format: 'number' },
+      per: { label: 'PER', format: 'number' },
+      indicator_value: { label: '指標', format: 'number' },
+    },
+    viz: {
+      type: 'table',
+      columns: ['pbr', 'close', 'turnover', 'per', 'indicator_value'],
+    },
+  },
+  isPending: false,
+  errorMessage: null,
+  result: {
+    as_of: '2099-01-05',
+    rows: [
+      {
+        key: 'stock:DEMO-A',
+        name: '架空銘柄 A',
+        values: {
+          close: 1240,
+          turnover: 2400000,
+          per: 12.5,
+          pbr: 1.3,
+          indicator_value: 4.2,
+        },
+      },
+      {
+        key: 'stock:DEMO-B',
+        name: '架空銘柄 B',
+        values: {
+          close: null,
+          turnover: null,
+          per: 18.2,
+          pbr: null,
+          indicator_value: null,
+        },
+      },
+    ],
+  },
+}
 
 const movementList: DashboardWidgetPageState = {
   key: 'movement-list',
@@ -98,6 +158,7 @@ const readyState: ReadyDashboardPageState = {
   onAsOfChange: () => undefined,
   widgets: [
     movementList,
+    tableWidget,
     {
       key: 'group-map',
       title: '分類ごとの動き',
@@ -163,7 +224,8 @@ export const InvalidConfig: Story = {
       issues: [
         {
           path: 'widgets[0].viz',
-          message: 'viz.type は treemap または toplist を指定してください。',
+          message:
+            'viz.type は treemap、toplist または table を指定してください。',
         },
       ],
     },

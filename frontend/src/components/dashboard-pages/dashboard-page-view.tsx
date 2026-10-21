@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import type { DashboardConfigIssue } from '#components/dashboard-pages/dashboard-config'
-import { WidgetToplist, WidgetTreemap } from '#components/widgets'
+import { WidgetTable, WidgetToplist, WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
 import type {
   WidgetDisplayDefinitions,
@@ -19,7 +19,7 @@ export type DashboardWidgetPageState = {
     display?: WidgetDisplayDefinitions
     viz: Extract<
       components['schemas']['WidgetVisualizationRequest'],
-      { type: 'treemap' | 'toplist' }
+      { type: 'treemap' | 'toplist' | 'table' }
     >
   }
   isPending: boolean
@@ -133,8 +133,15 @@ function WidgetCard({ widget }: { widget: DashboardWidgetPageState }) {
           result={widget.result}
           viz={widget.definition.viz}
         />
-      ) : (
+      ) : widget.definition.viz.type === 'toplist' ? (
         <WidgetToplist
+          queries={widget.definition.queries}
+          display={widget.definition.display}
+          result={widget.result}
+          viz={widget.definition.viz}
+        />
+      ) : (
+        <WidgetTable
           queries={widget.definition.queries}
           display={widget.definition.display}
           result={widget.result}
