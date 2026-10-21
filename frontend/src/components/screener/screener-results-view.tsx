@@ -176,7 +176,7 @@ export function ScreenerResultsView({
             }}
           >
             <SelectTrigger aria-label="並べ替える列" className="min-w-0 flex-1">
-              <SelectValue />
+              <SelectValue>{SCREENER_SORT_LABELS[sortField]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {MOBILE_SORT_OPTIONS.map((option) => (
@@ -195,7 +195,9 @@ export function ScreenerResultsView({
             }}
           >
             <SelectTrigger aria-label="並べ替え順" className="shrink-0">
-              <SelectValue />
+              <SelectValue>
+                {sortOrder === 'desc' ? '降順' : '昇順'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="desc">降順</SelectItem>

@@ -121,7 +121,7 @@ export function SavedScreensControlView({
 
   return (
     <>
-      <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-none">
         <div className="flex min-w-0 items-center gap-2">
           <Popover open={menuOpen} onOpenChange={onMenuOpenChange}>
             <PopoverTrigger
@@ -134,21 +134,14 @@ export function SavedScreensControlView({
                         : '保存した条件を選ぶ'
                       : `保存した条件: ${selectedScreen.name}`
                   }
-                  className="min-w-0 max-w-full"
+                  className="min-w-0 max-w-full flex-1 md:flex-none"
                 >
                   <span className="min-w-0 truncate">
-                    {selectedScreen == null ? (
-                      savedScreensPending && selectedScreenId != null ? (
-                        '読み込み中...'
-                      ) : (
-                        '保存した条件'
-                      )
-                    ) : (
-                      <>
-                        <span className="hidden md:inline">保存した条件: </span>
-                        {selectedScreen.name}
-                      </>
-                    )}
+                    {selectedScreen == null
+                      ? savedScreensPending && selectedScreenId != null
+                        ? '読み込み中...'
+                        : '保存した条件'
+                      : `保存した条件: ${selectedScreen.name}`}
                   </span>
                   <ChevronDown
                     aria-hidden="true"

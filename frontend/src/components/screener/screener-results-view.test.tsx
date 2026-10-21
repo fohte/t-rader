@@ -88,6 +88,23 @@ describe('ScreenerResultsView', () => {
     expect((await screen.findByText(/時点/)).textContent).toBe('6/18 時点')
   })
 
+  it('shows localized labels for the selected sort field and direction', async () => {
+    renderResultsView({
+      search: { sort_by: 'market_cap', sort_order: 'desc' },
+    })
+
+    const sortField = await screen.findByRole('combobox', {
+      name: '並べ替える列',
+    })
+    const sortOrder = await screen.findByRole('combobox', {
+      name: '並べ替え順',
+    })
+
+    expect(`${sortField.textContent} / ${sortOrder.textContent}`).toBe(
+      '時価総額 / 降順',
+    )
+  })
+
   it('updates the selected sort field and direction for the URL state', async () => {
     const user = userEvent.setup()
     const initialSearch: ScreenerSearch = {
