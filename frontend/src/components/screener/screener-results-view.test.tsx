@@ -88,22 +88,28 @@ describe('ScreenerResultsView', () => {
     expect((await screen.findByText(/時点/)).textContent).toBe('6/18 時点')
   })
 
-  it('shows localized labels for the selected sort field and direction', async () => {
-    renderResultsView({
-      search: { sort_by: 'market_cap', sort_order: 'desc' },
-    })
+  it.each([
+    ['market_cap', 'desc', '時価総額', '降順'],
+    ['name', 'asc', '銘柄', '昇順'],
+  ] as const)(
+    'shows localized labels for %s in %s order',
+    async (sortBy, sortDirection, sortFieldLabel, sortDirectionLabel) => {
+      renderResultsView({
+        search: { sort_by: sortBy, sort_order: sortDirection },
+      })
 
-    const sortField = await screen.findByRole('combobox', {
-      name: '並べ替える列',
-    })
-    const sortOrder = await screen.findByRole('combobox', {
-      name: '並べ替え順',
-    })
+      const sortField = await screen.findByRole('combobox', {
+        name: '並べ替える列',
+      })
+      const sortOrder = await screen.findByRole('combobox', {
+        name: '並べ替え順',
+      })
 
-    expect(`${sortField.textContent} / ${sortOrder.textContent}`).toBe(
-      '時価総額 / 降順',
-    )
-  })
+      expect(`${sortField.textContent} / ${sortOrder.textContent}`).toBe(
+        `${sortFieldLabel} / ${sortDirectionLabel}`,
+      )
+    },
+  )
 
   it('updates the selected sort field and direction for the URL state', async () => {
     const user = userEvent.setup()

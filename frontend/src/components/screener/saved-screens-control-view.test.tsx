@@ -10,15 +10,15 @@ const savedScreen: SavedScreen = {
   created_at: '2099-01-01T00:00:00Z',
   updated_at: '2099-01-02T00:00:00Z',
   filters: {
-    markets: ['プライム'],
+    markets: [],
     sectors: [],
-    per: { min: null, max: 12 },
+    per: null,
     pbr: null,
     roe: null,
     dividend_yield: null,
     market_cap: null,
   },
-  sort: { field: 'market_cap', direction: 'desc' },
+  sort: { field: 'name', direction: 'asc' },
 }
 
 const baseArgs = {
