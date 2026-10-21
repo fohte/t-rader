@@ -78,7 +78,7 @@ export function RefChip({
   const nameStart = showKind ? kindJP.length : 0
   const subStart = nameStart + displayName.length
 
-  const inner = (
+  const inner = (interactive: boolean) => (
     <>
       {showKind && (
         <span className="text-em-78 tracking-wide text-muted-foreground">
@@ -87,9 +87,8 @@ export function RefChip({
       )}
       <span
         className={cn(
-          resolved
-            ? 'text-foreground group-hover/button:text-destructive'
-            : 'italic text-muted-foreground group-hover/button:text-destructive',
+          !resolved && 'italic text-muted-foreground',
+          interactive && !resolved && 'group-hover/button:text-destructive',
         )}
       >
         {highlightedText(displayName, nameStart)}
@@ -114,14 +113,14 @@ export function RefChip({
           onOpenRef(token, ref)
         }}
       >
-        <span className={cn(baseInner, wrapper)}>{inner}</span>
+        <span className={cn(baseInner, wrapper)}>{inner(true)}</span>
       </Button>
     )
   }
 
   return (
     <span data-kind={ref.kind} title={title} className={className}>
-      {inner}
+      {inner(false)}
     </span>
   )
 }

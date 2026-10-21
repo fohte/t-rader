@@ -83,10 +83,12 @@ describe('StrategySwitcher', () => {
     const expectedOutput = {
       pathname: '/strategies/sample-beta/performance',
       expanded: 'false',
+      label: '架空戦略 B',
     }
     const readCurrentOutput = () => ({
       pathname: router.state.location.pathname,
       expanded: trigger.getAttribute('aria-expanded'),
+      label: trigger.textContent,
     })
     await waitFor(() => {
       expect(readCurrentOutput()).toEqual(expectedOutput)
