@@ -31,7 +31,9 @@ export function WidgetCollapsibleSection({
           data-expanded={String(expanded)}
         />
       </Button>
-      {expanded && <div className="border-t border-border">{children}</div>}
+      <div className="border-t border-border" hidden={!expanded}>
+        {children}
+      </div>
     </div>
   )
 }

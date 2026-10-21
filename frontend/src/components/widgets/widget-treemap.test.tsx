@@ -293,13 +293,15 @@ describe('WidgetTreemap', () => {
   })
 
   it('ECharts の label rect と実行時 palette を overlay に反映する', async () => {
-    await renderWidget(hierarchyResult, hierarchyViz)
+    const rendered = await renderWidget(hierarchyResult, hierarchyViz)
 
     act(() => {
       emitLabelLayout(2, { x: 12, y: 18, width: 120, height: 42 })
     })
 
-    const label = screen.getByText('架空銘柄 A').parentElement
+    const label = rendered.container.querySelector<HTMLElement>(
+      '[style*="--widget-treemap-label-left"]',
+    )
     function readLabelOutput() {
       return {
         text: label?.textContent,
