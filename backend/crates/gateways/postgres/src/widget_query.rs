@@ -60,6 +60,10 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
             candidate_stocks AS (
                 SELECT stock.id,
                        stock.name,
+                       CASE
+                           WHEN stock.id ~ '^[A-Z]{2}:' THEN NULL
+                           ELSE LEFT(stock.id, 4)
+                       END AS valuation_code,
                        -- DB に通貨列がないため、外国株 ID の国コードを安全側の境界にする。
                        CASE
                            WHEN stock.id ~ '^[A-Z]{2}:' THEN LEFT(stock.id, 2)
@@ -130,8 +134,6 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                        candidate_stocks.name,
                        candidate_stocks.currency_partition,
                        valuations.mkt_cap,
-                       latest_bars.close AS latest_close,
-                       latest_bars.volume AS latest_volume,
                        CASE $3::text
                            WHEN 'change' THEN stock_changes.change_rate
                            WHEN 'close' THEN latest_bars.close
@@ -156,14 +158,7 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                 LEFT JOIN LATERAL (
                     SELECT valuation.mkt_cap
                     FROM valuation
-                    WHERE LEFT(valuation.code, 4) = LEFT(
-                              CASE
-                                  WHEN candidate_stocks.id ~ '^[A-Z]{2}:'
-                                      THEN SPLIT_PART(candidate_stocks.id, ':', 2)
-                                  ELSE candidate_stocks.id
-                              END,
-                              4
-                          )
+                    WHERE LEFT(valuation.code, 4) = candidate_stocks.valuation_code
                       AND (
                           $3::text = 'mkt_cap'
                           OR ($3::text = 'change' AND $5::text = 'mkt_cap_weighted')
@@ -176,14 +171,7 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                 LEFT JOIN LATERAL (
                     SELECT valuation.per
                     FROM valuation
-                    WHERE LEFT(valuation.code, 4) = LEFT(
-                              CASE
-                                  WHEN candidate_stocks.id ~ '^[A-Z]{2}:'
-                                      THEN SPLIT_PART(candidate_stocks.id, ':', 2)
-                                  ELSE candidate_stocks.id
-                              END,
-                              4
-                          )
+                    WHERE LEFT(valuation.code, 4) = candidate_stocks.valuation_code
                       AND $3::text = 'per'
                       AND valuation.date <= $1::date
                       AND valuation.per IS NOT NULL
@@ -193,14 +181,7 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                 LEFT JOIN LATERAL (
                     SELECT valuation.pbr
                     FROM valuation
-                    WHERE LEFT(valuation.code, 4) = LEFT(
-                              CASE
-                                  WHEN candidate_stocks.id ~ '^[A-Z]{2}:'
-                                      THEN SPLIT_PART(candidate_stocks.id, ':', 2)
-                                  ELSE candidate_stocks.id
-                              END,
-                              4
-                          )
+                    WHERE LEFT(valuation.code, 4) = candidate_stocks.valuation_code
                       AND $3::text = 'pbr'
                       AND valuation.date <= $1::date
                       AND valuation.pbr IS NOT NULL
@@ -243,7 +224,6 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                        $10::boolean
                            AND COUNT(DISTINCT currency_partition) FILTER (
                                WHERE value IS NOT NULL
-                                 AND ($5::text <> 'mkt_cap_weighted' OR mkt_cap IS NOT NULL)
                            ) > 1 AS incompatible_currencies
                 FROM grouped_values
                 GROUP BY row_key, row_name
@@ -775,6 +755,49 @@ mod tests {
                     name: "Demo Stock".to_string(),
                     value: Decimal::from(2),
                 }],
+                Vec::<WidgetQueryRow>::new(),
+                Vec::<WidgetQueryRow>::new(),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn foreign_stock_does_not_borrow_domestic_valuation(db: DatabaseHandle) {
+        insert_stock(&db, "DEMO", "Demo Stock").await;
+        insert_stock(&db, "US:DEMO-A", "Demo Foreign Stock").await;
+        insert_valuation_values(&db, "DEMO", 1, Some(10), Some(2), Some(100)).await;
+
+        let source = PostgresWidgetQuerySource::new(db);
+        let mut queries = [
+            stock_metric_query(WidgetMetric::Per),
+            stock_metric_query(WidgetMetric::Pbr),
+            stock_metric_query(WidgetMetric::MktCap),
+        ];
+        for query in &mut queries {
+            query.universe = Some(WidgetUniverse::Stocks {
+                stocks: vec!["US:DEMO-A".to_string()],
+            });
+        }
+
+        let results = (
+            source
+                .query(date(2), &queries[0])
+                .await
+                .expect("query foreign per"),
+            source
+                .query(date(2), &queries[1])
+                .await
+                .expect("query foreign pbr"),
+            source
+                .query(date(2), &queries[2])
+                .await
+                .expect("query foreign market cap"),
+        );
+
+        assert_eq!(
+            results,
+            (
+                Vec::<WidgetQueryRow>::new(),
                 Vec::<WidgetQueryRow>::new(),
                 Vec::<WidgetQueryRow>::new(),
             ),

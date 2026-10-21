@@ -428,7 +428,7 @@ fn validate_matching_dimensions<'a>(
     }
 }
 
-fn query_dimension(
+pub(super) fn query_dimension(
     name: &str,
     definition: &WidgetDefinition,
     parsed_formulas: &BTreeMap<&str, FormulaExpression>,
@@ -465,7 +465,7 @@ fn query_dimension(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum QueryDimension {
+pub(super) enum QueryDimension {
     Market,
     Stock,
     Group(String),

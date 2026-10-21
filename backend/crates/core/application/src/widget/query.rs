@@ -16,7 +16,10 @@ use super::{
     types::{
         WidgetBy, WidgetDefinition, WidgetQuery, WidgetVisualization, WidgetVisualizationOrder,
     },
-    validation::{WidgetValidationError, WidgetValidationErrors, validate_widget},
+    validation::{
+        QueryDimension, WidgetValidationError, WidgetValidationErrors, query_dimension,
+        validate_widget,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -196,29 +199,10 @@ impl WidgetUseCases {
             &mut result_rows,
         );
 
-        let table_has_non_market_columns = match &definition.viz {
-            WidgetVisualization::Table { columns } => columns.iter().any(|column| {
-                definition
-                    .queries
-                    .get(column)
-                    .is_some_and(|query| query.by != WidgetBy::None)
-                    || parsed_formulas.get(column.as_str()).is_some_and(|formula| {
-                        formula.references().iter().any(|reference| {
-                            definition
-                                .queries
-                                .get(*reference)
-                                .is_some_and(|query| query.by != WidgetBy::None)
-                        })
-                    })
-            }),
-            WidgetVisualization::Treemap { .. }
-            | WidgetVisualization::Toplist { .. }
-            | WidgetVisualization::Line { .. } => false,
-        };
         let mut rows = project_visualization_rows(
             result_rows.into_values().collect(),
             &definition.viz,
-            table_has_non_market_columns,
+            table_has_non_market_columns(&definition, &parsed_formulas),
         );
 
         if let WidgetVisualization::Treemap {
@@ -289,6 +273,20 @@ impl WidgetUseCases {
 }
 
 type QueryValues<'a> = BTreeMap<&'a str, BTreeMap<WidgetRowKey, (String, Decimal)>>;
+
+fn table_has_non_market_columns(
+    definition: &WidgetDefinition,
+    parsed_formulas: &BTreeMap<&str, FormulaExpression>,
+) -> bool {
+    let WidgetVisualization::Table { columns } = &definition.viz else {
+        return false;
+    };
+
+    columns.iter().any(|column| {
+        query_dimension(column, definition, parsed_formulas)
+            .is_some_and(|dimension| !matches!(dimension, QueryDimension::Market))
+    })
+}
 
 fn broadcast_market_values(
     definition: &WidgetDefinition,

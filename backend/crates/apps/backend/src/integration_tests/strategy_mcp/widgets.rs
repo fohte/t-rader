@@ -39,10 +39,10 @@ async fn insert_indicator_observation(db: &DatabaseHandle, id: &str, day: u32, v
     .expect("insert widget indicator observation");
 }
 
-async fn insert_stock(db: &DatabaseHandle) {
+async fn insert_stock(db: &DatabaseHandle, id: &str, name: &str) {
     stock::ActiveModel {
-        id: Set("F001".to_string()),
-        name: Set("Demo Stock".to_string()),
+        id: Set(id.to_string()),
+        name: Set(name.to_string()),
         market: Set(Some("OTHER".to_string())),
         product_category: Set(None),
         created_at: Default::default(),
@@ -52,8 +52,8 @@ async fn insert_stock(db: &DatabaseHandle) {
     .await
     .expect("insert widget stock");
     instruments::Entity::insert(instruments::ActiveModel {
-        id: Set("F001".to_string()),
-        name: Set("Demo Stock".to_string()),
+        id: Set(id.to_string()),
+        name: Set(name.to_string()),
         market: Set("OTHER".to_string()),
         sector: Set(None),
     })
@@ -62,7 +62,7 @@ async fn insert_stock(db: &DatabaseHandle) {
     .expect("insert widget instrument");
 }
 
-async fn insert_market_data(db: &DatabaseHandle) {
+async fn insert_bars(db: &DatabaseHandle, ids: &[&str]) {
     let timestamp = as_of()
         .and_hms_opt(0, 0, 0)
         .map(|timestamp| Utc.from_utc_datetime(&timestamp))
@@ -70,20 +70,26 @@ async fn insert_market_data(db: &DatabaseHandle) {
     let close = Decimal::from(100);
     upsert_bars(
         db,
-        vec![Bar {
-            instrument_id: "F001".to_string(),
-            timeframe: Timeframe::Daily,
-            timestamp,
-            open: close,
-            high: close,
-            low: close,
-            close,
-            volume: 100,
-            adjustment_factor: Decimal::ONE,
-        }],
+        ids.iter()
+            .map(|id| Bar {
+                instrument_id: (*id).to_string(),
+                timeframe: Timeframe::Daily,
+                timestamp,
+                open: close,
+                high: close,
+                low: close,
+                close,
+                volume: 100,
+                adjustment_factor: Decimal::ONE,
+            })
+            .collect(),
     )
     .await
     .expect("upsert widget bar");
+}
+
+async fn insert_market_data(db: &DatabaseHandle) {
+    insert_bars(db, &["F001"]).await;
     valuation::ActiveModel {
         code: Set("F0010".to_string()),
         date: Set(as_of()),
@@ -105,7 +111,7 @@ async fn insert_market_data(db: &DatabaseHandle) {
 #[backend_test_macros::database_test]
 async fn query_widget_returns_resolved_date_and_values_as_rows(db: DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "widget-query").await;
-    insert_stock(&db).await;
+    insert_stock(&db, "F001", "Demo Stock").await;
     insert_market_data(&db).await;
     let server = build_server(db);
     let definition_yaml = indoc::indoc! {"
@@ -210,5 +216,42 @@ async fn query_widget_returns_indicator_table_without_daily_bars(db: DatabaseHan
                 "values": {"metric": 13}
             }]
         }),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn query_widget_rejects_amount_aggregation_across_currency_partitions(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = insert_strategy(&db, "widget-currency-error").await;
+    insert_stock(&db, "US:DEMO-A", "Demo Foreign A").await;
+    insert_stock(&db, "CA:TEST-B", "Demo Foreign B").await;
+    insert_bars(&db, &["US:DEMO-A", "CA:TEST-B"]).await;
+    let server = build_server(db);
+    let definition_yaml = indoc::indoc! {"
+        queries:
+          close:
+            metric: close
+            by: none
+            agg: sum
+        viz:
+          type: table
+          columns:
+            - close
+        time:
+          as_of: 2099-01-05
+    "};
+
+    let error = server
+        .query_widget(strategy_id, definition_yaml)
+        .await
+        .expect_err("query amount aggregation across currency partitions");
+
+    assert_eq!(
+        error,
+        rmcp::ErrorData::invalid_params(
+            "amount aggregations across different currencies are not supported".to_string(),
+            None,
+        ),
     );
 }
