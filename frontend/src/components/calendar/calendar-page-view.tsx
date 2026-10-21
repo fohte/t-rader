@@ -1,3 +1,12 @@
+import { Button } from '@fohte/ui/button'
+import { ButtonGroup } from '@fohte/ui/button-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import {
@@ -18,6 +27,14 @@ import type { components } from '#lib/api/schema.gen'
 type CalendarEventsResponse = components['schemas']['CalendarEventsResponse']
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Strategy = components['schemas']['Strategy']
+
+const COUNTRY_FILTER_OPTIONS = [
+  { value: null, label: 'すべての国' },
+  { value: 'JP', label: 'JP' },
+  { value: 'US', label: 'US' },
+  { value: 'EU', label: 'EU' },
+]
+
 export function CalendarPageView({
   calendar,
   weekRange,
@@ -36,6 +53,7 @@ export function CalendarPageView({
   onStrategyChange,
   onCountryChange,
   onOtherEarningsToggle,
+  openFilter,
 }: {
   calendar: CalendarEventsResponse | undefined
   weekRange: CalendarWeekRange
@@ -54,6 +72,7 @@ export function CalendarPageView({
   onStrategyChange: (value: string | undefined) => void
   onCountryChange: (value: CalendarCountryFilter) => void
   onOtherEarningsToggle: (selection: OtherEarningsSelection) => void
+  openFilter?: 'country' | 'strategy'
 }) {
   const days = buildCalendarDays(
     calendar?.events ?? [],
@@ -65,6 +84,13 @@ export function CalendarPageView({
     countryFilter,
     undefined,
   ).flatMap((day) => day.rows)
+  const strategyOptions = [
+    { value: null, label: '全戦略' },
+    ...strategies.map((strategy) => ({
+      value: strategy.id,
+      label: strategy.name,
+    })),
+  ]
 
   return (
     <section className="overflow-hidden border border-border bg-background font-mono text-xs text-foreground">
@@ -77,51 +103,60 @@ export function CalendarPageView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1" aria-label="週の移動">
-            <button
+          <ButtonGroup aria-label="週の移動" className="shrink-0">
+            <Button
               type="button"
+              variant="plain"
               aria-label="前の週"
               onClick={() => {
                 onPreviousWeek()
               }}
-              className="inline-flex size-8 items-center justify-center border border-border bg-card text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground"
+              className="size-8"
             >
               <ChevronLeft aria-hidden="true" className="size-4" />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="plain"
               aria-label="次の週"
               onClick={() => {
                 onNextWeek()
               }}
-              className="inline-flex size-8 items-center justify-center border border-border bg-card text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground"
+              className="size-8"
             >
               <ChevronRight aria-hidden="true" className="size-4" />
-            </button>
-          </div>
+            </Button>
+          </ButtonGroup>
 
           <div className="grid gap-1">
-            <select
-              aria-label="戦略"
-              aria-invalid={strategyErrorMessage != null}
-              aria-describedby={
-                strategyErrorMessage != null
-                  ? 'calendar-strategy-error'
-                  : undefined
-              }
-              value={selectedStrategyId ?? ''}
-              onChange={(event) => {
-                onStrategyChange(event.target.value || undefined)
+            <Select
+              items={strategyOptions}
+              value={selectedStrategyId ?? null}
+              open={openFilter === 'strategy' ? true : undefined}
+              onValueChange={(value) => {
+                onStrategyChange(value ?? undefined)
               }}
-              className="h-8 max-w-44 border border-border bg-card px-2 text-xs text-foreground"
             >
-              <option value="">全戦略</option>
-              {strategies.map((strategy) => (
-                <option key={strategy.id} value={strategy.id}>
-                  {strategy.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                aria-label="戦略"
+                aria-invalid={strategyErrorMessage != null}
+                aria-describedby={
+                  strategyErrorMessage != null
+                    ? 'calendar-strategy-error'
+                    : undefined
+                }
+                className="max-w-44"
+              >
+                <SelectValue placeholder="全戦略" />
+              </SelectTrigger>
+              <SelectContent>
+                {strategyOptions.map(({ value, label }) => (
+                  <SelectItem key={value ?? 'all-strategies'} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {strategyErrorMessage != null && (
               <p
                 id="calendar-strategy-error"
@@ -133,20 +168,26 @@ export function CalendarPageView({
             )}
           </div>
 
-          <select
-            aria-label="国"
-            value={countryFilter}
-            onChange={(event) => {
-              const value = event.target.value
-              if (isCalendarCountryFilter(value)) onCountryChange(value)
+          <Select
+            items={COUNTRY_FILTER_OPTIONS}
+            value={countryFilter === 'all' ? null : countryFilter}
+            open={openFilter === 'country' ? true : undefined}
+            onValueChange={(value) => {
+              const next = value ?? 'all'
+              if (isCalendarCountryFilter(next)) onCountryChange(next)
             }}
-            className="h-8 border border-border bg-card px-2 text-xs text-foreground"
           >
-            <option value="all">すべての国</option>
-            <option value="JP">JP</option>
-            <option value="US">US</option>
-            <option value="EU">EU</option>
-          </select>
+            <SelectTrigger aria-label="国">
+              <SelectValue placeholder="すべての国" />
+            </SelectTrigger>
+            <SelectContent>
+              {COUNTRY_FILTER_OPTIONS.map(({ value, label }) => (
+                <SelectItem key={value ?? 'all-countries'} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </header>
 

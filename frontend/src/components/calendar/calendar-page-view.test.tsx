@@ -90,9 +90,24 @@ describe('CalendarPageView', () => {
 
     await renderCalendarPageView(makeProps({ onCountryChange }))
 
-    await user.selectOptions(screen.getByRole('combobox', { name: '国' }), 'US')
+    await user.click(screen.getByRole('combobox', { name: '国' }))
+    await user.click(await screen.findByRole('option', { name: 'US' }))
 
     expect(onCountryChange.mock.calls).toEqual([['US']])
+  })
+
+  it('reports all countries when the country filter is cleared', async () => {
+    const user = userEvent.setup()
+    const onCountryChange = vi.fn()
+
+    await renderCalendarPageView(
+      makeProps({ countryFilter: 'US', onCountryChange }),
+    )
+
+    await user.click(screen.getByRole('combobox', { name: '国' }))
+    await user.click(await screen.findByRole('option', { name: 'すべての国' }))
+
+    expect(onCountryChange.mock.calls).toEqual([['all']])
   })
 
   it('reports the selected strategy filter', async () => {
@@ -103,10 +118,8 @@ describe('CalendarPageView', () => {
       makeProps({ strategies: [STRATEGY], onStrategyChange }),
     )
 
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: '戦略' }),
-      STRATEGY.id,
-    )
+    await user.click(screen.getByRole('combobox', { name: '戦略' }))
+    await user.click(await screen.findByRole('option', { name: STRATEGY.name }))
 
     expect(onStrategyChange.mock.calls).toEqual([[STRATEGY.id]])
   })
@@ -123,7 +136,8 @@ describe('CalendarPageView', () => {
       }),
     )
 
-    await user.selectOptions(screen.getByRole('combobox', { name: '戦略' }), '')
+    await user.click(screen.getByRole('combobox', { name: '戦略' }))
+    await user.click(await screen.findByRole('option', { name: '全戦略' }))
 
     expect(onStrategyChange.mock.calls).toEqual([[undefined]])
   })
