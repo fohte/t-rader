@@ -10,13 +10,34 @@ pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(h
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
-use sea_orm::sea_query::{Expr, OnConflict};
+use sea_orm::sea_query::{Expr, Iden, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult, Iterable,
     QueryFilter, QueryOrder, Set, Statement,
 };
 
 use crate::entities::bars;
+
+const BAR_UPDATE_COLUMNS: [bars::Column; 6] = [
+    bars::Column::Open,
+    bars::Column::High,
+    bars::Column::Low,
+    bars::Column::Close,
+    bars::Column::Volume,
+    bars::Column::AdjustmentFactor,
+];
+
+fn changed_bar_columns_condition() -> Expr {
+    let condition = BAR_UPDATE_COLUMNS
+        .iter()
+        .map(|column| {
+            let column_name = Iden::to_string(column);
+            format!("bars.{column_name} IS DISTINCT FROM EXCLUDED.{column_name}")
+        })
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    Expr::cust(condition)
+}
 
 const FIND_ONE_MINUTE_BARS_SQL: &str = r#"
     SELECT instrument_id, timestamp, open, high, low, close, volume
@@ -168,22 +189,8 @@ pub async fn upsert_bars(
                     bars::Column::Timeframe,
                     bars::Column::Timestamp,
                 ])
-                .update_columns([
-                    bars::Column::Open,
-                    bars::Column::High,
-                    bars::Column::Low,
-                    bars::Column::Close,
-                    bars::Column::Volume,
-                    bars::Column::AdjustmentFactor,
-                ])
-                .action_cond_where(Expr::cust(
-                    "bars.open IS DISTINCT FROM EXCLUDED.open \
-                     OR bars.high IS DISTINCT FROM EXCLUDED.high \
-                     OR bars.low IS DISTINCT FROM EXCLUDED.low \
-                     OR bars.close IS DISTINCT FROM EXCLUDED.close \
-                     OR bars.volume IS DISTINCT FROM EXCLUDED.volume \
-                     OR bars.adjustment_factor IS DISTINCT FROM EXCLUDED.adjustment_factor",
-                ))
+                .update_columns(BAR_UPDATE_COLUMNS)
+                .action_cond_where(changed_bar_columns_condition())
                 .to_owned(),
             )
             .exec_without_returning(db)
@@ -545,12 +552,12 @@ mod tests {
         assert_eq!(actual, vec![corrected]);
     }
 
-    #[derive(Debug, FromQueryResult, PartialEq, Eq)]
-    struct RowVersion {
-        xmin: String,
+    #[derive(Debug, FromQueryResult)]
+    struct RowTupleLocation {
+        ctid: String,
     }
 
-    async fn find_row_version(
+    async fn find_row_tuple_location(
         db: &impl ConnectionTrait,
         table: &str,
         instrument_id: &str,
@@ -560,15 +567,15 @@ mod tests {
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 format!(
-                    "SELECT xmin::text AS xmin FROM {table} WHERE instrument_id = $1 AND timeframe = $2"
+                    "SELECT ctid::text AS ctid FROM {table} WHERE instrument_id = $1 AND timeframe = $2"
                 ),
                 [instrument_id.into(), timeframe.into()],
             ))
         .await
-        .expect("query row version")
+        .expect("query row location")
         .expect("row exists");
-        let row = RowVersion::from_query_result(&row, "").expect("decode row version");
-        row.xmin
+        let row = RowTupleLocation::from_query_result(&row, "").expect("decode row location");
+        row.ctid
     }
 
     #[backend_test_macros::database_test]
@@ -586,21 +593,21 @@ mod tests {
             .await
             .expect("insert bar");
 
-        let versions_before = (
-            find_row_version(&db, "bars", instrument_id, "1d").await,
-            find_row_version(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
+        let locations_before = (
+            find_row_tuple_location(&db, "bars", instrument_id, "1d").await,
+            find_row_tuple_location(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
         );
 
         upsert_bars(&db, vec![bar])
             .await
             .expect("upsert unchanged bar");
 
-        let versions_after = (
-            find_row_version(&db, "bars", instrument_id, "1d").await,
-            find_row_version(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
+        let locations_after = (
+            find_row_tuple_location(&db, "bars", instrument_id, "1d").await,
+            find_row_tuple_location(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
         );
 
-        assert_eq!(versions_after, versions_before);
+        assert_eq!(locations_after, locations_before);
     }
 
     fn make_test_minute_bar(
