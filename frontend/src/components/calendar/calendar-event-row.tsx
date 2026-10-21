@@ -28,8 +28,7 @@ export function CalendarEventRow({
     onClick: () => void
   }
 }) {
-  const titleClassName = clsx(
-    'min-w-0 flex-1 break-words',
+  const titleToneClassName = clsx(
     emphasized && 'text-destructive',
     !emphasized && target && 'font-semibold text-foreground',
     !emphasized && !target && muted && 'text-muted-foreground',
@@ -56,7 +55,9 @@ export function CalendarEventRow({
           onClick={titleAction.onClick}
           className="min-w-0 flex-1"
         >
-          <span className={clsx(titleClassName, 'w-full text-left')}>
+          <span
+            className={clsx(titleToneClassName, 'w-full break-words text-left')}
+          >
             {title}
           </span>
         </Button>
@@ -64,12 +65,20 @@ export function CalendarEventRow({
         <Link
           to="/stocks/$stockId"
           params={{ stockId }}
-          className={clsx(titleClassName, 'hover:underline')}
+          className={clsx(
+            'min-w-0 flex-1 break-words',
+            titleToneClassName,
+            'hover:underline',
+          )}
         >
           {title}
         </Link>
       ) : (
-        <span className={titleClassName}>{title}</span>
+        <span
+          className={clsx('min-w-0 flex-1 break-words', titleToneClassName)}
+        >
+          {title}
+        </span>
       )}
     </div>
   )

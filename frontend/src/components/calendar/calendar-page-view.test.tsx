@@ -61,6 +61,18 @@ function renderCalendarPageView(
   return waitFor(() => screen.getByRole('heading', { name: 'WEEKLY EVENTS' }))
 }
 
+function getEarningsDetailsRelationship(button: HTMLElement) {
+  const controlsId = button.getAttribute('aria-controls')
+  const details = document.getElementById(controlsId ?? '')
+
+  return {
+    expanded: button.getAttribute('aria-expanded'),
+    controlsId,
+    detailsId: details?.id,
+    detailsText: details?.textContent,
+  }
+}
+
 describe('CalendarPageView', () => {
   it('requests the previous week when its navigation button is selected', async () => {
     const user = userEvent.setup()
@@ -200,5 +212,29 @@ describe('CalendarPageView', () => {
     expect(onOtherEarningsToggle.mock.calls).toEqual([
       [{ country: 'JP', eventDate: '2099-01-06' }],
     ])
+  })
+
+  it('connects the expanded earnings button to its details region', async () => {
+    const summary: CalendarEvent = {
+      kind: 'other_earnings_summary',
+      country: 'JP',
+      event_date: '2099-01-06',
+      count: 2,
+    }
+
+    await renderCalendarPageView(
+      makeProps({
+        calendar: { ...WEEK_RANGE, events: [summary] },
+        expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
+      }),
+    )
+
+    const button = screen.getByRole('button', { name: '他 2 社' })
+    expect(getEarningsDetailsRelationship(button)).toEqual({
+      expanded: 'true',
+      controlsId: 'calendar-other-earnings-JP-2099-01-06',
+      detailsId: 'calendar-other-earnings-JP-2099-01-06',
+      detailsText: '該当する決算はありません。',
+    })
   })
 })
