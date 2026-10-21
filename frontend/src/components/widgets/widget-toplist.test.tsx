@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ECElementEvent } from 'echarts/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { WidgetToplist } from '#components/widgets'
+import { WidgetToplist } from '#components/widgets/widget-toplist'
 import type { components } from '#lib/api/schema.gen'
 import type { EChartsOptionFactory } from '#lib/echarts/use-echarts-chart'
 import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
