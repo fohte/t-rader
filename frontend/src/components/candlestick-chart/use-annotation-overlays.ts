@@ -22,7 +22,11 @@ import {
   type TrendLinePoint,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
-import { observeChartTheme } from '#lib/chart-theme'
+import {
+  getChartThemeColors,
+  observeChartTheme,
+  resolveChartCssColor,
+} from '#lib/chart-theme'
 import {
   getChartBarDate,
   toCandlestickData,
@@ -56,13 +60,15 @@ interface ChartRef<T> {
   current: T | null
 }
 
-export function getAnnotationSelectionColor(): string {
-  // Lightweight Charts は canvas 描画のため、CSS token を色値に解決して渡す。
-  if (typeof document === 'undefined') return 'var(--muted-foreground)'
+function getAnnotationSelectionColor(): string {
+  const isDark =
+    typeof document !== 'undefined' &&
+    document.documentElement.classList.contains('dark')
 
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue('--muted-foreground')
-    .trim()
+  return resolveChartCssColor(
+    '--muted-foreground',
+    getChartThemeColors(isDark).textColor,
+  )
 }
 
 export function useAnnotationOverlays({

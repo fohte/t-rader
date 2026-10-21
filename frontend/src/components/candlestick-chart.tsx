@@ -15,10 +15,7 @@ import {
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 
 import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
-import {
-  getAnnotationSelectionColor,
-  useAnnotationOverlays,
-} from '#components/candlestick-chart/use-annotation-overlays'
+import { useAnnotationOverlays } from '#components/candlestick-chart/use-annotation-overlays'
 import { useChartIndicators } from '#components/candlestick-chart/use-chart-indicators'
 import { useChartInteractions } from '#components/candlestick-chart/use-chart-interactions'
 import { ChartIndicatorLegend } from '#components/chart-indicator-legend'
@@ -38,6 +35,7 @@ import {
   getChartThemeOptions,
   observeChartResize,
   observeChartTheme,
+  resolveChartCssColor,
 } from '#lib/chart-theme'
 import {
   type ChartCurrency,
@@ -189,7 +187,7 @@ export function CandlestickChart({
     tradeMarkersRef.current = createSeriesMarkers(candlestickSeries)
 
     const annotationPriceSeries = chart.addSeries(LineSeries, {
-      color: getAnnotationSelectionColor(),
+      color: resolveChartCssColor('--muted-foreground', colors.textColor),
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       priceScaleId: 'right',

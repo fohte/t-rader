@@ -16,6 +16,19 @@ export function getChartThemeColors(isDark: boolean): ChartThemeColors {
   }
 }
 
+export function resolveChartCssColor(
+  variableName: `--${string}`,
+  fallbackColor: string,
+): string {
+  if (typeof document === 'undefined') return fallbackColor
+
+  return (
+    getComputedStyle(document.documentElement)
+      .getPropertyValue(variableName)
+      .trim() || fallbackColor
+  )
+}
+
 export function getChartThemeOptions(colors: ChartThemeColors) {
   return {
     layout: {

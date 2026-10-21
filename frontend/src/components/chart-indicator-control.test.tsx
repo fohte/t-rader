@@ -204,7 +204,16 @@ describe('ChartIndicatorControl', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '指標 0' }))
 
-    expect(onOpenChange.mock.calls).toEqual([[true]])
-    screen.getByRole('dialog')
+    function readOpenState() {
+      return {
+        onOpenChangeCalls: onOpenChange.mock.calls,
+        dialogIsOpen: screen.queryByRole('dialog') != null,
+      }
+    }
+
+    expect(readOpenState()).toEqual({
+      onOpenChangeCalls: [[true]],
+      dialogIsOpen: true,
+    })
   })
 })
