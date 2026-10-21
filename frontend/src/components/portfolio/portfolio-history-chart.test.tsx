@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,10 +10,14 @@ import type {
 } from '#lib/portfolio-history'
 
 const chartMocks = vi.hoisted(() => {
-  const series = { applyOptions: vi.fn(), setData: vi.fn() }
+  const series = Array.from({ length: 3 }, () => ({
+    applyOptions: vi.fn(),
+    setData: vi.fn(),
+  }))
+  let nextSeriesIndex = 0
   const timeScale = { fitContent: vi.fn() }
   const chart = {
-    addSeries: vi.fn(() => series),
+    addSeries: vi.fn(() => series[nextSeriesIndex++]),
     applyOptions: vi.fn(),
     remove: vi.fn(),
     subscribeCrosshairMove: vi.fn(),
@@ -21,7 +25,13 @@ const chartMocks = vi.hoisted(() => {
     unsubscribeCrosshairMove: vi.fn(),
   }
 
-  return { chart }
+  return {
+    chart,
+    series,
+    resetSeriesIndex: () => {
+      nextSeriesIndex = 0
+    },
+  }
 })
 
 vi.mock('lightweight-charts', () => ({
@@ -63,6 +73,9 @@ const history: PortfolioHistoryPoint[] = [
   },
 ]
 
+const originalRootClass = document.documentElement.className
+const originalRootStyle = document.documentElement.getAttribute('style')
+
 function readTooltip() {
   const tooltip = screen.queryByRole('tooltip')
   if (tooltip == null) return null
@@ -74,6 +87,13 @@ function readTooltip() {
       value: row.querySelector('dd')?.textContent ?? null,
     })),
   }
+}
+
+function readThemeUpdateCalls() {
+  return [
+    chartMocks.chart.applyOptions.mock.calls,
+    ...chartMocks.series.map((series) => series.applyOptions.mock.calls),
+  ]
 }
 
 function StatefulHistoryChart() {
@@ -92,10 +112,17 @@ function StatefulHistoryChart() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  chartMocks.resetSeriesIndex()
 })
 
 afterEach(() => {
   cleanup()
+  document.documentElement.className = originalRootClass
+  if (originalRootStyle == null) {
+    document.documentElement.removeAttribute('style')
+  } else {
+    document.documentElement.setAttribute('style', originalRootStyle)
+  }
 })
 
 describe('PortfolioHistoryChart', () => {
@@ -143,5 +170,71 @@ describe('PortfolioHistoryChart', () => {
       null,
       null,
     ])
+  })
+
+  it('updates series colors when the theme tokens change', async () => {
+    const root = document.documentElement
+    root.classList.remove('dark')
+    root.style.setProperty('--chart-1', 'oklch(0 0 0)')
+    root.style.setProperty('--chart-2', 'oklch(0 0 0)')
+    root.style.setProperty('--chart-3', 'oklch(0 0 0)')
+    root.style.setProperty('--foreground', 'oklch(0 0 0)')
+
+    render(
+      <PortfolioHistoryChart
+        data={history}
+        period="week"
+        status="ready"
+        onPeriodChange={vi.fn()}
+      />,
+    )
+
+    chartMocks.chart.applyOptions.mockClear()
+    for (const series of chartMocks.series) series.applyOptions.mockClear()
+    root.style.setProperty('--chart-1', 'oklch(1 0 0)')
+    root.style.setProperty('--chart-2', 'oklch(0 0 0)')
+    root.style.setProperty('--chart-3', 'oklch(0.5 0 0)')
+    root.style.setProperty('--foreground', 'oklch(0.5 0 0)')
+    root.classList.add('dark')
+
+    await waitFor(() => {
+      expect(readThemeUpdateCalls()).toEqual([
+        [
+          [
+            {
+              layout: {
+                background: { type: 'solid', color: '#1a1a1a' },
+                textColor: '#d1d5db',
+              },
+              grid: {
+                vertLines: { color: '#2d2d2d' },
+                horzLines: { color: '#2d2d2d' },
+              },
+              timeScale: { borderColor: '#3f3f46' },
+              rightPriceScale: { borderColor: '#3f3f46' },
+            },
+          ],
+        ],
+        [
+          [
+            {
+              lineColor: 'rgb(99, 99, 99)',
+              topColor: 'rgba(0, 0, 0, 0.32)',
+              bottomColor: 'rgba(0, 0, 0, 0.08)',
+            },
+          ],
+        ],
+        [
+          [
+            {
+              lineColor: 'rgb(255, 255, 255)',
+              topColor: 'rgba(255, 255, 255, 0.5)',
+              bottomColor: 'rgba(255, 255, 255, 0.24)',
+            },
+          ],
+        ],
+        [[{ color: 'rgb(99, 99, 99)' }]],
+      ])
+    })
   })
 })

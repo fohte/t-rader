@@ -1,9 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import {
-  GroupRatioEditor,
-  type GroupRatioEditorProps,
-} from '#components/group-ratio-editor'
+import { GroupRatioEditor } from '#components/group-ratio-editor'
 
 const axes = [
   { key: 'example-axis-a', name: 'Example dimension A' },
@@ -11,7 +8,7 @@ const axes = [
 ]
 
 const NOOP = (): void => {}
-const NOOP_ROWS: GroupRatioEditorProps['onRowsChange'] = () => {}
+const NOOP_ROWS = (): void => {}
 
 const meta = {
   title: 'Settings/GroupRatioEditor',
@@ -56,11 +53,24 @@ export const Configured: Story = {
   },
 }
 
+export const AxisSelectOpen: Story = {
+  name: 'shows the available classification axes in the open selector.',
+  args: {
+    rows: [{ axis: '', ratioPercent: '' }],
+    axisSelectDefaultOpen: true,
+  },
+}
+
 export const ValidationError: Story = {
   name: 'shows a validation error for an incomplete limit.',
   args: {
-    rows: [{ axis: '', ratioPercent: '' }],
-    errors: [{ axis: '分類軸を選択してください' }],
+    rows: [{ axis: '', ratioPercent: '101' }],
+    errors: [
+      {
+        axis: '分類軸を選択してください',
+        ratioPercent: '1 から 100 の数値を入力してください',
+      },
+    ],
   },
 }
 
