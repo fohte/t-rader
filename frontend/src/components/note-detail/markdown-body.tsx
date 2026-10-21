@@ -1,9 +1,9 @@
+import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 import {
   Children,
   createContext,
   isValidElement,
-  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -17,11 +17,11 @@ import remarkGfm from 'remark-gfm'
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import { ChangeReferenceFigure } from '#components/note-detail/change-reference-figure'
 import { toGraphDef } from '#components/note-detail/markdown-body-graph-def'
+import { MarkdownBodyGraphNotice } from '#components/note-detail/markdown-body-graph-notice'
 import { MarkdownBodyRangeBlock } from '#components/note-detail/markdown-body-range-block'
 import {
   MarkdownBodyRangeCommentContext,
   MarkdownBodyTableCellGutterContext,
-  NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdown-body-text-selection-action'
 import type {
@@ -40,6 +40,7 @@ import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { useMarkdownBodyCommentSelection } from '#components/note-detail/use-markdown-body-comment-selection'
 import { RefChip } from '#components/strategy-shell/ref-chip'
 import type { components } from '#lib/api/schema.gen'
+import { cn } from '#lib/utils'
 
 type ApiGraphDef = components['schemas']['GraphDef']
 type NoteLinkItem = components['schemas']['NoteLinkItem']
@@ -49,34 +50,14 @@ const EMPTY_NOTE_LINKS: NoteLinkItem[] = []
 
 const MarkdownBodyListDepthContext = createContext(0)
 
-function GraphNotice({ children }: { children: ReactNode }) {
-  return (
-    <div
-      role="alert"
-      className="my-3 border border-dashed border-border p-3 font-mono text-xs text-muted-foreground"
-    >
-      {children}
-    </div>
-  )
-}
-
-function GraphErrorFallback({ resetErrorBoundary }: FallbackProps) {
-  return (
-    <GraphNotice>
-      図を表示できませんでした
-      <button
-        type="button"
-        onClick={resetErrorBoundary}
-        className="ml-2 underline hover:text-muted-foreground-strong"
-      >
-        再試行
-      </button>
-    </GraphNotice>
-  )
-}
-
 const HEADING3_CLASS =
   'mt-4 mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground-strong'
+
+const GraphErrorFallback = ({ resetErrorBoundary }: FallbackProps) => (
+  <MarkdownBodyGraphNotice onRetry={resetErrorBoundary}>
+    図を表示できませんでした
+  </MarkdownBodyGraphNotice>
+)
 
 // hast-util-to-jsx-runtime の tableCellAlignToStyle (既定 true) が hast の
 // align を style.textAlign に変換して prop から落とすため、生の hast node
@@ -194,10 +175,7 @@ export function MarkdownBody({
         const listDepth = useContext(MarkdownBodyListDepthContext)
         return (
           <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
-            <ul
-              className="my-2.5 list-disc space-y-1 text-sm leading-relaxed"
-              style={{ marginLeft: `${String(NOTE_BODY_INDENT_REM)}rem` }}
-            >
+            <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed">
               {children}
             </ul>
           </MarkdownBodyListDepthContext.Provider>
@@ -207,10 +185,7 @@ export function MarkdownBody({
         const listDepth = useContext(MarkdownBodyListDepthContext)
         return (
           <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
-            <ol
-              className="my-2.5 list-decimal space-y-1 text-sm leading-relaxed"
-              style={{ marginLeft: `${String(NOTE_BODY_INDENT_REM)}rem` }}
-            >
+            <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed">
               {children}
             </ol>
           </MarkdownBodyListDepthContext.Provider>
@@ -283,17 +258,23 @@ export function MarkdownBody({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary hover:underline"
+          className="text-foreground underline-offset-4 hover:underline"
         >
           {children}
         </a>
       ),
       table: ({ children }) => (
         <div
-          className={`my-3 overflow-x-auto ${hasRangeComments ? 'relative -ml-11 pl-11' : 'border border-border'}`}
+          className={cn(
+            'my-3 overflow-x-auto',
+            hasRangeComments ? 'relative -ml-11 pl-11' : 'border border-border',
+          )}
         >
           <table
-            className={`w-full border-collapse text-sm ${hasRangeComments ? 'ring-1 ring-inset ring-border' : ''}`}
+            className={cn(
+              'w-full border-collapse text-sm',
+              hasRangeComments && 'ring-1 ring-inset ring-border',
+            )}
           >
             {children}
           </table>
@@ -312,7 +293,10 @@ export function MarkdownBody({
         return (
           <th
             align={cellAlign(node?.properties.align)}
-            className={`px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground ${tableGutter == null ? '' : 'relative'}`}
+            className={cn(
+              'px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground',
+              tableGutter != null && 'relative',
+            )}
           >
             {children}
             {tableGutter}
@@ -324,7 +308,10 @@ export function MarkdownBody({
         return (
           <td
             align={cellAlign(node?.properties.align)}
-            className={`px-3 py-1.5 text-foreground ${tableGutter == null ? '' : 'relative'}`}
+            className={cn(
+              'px-3 py-1.5 text-foreground',
+              tableGutter != null && 'relative',
+            )}
           >
             {children}
             {tableGutter}
@@ -349,7 +336,7 @@ export function MarkdownBody({
             to="/notes/$noteId"
             params={{ noteId }}
             search={{ version_id: noteLink.version_id ?? undefined }}
-            className="text-primary hover:underline"
+            className="text-foreground underline-offset-4 hover:underline"
           >
             {noteLink.title ?? 'タイトルなし'}
             {noteLink.version_id == null
@@ -361,17 +348,21 @@ export function MarkdownBody({
         )
       },
       'note-anno': ({ annoId }) => (
-        <button
-          type="button"
-          onClick={() => onAnno?.(annoId)}
-          title={`annotation ${annoId}`}
-          // text-em-82 も同様に markdown 中の任意の位置に埋め込まれるため、
-          // 周辺テキストに追従する相対値のまま残す。
-          className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-em-82 text-primary hover:bg-primary/15"
-        >
-          <span className="font-bold">{annoId}</span>
-          <span className="text-em-85 text-muted-foreground">annotation</span>
-        </button>
+        <span className="font-mono text-em-82">
+          <Button
+            type="button"
+            variant="plain"
+            onClick={() => onAnno?.(annoId)}
+            title={`annotation ${annoId}`}
+          >
+            <span className="inline-flex items-baseline gap-1">
+              <span className="font-bold">{annoId}</span>
+              <span className="text-em-85 text-muted-foreground">
+                annotation
+              </span>
+            </span>
+          </Button>
+        </span>
       ),
       'note-price-reference': (reference) => (
         <NotePriceReference {...reference} />
@@ -401,7 +392,11 @@ export function MarkdownBody({
           return (
             <MarkdownBodyRangeBlock
               node={node}
-              element={<GraphNotice>図 {graphId} が見つかりません</GraphNotice>}
+              element={
+                <MarkdownBodyGraphNotice>
+                  図 {graphId} が見つかりません
+                </MarkdownBodyGraphNotice>
+              }
             />
           )
         const def = toGraphDef(apiDef)
@@ -445,15 +440,7 @@ export function MarkdownBody({
   return (
     <div
       ref={selection.rootRef}
-      className="text-foreground"
-      style={
-        hasRangeComments
-          ? {
-              marginLeft: `-${String(NOTE_BODY_INDENT_REM)}rem`,
-              paddingLeft: `${String(NOTE_BODY_INDENT_REM)}rem`,
-            }
-          : undefined
-      }
+      className={cn('text-foreground', hasRangeComments && '-ml-5 pl-5')}
       onMouseUp={selection.onMouseUp}
       onTouchEnd={selection.onTouchEnd}
       onPointerMove={selection.onPointerMove}
