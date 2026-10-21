@@ -3,9 +3,10 @@ import '#lib/echarts/bar'
 import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 import type { ECElementEvent } from 'echarts/core'
-import { ChevronDown } from 'lucide-react'
-import { type CSSProperties, useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
+import { WidgetCollapsibleSection } from '#components/widgets/widget-collapsible-section'
+import type { WidgetCSSProperties } from '#components/widgets/widget-css'
 import {
   createWidgetToplistModel,
   createWidgetToplistOption,
@@ -28,8 +29,6 @@ type WidgetToplistDefinition = Extract<
   components['schemas']['WidgetVisualizationRequest'],
   { type: 'toplist' }
 >
-type WidgetCSSProperties = CSSProperties & Record<`--widget-${string}`, string>
-
 const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
 const CHART_ROW_HEIGHT = 58
 const DETAIL_STYLE: WidgetCSSProperties = {
@@ -311,72 +310,55 @@ export function WidgetToplist({
       )}
 
       {!isEmpty && (
-        <section className="border border-border bg-card">
-          <Button
-            aria-expanded={rankListExpanded}
-            className="w-full justify-start"
-            onClick={() => {
-              setRankListExpanded((expanded) => !expanded)
-            }}
-            type="button"
-            variant="ghost"
-          >
-            {`順位一覧から詳細を選ぶ (${String(model.rows.length)})`}
-            <ChevronDown
-              aria-hidden="true"
-              className="ml-auto size-4 transition-transform data-[expanded=true]:rotate-180"
-              data-expanded={String(rankListExpanded)}
-            />
-          </Button>
-          {rankListExpanded && (
-            <ol
-              aria-label="toplist の順位"
-              className="list-none border-t border-border"
-            >
-              {model.rows.map((row, index) => (
-                <li
-                  className="border-t border-border first:border-t-0"
-                  key={row.key}
+        <WidgetCollapsibleSection
+          expanded={rankListExpanded}
+          label={`順位一覧から詳細を選ぶ (${String(model.rows.length)})`}
+          onExpandedChange={setRankListExpanded}
+        >
+          <ol aria-label="toplist の順位" className="list-none">
+            {model.rows.map((row, index) => (
+              <li
+                className="border-t border-border first:border-t-0"
+                key={row.key}
+              >
+                <Button
+                  aria-label={
+                    String(index + 1) +
+                    ' 位: ' +
+                    row.name +
+                    '、' +
+                    row.code +
+                    '、' +
+                    row.formattedValue +
+                    '、詳細を表示'
+                  }
+                  className="min-h-12 w-full justify-start whitespace-normal text-left"
+                  onClick={() => {
+                    setSelectedRowKey(row.key)
+                  }}
+                  size="lg"
+                  type="button"
+                  variant="ghost"
                 >
-                  <Button
-                    aria-label={
-                      String(index + 1) +
-                      ' 位: ' +
-                      row.name +
-                      '、' +
-                      row.code +
-                      '、' +
-                      row.formattedValue +
-                      '、詳細を表示'
-                    }
-                    className="min-h-12 w-full justify-start text-left"
-                    onClick={() => {
-                      setSelectedRowKey(row.key)
-                    }}
-                    size="lg"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <span className="w-8 shrink-0 text-right text-muted-foreground">
-                      {index + 1}
+                  <span className="w-8 shrink-0 text-right text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-foreground">
+                      {row.name}
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block break-words text-foreground">
-                        {row.name}
-                      </span>
-                      <span className="block break-all text-2xs text-muted-foreground">
-                        {row.code}
-                      </span>
+                    <span className="block break-all text-2xs text-muted-foreground">
+                      {row.code}
                     </span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground-strong">
-                      {row.formattedValue}
-                    </span>
-                  </Button>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground-strong">
+                    {row.formattedValue}
+                  </span>
+                </Button>
+              </li>
+            ))}
+          </ol>
+        </WidgetCollapsibleSection>
       )}
     </div>
   )

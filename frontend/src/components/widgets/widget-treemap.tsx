@@ -3,16 +3,10 @@ import '#lib/echarts/treemap'
 import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 import type { ECElementEvent } from 'echarts/core'
-import { ChevronDown } from 'lucide-react'
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { WidgetCollapsibleSection } from '#components/widgets/widget-collapsible-section'
+import type { WidgetCSSProperties } from '#components/widgets/widget-css'
 import {
   createWidgetTreemapModel,
   createWidgetTreemapOption,
@@ -43,8 +37,6 @@ type WidgetTreemapDefinition = Extract<
   components['schemas']['WidgetVisualizationRequest'],
   { type: 'treemap' }
 >
-type WidgetCSSProperties = CSSProperties & Record<`--widget-${string}`, string>
-
 const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
 const SERIES_ID = 'widget-treemap'
 const DETAIL_STYLE: WidgetCSSProperties = {
@@ -207,7 +199,7 @@ export function WidgetTreemap({
       <li className="border-t border-border first:border-t-0" key={row.key}>
         <Button
           aria-label={`${row.name}, ${model.colorLabel}: ${row.formattedColor}, 詳細を表示`}
-          className="min-h-10 w-full justify-start text-left"
+          className="min-h-10 w-full justify-start whitespace-normal text-left"
           onClick={() => {
             selectRow(row)
           }}
@@ -420,63 +412,44 @@ export function WidgetTreemap({
       )}
 
       {model.rows.length > 0 && (
-        <section className="border border-border bg-card">
-          <Button
-            aria-expanded={listExpanded}
-            className="w-full justify-start"
-            onClick={() => {
-              setListExpanded((expanded) => !expanded)
-            }}
-            type="button"
-            variant="ghost"
-          >
-            全件一覧 ({model.rows.length})
-            <ChevronDown
-              aria-hidden="true"
-              className="ml-auto size-4 transition-transform data-[expanded=true]:rotate-180"
-              data-expanded={String(listExpanded)}
-            />
-          </Button>
-          {listExpanded && (
-            <div className="border-t border-border">
-              {model.groups.length > 0 ? (
-                <div className="divide-y divide-border">
-                  {model.groups.map((group) => (
-                    <section key={group.id}>
-                      <div className="flex min-h-10 items-start justify-between gap-3 bg-bg-secondary px-3 py-2">
-                        <h3 className="min-w-0 flex-1 break-words text-xs font-semibold text-foreground">
-                          {group.name}
-                        </h3>
-                        <Button
-                          aria-pressed={focusId === group.id}
-                          className="shrink-0"
-                          disabled={group.area <= 0}
-                          onClick={() => {
-                            focusGroup(group.id)
-                          }}
-                          type="button"
-                          variant="ghost"
-                        >
-                          分類にフォーカス
-                        </Button>
-                      </div>
-                      <ul
-                        aria-label={`${group.name} の銘柄`}
-                        className="list-none"
-                      >
-                        {renderRowButtons(group.rows)}
-                      </ul>
-                    </section>
-                  ))}
-                </div>
-              ) : (
-                <ul aria-label="treemap の全件" className="list-none">
-                  {renderRowButtons(model.rows)}
-                </ul>
-              )}
+        <WidgetCollapsibleSection
+          expanded={listExpanded}
+          label={`全件一覧 (${String(model.rows.length)})`}
+          onExpandedChange={setListExpanded}
+        >
+          {model.groups.length > 0 ? (
+            <div className="divide-y divide-border">
+              {model.groups.map((group) => (
+                <section key={group.id}>
+                  <div className="flex min-h-10 items-start justify-between gap-3 bg-bg-secondary px-3 py-2">
+                    <h3 className="min-w-0 flex-1 break-words text-xs font-semibold text-foreground">
+                      {group.name}
+                    </h3>
+                    <Button
+                      aria-pressed={focusId === group.id}
+                      className="shrink-0"
+                      disabled={group.area <= 0}
+                      onClick={() => {
+                        focusGroup(group.id)
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
+                      分類にフォーカス
+                    </Button>
+                  </div>
+                  <ul aria-label={`${group.name} の銘柄`} className="list-none">
+                    {renderRowButtons(group.rows)}
+                  </ul>
+                </section>
+              ))}
             </div>
+          ) : (
+            <ul aria-label="treemap の全件" className="list-none">
+              {renderRowButtons(model.rows)}
+            </ul>
           )}
-        </section>
+        </WidgetCollapsibleSection>
       )}
     </div>
   )

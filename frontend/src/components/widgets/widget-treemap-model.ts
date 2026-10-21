@@ -133,6 +133,10 @@ function parseHexColor(color: string): [number, number, number] | null {
   ]
 }
 
+function getLuminance([red, green, blue]: readonly [number, number, number]) {
+  return red * 0.299 + green * 0.587 + blue * 0.114
+}
+
 function interpolateColor(start: string, end: string, amount: number): string {
   const startRgb = parseHexColor(start)
   const endRgb = parseHexColor(end)
@@ -181,25 +185,13 @@ export function getTreemapTextColor(
     return palette.foreground
   }
 
-  const luminance = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114
-  const backgroundLuminance =
-    backgroundRgb[0] * 0.299 +
-    backgroundRgb[1] * 0.587 +
-    backgroundRgb[2] * 0.114
-  const foregroundLuminance =
-    foregroundRgb[0] * 0.299 +
-    foregroundRgb[1] * 0.587 +
-    foregroundRgb[2] * 0.114
-  const lightColor =
-    backgroundLuminance > foregroundLuminance
-      ? palette.background
-      : palette.foreground
-  const darkColor =
-    backgroundLuminance > foregroundLuminance
-      ? palette.foreground
-      : palette.background
+  const backgroundIsLighter =
+    getLuminance(backgroundRgb) > getLuminance(foregroundRgb)
+  const [lightColor, darkColor] = backgroundIsLighter
+    ? [palette.background, palette.foreground]
+    : [palette.foreground, palette.background]
 
-  return luminance > 145 ? darkColor : lightColor
+  return getLuminance(rgb) > 145 ? darkColor : lightColor
 }
 
 function getGroup(row: WidgetRow, axis: string): WidgetGroup | null {
