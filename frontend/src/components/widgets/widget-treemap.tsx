@@ -10,10 +10,13 @@ import {
   getTreemapFillColor,
   getTreemapLabelMode,
   getTreemapTextColor,
-  type TreemapDataNode,
   type TreemapRect,
   type TreemapRowModel,
 } from '#components/widgets/widget-treemap-model'
+import {
+  isSameLayout,
+  isTreemapDataNode,
+} from '#components/widgets/widget-treemap-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
   type EChartsPalette,
@@ -34,35 +37,6 @@ type WidgetTreemapDefinition = Extract<
 
 const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
 const SERIES_ID = 'widget-treemap'
-
-function isTreemapDataNode(value: unknown): value is TreemapDataNode {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'kind' in value &&
-    (value.kind === 'group' || value.kind === 'row')
-  )
-}
-
-function isSameLayout(
-  left: ReadonlyMap<string, TreemapRect>,
-  right: ReadonlyMap<string, TreemapRect>,
-): boolean {
-  if (left.size !== right.size) return false
-  for (const [key, rect] of right) {
-    const previous = left.get(key)
-    if (
-      previous == null ||
-      previous.x !== rect.x ||
-      previous.y !== rect.y ||
-      previous.width !== rect.width ||
-      previous.height !== rect.height
-    ) {
-      return false
-    }
-  }
-  return true
-}
 
 export function WidgetTreemap({
   result,
