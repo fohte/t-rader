@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
 
 import { OutputField } from '#components/strategy-settings/agent-graph/fields/output-field'
 
@@ -11,55 +10,53 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// PhaseCard のフィールドグリッド (grid-cols-(--grid-cols-field-label)) を再現し、実際の見え方に合わせる
-function Interactive({ initial }: { initial: Record<string, unknown> }) {
-  const [value, setValue] = useState(initial)
+function renderField(args: Story['args']) {
   return (
     <div className="grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
-      <OutputField value={value} onChange={setValue} />
+      <OutputField {...args} />
     </div>
   )
 }
 
 const VALID_OUTPUT = {
-  hypotheses: {
+  sample_field: {
     type: 'array',
-    description: '検証すべき仮説。2-4 件',
+    description: 'sample array',
     items: {
-      title: {
+      name: {
         type: 'string',
-        description: '仮説を 1 文で言い切ったもの',
+        description: 'sample name',
       },
-      rationale: {
+      value: {
         type: 'string',
-        description: 'なぜその仮説が立つか',
+        description: 'sample value',
       },
     },
-    required: ['title', 'rationale'],
+    required: ['name', 'value'],
   },
 }
 
 const INVALID_OUTPUT = {
-  verdict: {
-    enum: 'supported',
-    description: 'checks を当てた結果',
+  sample_field: {
+    enum: 'sample-value',
+    description: 'sample result',
   },
 }
 
 export const Valid: Story = {
   name: 'shows a valid structured output schema.',
   args: { value: VALID_OUTPUT, onChange: () => {} },
-  render: () => <Interactive initial={VALID_OUTPUT} />,
+  render: renderField,
 }
 
 export const Invalid: Story = {
   name: 'shows a schema with an invalid field definition.',
   args: { value: INVALID_OUTPUT, onChange: () => {} },
-  render: () => <Interactive initial={INVALID_OUTPUT} />,
+  render: renderField,
 }
 
 export const Empty: Story = {
   name: 'shows an empty output schema.',
   args: { value: {}, onChange: () => {} },
-  render: () => <Interactive initial={{}} />,
+  render: renderField,
 }

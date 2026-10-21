@@ -1,3 +1,6 @@
+import { Button } from '@fohte/ui/button'
+import { ButtonGroup } from '@fohte/ui/button-group'
+import { Chip } from '@fohte/ui/chip'
 import { Input } from '@fohte/ui/input'
 import type { ReactNode } from 'react'
 
@@ -45,45 +48,46 @@ export function PhaseCard({
         <span className="flex h-5 w-5 items-center justify-center bg-bg-tertiary font-mono text-2xs font-bold text-muted-foreground-strong">
           {index + 1}
         </span>
-        <Input
-          aria-label="フェーズ名"
-          value={phase.label}
-          onChange={(e) => {
-            onLabelChange(e.target.value)
-          }}
-          className="h-auto w-40 rounded-none border-transparent bg-transparent px-1 py-0.5 font-bold text-sm text-foreground hover:border-border focus-visible:border-border focus-visible:bg-background focus-visible:ring-0"
-        />
-        <span className="border border-border bg-bg-tertiary px-1.5 py-0.5 font-mono text-2xs text-muted-foreground-strong">
+        <div className="w-40 font-bold">
+          <Input
+            aria-label="フェーズ名"
+            value={phase.label}
+            onChange={(e) => {
+              onLabelChange(e.target.value)
+            }}
+          />
+        </div>
+        <Chip size="md" tone="strong">
           {phase.model === '' ? '(未設定)' : phase.model}
-        </span>
-        <div className="ml-auto flex items-center gap-1">
-          <button
+        </Chip>
+        <ButtonGroup aria-label="フェーズの操作" className="ml-auto">
+          <Button
             type="button"
+            variant="plain"
             aria-label={`フェーズ ${phase.label} を上に移動`}
             disabled={index === 0}
             onClick={onMoveUp}
-            className="px-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
           >
             ↑
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="plain"
             aria-label={`フェーズ ${phase.label} を下に移動`}
             disabled={index === total - 1}
             onClick={onMoveDown}
-            className="px-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
           >
             ↓
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="plain"
             aria-label={`フェーズ ${phase.label} を削除`}
             onClick={onRemove}
-            className="px-1 font-mono text-2xs text-muted-foreground hover:text-primary"
           >
             削除
-          </button>
-        </div>
+          </Button>
+        </ButtonGroup>
       </div>
 
       {hasValidForEach && (

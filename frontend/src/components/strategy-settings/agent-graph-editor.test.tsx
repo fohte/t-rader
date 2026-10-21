@@ -25,10 +25,10 @@ afterEach(cleanup)
 const NOT_PHASE_YAML = 'sample'
 
 const SAMPLE_PHASES = `phases:
-  - key: plan
-    label: 見出し案
+  - key: alpha
+    label: サンプル
     model: fictional-model-orbit
-    prompt: テーマを読みやすい節に分ける
+    prompt: sample prompt
 `
 
 // AgentGraphForm (form ビュー) が $api.useQuery でモデル/tool/skills 一覧を取得するため、
@@ -75,7 +75,7 @@ function renderEditor(
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<AgentGraphEditor purpose="explore" {...props} />, {
+  return render(<AgentGraphEditor purpose="sample-purpose" {...props} />, {
     wrapper: Wrapper,
   })
 }
@@ -157,7 +157,11 @@ describe('AgentGraphEditor', () => {
     expect(screen.getByLabelText('agent_graph')).toHaveValue('A')
 
     rerender(
-      <AgentGraphEditor purpose="explore" initialValue="B" onSave={() => {}} />,
+      <AgentGraphEditor
+        purpose="sample-purpose"
+        initialValue="B"
+        onSave={() => {}}
+      />,
     )
     expect(screen.getByLabelText('agent_graph')).toHaveValue('B')
     expect(screen.queryByTestId('dirty-indicator')).toBeNull()
@@ -172,14 +176,18 @@ describe('AgentGraphEditor', () => {
     await user.type(editor, 'draft')
 
     rerender(
-      <AgentGraphEditor purpose="explore" initialValue="B" onSave={() => {}} />,
+      <AgentGraphEditor
+        purpose="sample-purpose"
+        initialValue="B"
+        onSave={() => {}}
+      />,
     )
     expect(screen.getByLabelText('agent_graph')).toHaveValue('Adraft')
   })
 
   it('有効なフェーズ YAML はデフォルトでフォームビューを表示する', () => {
     renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
-    expect(screen.getByTestId('phase-card-plan')).toBeInTheDocument()
+    expect(screen.getByTestId('phase-card-alpha')).toBeInTheDocument()
     expect(screen.queryByLabelText('agent_graph')).toBeNull()
   })
 
@@ -188,25 +196,41 @@ describe('AgentGraphEditor', () => {
     renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
     await user.click(screen.getByRole('button', { name: 'YAML' }))
     expect(screen.getByLabelText('agent_graph')).toHaveValue(SAMPLE_PHASES)
-    expect(screen.queryByTestId('phase-card-plan')).toBeNull()
+    expect(screen.queryByTestId('phase-card-alpha')).toBeNull()
   })
 
-  it('壊れた YAML はフォームチップが disabled になり、常に YAML ビューになる', () => {
+  it('壊れた YAML では YAML のみ選べ、エディタと警告が表示される', () => {
     renderEditor({ initialValue: 'phases: [', onSave: () => {} })
-    expect(screen.getByRole('button', { name: 'フォーム' })).toBeDisabled()
-    expect(screen.getByLabelText('agent_graph')).toBeInTheDocument()
-    expect(screen.getByTestId('form-unavailable-notice')).toBeInTheDocument()
+    const viewButtons = within(screen.getByRole('group', { name: '表示形式' }))
+      .getAllByRole('button')
+      .map((button) => ({
+        name: button.textContent.trim(),
+        pressed: button.getAttribute('aria-pressed'),
+      }))
+    function readActualState() {
+      return {
+        viewButtons,
+        yamlEditorVisible: screen.queryByLabelText('agent_graph') != null,
+        formUnavailableNoticeVisible:
+          screen.queryByTestId('form-unavailable-notice') != null,
+      }
+    }
+    expect(readActualState()).toEqual({
+      viewButtons: [{ name: 'YAML', pressed: 'true' }],
+      yamlEditorVisible: true,
+      formUnavailableNoticeVisible: true,
+    })
   })
 
   it('saveError からフェーズ key を抽出し、該当カードにエラーを表示する', () => {
     renderEditor({
       initialValue: SAMPLE_PHASES,
       onSave: () => {},
-      saveError: 'phase key "plan" is duplicated',
+      saveError: 'phase key "alpha" is duplicated',
     })
     expect(
       screen
-        .getByTestId('phase-card-plan')
+        .getByTestId('phase-card-alpha')
         .querySelector('[data-testid="phase-error"]'),
     ).not.toBeNull()
   })
@@ -215,28 +239,27 @@ describe('AgentGraphEditor', () => {
     const user = userEvent.setup()
     renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
 
-    const planCard = within(screen.getByTestId('phase-card-plan'))
-    const labelInput = planCard.getByLabelText('フェーズ名')
-    await user.clear(labelInput)
-    await user.type(labelInput, '見出し案X')
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
+    const labelInput = alphaCard.getByLabelText('フェーズ名')
+    await user.type(labelInput, 'X')
 
-    const outputInput = planCard.getByLabelText('出力スキーマ')
-    await user.type(outputInput, 'abstract:{enter}  type: string')
+    const outputInput = alphaCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'x:{enter}  type: string')
 
     await user.click(screen.getByRole('button', { name: 'YAML' }))
     const yamlEditor = screen.getByLabelText<HTMLTextAreaElement>('agent_graph')
     expect(parseAgentGraphPhases(yamlEditor.value)).toEqual([
       {
-        key: 'plan',
-        label: '見出し案X',
+        key: 'alpha',
+        label: 'サンプルX',
         model: 'fictional-model-orbit',
-        prompt: 'テーマを読みやすい節に分ける',
+        prompt: 'sample prompt',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
         skills: [],
         tools: undefined,
-        output: { abstract: { type: 'string' } },
+        output: { x: { type: 'string' } },
       },
     ])
   })
@@ -245,19 +268,18 @@ describe('AgentGraphEditor', () => {
     const user = userEvent.setup()
     renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
 
-    const planCard = within(screen.getByTestId('phase-card-plan'))
-    const labelInput = planCard.getByLabelText('フェーズ名')
-    await user.clear(labelInput)
-    await user.type(labelInput, '見出し案X')
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
+    const labelInput = alphaCard.getByLabelText('フェーズ名')
+    await user.type(labelInput, 'X')
 
-    const outputInput = planCard.getByLabelText('出力スキーマ')
-    await user.type(outputInput, 'abstract:{enter}  type: string')
+    const outputInput = alphaCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'x:{enter}  type: string')
 
     await user.click(screen.getByRole('button', { name: 'YAML' }))
     await user.click(screen.getByRole('button', { name: 'フォーム' }))
 
-    const planCardAfter = within(screen.getByTestId('phase-card-plan'))
-    expect(planCardAfter.getByLabelText('フェーズ名')).toHaveValue('見出し案X')
-    expect(planCardAfter.getByText('✓ valid')).toBeInTheDocument()
+    const alphaCardAfter = within(screen.getByTestId('phase-card-alpha'))
+    expect(alphaCardAfter.getByLabelText('フェーズ名')).toHaveValue('サンプルX')
+    expect(alphaCardAfter.getByText('✓ valid')).toBeInTheDocument()
   })
 })

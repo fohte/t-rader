@@ -1,3 +1,4 @@
+import { Chip } from '@fohte/ui/chip'
 import { useRef, useState } from 'react'
 import { stringify } from 'yaml'
 
@@ -40,17 +41,15 @@ export function OutputField({ value, onChange }: OutputFieldProps) {
 
   return (
     <>
-      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
-        出力スキーマ
-      </span>
+      <Chip>出力スキーマ</Chip>
       <div className="border border-border">
         <div className="flex items-center gap-2 border-b border-border bg-bg-tertiary px-2 py-1 font-mono text-2xs text-muted-foreground">
-          <span>output (JSON Schema)</span>
+          <Chip>output (JSON Schema)</Chip>
           <span
             className={
               firstIssue != null
                 ? 'ml-auto text-primary'
-                : 'ml-auto text-emerald-400'
+                : 'ml-auto text-muted-foreground'
             }
           >
             {firstIssue != null
