@@ -1,19 +1,25 @@
 import '#lib/echarts/treemap'
 
+import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 import type { ECElementEvent } from 'echarts/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { WidgetCollapsibleSection } from '#components/widgets/widget-collapsible-section'
+import type { WidgetCSSProperties } from '#components/widgets/widget-css'
 import {
   createWidgetTreemapModel,
   createWidgetTreemapOption,
   getTreemapFillColor,
   getTreemapLabelMode,
   getTreemapTextColor,
-  type TreemapDataNode,
   type TreemapRect,
   type TreemapRowModel,
 } from '#components/widgets/widget-treemap-model'
+import {
+  isSameLayout,
+  isTreemapDataNode,
+} from '#components/widgets/widget-treemap-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
   type EChartsPalette,
@@ -31,37 +37,10 @@ type WidgetTreemapDefinition = Extract<
   components['schemas']['WidgetVisualizationRequest'],
   { type: 'treemap' }
 >
-
 const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
 const SERIES_ID = 'widget-treemap'
-
-function isTreemapDataNode(value: unknown): value is TreemapDataNode {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'kind' in value &&
-    (value.kind === 'group' || value.kind === 'row')
-  )
-}
-
-function isSameLayout(
-  left: ReadonlyMap<string, TreemapRect>,
-  right: ReadonlyMap<string, TreemapRect>,
-): boolean {
-  if (left.size !== right.size) return false
-  for (const [key, rect] of right) {
-    const previous = left.get(key)
-    if (
-      previous == null ||
-      previous.x !== rect.x ||
-      previous.y !== rect.y ||
-      previous.width !== rect.width ||
-      previous.height !== rect.height
-    ) {
-      return false
-    }
-  }
-  return true
+const DETAIL_STYLE: WidgetCSSProperties = {
+  '--widget-detail-columns': 'auto 1fr',
 }
 
 export function WidgetTreemap({
@@ -71,6 +50,7 @@ export function WidgetTreemap({
   display,
   initialFocusGroupKey,
   initialSelectedRowKey,
+  initialListExpanded,
 }: {
   result: WidgetQueryResponse
   viz: WidgetTreemapDefinition
@@ -78,6 +58,7 @@ export function WidgetTreemap({
   display?: WidgetDisplayDefinitions
   initialFocusGroupKey?: string
   initialSelectedRowKey?: string
+  initialListExpanded?: boolean
 }) {
   const displayDefinitions = display ?? EMPTY_DISPLAY
   const labelRectsRef = useRef(new Map<string, TreemapRect>())
@@ -88,6 +69,7 @@ export function WidgetTreemap({
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(
     initialSelectedRowKey ?? null,
   )
+  const [listExpanded, setListExpanded] = useState(initialListExpanded ?? false)
   const model = useMemo(
     () =>
       createWidgetTreemapModel({
@@ -209,16 +191,21 @@ export function WidgetTreemap({
   }
 
   const chartRows = model.rows.filter((row) => row.area > 0)
+  const gradientStyle: WidgetCSSProperties = {
+    '--widget-treemap-gradient': `linear-gradient(90deg, ${palette.down}, ${palette.neutral} 50%, ${palette.up})`,
+  }
   const renderRowButtons = (rows: readonly TreemapRowModel[]) =>
     rows.map((row) => (
       <li className="border-t border-border first:border-t-0" key={row.key}>
-        <button
+        <Button
           aria-label={`${row.name}, ${model.colorLabel}: ${row.formattedColor}, 詳細を表示`}
-          className="flex min-h-10 w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+          className="min-h-10 w-full justify-start whitespace-normal text-left"
           onClick={() => {
             selectRow(row)
           }}
+          size="lg"
           type="button"
+          variant="ghost"
         >
           <span className="min-w-0 flex-1 break-words text-foreground">
             {row.name}
@@ -226,7 +213,7 @@ export function WidgetTreemap({
           <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
             {row.formattedColor}
           </span>
-        </button>
+        </Button>
       </li>
     ))
 
@@ -239,39 +226,37 @@ export function WidgetTreemap({
             <span>色: {model.colorLabel}</span>
             <span
               aria-hidden="true"
-              className="h-2 w-28 border border-border"
-              style={{
-                background: `linear-gradient(90deg, ${palette.down}, ${palette.neutral} 50%, ${palette.up})`,
-              }}
+              className="h-2 w-28 border border-border bg-(image:--widget-treemap-gradient)"
+              style={gradientStyle}
             />
             <span className="font-mono tabular-nums">
               {colorMin} / {colorMax}
             </span>
           </span>
         </div>
-        <button
-          className="min-h-9 border border-border px-3 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+        <Button
           disabled={focusId == null}
           onClick={resetToOverview}
           type="button"
+          variant="outline"
         >
           全体を表示
-        </button>
+        </Button>
       </div>
 
       <nav
         aria-label="表示中の階層"
         className="flex min-h-8 items-center gap-2 text-xs"
       >
-        <button
+        <Button
           aria-current={focusedGroup == null ? 'page' : undefined}
-          className="text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
           disabled={focusedGroup == null}
           onClick={resetToOverview}
           type="button"
+          variant="ghost"
         >
           すべての分類
-        </button>
+        </Button>
         {focusedGroup != null && (
           <>
             <span aria-hidden="true" className="text-muted-foreground">
@@ -314,23 +299,26 @@ export function WidgetTreemap({
               )
               if (mode == null) return []
 
+              const labelStyle: WidgetCSSProperties = {
+                '--widget-treemap-label-left': String(rect.x) + 'px',
+                '--widget-treemap-label-top': String(rect.y) + 'px',
+                '--widget-treemap-label-width': String(rect.width) + 'px',
+                '--widget-treemap-label-height': String(rect.height) + 'px',
+                '--widget-treemap-label-color': getTreemapTextColor(
+                  getTreemapFillColor(
+                    row.colorValue,
+                    model.colorScale,
+                    palette,
+                  ),
+                  palette,
+                ),
+              }
+
               return [
                 <div
-                  className="absolute flex flex-col justify-center overflow-hidden px-1 text-center"
+                  className="absolute flex h-(--widget-treemap-label-height) w-(--widget-treemap-label-width) flex-col justify-center overflow-hidden px-1 text-center text-(color:--widget-treemap-label-color) left-(--widget-treemap-label-left) top-(--widget-treemap-label-top)"
                   key={key}
-                  style={{
-                    left: rect.x,
-                    top: rect.y,
-                    width: rect.width,
-                    height: rect.height,
-                    color: getTreemapTextColor(
-                      getTreemapFillColor(
-                        row.colorValue,
-                        model.colorScale,
-                        palette,
-                      ),
-                    ),
-                  }}
+                  style={labelStyle}
                 >
                   {mode === 'both' && (
                     <span className="min-w-0 truncate font-sans text-xs font-semibold leading-tight">
@@ -363,8 +351,8 @@ export function WidgetTreemap({
                 {selectedRow.name}
               </h3>
               <dl
-                className="mt-2 grid gap-x-4 gap-y-1 text-xs"
-                style={{ gridTemplateColumns: 'auto 1fr' }}
+                className="mt-2 grid grid-cols-(--widget-detail-columns) gap-x-4 gap-y-1 text-xs"
+                style={DETAIL_STYLE}
               >
                 <dt className="text-muted-foreground">
                   面積: {model.sizeLabel}
@@ -382,80 +370,86 @@ export function WidgetTreemap({
             </div>
             <div className="flex items-center gap-3">
               {stockId != null && (
-                <Link
-                  className="min-h-9 border border-border px-3 py-2 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                  params={{ stockId }}
-                  to="/stocks/$stockId"
+                <Button
+                  nativeButton={false}
+                  role="link"
+                  render={<Link params={{ stockId }} to="/stocks/$stockId" />}
+                  size="lg"
+                  variant="outline"
                 >
                   銘柄ページを開く
-                </Link>
+                </Button>
               )}
               {groupTarget != null && (
-                <Link
-                  className="min-h-9 border border-border px-3 py-2 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                  params={groupTarget}
-                  to="/groups/$axisKey/$groupKey"
+                <Button
+                  nativeButton={false}
+                  role="link"
+                  render={
+                    <Link
+                      params={groupTarget}
+                      to="/groups/$axisKey/$groupKey"
+                    />
+                  }
+                  size="lg"
+                  variant="outline"
                 >
                   分類ページを開く
-                </Link>
+                </Button>
               )}
-              <button
+              <Button
                 aria-label="詳細を閉じる"
-                className="min-h-9 px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 onClick={() => {
                   setSelectedRowKey(null)
                 }}
                 type="button"
+                variant="plain"
               >
                 閉じる
-              </button>
+              </Button>
             </div>
           </div>
         </section>
       )}
 
       {model.rows.length > 0 && (
-        <details className="border border-border bg-card">
-          <summary className="min-h-10 cursor-pointer px-3 py-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-            全件一覧 ({model.rows.length})
-          </summary>
-          <div className="border-t border-border">
-            {model.groups.length > 0 ? (
-              <div className="divide-y divide-border">
-                {model.groups.map((group) => (
-                  <section key={group.id}>
-                    <div className="flex min-h-10 items-start justify-between gap-3 bg-bg-secondary px-3 py-2">
-                      <h3 className="min-w-0 flex-1 break-words text-xs font-semibold text-foreground">
-                        {group.name}
-                      </h3>
-                      <button
-                        aria-pressed={focusId === group.id}
-                        className="shrink-0 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={group.area <= 0}
-                        onClick={() => {
-                          focusGroup(group.id)
-                        }}
-                        type="button"
-                      >
-                        分類にフォーカス
-                      </button>
-                    </div>
-                    <ul
-                      aria-label={`${group.name} の銘柄`}
-                      className="list-none"
+        <WidgetCollapsibleSection
+          expanded={listExpanded}
+          label={`全件一覧 (${String(model.rows.length)})`}
+          onExpandedChange={setListExpanded}
+        >
+          {model.groups.length > 0 ? (
+            <div className="divide-y divide-border">
+              {model.groups.map((group) => (
+                <section key={group.id}>
+                  <div className="flex min-h-10 items-start justify-between gap-3 bg-bg-secondary px-3 py-2">
+                    <h3 className="min-w-0 flex-1 break-words text-xs font-semibold text-foreground">
+                      {group.name}
+                    </h3>
+                    <Button
+                      aria-pressed={focusId === group.id}
+                      className="shrink-0"
+                      disabled={group.area <= 0}
+                      onClick={() => {
+                        focusGroup(group.id)
+                      }}
+                      type="button"
+                      variant="ghost"
                     >
-                      {renderRowButtons(group.rows)}
-                    </ul>
-                  </section>
-                ))}
-              </div>
-            ) : (
-              <ul aria-label="treemap の全件" className="list-none">
-                {renderRowButtons(model.rows)}
-              </ul>
-            )}
-          </div>
-        </details>
+                      分類にフォーカス
+                    </Button>
+                  </div>
+                  <ul aria-label={`${group.name} の銘柄`} className="list-none">
+                    {renderRowButtons(group.rows)}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <ul aria-label="treemap の全件" className="list-none">
+              {renderRowButtons(model.rows)}
+            </ul>
+          )}
+        </WidgetCollapsibleSection>
       )}
     </div>
   )

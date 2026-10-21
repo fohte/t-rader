@@ -146,10 +146,15 @@ export const SelectedStock: Story = {
   args: { initialSelectedRowKey: 'stock:DEMO-001' },
 }
 
+export const ExpandedList: Story = {
+  name: '全件一覧を開いて銘柄と分類の操作を表示する。',
+  args: { initialListExpanded: true },
+}
+
 export const NarrowWidth: Story = {
   name: '幅 360 px でも分類名と値を収めて表示する。',
   render: (args) => (
-    <div style={{ width: 360 }}>
+    <div className="w-90">
       <WidgetTreemap {...args} />
     </div>
   ),
@@ -158,7 +163,7 @@ export const NarrowWidth: Story = {
 export const MediumWidth: Story = {
   name: '幅 600 px で分類名と値を並べて表示する。',
   render: (args) => (
-    <div style={{ width: 600 }}>
+    <div className="w-150">
       <WidgetTreemap {...args} />
     </div>
   ),
@@ -167,7 +172,7 @@ export const MediumWidth: Story = {
 export const WideWidth: Story = {
   name: '幅 1120 px で全体の分類を表示する。',
   render: (args) => (
-    <div style={{ width: 1120 }}>
+    <div className="w-280">
       <WidgetTreemap {...args} />
     </div>
   ),
@@ -250,6 +255,7 @@ export const NegativeOnly: Story = {
 export const MissingValues: Story = {
   name: '値が欠損した項目も全件一覧から確認できる。',
   args: {
+    initialListExpanded: true,
     result: {
       as_of: '2099-01-01',
       rows: [
