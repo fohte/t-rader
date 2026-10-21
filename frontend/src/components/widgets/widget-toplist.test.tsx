@@ -100,6 +100,7 @@ async function renderWidget(
   props: {
     display?: components['schemas']['WidgetQueryRequest']['display']
     initialSelectedRowKey?: string
+    initialRankListExpanded?: boolean
   } = {},
 ) {
   const router = createStoryRouter(
@@ -193,11 +194,13 @@ function readChartOutput() {
 function readVisualColumnsOutput() {
   const chart = screen.getByRole('img')
   const layout = chart.parentElement
+  const chartWrapper = layout?.parentElement
   const identities = layout?.querySelector('[data-column="identity"]')
   const values = layout?.querySelector('[data-column="values"]')
 
   return {
-    columnTemplate: layout?.style.gridTemplateColumns ?? null,
+    columnTemplate:
+      chartWrapper?.style.getPropertyValue('--widget-chart-columns') ?? null,
     columnOrder: Array.from(layout?.children ?? [], (column) =>
       column.getAttribute('data-column'),
     ),
@@ -207,7 +210,10 @@ function readVisualColumnsOutput() {
     values: Array.from(values?.children ?? [], (element) => {
       return {
         value: element.textContent.trim(),
-        color: element instanceof HTMLElement ? element.style.color : null,
+        color:
+          element instanceof HTMLElement
+            ? element.style.getPropertyValue('--widget-value-color')
+            : null,
         rightAligned:
           element.classList.contains('justify-end') &&
           element.classList.contains('text-right'),
@@ -288,6 +294,46 @@ afterEach(() => {
 })
 
 describe('WidgetToplist', () => {
+  it('順位一覧を開閉できる', async () => {
+    const user = userEvent.setup()
+    await renderWidget()
+
+    const toggle = screen.getByRole('button', {
+      name: /順位一覧から詳細を選ぶ/,
+    })
+    function readListState() {
+      return {
+        expanded: toggle.getAttribute('aria-expanded'),
+        rows: screen
+          .queryAllByRole('button', { name: /位: .*詳細を表示/ })
+          .map((row) => row.getAttribute('aria-label')),
+      }
+    }
+
+    const closed = readListState()
+    await user.click(toggle)
+    const opened = readListState()
+    await user.click(toggle)
+    const collapsed = readListState()
+
+    function readInteractionOutput() {
+      return { closed, opened, collapsed }
+    }
+
+    expect(readInteractionOutput()).toEqual({
+      closed: { expanded: 'false', rows: [] },
+      opened: {
+        expanded: 'true',
+        rows: [
+          '1 位: 架空銘柄 A、DEMO-A、+2.10%、詳細を表示',
+          '2 位: 架空銘柄 B、DEMO-B、+0.80%、詳細を表示',
+          '3 位: 架空銘柄 C、DEMO-C、-0.60%、詳細を表示',
+        ],
+      },
+      collapsed: { expanded: 'false', rows: [] },
+    })
+  })
+
   it('降順と limit を適用し、順位と符号付きの表示値を読み上げられる', async () => {
     const user = userEvent.setup()
     await renderWidget(result, { ...viz, limit: 2 })
@@ -450,21 +496,21 @@ describe('WidgetToplist', () => {
       values: [
         {
           value: '+2.10%',
-          color: 'rgb(239, 83, 80)',
+          color: '#ef5350',
           rightAligned: true,
           tabular: true,
           noWrap: true,
         },
         {
           value: '+0.80%',
-          color: 'rgb(239, 83, 80)',
+          color: '#ef5350',
           rightAligned: true,
           tabular: true,
           noWrap: true,
         },
         {
           value: '-0.60%',
-          color: 'rgb(63, 159, 224)',
+          color: '#3f9fe0',
           rightAligned: true,
           tabular: true,
           noWrap: true,
@@ -495,7 +541,7 @@ describe('WidgetToplist', () => {
       values: [
         {
           value: '0.00%',
-          color: 'rgb(10, 10, 10)',
+          color: '#0a0a0a',
           rightAligned: true,
           tabular: true,
           noWrap: true,
@@ -570,21 +616,21 @@ describe('WidgetToplist', () => {
         values: [
           {
             value: '+18.00%',
-            color: 'rgb(239, 83, 80)',
+            color: '#ef5350',
             rightAligned: true,
             tabular: true,
             noWrap: true,
           },
           {
             value: '+3.00%',
-            color: 'rgb(239, 83, 80)',
+            color: '#ef5350',
             rightAligned: true,
             tabular: true,
             noWrap: true,
           },
           {
             value: '-12.00%',
-            color: 'rgb(63, 159, 224)',
+            color: '#3f9fe0',
             rightAligned: true,
             tabular: true,
             noWrap: true,

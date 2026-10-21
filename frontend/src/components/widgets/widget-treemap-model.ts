@@ -170,12 +170,36 @@ export function getTreemapFillColor(
   return target
 }
 
-export function getTreemapTextColor(color: string): string {
+export function getTreemapTextColor(
+  color: string,
+  palette: EChartsPalette,
+): string {
   const rgb = parseHexColor(color)
-  if (rgb == null) return '#fafafa'
+  const backgroundRgb = parseHexColor(palette.background)
+  const foregroundRgb = parseHexColor(palette.foreground)
+  if (rgb == null || backgroundRgb == null || foregroundRgb == null) {
+    return palette.foreground
+  }
 
   const luminance = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114
-  return luminance > 145 ? '#0a0a0a' : '#fafafa'
+  const backgroundLuminance =
+    backgroundRgb[0] * 0.299 +
+    backgroundRgb[1] * 0.587 +
+    backgroundRgb[2] * 0.114
+  const foregroundLuminance =
+    foregroundRgb[0] * 0.299 +
+    foregroundRgb[1] * 0.587 +
+    foregroundRgb[2] * 0.114
+  const lightColor =
+    backgroundLuminance > foregroundLuminance
+      ? palette.background
+      : palette.foreground
+  const darkColor =
+    backgroundLuminance > foregroundLuminance
+      ? palette.foreground
+      : palette.background
+
+  return luminance > 145 ? darkColor : lightColor
 }
 
 function getGroup(row: WidgetRow, axis: string): WidgetGroup | null {
@@ -330,7 +354,7 @@ export function createWidgetTreemapOption(
     rect: LabelLayoutOptionCallbackParams['rect'],
   ) => void,
 ): WidgetTreemapOption {
-  const groupForeground = getTreemapTextColor(palette.neutral)
+  const groupForeground = getTreemapTextColor(palette.neutral, palette)
   const rowByKey = new Map(model.rows.map((row) => [row.key, row]))
   const styleRowNode = (node: TreemapDataNode): TreemapDataNode => {
     const row = node.rowKey == null ? undefined : rowByKey.get(node.rowKey)
@@ -383,7 +407,7 @@ export function createWidgetTreemapOption(
         label: {
           show: true,
           formatter: '{b}',
-          color: 'rgba(0, 0, 0, 0)',
+          color: 'transparent',
           fontSize: 1,
           padding: 0,
         },

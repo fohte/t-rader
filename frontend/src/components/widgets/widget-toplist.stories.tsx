@@ -246,7 +246,7 @@ export const LongNames: Story = {
 export const NarrowWidth: Story = {
   name: '幅 360 px で名称と値を表示する。',
   render: (args) => (
-    <div style={{ width: 360 }}>
+    <div className="w-90">
       <WidgetToplist {...args} />
     </div>
   ),
@@ -255,7 +255,7 @@ export const NarrowWidth: Story = {
 export const MediumWidth: Story = {
   name: '幅 600 px でバーの差を比較する。',
   render: (args) => (
-    <div style={{ width: 600 }}>
+    <div className="w-150">
       <WidgetToplist {...args} />
     </div>
   ),
@@ -264,7 +264,7 @@ export const MediumWidth: Story = {
 export const WideWidth: Story = {
   name: '幅 1120 px で名称とバーをゆったり表示する。',
   render: (args) => (
-    <div style={{ width: 1120 }}>
+    <div className="w-280">
       <WidgetToplist {...args} />
     </div>
   ),
@@ -278,6 +278,11 @@ export const Empty: Story = {
 export const SelectedStock: Story = {
   name: '選択した銘柄の詳細とアプリ内リンクを表示する。',
   args: { initialSelectedRowKey: 'stock:DEMO-A' },
+}
+
+export const ExpandedRankList: Story = {
+  name: '順位一覧を開いて各行の詳細操作を表示する。',
+  args: { initialRankListExpanded: true },
 }
 
 export const SelectedIndicator: Story = {
@@ -310,14 +315,7 @@ export const SharedScaleComparison: Story = {
       rows: args.result.rows.slice(midpoint),
     }
     return (
-      <div
-        style={{
-          display: 'grid',
-          gap: 24,
-          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          width: 1120,
-        }}
-      >
+      <div className="grid w-280 grid-cols-2 gap-6">
         <WidgetToplist {...args} result={leftResult} />
         <WidgetToplist {...args} result={rightResult} />
       </div>

@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import { useState } from 'react'
 
 import type { components } from '#lib/api/schema.gen'
@@ -114,28 +115,28 @@ export function WidgetTable({
           <span aria-live="polite">
             {page + 1} / {pageCount}
           </span>
-          <button
+          <Button
             aria-label="前のページ"
-            className="border border-border px-2 py-1 text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
             disabled={page === 0}
             onClick={() => {
               setPagination({ result, pageIndex: page - 1 })
             }}
             type="button"
+            variant="outline"
           >
             前へ
-          </button>
-          <button
+          </Button>
+          <Button
             aria-label="次のページ"
-            className="border border-border px-2 py-1 text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
             disabled={page >= pageCount - 1}
             onClick={() => {
               setPagination({ result, pageIndex: page + 1 })
             }}
             type="button"
+            variant="outline"
           >
             次へ
-          </button>
+          </Button>
         </nav>
       ) : null}
     </div>
