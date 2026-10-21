@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import { useEffect, useState } from 'react'
 
 import {
@@ -17,6 +18,8 @@ interface TaskExecutionTreeProps {
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
   taskCompleted?: boolean
+  /** 初期状態で詳細を開く step の ID */
+  defaultSelectedStepId?: string
   /** トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
   traceUrlTemplate?: string
   /**
@@ -42,7 +45,7 @@ const STATUS_LABEL: Record<TaskStep['status'], string> = {
 const STATUS_COLOR: Record<TaskStep['status'], string> = {
   running: 'text-status-task-running',
   completed: 'text-muted-foreground-strong',
-  failed: 'text-primary',
+  failed: 'text-destructive',
 }
 
 interface RenderRow {
@@ -102,13 +105,21 @@ export function TaskExecutionTree({
   steps,
   configPhases,
   taskCompleted = false,
+  defaultSelectedStepId,
   traceUrlTemplate,
   detailPlacement = 'inline',
   onSelectStep,
 }: TaskExecutionTreeProps): React.ReactElement | null {
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
-
   const rows = toRows(buildPhaseNodes(configPhases, steps, taskCompleted))
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => {
+    return (
+      rows.find(
+        (row) =>
+          row.content.kind === 'step' &&
+          row.content.step.execution_step_id === defaultSelectedStepId,
+      )?.key ?? null
+    )
+  })
 
   // polling で選択中の step の中身 (status/output 等) が更新されても選択行 (key) は
   // 変わらないため、クリック時だけでなく steps 更新時にも最新の内容で呼び直す。
@@ -209,18 +220,15 @@ function TreeRow({
   const subtitle = stepSubtitle(step)
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={onToggle}
       aria-expanded={selected}
-      className={cn(
-        'flex w-full flex-col gap-0.5 py-1 text-left',
-        selected
-          ? 'text-foreground'
-          : 'text-muted-foreground-strong hover:text-foreground',
-      )}
+      className="h-auto w-full flex-col items-stretch justify-start text-left"
     >
-      <span className="flex items-baseline gap-2">
+      <span className="flex w-full items-baseline gap-2">
         <span
           className={cn(
             STATUS_COLOR[step.status],
@@ -246,6 +254,6 @@ function TreeRow({
           {subtitle}
         </span>
       )}
-    </button>
+    </Button>
   )
 }

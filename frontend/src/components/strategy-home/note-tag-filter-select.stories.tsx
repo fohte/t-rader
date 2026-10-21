@@ -23,3 +23,8 @@ export const SelectedTag: Story = {
   name: 'The selector has one tag selected.',
   args: { value: '架空タグ' },
 }
+
+export const OptionsOpen: Story = {
+  name: 'shows the available tags in the selector.',
+  args: { value: undefined, defaultOpen: true },
+}

@@ -33,6 +33,21 @@ export const PREPARATION_STEP: TaskStep = {
   span_id: 'span-prepare-0001',
 }
 
+export const COMPLETED_STEP: TaskStep = {
+  phase_key: 'sample-phase',
+  execution_step_id: 'sample-step-001',
+  label: 'サンプル処理',
+  model: 'simulated-model-cobalt',
+  status: 'completed',
+  item: { record: 'sample-row' },
+  item_label: 'サンプル項目',
+  output: { state: 'sample-result', note_id: 'sample-note-001' },
+  started_at: '2026-08-15T09:00:00.000Z',
+  finished_at: '2026-08-15T09:00:08.000Z',
+  trace_id: 'sample-trace-001',
+  span_id: 'sample-span-001',
+}
+
 export function inspectStep(
   title: string,
   {

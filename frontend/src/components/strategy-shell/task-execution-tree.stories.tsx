@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 
 import { TaskExecutionTree } from '#components/strategy-shell/task-execution-tree'
 import {
+  COMPLETED_STEP,
   CONFIG_PHASES,
   inspectStep,
   PREPARATION_STEP,
@@ -179,6 +180,27 @@ export const WithFailure: Story = {
           }),
         ]}
         configPhases={CONFIG_PHASES}
+      />
+    </Frame>
+  ),
+}
+
+export const Expanded: Story = {
+  name: 'the selected step shows its details.',
+  render: () => (
+    <Frame>
+      <TaskExecutionTree
+        steps={[COMPLETED_STEP]}
+        configPhases={[
+          {
+            key: 'sample-phase',
+            label: 'サンプル処理',
+            model: 'simulated-model-cobalt',
+            output: { state: { enum: ['sample-result'] } },
+          },
+        ]}
+        defaultSelectedStepId={COMPLETED_STEP.execution_step_id}
+        traceUrlTemplate="https://example.test/trace/{trace_id}?span={span_id}"
       />
     </Frame>
   ),
