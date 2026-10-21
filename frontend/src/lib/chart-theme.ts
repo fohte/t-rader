@@ -7,6 +7,70 @@ export interface ChartThemeColors {
   borderColor: string
 }
 
+// Lightweight Charts の color parser が OKLCH を扱えないため、sRGB に変換する。
+export function oklchToRgb(color: string): string | null {
+  const match =
+    /^oklch\(\s*(\d*\.?\d+)\s+(\d*\.?\d+)\s+(-?\d*\.?\d+)(?:deg)?\s*\)$/i.exec(
+      color,
+    )
+  if (match == null) return null
+
+  const [, lightnessValue, chromaValue, hueValue] = match
+  if (lightnessValue == null || chromaValue == null || hueValue == null) {
+    return null
+  }
+
+  const lightness = Number(lightnessValue)
+  const chroma = Number(chromaValue)
+  const hue = (Number(hueValue) * Math.PI) / 180
+  if (![lightness, chroma, hue].every(Number.isFinite)) return null
+
+  const a = chroma * Math.cos(hue)
+  const b = chroma * Math.sin(hue)
+  const lightnessL = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const lightnessM = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const lightnessS = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3
+
+  const linearRgb = [
+    4.0767416621 * lightnessL -
+      3.3077115913 * lightnessM +
+      0.2309699292 * lightnessS,
+    -1.2684380046 * lightnessL +
+      2.6097574011 * lightnessM -
+      0.3413193965 * lightnessS,
+    -0.0041960863 * lightnessL -
+      0.7034186147 * lightnessM +
+      1.707614701 * lightnessS,
+  ]
+  const srgb = linearRgb.map((channel) => {
+    const clipped = Math.max(0, Math.min(1, channel))
+    const encoded =
+      clipped <= 0.0031308
+        ? 12.92 * clipped
+        : 1.055 * clipped ** (1 / 2.4) - 0.055
+    return Math.round(encoded * 255)
+  })
+
+  return `rgb(${srgb.join(', ')})`
+}
+
+export function readChartColor(name: string): string {
+  const color = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim()
+  return oklchToRgb(color) ?? color
+}
+
+export function chartColorWithOpacity(color: string, opacity: number): string {
+  const match = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(color)
+  if (match == null) return color
+
+  const [, red, green, blue] = match
+  if (red == null || green == null || blue == null) return color
+
+  return `rgba(${red}, ${green}, ${blue}, ${String(opacity)})`
+}
+
 export function getChartThemeColors(isDark: boolean): ChartThemeColors {
   return {
     background: isDark ? '#1a1a1a' : '#ffffff',

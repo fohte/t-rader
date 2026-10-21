@@ -14,10 +14,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import { Skeleton } from '#components/ui/skeleton'
 import {
+  chartColorWithOpacity,
   getChartThemeColors,
   getChartThemeOptions,
   observeChartResize,
   observeChartTheme,
+  readChartColor,
 } from '#lib/chart-theme'
 import {
   addPortfolioHistoryChanges,
@@ -52,68 +54,19 @@ const legendColors = {
   investable: 'var(--chart-3)',
 }
 
-function oklchToRgb(color: string): string | null {
-  const match =
-    /^oklch\(\s*(\d*\.?\d+)\s+(\d*\.?\d+)\s+(-?\d*\.?\d+)(?:deg)?\s*\)$/i.exec(
-      color,
-    )
-  if (match == null) return null
-
-  const lightness = Number(match[1])
-  const chroma = Number(match[2])
-  const hue = (Number(match[3]) * Math.PI) / 180
-  if (![lightness, chroma, hue].every(Number.isFinite)) return null
-
-  const a = chroma * Math.cos(hue)
-  const b = chroma * Math.sin(hue)
-  const lightnessL = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
-  const lightnessM = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
-  const lightnessS = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3
-
-  const linearRgb = [
-    4.0767416621 * lightnessL -
-      3.3077115913 * lightnessM +
-      0.2309699292 * lightnessS,
-    -1.2684380046 * lightnessL +
-      2.6097574011 * lightnessM -
-      0.3413193965 * lightnessS,
-    -0.0041960863 * lightnessL -
-      0.7034186147 * lightnessM +
-      1.707614701 * lightnessS,
-  ]
-  const srgb = linearRgb.map((channel) => {
-    const clipped = Math.max(0, Math.min(1, channel))
-    const encoded =
-      clipped <= 0.0031308
-        ? 12.92 * clipped
-        : 1.055 * clipped ** (1 / 2.4) - 0.055
-    return Math.round(encoded * 255)
-  })
-
-  return `rgb(${srgb.join(', ')})`
-}
-
-function readThemeColor(name: string): string {
-  // Lightweight Charts の color parser は OKLCH を扱えないため sRGB に変換する。
-  const color = getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    .trim()
-  return oklchToRgb(color) ?? color
-}
-
 function getPortfolioSeriesColors() {
-  const stock = readThemeColor('--chart-1')
-  const cash = readThemeColor('--chart-2')
+  const stock = readChartColor('--chart-1')
+  const cash = readChartColor('--chart-2')
 
   return {
     stock,
-    stockFillTop: `color-mix(in srgb, ${stock} 50%, transparent)`,
-    stockFillBottom: `color-mix(in srgb, ${stock} 24%, transparent)`,
+    stockFillTop: chartColorWithOpacity(stock, 0.5),
+    stockFillBottom: chartColorWithOpacity(stock, 0.24),
     cash,
-    cashFillTop: `color-mix(in srgb, ${cash} 32%, transparent)`,
-    cashFillBottom: `color-mix(in srgb, ${cash} 8%, transparent)`,
-    total: readThemeColor('--foreground'),
-    investable: readThemeColor('--chart-3'),
+    cashFillTop: chartColorWithOpacity(cash, 0.32),
+    cashFillBottom: chartColorWithOpacity(cash, 0.08),
+    total: readChartColor('--foreground'),
+    investable: readChartColor('--chart-3'),
   }
 }
 
