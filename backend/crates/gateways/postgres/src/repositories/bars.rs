@@ -10,7 +10,7 @@ pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(h
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult, Iterable,
     QueryFilter, QueryOrder, Set, Statement,
@@ -118,7 +118,7 @@ impl From<bars::Model> for Bar {
 /// バーデータを一括 upsert する
 ///
 /// 複合 PK (instrument_id, timeframe, timestamp) で重複排除し、
-/// 既存行は OHLCV カラムを更新する。
+/// 既存行の OHLCV または adjustment_factor が異なる場合に更新する。
 pub async fn upsert_bars(
     db: &impl sea_orm::ConnectionTrait,
     bars_data: Vec<Bar>,
@@ -176,6 +176,14 @@ pub async fn upsert_bars(
                     bars::Column::Volume,
                     bars::Column::AdjustmentFactor,
                 ])
+                .action_cond_where(Expr::cust(
+                    "bars.open IS DISTINCT FROM EXCLUDED.open \
+                     OR bars.high IS DISTINCT FROM EXCLUDED.high \
+                     OR bars.low IS DISTINCT FROM EXCLUDED.low \
+                     OR bars.close IS DISTINCT FROM EXCLUDED.close \
+                     OR bars.volume IS DISTINCT FROM EXCLUDED.volume \
+                     OR bars.adjustment_factor IS DISTINCT FROM EXCLUDED.adjustment_factor",
+                ))
                 .to_owned(),
             )
             .exec_without_returning(db)
@@ -438,7 +446,7 @@ mod tests {
     use core_domain::bar::Timeframe;
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
-    use sea_orm::{EntityTrait, Set};
+    use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, Set, Statement};
     /// テスト用の instrument を DB に挿入する
     async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
@@ -474,6 +482,125 @@ mod tests {
             volume: 1000,
             adjustment_factor: Decimal::ONE,
         }
+    }
+
+    #[derive(Clone, Copy)]
+    enum BarValue {
+        Open,
+        High,
+        Low,
+        Close,
+        Volume,
+        AdjustmentFactor,
+    }
+
+    fn correct_bar_value(mut bar: Bar, value: BarValue) -> Bar {
+        match value {
+            BarValue::Open => bar.open = Decimal::new(111, 0),
+            BarValue::High => bar.high = Decimal::new(222, 0),
+            BarValue::Low => bar.low = Decimal::new(33, 0),
+            BarValue::Close => bar.close = Decimal::new(144, 0),
+            BarValue::Volume => bar.volume = 4567,
+            BarValue::AdjustmentFactor => bar.adjustment_factor = Decimal::new(125, 2),
+        }
+        bar
+    }
+
+    #[rstest::rstest]
+    #[case::open(BarValue::Open)]
+    #[case::high(BarValue::High)]
+    #[case::low(BarValue::Low)]
+    #[case::close(BarValue::Close)]
+    #[case::volume(BarValue::Volume)]
+    #[case::adjustment_factor(BarValue::AdjustmentFactor)]
+    #[tokio::test]
+    async fn upsert_bars_applies_each_correction(#[case] value: BarValue) {
+        let db = crate::test_support::create_test_transaction().await;
+        let instrument_id = "DEMO-BAR-CORRECTION";
+        insert_test_instrument(&db, instrument_id).await;
+        let date = NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date");
+        let initial = make_test_bar(instrument_id, date, 100);
+        let corrected = correct_bar_value(initial.clone(), value);
+
+        upsert_bars(&db, vec![initial]).await.expect("insert bar");
+        upsert_bars(&db, vec![corrected.clone()])
+            .await
+            .expect("apply correction");
+
+        let actual = find_bars(
+            &db,
+            BarsQuery {
+                instrument_id: instrument_id.to_owned(),
+                timeframe: "1d".to_owned(),
+                from: None,
+                to: None,
+            },
+        )
+        .await
+        .expect("find bar")
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<Bar>>();
+
+        assert_eq!(actual, vec![corrected]);
+    }
+
+    #[derive(Debug, FromQueryResult, PartialEq, Eq)]
+    struct RowVersion {
+        xmin: String,
+    }
+
+    async fn find_row_version(
+        db: &impl ConnectionTrait,
+        table: &str,
+        instrument_id: &str,
+        timeframe: &str,
+    ) -> String {
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!(
+                    "SELECT xmin::text AS xmin FROM {table} WHERE instrument_id = $1 AND timeframe = $2"
+                ),
+                [instrument_id.into(), timeframe.into()],
+            ))
+        .await
+        .expect("query row version")
+        .expect("row exists");
+        let row = RowVersion::from_query_result(&row, "").expect("decode row version");
+        row.xmin
+    }
+
+    #[backend_test_macros::database_test]
+    async fn upsert_bars_skips_unchanged_bar_and_coverage_updates(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let instrument_id = "DEMO-BAR-UNCHANGED";
+        insert_test_instrument(&db, instrument_id).await;
+        let bar = make_test_bar(
+            instrument_id,
+            NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date"),
+            100,
+        );
+        upsert_bars(&db, vec![bar.clone()])
+            .await
+            .expect("insert bar");
+
+        let versions_before = (
+            find_row_version(&db, "bars", instrument_id, "1d").await,
+            find_row_version(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
+        );
+
+        upsert_bars(&db, vec![bar])
+            .await
+            .expect("upsert unchanged bar");
+
+        let versions_after = (
+            find_row_version(&db, "bars", instrument_id, "1d").await,
+            find_row_version(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
+        );
+
+        assert_eq!(versions_after, versions_before);
     }
 
     fn make_test_minute_bar(

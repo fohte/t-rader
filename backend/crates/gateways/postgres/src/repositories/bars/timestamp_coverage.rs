@@ -48,6 +48,10 @@ pub(crate) async fn upsert_bar_timestamp_coverage(
                     "GREATEST(bars_timestamp_coverage.latest_timestamp, EXCLUDED.latest_timestamp)",
                 ),
             )
+            .action_cond_where(Expr::cust(
+                "bars_timestamp_coverage.earliest_timestamp > EXCLUDED.earliest_timestamp \
+                 OR bars_timestamp_coverage.latest_timestamp < EXCLUDED.latest_timestamp",
+            ))
             .to_owned(),
         )
         .exec_without_returning(db)
