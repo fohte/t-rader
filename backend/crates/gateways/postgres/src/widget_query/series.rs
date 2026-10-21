@@ -16,8 +16,43 @@ const REQUESTED_AXES_SQL: &str = r#"
     SELECT $3::text AS axis_key WHERE $3::text IS NOT NULL
 "#;
 
+const CHANGE_RATE_EXPRESSION: &str = r#"CASE
+                                   WHEN $9::text = 'change' THEN daily_bars.close / NULLIF(
+                                       LAG(daily_bars.close, $10::integer) OVER (
+                                           ORDER BY daily_bars.timestamp
+                                       ),
+                                       0
+                                   ) - 1
+                               END"#;
+
 const CANDIDATE_STOCKS_CTE: &str = r#"
-    candidate_stocks AS (
+    candidate_stocks AS MATERIALIZED (
+        SELECT stock.id,
+               stock.name,
+               CASE
+                   WHEN stock.id ~ '^[A-Z]{2}:' THEN NULL
+                   ELSE LEFT(stock.id, 4)
+               END AS valuation_code,
+               CASE
+                   WHEN stock.id ~ '^[A-Z]{2}:' THEN NULL
+                   ELSE 'JPY'
+               END AS currency_code
+        FROM group_members AS universe_member
+        JOIN stock ON stock.id = universe_member.stock_id
+        WHERE $3::text IS NOT NULL
+          AND universe_member.axis_key = $3::text
+          AND universe_member.group_key = $4::text
+          AND (cardinality($5::text[]) = 0 OR stock.id = ANY($5::text[]))
+          AND (
+              $1::text <> 'group'
+              OR EXISTS (
+                  SELECT 1
+                  FROM group_members AS axis_member
+                  WHERE axis_member.stock_id = stock.id
+                    AND axis_member.axis_key = $2::text
+              )
+          )
+        UNION ALL
         SELECT stock.id,
                stock.name,
                CASE
@@ -29,17 +64,8 @@ const CANDIDATE_STOCKS_CTE: &str = r#"
                    ELSE 'JPY'
                END AS currency_code
         FROM stock
-        WHERE (cardinality($5::text[]) = 0 OR stock.id = ANY($5::text[]))
-          AND (
-              $3::text IS NULL
-              OR EXISTS (
-                  SELECT 1
-                  FROM group_members AS universe_member
-                  WHERE universe_member.stock_id = stock.id
-                    AND universe_member.axis_key = $3::text
-                    AND universe_member.group_key = $4::text
-              )
-          )
+        WHERE $3::text IS NULL
+          AND (cardinality($5::text[]) = 0 OR stock.id = ANY($5::text[]))
           AND (
               $1::text <> 'group'
               OR EXISTS (
@@ -61,139 +87,7 @@ static COUNT_CANDIDATES_SQL: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
-static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
-    with_shared_market_ctes(
-        REQUESTED_AXES_SQL,
-        CANDIDATE_STOCKS_CTE,
-        r#"
-            stock_bar_series AS (
-                SELECT candidate_stocks.id AS stock_id,
-                       candidate_stocks.name AS stock_name,
-                       candidate_stocks.currency_code,
-                       stock_series.date,
-                       stock_series.close,
-                       stock_series.volume,
-                       stock_series.change_rate,
-                       stock_series.mkt_cap,
-                       stock_series.per,
-                       stock_series.pbr
-                FROM candidate_stocks
-                JOIN LATERAL (
-                    WITH valuation_scoped AS MATERIALIZED (
-                        SELECT candidate_stocks.id AS stock_id,
-                               valuation.date,
-                               valuation.code,
-                               valuation.mkt_cap,
-                               valuation.per,
-                               valuation.pbr
-                        FROM valuation
-                        WHERE LEFT(valuation.code, 4) = candidate_stocks.valuation_code
-                          AND valuation.date <= $8::date
-                          AND (
-                              (($9::text = 'mkt_cap'
-                                  OR ($9::text = 'change' AND $11::text = 'mkt_cap_weighted'))
-                                  AND valuation.mkt_cap IS NOT NULL)
-                              OR ($9::text = 'per' AND valuation.per IS NOT NULL)
-                              OR ($9::text = 'pbr' AND valuation.pbr IS NOT NULL)
-                          )
-                    ),
-                    valuation_before_range AS (
-                        SELECT DISTINCT ON (stock_id)
-                               stock_id, date, code, mkt_cap, per, pbr
-                        FROM valuation_scoped
-                        WHERE date < $7::date
-                        ORDER BY stock_id, date DESC, code DESC
-                    ),
-                    valuation_in_range AS (
-                        SELECT DISTINCT ON (stock_id, date)
-                               stock_id, date, code, mkt_cap, per, pbr
-                        FROM valuation_scoped
-                        WHERE date >= $7::date
-                          AND date <= $8::date
-                        ORDER BY stock_id, date, code DESC
-                    ),
-                    valuation_records AS (
-                        SELECT * FROM valuation_before_range
-                        UNION ALL
-                        SELECT * FROM valuation_in_range
-                    ),
-                    valuation_intervals AS (
-                        SELECT stock_id,
-                               date,
-                               LEAD(date, 1, $8::date + 1) OVER (
-                                   PARTITION BY stock_id ORDER BY date
-                               ) AS next_date,
-                               mkt_cap,
-                               per,
-                               pbr
-                        FROM valuation_records
-                    )
-                    SELECT stock_bars.date,
-                           stock_bars.close,
-                           stock_bars.volume,
-                           stock_bars.change_rate,
-                           valuation_intervals.mkt_cap,
-                           valuation_intervals.per,
-                           valuation_intervals.pbr
-                    FROM (
-                        SELECT (daily_bars.timestamp AT TIME ZONE 'UTC')::date AS date,
-                               daily_bars.close,
-                               daily_bars.volume,
-                               CASE
-                                   WHEN $9::text = 'change' THEN daily_bars.close / NULLIF(
-                                       LAG(daily_bars.close, $10::integer) OVER (
-                                           ORDER BY daily_bars.timestamp
-                                       ),
-                                       0
-                                   ) - 1
-                               END AS change_rate
-                        FROM (
-                            SELECT warmup_bars.timestamp,
-                                   warmup_bars.close,
-                                   warmup_bars.volume
-                            FROM (
-                                SELECT daily_bar.timestamp,
-                                       daily_bar.close,
-                                       daily_bar.volume
-                                FROM bars AS daily_bar
-                                WHERE daily_bar.instrument_id = candidate_stocks.id
-                                  AND daily_bar.timeframe = '1d'
-                                  AND daily_bar.timestamp >= (
-                                      ($6::date::timestamp) AT TIME ZONE 'UTC'
-                                  )
-                                  AND daily_bar.timestamp < (
-                                      ($7::date::timestamp) AT TIME ZONE 'UTC'
-                                  )
-                                ORDER BY daily_bar.timestamp DESC
-                                LIMIT CASE
-                                    WHEN $9::text = 'change' THEN $10::integer
-                                    ELSE 0
-                                END
-                            ) AS warmup_bars
-                            UNION ALL
-                            SELECT daily_bar.timestamp,
-                                   daily_bar.close,
-                                   daily_bar.volume
-                            FROM bars AS daily_bar
-                            WHERE daily_bar.instrument_id = candidate_stocks.id
-                              AND daily_bar.timeframe = '1d'
-                              AND daily_bar.timestamp >= (
-                                  ($7::date::timestamp) AT TIME ZONE 'UTC'
-                              )
-                              AND daily_bar.timestamp < (
-                                  (($8::date + 1)::timestamp) AT TIME ZONE 'UTC'
-                              )
-                        ) AS daily_bars
-                    ) AS stock_bars
-                    LEFT JOIN valuation_intervals
-                      ON valuation_intervals.stock_id = candidate_stocks.id
-                     AND stock_bars.date >= valuation_intervals.date
-                     AND stock_bars.date < valuation_intervals.next_date
-                    WHERE stock_bars.date >= $7::date
-                ) AS stock_series ON TRUE
-            )
-        "#,
-        r#"
+const STOCK_SERIES_AGGREGATION_SQL: &str = r#"
             stock_values AS (
                 SELECT stock_bar_series.stock_id,
                        stock_bar_series.stock_name,
@@ -203,11 +97,13 @@ static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
                            WHEN 'change' THEN stock_bar_series.change_rate
                            WHEN 'close' THEN stock_bar_series.close
                            WHEN 'turnover' THEN stock_bar_series.close * stock_bar_series.volume
-                           WHEN 'mkt_cap' THEN stock_bar_series.mkt_cap
-                           WHEN 'per' THEN stock_bar_series.per
-                           WHEN 'pbr' THEN stock_bar_series.pbr
+                           ELSE stock_bar_series.valuation_value
                        END AS value,
-                       stock_bar_series.mkt_cap
+                       CASE
+                           WHEN $9::text = 'mkt_cap'
+                             OR ($9::text = 'change' AND $11::text = 'mkt_cap_weighted')
+                           THEN stock_bar_series.valuation_value
+                       END AS mkt_cap
                 FROM stock_bar_series
                 WHERE stock_bar_series.date >= $7::date
             ),
@@ -265,9 +161,256 @@ static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
             FROM aggregated_values
             WHERE row_key IS NOT NULL
             ORDER BY date, row_key
-        "#,
+        "#;
+
+static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
+    with_shared_market_ctes(
+        REQUESTED_AXES_SQL,
+        CANDIDATE_STOCKS_CTE,
+        &r#"
+            stock_bar_series AS (
+                SELECT candidate_stocks.id AS stock_id,
+                       candidate_stocks.name AS stock_name,
+                       candidate_stocks.currency_code,
+                       stock_series.date,
+                       stock_series.close,
+                       stock_series.volume,
+                       stock_series.change_rate,
+                       stock_series.valuation_value
+                FROM candidate_stocks
+                JOIN LATERAL (
+                    WITH valuation_before_range AS (
+                        SELECT valuation.date,
+                               valuation.code,
+                               valuation.mkt_cap,
+                               valuation.per,
+                               valuation.pbr
+                        FROM valuation
+                        WHERE LEFT(valuation.code, 4) = candidate_stocks.valuation_code
+                          AND valuation.date < $7::date
+                          AND (
+                              (($9::text = 'mkt_cap'
+                                  OR ($9::text = 'change' AND $11::text = 'mkt_cap_weighted'))
+                                  AND valuation.mkt_cap IS NOT NULL)
+                              OR ($9::text = 'per' AND valuation.per IS NOT NULL)
+                              OR ($9::text = 'pbr' AND valuation.pbr IS NOT NULL)
+                          )
+                        ORDER BY valuation.date DESC, valuation.code DESC
+                        LIMIT 1
+                    ),
+                    valuation_in_range AS (
+                        SELECT DISTINCT ON (valuation.date)
+                               valuation.date,
+                               valuation.code,
+                               valuation.mkt_cap,
+                               valuation.per,
+                               valuation.pbr
+                        FROM valuation
+                        WHERE LEFT(valuation.code, 4) = candidate_stocks.valuation_code
+                          AND valuation.date >= $7::date
+                          AND valuation.date <= $8::date
+                          AND (
+                              (($9::text = 'mkt_cap'
+                                  OR ($9::text = 'change' AND $11::text = 'mkt_cap_weighted'))
+                                  AND valuation.mkt_cap IS NOT NULL)
+                              OR ($9::text = 'per' AND valuation.per IS NOT NULL)
+                              OR ($9::text = 'pbr' AND valuation.pbr IS NOT NULL)
+                          )
+                        ORDER BY valuation.date DESC, valuation.code DESC
+                    ),
+                    valuation_records AS MATERIALIZED (
+                        SELECT valuation_in_range.date,
+                               CASE
+                                   WHEN $9::text = 'mkt_cap'
+                                     OR ($9::text = 'change' AND $11::text = 'mkt_cap_weighted')
+                                   THEN valuation_in_range.mkt_cap
+                                   WHEN $9::text = 'per' THEN valuation_in_range.per
+                                   WHEN $9::text = 'pbr' THEN valuation_in_range.pbr
+                               END AS valuation_value
+                        FROM valuation_in_range
+                        UNION ALL
+                        SELECT valuation_before_range.date,
+                               CASE
+                                   WHEN $9::text = 'mkt_cap'
+                                     OR ($9::text = 'change' AND $11::text = 'mkt_cap_weighted')
+                                   THEN valuation_before_range.mkt_cap
+                                   WHEN $9::text = 'per' THEN valuation_before_range.per
+                                   WHEN $9::text = 'pbr' THEN valuation_before_range.pbr
+                               END AS valuation_value
+                        FROM valuation_before_range
+                    ),
+                    bar_events AS MATERIALIZED (
+                        SELECT (daily_bars.timestamp AT TIME ZONE 'UTC')::date AS date,
+                               daily_bars.close,
+                               daily_bars.volume,
+                               __CHANGE_RATE_EXPRESSION__ AS change_rate
+                        FROM (
+                            SELECT warmup_bars.timestamp,
+                                   warmup_bars.close,
+                                   warmup_bars.volume
+                            FROM (
+                                SELECT daily_bar.timestamp,
+                                       daily_bar.close,
+                                       daily_bar.volume
+                                FROM bars AS daily_bar
+                                WHERE daily_bar.instrument_id = candidate_stocks.id
+                                  AND daily_bar.timeframe = '1d'
+                                  AND daily_bar.timestamp >= (
+                                      ($6::date::timestamp) AT TIME ZONE 'UTC'
+                                  )
+                                  AND daily_bar.timestamp < (
+                                      ($7::date::timestamp) AT TIME ZONE 'UTC'
+                                  )
+                                ORDER BY daily_bar.timestamp DESC
+                                LIMIT CASE
+                                    WHEN $9::text = 'change' THEN $10::integer
+                                    ELSE 0
+                                END
+                            ) AS warmup_bars
+                            UNION ALL
+                            SELECT daily_bar.timestamp,
+                                   daily_bar.close,
+                                   daily_bar.volume
+                            FROM bars AS daily_bar
+                            WHERE daily_bar.instrument_id = candidate_stocks.id
+                              AND daily_bar.timeframe = '1d'
+                              AND daily_bar.timestamp >= (
+                                  ($7::date::timestamp) AT TIME ZONE 'UTC'
+                              )
+                              AND daily_bar.timestamp < (
+                                  (($8::date + 1)::timestamp) AT TIME ZONE 'UTC'
+                              )
+                        ) AS daily_bars
+                    ),
+                    valuation_coverage AS (
+                        SELECT COUNT(*) = COUNT(valuation_records.valuation_value) AS is_complete
+                        FROM bar_events
+                        LEFT JOIN valuation_records
+                          ON valuation_records.date = bar_events.date
+                        WHERE bar_events.date >= $7::date
+                    ),
+                    dense_series AS (
+                        SELECT bar_events.date,
+                               bar_events.close,
+                               bar_events.volume,
+                               bar_events.change_rate,
+                               valuation_records.valuation_value
+                        FROM bar_events
+                        JOIN valuation_records
+                          ON valuation_records.date = bar_events.date
+                        CROSS JOIN valuation_coverage
+                        WHERE bar_events.date >= $7::date
+                          AND valuation_coverage.is_complete
+                    ),
+                    series_events AS (
+                        SELECT bar_events.date,
+                               bar_events.close,
+                               bar_events.volume,
+                               bar_events.change_rate,
+                               NULL::numeric AS valuation_value
+                        FROM bar_events
+                        CROSS JOIN valuation_coverage
+                        WHERE bar_events.date >= $7::date
+                          AND NOT valuation_coverage.is_complete
+                        UNION ALL
+                        SELECT valuation_records.date,
+                               NULL::numeric AS close,
+                               NULL::bigint AS volume,
+                               NULL::numeric AS change_rate,
+                               valuation_records.valuation_value
+                        FROM valuation_records
+                        CROSS JOIN valuation_coverage
+                        WHERE NOT valuation_coverage.is_complete
+                    ),
+                    series_events_by_date AS (
+                        SELECT date,
+                               MAX(close) AS close,
+                               MAX(volume) AS volume,
+                               MAX(change_rate) AS change_rate,
+                               MAX(valuation_value) AS valuation_value
+                        FROM series_events
+                        GROUP BY date
+                    ),
+                    series_events_with_groups AS (
+                        SELECT series_events_by_date.*,
+                               COUNT(valuation_value) OVER (
+                                   ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                               ) AS valuation_group
+                        FROM series_events_by_date
+                    ),
+                    series_events_with_values AS (
+                        SELECT series_events_with_groups.*,
+                               MAX(valuation_value) OVER (PARTITION BY valuation_group) AS filled_valuation_value
+                        FROM series_events_with_groups
+                    ),
+                    sparse_series AS (
+                        SELECT date,
+                               close,
+                               volume,
+                               change_rate,
+                               filled_valuation_value AS valuation_value
+                        FROM series_events_with_values
+                        WHERE close IS NOT NULL
+                          AND date >= $7::date
+                    ),
+                    series_result AS (
+                        SELECT * FROM dense_series
+                        UNION ALL
+                        SELECT * FROM sparse_series
+                    )
+                    SELECT date, close, volume, change_rate, valuation_value
+                    FROM series_result
+                ) AS stock_series ON TRUE
+            )
+        "#
+        .replace("__CHANGE_RATE_EXPRESSION__", CHANGE_RATE_EXPRESSION),
+        STOCK_SERIES_AGGREGATION_SQL,
     )
 });
+
+fn renumber_no_change_parameters(mut sql: String) -> String {
+    for parameter in (1..=12).rev() {
+        sql = sql.replace(
+            &format!("${parameter}"),
+            &format!("__widget_parameter_{parameter}__"),
+        );
+    }
+    for (source, target) in [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (4, 4),
+        (5, 5),
+        (7, 6),
+        (8, 7),
+        (9, 8),
+        (11, 9),
+        (12, 10),
+    ] {
+        sql = sql.replace(
+            &format!("__widget_parameter_{source}__"),
+            &format!("${target}"),
+        );
+    }
+    sql
+}
+
+static STOCK_SERIES_NO_CHANGE_SQL: LazyLock<String> = LazyLock::new(|| {
+    let sql = STOCK_SERIES_SQL
+        .replace(CHANGE_RATE_EXPRESSION, "NULL::numeric")
+        .replace(
+            "LIMIT CASE\n                                    WHEN $9::text = 'change' THEN $10::integer\n                                    ELSE 0\n                                END",
+            "LIMIT 0",
+        )
+        .replace(
+            "($6::date::timestamp) AT TIME ZONE 'UTC'",
+            "($7::date::timestamp) AT TIME ZONE 'UTC'",
+        );
+    renumber_no_change_parameters(sql)
+});
+
+static STOCK_SERIES_VALUATION_SQL: LazyLock<String> =
+    LazyLock::new(|| STOCK_SERIES_NO_CHANGE_SQL.as_str().to_string());
 
 const INDICATOR_SERIES_SQL: &str = r#"
     SELECT 'market'::text AS row_key,
@@ -362,8 +505,7 @@ pub(super) async fn query_series(
         ),
         Some(WidgetAggregation::Count) | None => false,
     } && definition.by != WidgetBy::Stock;
-    let rows = query_all_with_timeout(
-        &source.db,
+    let statement = if definition.metric == WidgetMetric::Change {
         Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             STOCK_SERIES_SQL.as_str(),
@@ -381,9 +523,46 @@ pub(super) async fn query_series(
                 aggregation.map(str::to_string).into(),
                 requires_currency_consistency.into(),
             ],
-        ),
-    )
-    .await?;
+        )
+    } else if matches!(
+        definition.metric,
+        WidgetMetric::MktCap | WidgetMetric::Per | WidgetMetric::Pbr
+    ) {
+        Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            STOCK_SERIES_VALUATION_SQL.as_str(),
+            [
+                by.into(),
+                axis.into(),
+                universe_axis.into(),
+                universe_key.into(),
+                stock_ids.into(),
+                range.from.into(),
+                range.to.into(),
+                definition.metric.as_str().into(),
+                aggregation.map(str::to_string).into(),
+                requires_currency_consistency.into(),
+            ],
+        )
+    } else {
+        Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            STOCK_SERIES_NO_CHANGE_SQL.as_str(),
+            [
+                by.into(),
+                axis.into(),
+                universe_axis.into(),
+                universe_key.into(),
+                stock_ids.into(),
+                range.from.into(),
+                range.to.into(),
+                definition.metric.as_str().into(),
+                aggregation.map(str::to_string).into(),
+                requires_currency_consistency.into(),
+            ],
+        )
+    };
+    let rows = query_all_with_timeout(&source.db, statement).await?;
     let rows = rows
         .iter()
         .map(|row| WidgetSeriesResultRow::from_query_result(row, "").map_err(query_error))

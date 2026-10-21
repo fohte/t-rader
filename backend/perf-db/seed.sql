@@ -80,6 +80,24 @@ JOIN stock_group
   ON stock_group.axis_id = group_axis.id
  AND stock_group.key = synthetic_groups.group_key;
 
+CREATE TEMP TABLE synthetic_range_candidates AS
+SELECT member.stock_id
+FROM stock_group_member AS member
+JOIN stock_group AS group_row ON group_row.id = member.group_id
+JOIN group_axis AS axis ON axis.id = group_row.axis_id
+WHERE axis.key = 'demo-axis'
+  AND group_row.key = 'group-alpha';
+
+CREATE TEMP TABLE synthetic_candidate_valuation_dates AS
+SELECT bar_date,
+       row_number() OVER (ORDER BY bar_date)::integer AS day_number
+FROM (
+    SELECT bar_date
+    FROM synthetic_trading_days
+    ORDER BY bar_date DESC
+    LIMIT 400
+) AS recent_trading_days;
+
 WITH hourly_trading_days AS (
     SELECT day::date AS bar_date
     FROM generate_series(
@@ -180,7 +198,11 @@ GROUP BY instrument_id, timeframe;
 INSERT INTO valuation (code, date, mkt_cap)
 SELECT synthetic_stocks.id || '0', latest_trading_day.latest_trading_day, 1000 + synthetic_stocks.n * 10
 FROM synthetic_stocks
-CROSS JOIN (SELECT max(bar_date) AS latest_trading_day FROM synthetic_trading_days) AS latest_trading_day;
+CROSS JOIN (SELECT max(bar_date) AS latest_trading_day FROM synthetic_trading_days) AS latest_trading_day
+WHERE NOT EXISTS (
+    SELECT FROM synthetic_range_candidates
+    WHERE synthetic_range_candidates.stock_id = synthetic_stocks.id
+);
 
 CREATE TEMP TABLE synthetic_valuation_dates AS
 SELECT valuation_date.bar_date,
@@ -200,7 +222,21 @@ SELECT synthetic_stocks.id || '0',
        8 + synthetic_stocks.n % 32 + synthetic_valuation_dates.month_number % 3,
        1 + synthetic_stocks.n % 6 + synthetic_valuation_dates.month_number % 2
 FROM synthetic_stocks
-CROSS JOIN synthetic_valuation_dates;
+CROSS JOIN synthetic_valuation_dates
+WHERE NOT EXISTS (
+    SELECT FROM synthetic_range_candidates
+    WHERE synthetic_range_candidates.stock_id = synthetic_stocks.id
+);
+
+INSERT INTO valuation (code, date, mkt_cap, per, pbr)
+SELECT synthetic_stocks.id || '0',
+       synthetic_candidate_valuation_dates.bar_date,
+       1000 + synthetic_stocks.n * 10 + synthetic_candidate_valuation_dates.day_number,
+       8 + synthetic_stocks.n % 32 + synthetic_candidate_valuation_dates.day_number % 3,
+       1 + synthetic_stocks.n % 6 + synthetic_candidate_valuation_dates.day_number % 2
+FROM synthetic_range_candidates
+JOIN synthetic_stocks ON synthetic_stocks.id = synthetic_range_candidates.stock_id
+CROSS JOIN synthetic_candidate_valuation_dates;
 
 INSERT INTO indicator (id, name, kind)
 VALUES ('demo-indicator', 'Demo Indicator', 'sample-kind');

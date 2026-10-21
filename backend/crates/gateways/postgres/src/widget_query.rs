@@ -746,6 +746,9 @@ mod tests {
             Some(3_000),
         )
         .await;
+        insert_valuation_values_on_date(&db, "D021", dates[30], Some(30), Some(6), Some(1_000))
+            .await;
+        insert_valuation_values_on_date(&db, "D022", dates[30], None, Some(8), Some(3_000)).await;
         let axis_id = insert_group_axis(&db, "demo-axis", "Demo Axis").await;
         let group_id = insert_group(&db, axis_id, "group-alpha", "Group Alpha").await;
         for stock_id in stock_ids {
@@ -825,14 +828,43 @@ mod tests {
             .expect("query historical valuation series");
         let expected_per = dates
             .iter()
-            .map(|date| WidgetSeriesQueryRow {
+            .enumerate()
+            .map(|(index, date)| WidgetSeriesQueryRow {
                 key: WidgetRowKey::Market,
                 name: "全体".to_string(),
                 date: *date,
-                value: Some(Decimal::from(15)),
+                value: Some(Decimal::from(if index < 30 { 15 } else { 25 })),
             })
             .collect::<Vec<_>>();
         assert_eq!(per_result, expected_per);
+
+        let pbr_query = WidgetQuery {
+            metric: WidgetMetric::Pbr,
+            period: None,
+            by: WidgetBy::None,
+            axis: None,
+            indicator: None,
+            universe: query.universe.clone(),
+            agg: Some(WidgetAggregation::Mean),
+        };
+        let pbr_range = WidgetTimeRange::OneYear
+            .resolve(end, None)
+            .expect("resolve pbr range");
+        let pbr_result = source
+            .query_series(pbr_range, &pbr_query)
+            .await
+            .expect("query historical pbr series");
+        let expected_pbr = dates
+            .iter()
+            .enumerate()
+            .map(|(index, date)| WidgetSeriesQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                date: *date,
+                value: Some(Decimal::from(if index < 30 { 3 } else { 7 })),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pbr_result, expected_pbr);
 
         let indicator_query = WidgetQuery {
             metric: WidgetMetric::Indicator,
