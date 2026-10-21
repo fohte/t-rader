@@ -17,6 +17,7 @@ describe('readChartColor', () => {
   it.each([
     ['oklch(0 0 0)', 'rgb(0, 0, 0)'],
     ['oklch(0.5 0 0)', 'rgb(99, 99, 99)'],
+    ['oklch(0.5 0.1 30)', 'rgb(148, 75, 64)'],
     ['rgb(12, 34, 56)', 'rgb(12, 34, 56)'],
   ])('reads %s as %s', (color, expected) => {
     chartStyle.setProperty('--chart-test-color', color)
