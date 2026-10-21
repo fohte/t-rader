@@ -493,7 +493,7 @@ mod tests {
     };
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, EntityTrait};
     use uuid::Uuid;
 
     use super::PostgresWidgetQuerySource;
@@ -697,6 +697,10 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn series_uses_sixty_day_returns_and_date_specific_market_caps(db: DatabaseHandle) {
+        db.execute_unprepared("SET LOCAL TIME ZONE 'America/Los_Angeles'")
+            .await
+            .expect("set non-UTC test timezone");
+
         let end = date(5);
         let dates = weekdays_ending(end, 61);
         let first_valuation_date = dates[0]

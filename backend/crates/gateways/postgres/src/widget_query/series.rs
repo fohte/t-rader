@@ -136,7 +136,7 @@ static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
                            valuation_intervals.per,
                            valuation_intervals.pbr
                     FROM (
-                        SELECT daily_bars.timestamp::date AS date,
+                        SELECT (daily_bars.timestamp AT TIME ZONE 'UTC')::date AS date,
                                daily_bars.close,
                                daily_bars.volume,
                                CASE
