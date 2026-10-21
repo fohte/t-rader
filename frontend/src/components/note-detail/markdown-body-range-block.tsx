@@ -312,7 +312,6 @@ export function MarkdownBodyRangeBlock({
           onClick={context.onGutterClick}
           sourceBlockTag={sourceBlockTag}
           isTableRow
-          listOffset={listOffset}
         />
         {commentMarker}
       </>
