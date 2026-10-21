@@ -465,14 +465,14 @@ BEGIN
         build_metrics
     )
     SELECT
-        metrics->>'profile_id',
-        metrics->>'schema_id',
-        (metrics->>'reference_date')::date,
+        profile_current.metrics->>'profile_id',
+        profile_current.metrics->>'schema_id',
+        (profile_current.metrics->>'reference_date')::date,
         'passed',
         clock_timestamp(),
-        metrics,
-        profile_metrics
-    FROM query_perf_profile_current
+        profile_current.metrics,
+        profile_current.profile_metrics
+    FROM query_perf_profile_current AS profile_current
     ON CONFLICT (profile_id) DO UPDATE SET
         schema_id = EXCLUDED.schema_id,
         reference_date = EXCLUDED.reference_date,
