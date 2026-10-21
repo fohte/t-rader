@@ -4,9 +4,9 @@ import type { ComponentProps } from 'react'
 
 import { StrategyListTabs } from '#components/strategy-home/strategy-list-tabs'
 
-type StrategyListTab = ComponentProps<typeof StrategyListTabs>['activeTab']
-
-function renderTabs(activeTab: StrategyListTab) {
+function renderTabs(
+  activeTab: ComponentProps<typeof StrategyListTabs>['activeTab'],
+) {
   return (
     <StrategyListTabs activeTab={activeTab} onChange={() => undefined}>
       <TabsPanel value="list">架空の戦略一覧</TabsPanel>

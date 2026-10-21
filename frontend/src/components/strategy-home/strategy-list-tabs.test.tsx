@@ -10,11 +10,13 @@ import {
   validateStrategyListSearch,
 } from '#components/strategy-home/strategy-list-tabs'
 
-type StrategyListTab = ComponentProps<typeof StrategyListTabs>['activeTab']
-
 afterEach(cleanup)
 
-function TabsHarness({ initialTab }: { initialTab: StrategyListTab }) {
+function TabsHarness({
+  initialTab,
+}: {
+  initialTab: ComponentProps<typeof StrategyListTabs>['activeTab']
+}) {
   const [activeTab, setActiveTab] = useState(initialTab)
 
   return (
