@@ -18,7 +18,7 @@ use gateway_postgres::entities::{
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
-    ColumnTrait, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -41,6 +41,8 @@ enum ProviderMode {
     ExceedPageLimit,
     Truncated,
     UnknownExpectedCount,
+    MismatchedCompletionCount,
+    MoreWithoutCursor,
 }
 
 struct SyntheticDatasetProvider {
@@ -57,12 +59,14 @@ impl SyntheticDatasetProvider {
     }
 
     fn completion_report(&self, received_count: usize) -> DatasetCaptureReport {
+        let received_count = received_count as u64;
         DatasetCaptureReport {
             expected_count: self.expected_count(),
-            received_count: received_count as u64,
+            received_count: received_count
+                + u64::from(matches!(self.mode, ProviderMode::MismatchedCompletionCount)),
             missing_count: self.expected_count().map(|_| 0),
             unretrieved_count: Some(if matches!(self.mode, ProviderMode::Truncated) {
-                self.items.len().saturating_sub(received_count) as u64
+                self.items.len().saturating_sub(received_count as usize) as u64
             } else {
                 0
             }),
@@ -114,14 +118,19 @@ impl DatasetProvider for SyntheticDatasetProvider {
             ProviderMode::Truncated if start == 0 => {
                 DatasetPageCompletion::Incomplete(self.completion_report(end))
             }
+            ProviderMode::MoreWithoutCursor if start == 0 => DatasetPageCompletion::More,
             _ if end < self.items.len() => DatasetPageCompletion::More,
             _ => DatasetPageCompletion::Complete(self.completion_report(end)),
         };
         Ok(DatasetPage {
             source_revision: source_revision.into(),
             items: self.items[start..end].to_vec(),
-            next_cursor: (end < self.items.len() && !matches!(self.mode, ProviderMode::Truncated))
-                .then(|| end.to_string()),
+            next_cursor: (end < self.items.len()
+                && !matches!(
+                    self.mode,
+                    ProviderMode::Truncated | ProviderMode::MoreWithoutCursor
+                ))
+            .then(|| end.to_string()),
             completion,
         })
     }
@@ -360,6 +369,8 @@ async fn incomplete_provider_capture_cannot_be_read(db: gateway_postgres::Databa
         ProviderMode::ChangeRevision,
         ProviderMode::ExceedPageLimit,
         ProviderMode::Truncated,
+        ProviderMode::MismatchedCompletionCount,
+        ProviderMode::MoreWithoutCursor,
     ] {
         let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
         let access = use_cases
@@ -447,6 +458,26 @@ async fn incomplete_provider_capture_cannot_be_read(db: gateway_postgres::Databa
                 json!({
                     "captured_at": "<captured_at>", "expected_count": 2,
                     "received_count": 1, "missing_count": 0, "unretrieved_count": 1,
+                }),
+                Err("payload is not sealed".to_string()),
+            ),
+            (
+                Err("dataset provider returned inconsistent completion counts".to_string()),
+                "incomplete".to_string(),
+                Some("invalid_provider_completion".to_string()),
+                json!({
+                    "captured_at": "<captured_at>", "expected_count": 2,
+                    "received_count": 2, "missing_count": null, "unretrieved_count": null,
+                }),
+                Err("payload is not sealed".to_string()),
+            ),
+            (
+                Err("dataset provider reported an incomplete capture".to_string()),
+                "incomplete".to_string(),
+                Some("provider_completion_unconfirmed".to_string()),
+                json!({
+                    "captured_at": "<captured_at>", "expected_count": 2,
+                    "received_count": 1, "missing_count": null, "unretrieved_count": null,
                 }),
                 Err("payload is not sealed".to_string()),
             ),
@@ -1064,6 +1095,134 @@ async fn operation_projection_is_optional_and_cannot_cite_wrapper_metadata(
                 "payload_id": Uuid::nil(), "pointer": "/value", "data": "fictional result",
                 "cursor": 0, "next_cursor": null, "total_count": 1, "digest": "<digest>",
             }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn projection_recording_failure_keeps_the_saved_output_reference(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (_, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let indicator_id = Uuid::from_u128(707);
+    custom_indicator::ActiveModel {
+        indicator_id: Set(indicator_id),
+        name: Set("sample-operation".into()),
+        scope: Set("strategy".into()),
+        strategy_id: Set(Some(strategy_id)),
+        code: Set("synthetic source".into()),
+        input_schema: Set(json!({"type": "object"})),
+        output_schema: Set(json!({"type": "number"})),
+        description: Set(None),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("insert synthetic operation definition");
+    db.execute_unprepared(
+        "CREATE FUNCTION skip_numeric_evaluation_for_test() RETURNS trigger \
+         LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$",
+    )
+    .await
+    .expect("create evaluation skip function");
+    db.execute_unprepared(
+        "CREATE TRIGGER skip_numeric_evaluation_for_test BEFORE INSERT \
+         ON custom_indicator_evaluation FOR EACH ROW \
+         EXECUTE FUNCTION skip_numeric_evaluation_for_test()",
+    )
+    .await
+    .expect("create evaluation skip trigger");
+
+    let executor = Arc::new(FakeKataExecutor::new());
+    executor
+        .set_response(Ok(ExecResult {
+            stdout: "13\n".into(),
+            stderr: String::new(),
+            exit_code: 0,
+        }))
+        .await;
+    let server = tests_common::build_server(db.clone())
+        .with_kata_executor(Some(executor.clone() as SharedKataExecutor));
+    let execution_id = format!("{a2a_task_id}:{}", Uuid::from_u128(708));
+    let operation: Value = server
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            json!({
+                "name": "sample-operation",
+                "args": {},
+                "numeric_pointers": {"result": "/value"},
+            }),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("saved operation succeeds when projection recording fails")
+        .into_value();
+    let output_payload_id = Uuid::parse_str(
+        operation["output_payload"]["id"]
+            .as_str()
+            .expect("output payload ID"),
+    )
+    .expect("valid output payload ID");
+    let output_page: Value = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({"payload_id": output_payload_id, "pointer": "", "cursor": 0, "limit": 1}),
+            Some(execution_id),
+            None,
+        )
+        .await
+        .expect("read saved output after projection recording fails")
+        .into_value();
+    let evaluations = custom_indicator_evaluation::Entity::find()
+        .filter(custom_indicator_evaluation::Column::IndicatorId.eq(indicator_id))
+        .all(&db)
+        .await
+        .expect("query failed projection evaluations");
+    let output = json!({
+        "exit_code": 0,
+        "stderr": "",
+        "stdout": "13\n",
+        "value": 13,
+    });
+
+    assert_eq!(
+        (
+            normalize_operation_payload_identity(operation),
+            normalize_payload_page_identity(output_page),
+            evaluations,
+        ),
+        (
+            json!({
+                "input_payload": {
+                    "id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "input",
+                    "digest": "<digest>", "item_count": 1, "byte_count": 11,
+                    "source_revision": "<revision>",
+                    "source_locator": {"definition_key": "custom_indicator:sample-operation"},
+                    "source_metadata": {"definition_digest": "<revision>"},
+                },
+                "output_payload": {
+                    "id": Uuid::nil(), "task_id": Uuid::nil(), "kind": "output",
+                    "digest": "<digest>", "item_count": 1,
+                    "byte_count": serde_json::to_vec(&output).expect("serialize output").len(),
+                    "source_revision": "<revision>",
+                    "source_locator": {"definition_key": "custom_indicator:sample-operation"},
+                    "source_metadata": {"definition_digest": "<revision>"},
+                },
+                "evaluation_id": null,
+                "projection_error": "recording_failed",
+                "exit_code": 0,
+                "stderr": "",
+            }),
+            json!({
+                "payload_id": Uuid::nil(), "pointer": "", "data": output,
+                "cursor": 0, "next_cursor": null, "total_count": 1, "digest": "<digest>",
+            }),
+            Vec::<custom_indicator_evaluation::Model>::new(),
         ),
     );
 }

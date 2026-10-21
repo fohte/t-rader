@@ -145,12 +145,11 @@ impl StrategyExecutionUseCases {
         }
         if manifest.capture_metadata.as_ref().is_some_and(|metadata| {
             metadata.received_count != manifest.item_count
-                || !dataset_capture::is_consistent_capture_count(
+                || !dataset_capture::is_consistent_complete_counts(
                     metadata.expected_count,
                     metadata.received_count,
                     metadata.missing_count,
                     metadata.unretrieved_count,
-                    true,
                 )
         }) {
             self.repository
