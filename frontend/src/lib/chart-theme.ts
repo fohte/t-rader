@@ -8,7 +8,7 @@ export interface ChartThemeColors {
 }
 
 // Lightweight Charts の color parser が OKLCH を扱えないため、sRGB に変換する。
-export function oklchToRgb(color: string): string | null {
+function oklchToRgb(color: string): string | null {
   const match =
     /^oklch\(\s*(\d*\.?\d+)\s+(\d*\.?\d+)\s+(-?\d*\.?\d+)(?:deg)?\s*\)$/i.exec(
       color,
