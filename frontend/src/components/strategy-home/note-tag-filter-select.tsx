@@ -13,6 +13,7 @@ import {
 
 const ALL_TAGS_VALUE = '__all-tags__'
 const TAG_VALUE_PREFIX = 'tag:'
+const ALL_TAGS_LABEL = 'すべてのタグ'
 
 interface NoteTagFilterSelectProps {
   tags: string[]
@@ -28,7 +29,7 @@ export function NoteTagFilterSelect({
   onChange,
 }: NoteTagFilterSelectProps) {
   const selectedTagLabel =
-    value == null || value === '' ? 'すべてのタグ' : value
+    value == null || value === '' ? ALL_TAGS_LABEL : value
 
   return (
     <Select
@@ -46,7 +47,7 @@ export function NoteTagFilterSelect({
         <SelectValue>{selectedTagLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL_TAGS_VALUE}>すべてのタグ</SelectItem>
+        <SelectItem value={ALL_TAGS_VALUE}>{ALL_TAGS_LABEL}</SelectItem>
         {tags.map((tag) => (
           <SelectItem
             key={tag}

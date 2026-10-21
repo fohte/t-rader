@@ -28,6 +28,8 @@ type NoteKind = components['schemas']['NoteKind']
 const NO_KIND_VALUE = '__no-kind__'
 const LOADING_KIND_VALUE = '__loading-kind__'
 const KIND_VALUE_PREFIX = 'kind:'
+const NO_KIND_LABEL = '種別なし'
+const LOADING_KIND_LABEL = '読み込み中…'
 
 function getSelectedKindLabel(
   kind: string,
@@ -35,7 +37,7 @@ function getSelectedKindLabel(
   noteKindsPending: boolean,
 ) {
   if (kind === '') {
-    return noteKindsPending ? '読み込み中…' : '種別なし'
+    return noteKindsPending ? LOADING_KIND_LABEL : NO_KIND_LABEL
   }
 
   return (
@@ -174,10 +176,12 @@ export function CreateNoteDialogView({
                 <SelectContent>
                   {noteKindsPending ? (
                     <SelectItem value={LOADING_KIND_VALUE} disabled>
-                      読み込み中…
+                      {LOADING_KIND_LABEL}
                     </SelectItem>
                   ) : (
-                    <SelectItem value={NO_KIND_VALUE}>種別なし</SelectItem>
+                    <SelectItem value={NO_KIND_VALUE}>
+                      {NO_KIND_LABEL}
+                    </SelectItem>
                   )}
                   {noteKinds.map((noteKind) => (
                     <SelectItem
