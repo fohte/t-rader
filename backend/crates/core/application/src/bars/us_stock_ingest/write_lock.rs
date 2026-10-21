@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
 
+use super::minute_ingest_window::{
+    is_us_stock_minute_ingest_window, should_ingest_us_stock_minute_bars,
+};
 use super::request_budget::RequestBudget;
 use super::{MAX_REQUESTS_PER_RUN, UsStockBarTimeframe};
 use crate::bars::error::{BarsUseCaseError, UsStockBarsIngestError};
@@ -80,6 +83,25 @@ impl UsStockBarsIngestUseCases {
         timeframe: UsStockBarTimeframe,
         mut budget: RequestBudget,
     ) -> Result<UsStockBarsIngestResult, UsStockBarsIngestError> {
+        if timeframe == UsStockBarTimeframe::Minute {
+            let skip_closed_range = self.should_skip_closed_minute_range_before_lock(now).await;
+            match skip_closed_range {
+                Ok(true) => {
+                    return Ok(UsStockBarsIngestResult::new(
+                        UsStockBarsIngestStats::default(),
+                        None,
+                    ));
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    return Err(UsStockBarsIngestError::new(
+                        UsStockBarsIngestResult::new(UsStockBarsIngestStats::default(), None),
+                        error,
+                    ));
+                }
+            }
+        }
+
         let mut lock_wait_stats = UsStockBarsIngestStats::default();
         let write_lock_result = self
             .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
@@ -127,6 +149,26 @@ impl UsStockBarsIngestUseCases {
             Some(error) => Err(UsStockBarsIngestError::new(result, error)),
             None => Ok(result),
         }
+    }
+
+    async fn should_skip_closed_minute_range_before_lock(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<bool, BarsUseCaseError> {
+        if is_us_stock_minute_ingest_window(now) {
+            return Ok(false);
+        }
+
+        let targets = self
+            .bars
+            .repository
+            .find_us_stock_minute_bar_targets()
+            .await?;
+
+        Ok(!targets.is_empty()
+            && targets.iter().all(|target| {
+                !should_ingest_us_stock_minute_bars(now, target.minute_history_completed_through)
+            }))
     }
 
     pub(super) async fn acquire_us_stock_bars_write_lock(

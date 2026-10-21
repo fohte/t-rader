@@ -769,6 +769,7 @@ mod tests {
     struct TestUsStockBarsWriteLock {
         clock: Arc<TestClock>,
         wait_before_acquire: StdMutex<Duration>,
+        acquire_attempts: StdMutex<usize>,
         guard_released: Arc<StdMutex<bool>>,
     }
 
@@ -777,6 +778,7 @@ mod tests {
             Self {
                 clock,
                 wait_before_acquire: StdMutex::default(),
+                acquire_attempts: StdMutex::default(),
                 guard_released: Arc::new(StdMutex::new(false)),
             }
         }
@@ -791,6 +793,13 @@ mod tests {
         fn guard_released(&self) -> bool {
             *self
                 .guard_released
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+
+        fn acquire_attempts(&self) -> usize {
+            *self
+                .acquire_attempts
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
         }
@@ -815,6 +824,10 @@ mod tests {
             &self,
             wait_timeout: Duration,
         ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
+            *self
+                .acquire_attempts
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
             let wait_duration = *self
                 .wait_before_acquire
                 .lock()
@@ -2710,6 +2723,7 @@ mod tests {
                 .lock()
                 .await
                 .clone(),
+            harness.write_lock.acquire_attempts(),
         );
 
         assert_eq!(
@@ -2721,6 +2735,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 HashMap::from([(instrument_id.to_owned(), completed_through)]),
+                0,
             ),
         );
     }
