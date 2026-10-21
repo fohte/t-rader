@@ -52,6 +52,7 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
         (status = 415, description = "リクエストの Content-Type が application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
+        (status = 503, body = ErrorResponse),
     )
 )]
 pub async fn query_widget(
