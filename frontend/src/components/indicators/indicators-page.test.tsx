@@ -329,8 +329,13 @@ describe('IndicatorsPage', () => {
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => {
-      const list = screen.getByTestId('indicator-list')
-      expect(within(list).getByText('demo-indicator-new')).toBeInTheDocument()
+      expect(readIndicatorTabState()).toEqual({
+        tabs: [
+          { name: 'demo-indicator-new', selected: 'true' },
+          { name: '新規 indicator', selected: 'false' },
+        ],
+        editorName: 'demo-indicator-new',
+      })
     })
   })
 })

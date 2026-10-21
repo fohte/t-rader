@@ -144,6 +144,21 @@ export const LatestValueDecline: Story = {
   },
 }
 
+export const LatestValueUnchanged: Story = {
+  name: 'the page shows an unchanged value with a neutral color.',
+  args: {
+    ...loadedArgs,
+    observations: [
+      { date: '2040-01-01', value: 100 },
+      { date: '2040-01-02', value: 100 },
+    ],
+    visibleObservations: [
+      { date: '2040-01-01', value: 100 },
+      { date: '2040-01-02', value: 100 },
+    ],
+  },
+}
+
 export const NoRelatedNotes: Story = {
   name: 'the page explains when no notes reference the indicator.',
   args: {
