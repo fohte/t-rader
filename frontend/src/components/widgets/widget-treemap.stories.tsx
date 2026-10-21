@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
-import { WidgetTreemap } from '#components/widgets'
+import { WidgetTreemap } from '#components/widgets/widget-treemap'
 import type { components } from '#lib/api/schema.gen'
 import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 import { createStoryRouter } from '#storybook/story-router'

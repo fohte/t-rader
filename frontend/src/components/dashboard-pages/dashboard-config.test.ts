@@ -179,7 +179,8 @@ describe('parseDashboardConfig', () => {
       yaml: dashboardYaml.replace('type: toplist', 'type: heatmap'),
       issue: {
         path: 'widgets[0].viz',
-        message: 'viz.type は treemap または toplist を指定してください。',
+        message:
+          'viz.type は treemap、toplist または table を指定してください。',
       },
     },
   ])('$name を検証エラーとして返す', ({ yaml, issue }) => {
@@ -198,6 +199,42 @@ describe('parseDashboardConfig', () => {
         ),
       ),
     ).toEqual(expectedDashboardConfigWithFixedAsOf)
+  })
+
+  it('table の列順を保持してダッシュボード設定を読み取る', () => {
+    const tableYaml = dashboardYaml
+      .replace('type: toplist', 'type: table')
+      .replace(
+        '      value: movement\n      order: desc\n      limit: 5\n      bar_scale:\n        min: -0.1\n        max: 0.1',
+        '      columns:\n        - movement',
+      )
+
+    expect(parseDashboardConfig(tableYaml)).toEqual({
+      ok: true,
+      value: {
+        title: '市場の動き',
+        widgets: [
+          {
+            title: '値動き',
+            width: 'half',
+            definition: {
+              queries: {
+                movement: {
+                  metric: 'change',
+                  period: '1d',
+                  by: 'stock',
+                  universe: { stocks: ['DEMO-A'] },
+                },
+              },
+              display: {
+                movement: { label: 'Movement', format: 'percent' },
+              },
+              viz: { type: 'table', columns: ['movement'] },
+            },
+          },
+        ],
+      },
+    })
   })
 
   it('プレビュー URL の URL-safe Base64 から設定を読み取る', () => {

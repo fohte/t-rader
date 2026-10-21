@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
-import { WidgetToplist } from '#components/widgets'
+import { WidgetToplist } from '#components/widgets/widget-toplist'
 import type { components } from '#lib/api/schema.gen'
 import type {
   WidgetDisplayDefinitions,
