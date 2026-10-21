@@ -49,6 +49,20 @@ pub(super) fn should_ingest_us_stock_minute_bars(
     completed_through.is_none_or(|completed_through| completed_through < required_cutoff)
 }
 
+pub(super) fn all_us_stock_minute_targets_complete_for_closed_window(
+    now: DateTime<Utc>,
+    completed_through_values: impl IntoIterator<Item = Option<DateTime<Utc>>>,
+) -> bool {
+    let mut has_targets = false;
+    for completed_through in completed_through_values {
+        has_targets = true;
+        if should_ingest_us_stock_minute_bars(now, completed_through) {
+            return false;
+        }
+    }
+    has_targets
+}
+
 fn previous_weekday(mut date: NaiveDate) -> Option<NaiveDate> {
     loop {
         date = date.pred_opt()?;
@@ -68,8 +82,8 @@ mod tests {
     use rstest::rstest;
 
     use super::{
-        is_us_stock_minute_ingest_window, most_recent_us_stock_minute_ingest_cutoff,
-        should_ingest_us_stock_minute_bars,
+        all_us_stock_minute_targets_complete_for_closed_window, is_us_stock_minute_ingest_window,
+        most_recent_us_stock_minute_ingest_cutoff, should_ingest_us_stock_minute_bars,
     };
 
     fn date(value: &str) -> DateTime<Utc> {
@@ -93,6 +107,33 @@ mod tests {
         #[case] expected: bool,
     ) {
         assert_eq!(is_us_stock_minute_ingest_window(date(now)), expected);
+    }
+
+    #[rstest]
+    #[case::all_targets_complete(
+        "2040-01-08T18:00:00Z",
+        vec![Some("2040-01-07T01:04:00Z"), Some("2040-01-07T01:05:00Z")],
+        true
+    )]
+    #[case::target_is_incomplete(
+        "2040-01-08T18:00:00Z",
+        vec![Some("2040-01-07T01:04:00Z"), Some("2040-01-07T01:03:00Z")],
+        false
+    )]
+    #[case::target_has_no_progress("2040-01-08T18:00:00Z", vec![None], false)]
+    #[case::no_targets("2040-01-08T18:00:00Z", Vec::new(), false)]
+    #[case::open_window("2040-01-02T09:20:00Z", vec![Some("2040-01-07T01:04:00Z")], false)]
+    fn skips_only_when_every_minute_target_is_complete_in_a_closed_window(
+        #[case] now: &str,
+        #[case] completed_through: Vec<Option<&str>>,
+        #[case] expected: bool,
+    ) {
+        let completed_through = completed_through.into_iter().map(|value| value.map(date));
+
+        assert_eq!(
+            all_us_stock_minute_targets_complete_for_closed_window(date(now), completed_through),
+            expected,
+        );
     }
 
     #[rstest]

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 
 use super::minute_ingest_window::{
-    is_us_stock_minute_ingest_window, should_ingest_us_stock_minute_bars,
+    all_us_stock_minute_targets_complete_for_closed_window, is_us_stock_minute_ingest_window,
 };
 use super::request_budget::RequestBudget;
 use super::{MAX_REQUESTS_PER_RUN, UsStockBarTimeframe};
@@ -156,6 +156,7 @@ impl UsStockBarsIngestUseCases {
         now: DateTime<Utc>,
     ) -> Result<bool, BarsUseCaseError> {
         if is_us_stock_minute_ingest_window(now) {
+            // 場中は分足取得の対象になるため、事前照会を省く。
             return Ok(false);
         }
 
@@ -165,10 +166,12 @@ impl UsStockBarsIngestUseCases {
             .find_us_stock_minute_bar_targets()
             .await?;
 
-        Ok(!targets.is_empty()
-            && targets.iter().all(|target| {
-                !should_ingest_us_stock_minute_bars(now, target.minute_history_completed_through)
-            }))
+        Ok(all_us_stock_minute_targets_complete_for_closed_window(
+            now,
+            targets
+                .iter()
+                .map(|target| target.minute_history_completed_through),
+        ))
     }
 
     pub(super) async fn acquire_us_stock_bars_write_lock(
