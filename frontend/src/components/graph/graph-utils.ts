@@ -178,6 +178,7 @@ export function buildFlowEdges(
       source: edge.source,
       target: edge.target,
       label,
+      // React Flow の Edge.style が SVG 線幅を決めるため、value に応じた線幅を描画データへ渡す。
       style: { strokeWidth: edgeStrokeWidth(edge.value, maxValue) },
       data: edge,
     }

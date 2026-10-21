@@ -37,6 +37,7 @@ export function GraphFlowEdgeView({
       : fallbackPath
   const labelPosition = data.dagre?.labelPosition
 
+  // React Flow の Edge.style は SVG path の strokeWidth を反映する契約を持つ。
   return (
     <BaseEdge
       id={id}

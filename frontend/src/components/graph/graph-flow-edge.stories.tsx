@@ -14,38 +14,20 @@ const nodes: Node[] = [
   {
     id: 'source',
     position: { x: 120, y: 50 },
+    className: 'h-14 w-40 border border-border bg-card text-card-foreground',
     data: { label: 'Source node' },
-    style: {
-      width: 160,
-      height: 56,
-      backgroundColor: 'var(--card)',
-      color: 'var(--card-foreground)',
-      border: '1px solid var(--border)',
-    },
   },
   {
     id: 'intermediate',
     position: { x: 340, y: 50 },
+    className: 'h-14 w-30 border border-border bg-card text-card-foreground',
     data: { label: 'Intermediate node' },
-    style: {
-      width: 120,
-      height: 56,
-      backgroundColor: 'var(--card)',
-      color: 'var(--card-foreground)',
-      border: '1px solid var(--border)',
-    },
   },
   {
     id: 'target',
     position: { x: 500, y: 50 },
+    className: 'h-14 w-40 border border-border bg-card text-card-foreground',
     data: { label: 'Target node' },
-    style: {
-      width: 160,
-      height: 56,
-      backgroundColor: 'var(--card)',
-      color: 'var(--card-foreground)',
-      border: '1px solid var(--border)',
-    },
   },
 ]
 
@@ -93,7 +75,7 @@ const meta = {
   component: GraphFlowEdgeExample,
   decorators: [
     (Story) => (
-      <div style={{ width: '100%', height: '180px' }}>
+      <div className="h-48 w-full">
         <Story />
       </div>
     ),

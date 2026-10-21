@@ -80,9 +80,12 @@ export function buildScatterLayout(
   const background: ScatterBackgroundFlowNode = {
     id: SCATTER_BACKGROUND_ID,
     type: 'graphScatterBackground',
-    className: 'pointer-events-none',
+    className: 'pointer-events-none size-(--graph-scatter-size)',
     position: { x: 0, y: 0 },
-    style: { width: SCATTER_SIZE, height: SCATTER_SIZE },
+    // 座標変換の領域と背景の表示範囲を一致させるため、同じ定数を外枠の CSS 変数へ渡す。
+    style: {
+      '--graph-scatter-size': `${String(SCATTER_SIZE)}px`,
+    },
     zIndex: -1,
     selectable: false,
     draggable: false,

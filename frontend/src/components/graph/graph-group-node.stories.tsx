@@ -36,7 +36,7 @@ function GraphGroupNodePreview({ dimmed }: { dimmed: boolean }) {
         highlightedNodeIds: dimmed ? new Set() : new Set([NODE_ID]),
       }}
     >
-      <div style={{ height: 100, width: 240 }}>
+      <div className="h-25 w-60">
         <GraphGroupNodeView {...buildNodeProps()} />
       </div>
     </GraphRenderContextProvider>
