@@ -88,6 +88,29 @@ describe('ScreenerResultsView', () => {
     expect((await screen.findByText(/時点/)).textContent).toBe('6/18 時点')
   })
 
+  it.each([
+    ['market_cap', 'desc', '時価総額', '降順'],
+    ['name', 'asc', '銘柄', '昇順'],
+  ] as const)(
+    'shows localized labels for %s in %s order',
+    async (sortBy, sortDirection, sortFieldLabel, sortDirectionLabel) => {
+      renderResultsView({
+        search: { sort_by: sortBy, sort_order: sortDirection },
+      })
+
+      const sortField = await screen.findByRole('combobox', {
+        name: '並べ替える列',
+      })
+      const sortOrder = await screen.findByRole('combobox', {
+        name: '並べ替え順',
+      })
+
+      expect(`${sortField.textContent} / ${sortOrder.textContent}`).toBe(
+        `${sortFieldLabel} / ${sortDirectionLabel}`,
+      )
+    },
+  )
+
   it('updates the selected sort field and direction for the URL state', async () => {
     const user = userEvent.setup()
     const initialSearch: ScreenerSearch = {
@@ -117,8 +140,10 @@ describe('ScreenerResultsView', () => {
     const sortOrder = await screen.findByRole('combobox', {
       name: '並べ替え順',
     })
-    await user.selectOptions(sortField, 'per')
-    await user.selectOptions(sortOrder, 'asc')
+    await user.click(sortField)
+    await user.click(await screen.findByRole('option', { name: 'PER' }))
+    await user.click(sortOrder)
+    await user.click(await screen.findByRole('option', { name: '昇順' }))
 
     expect(nextSearch).toEqual({
       markets: ['プライム'],

@@ -1,3 +1,11 @@
+import { Button } from '@fohte/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
 import { Link } from '@tanstack/react-router'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -141,18 +149,19 @@ export function ScreenerResultsView({
             </span>
           )}
           {onAskAgent != null && (
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => {
                 onAskAgent()
               }}
-              className="hidden items-center gap-1 border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 md:inline-flex"
+              className="hidden md:inline-flex"
             >
               <span aria-hidden="true" className="font-bold">
                 &gt;_
               </span>
               この条件でエージェントに頼む
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -160,48 +169,48 @@ export function ScreenerResultsView({
       {status === 'results' && (
         <div className="mb-3 flex items-center gap-2 md:hidden">
           <span className="shrink-0 text-muted-foreground">並び:</span>
-          <label className="sr-only" htmlFor="screener-mobile-sort-field">
-            並べ替える列
-          </label>
-          <select
-            id="screener-mobile-sort-field"
-            aria-label="並べ替える列"
+          <Select
             value={sortField}
-            onChange={(event) => {
-              const field = event.currentTarget.value
-              if (isScreenerSortBy(field)) onSort(field)
+            onValueChange={(field) => {
+              if (field != null && isScreenerSortBy(field)) onSort(field)
             }}
-            className="min-w-0 flex-1 border border-border bg-card px-2 py-1.5 text-2xs text-foreground"
           >
-            {MOBILE_SORT_OPTIONS.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <label className="sr-only" htmlFor="screener-mobile-sort-order">
-            並べ替え順
-          </label>
-          <select
-            id="screener-mobile-sort-order"
-            aria-label="並べ替え順"
+            <SelectTrigger aria-label="並べ替える列" className="min-w-0 flex-1">
+              <SelectValue>{SCREENER_SORT_LABELS[sortField]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {MOBILE_SORT_OPTIONS.map((option) => (
+                <SelectItem key={option.key} value={option.key}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
             value={sortOrder}
-            onChange={(event) => {
-              const order = event.currentTarget.value
-              if (isScreenerSortOrder(order)) onSortOrder(order)
+            onValueChange={(order) => {
+              if (order != null && isScreenerSortOrder(order)) {
+                onSortOrder(order)
+              }
             }}
-            className="shrink-0 border border-border bg-card px-2 py-1.5 text-2xs text-foreground"
           >
-            <option value="desc">降順</option>
-            <option value="asc">昇順</option>
-          </select>
+            <SelectTrigger aria-label="並べ替え順" className="shrink-0">
+              <SelectValue>
+                {sortOrder === 'desc' ? '降順' : '昇順'}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="desc">降順</SelectItem>
+              <SelectItem value="asc">昇順</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
       {status === 'loading' ? (
         <div className="space-y-2" aria-label="銘柄を読み込み中">
           {[0, 1, 2, 3].map((row) => (
-            <Skeleton key={row} className="h-12 w-full rounded-none" />
+            <Skeleton key={row} className="h-12 w-full" />
           ))}
         </div>
       ) : status === 'error' ? (
@@ -248,14 +257,15 @@ export function ScreenerResultsView({
                               : 'descending'
                             : 'none'
                         }
-                        className={`whitespace-nowrap px-1.5 py-2 font-normal md:px-2.5 ${column.align === 'right' ? 'text-right' : 'text-left'}`}
+                        data-align={column.align}
+                        className="whitespace-nowrap px-1.5 py-2 font-normal md:px-2.5 data-[align=right]:text-right data-[align=left]:text-left"
                       >
-                        <button
+                        <Button
                           type="button"
+                          variant="plain"
                           onClick={() => {
                             onSort(column.key)
                           }}
-                          className="inline-flex items-center gap-1 hover:text-foreground"
                           aria-label={`${column.label} で並べ替え`}
                         >
                           {column.label}
@@ -271,7 +281,7 @@ export function ScreenerResultsView({
                                 className="size-3"
                               />
                             ))}
-                        </button>
+                        </Button>
                       </th>
                     )
                   })}
@@ -287,7 +297,7 @@ export function ScreenerResultsView({
                       <Link
                         to="/stocks/$stockId"
                         params={{ stockId: stock.id }}
-                        className="block overflow-hidden hover:text-primary hover:underline"
+                        className="block overflow-hidden hover:text-foreground hover:underline"
                       >
                         <span className="block truncate font-semibold">
                           {stock.name}
@@ -300,7 +310,8 @@ export function ScreenerResultsView({
                     {SORTABLE_COLUMNS.slice(1).map((column) => (
                       <td
                         key={column.key}
-                        className={`overflow-hidden px-1.5 py-2 md:px-2.5 ${column.align === 'right' ? 'text-right tabular-nums' : 'truncate text-left'}`}
+                        data-align={column.align}
+                        className="overflow-hidden px-1.5 py-2 md:px-2.5 data-[align=right]:text-right data-[align=right]:tabular-nums data-[align=left]:truncate data-[align=left]:text-left"
                       >
                         {getStockValue(stock, column.key)}
                       </td>
@@ -325,26 +336,28 @@ export function ScreenerResultsView({
                 <p role="alert" className="text-destructive">
                   追加の銘柄を取得できませんでした。
                 </p>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={onRetryLoadMore}
                   disabled={loadingMore}
-                  className="mt-2 border border-border px-3 py-1.5 font-semibold text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+                  className="mt-2"
                 >
                   {loadingMore ? '追加の銘柄を読み込んでいます...' : '再試行'}
-                </button>
+                </Button>
               </div>
             ) : (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={onLoadMore}
                 disabled={loadingMore}
-                className="mt-3 w-full border border-border bg-card px-3 py-2.5 font-semibold text-muted-foreground-strong hover:border-muted-foreground hover:bg-surface-strong hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+                className="mt-3 w-full"
               >
                 {loadingMore
                   ? '追加の銘柄を読み込んでいます...'
                   : `さらに ${nextCount.toLocaleString('ja-JP')} 件を表示`}
-              </button>
+              </Button>
             ))}
         </>
       )}
