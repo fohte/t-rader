@@ -10,17 +10,17 @@ afterEach(cleanup)
 
 async function noteEvidenceCardOutput(rowLabel: string) {
   const links = await screen.findAllByRole('link')
-  const evidenceRows = screen.getByText(rowLabel).parentElement
+  const evidenceList = screen.getByText(rowLabel).closest('dl')
 
   return {
     links: links.map((link) => ({
       label: link.textContent,
       href: link.getAttribute('href'),
     })),
-    evidenceRows:
-      evidenceRows == null
-        ? []
-        : Array.from(evidenceRows.children, (child) => child.textContent),
+    evidenceRows: Array.from(
+      evidenceList?.querySelectorAll('dt, dd') ?? [],
+      (child) => child.textContent,
+    ),
   }
 }
 
