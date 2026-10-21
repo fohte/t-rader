@@ -10,13 +10,34 @@ pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(h
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, Iden, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult, Iterable,
     QueryFilter, QueryOrder, Set, Statement,
 };
 
 use crate::entities::bars;
+
+const BAR_UPDATE_COLUMNS: [bars::Column; 6] = [
+    bars::Column::Open,
+    bars::Column::High,
+    bars::Column::Low,
+    bars::Column::Close,
+    bars::Column::Volume,
+    bars::Column::AdjustmentFactor,
+];
+
+fn changed_bar_columns_condition() -> Expr {
+    let condition = BAR_UPDATE_COLUMNS
+        .iter()
+        .map(|column| {
+            let column_name = Iden::to_string(column);
+            format!("bars.{column_name} IS DISTINCT FROM EXCLUDED.{column_name}")
+        })
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    Expr::cust(condition)
+}
 
 const FIND_ONE_MINUTE_BARS_SQL: &str = r#"
     SELECT instrument_id, timestamp, open, high, low, close, volume
@@ -118,7 +139,7 @@ impl From<bars::Model> for Bar {
 /// バーデータを一括 upsert する
 ///
 /// 複合 PK (instrument_id, timeframe, timestamp) で重複排除し、
-/// 既存行は OHLCV カラムを更新する。
+/// 既存行の OHLCV または adjustment_factor が異なる場合に更新する。
 pub async fn upsert_bars(
     db: &impl sea_orm::ConnectionTrait,
     bars_data: Vec<Bar>,
@@ -168,14 +189,8 @@ pub async fn upsert_bars(
                     bars::Column::Timeframe,
                     bars::Column::Timestamp,
                 ])
-                .update_columns([
-                    bars::Column::Open,
-                    bars::Column::High,
-                    bars::Column::Low,
-                    bars::Column::Close,
-                    bars::Column::Volume,
-                    bars::Column::AdjustmentFactor,
-                ])
+                .update_columns(BAR_UPDATE_COLUMNS)
+                .action_cond_where(changed_bar_columns_condition())
                 .to_owned(),
             )
             .exec_without_returning(db)
@@ -434,11 +449,12 @@ pub async fn find_latest_bar_on_or_before(
 mod tests {
     use super::*;
     use crate::entities::instruments;
-    use chrono::{NaiveDate, TimeZone, Utc};
+    use chrono::{Duration as ChronoDuration, NaiveDate, TimeZone, Timelike, Utc};
+    use core_application::bars::BarsRepository;
     use core_domain::bar::Timeframe;
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
-    use sea_orm::{EntityTrait, Set};
+    use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, Set, Statement};
     /// テスト用の instrument を DB に挿入する
     async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
@@ -474,6 +490,230 @@ mod tests {
             volume: 1000,
             adjustment_factor: Decimal::ONE,
         }
+    }
+
+    #[derive(Clone, Copy)]
+    enum BarValue {
+        Open,
+        High,
+        Low,
+        Close,
+        Volume,
+        AdjustmentFactor,
+    }
+
+    fn correct_bar_value(mut bar: Bar, value: BarValue) -> Bar {
+        match value {
+            BarValue::Open => bar.open = Decimal::new(111, 0),
+            BarValue::High => bar.high = Decimal::new(222, 0),
+            BarValue::Low => bar.low = Decimal::new(33, 0),
+            BarValue::Close => bar.close = Decimal::new(144, 0),
+            BarValue::Volume => bar.volume = 4567,
+            BarValue::AdjustmentFactor => bar.adjustment_factor = Decimal::new(125, 2),
+        }
+        bar
+    }
+
+    #[rstest::rstest]
+    #[case::open(BarValue::Open)]
+    #[case::high(BarValue::High)]
+    #[case::low(BarValue::Low)]
+    #[case::close(BarValue::Close)]
+    #[case::volume(BarValue::Volume)]
+    #[case::adjustment_factor(BarValue::AdjustmentFactor)]
+    #[tokio::test]
+    async fn upsert_bars_applies_each_correction(#[case] value: BarValue) {
+        let db = crate::test_support::create_test_transaction().await;
+        let instrument_id = "DEMO-BAR-CORRECTION";
+        insert_test_instrument(&db, instrument_id).await;
+        let date = NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date");
+        let initial = make_test_bar(instrument_id, date, 100);
+        let corrected = correct_bar_value(initial.clone(), value);
+
+        upsert_bars(&db, vec![initial]).await.expect("insert bar");
+        upsert_bars(&db, vec![corrected.clone()])
+            .await
+            .expect("apply correction");
+
+        let actual = find_bars(
+            &db,
+            BarsQuery {
+                instrument_id: instrument_id.to_owned(),
+                timeframe: "1d".to_owned(),
+                from: None,
+                to: None,
+            },
+        )
+        .await
+        .expect("find bar")
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<Bar>>();
+
+        assert_eq!(actual, vec![corrected]);
+    }
+
+    #[derive(Debug, Eq, PartialEq, FromQueryResult)]
+    struct BarUpdateCounts {
+        bars: i64,
+        coverage: i64,
+    }
+
+    #[derive(Debug, Eq, PartialEq, FromQueryResult)]
+    struct BarChunkCompressionStatus {
+        is_compressed: bool,
+    }
+
+    #[derive(Clone, Copy)]
+    enum UnchangedBarCase {
+        DailyUncompressed,
+        MinuteCompressed,
+    }
+
+    impl UnchangedBarCase {
+        fn is_compressed(self) -> bool {
+            matches!(self, Self::MinuteCompressed)
+        }
+    }
+
+    async fn find_bar_update_counts(db: &impl ConnectionTrait) -> BarUpdateCounts {
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT \
+                    ( \
+                        SELECT COALESCE(SUM(n_tup_upd), 0)::bigint \
+                        FROM pg_stat_xact_all_tables \
+                        WHERE relid IN ( \
+                            SELECT format('%I.%I', chunk_schema, chunk_name)::regclass \
+                            FROM timescaledb_information.chunks \
+                            WHERE hypertable_schema = 'public' AND hypertable_name = 'bars' \
+                        ) \
+                    ) AS bars, \
+                    COALESCE(( \
+                        SELECT n_tup_upd \
+                        FROM pg_stat_xact_all_tables \
+                        WHERE relid = 'public.bars_timestamp_coverage'::regclass \
+                    ), 0) AS coverage",
+                [],
+            ))
+            .await
+            .expect("query bar update counts")
+            .expect("update counts exist");
+        BarUpdateCounts::from_query_result(&row, "").expect("decode update counts")
+    }
+
+    async fn find_bar_chunk_compression_status(
+        db: &impl ConnectionTrait,
+        timestamp: DateTime<chrono::Utc>,
+    ) -> bool {
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT is_compressed \
+                FROM timescaledb_information.chunks \
+                WHERE hypertable_schema = 'public' AND hypertable_name = 'bars' \
+                  AND range_start <= $1 AND range_end > $1",
+                [timestamp.fixed_offset().into()],
+            ))
+            .await
+            .expect("read chunk compression status")
+            .expect("chunk compression status exists");
+        BarChunkCompressionStatus::from_query_result(&row, "")
+            .expect("decode chunk compression status")
+            .is_compressed
+    }
+
+    async fn prepare_unchanged_bar_case(
+        db: &gateway_postgres::DatabaseHandle,
+        instrument_id: &str,
+        now: DateTime<Utc>,
+        case: UnchangedBarCase,
+    ) -> Bar {
+        let bar = match case {
+            UnchangedBarCase::DailyUncompressed => make_test_bar(
+                instrument_id,
+                NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date"),
+                100,
+            ),
+            UnchangedBarCase::MinuteCompressed => {
+                let timestamp = truncate_to_microsecond_precision(now - ChronoDuration::days(90));
+                make_test_minute_bar(instrument_id, timestamp, 100)
+            }
+        };
+        upsert_bars(db, vec![bar.clone()])
+            .await
+            .expect("insert bar");
+
+        match case {
+            UnchangedBarCase::DailyUncompressed => {}
+            UnchangedBarCase::MinuteCompressed => {
+                crate::PostgresBarsRepository::new(db.clone())
+                    .compress_bars_older_than_policy(now)
+                    .await
+                    .expect("compress old bar chunk");
+            }
+        }
+
+        bar
+    }
+
+    fn truncate_to_microsecond_precision(timestamp: DateTime<Utc>) -> DateTime<Utc> {
+        timestamp
+            .with_nanosecond(timestamp.timestamp_subsec_micros() * 1_000)
+            .expect("valid bar timestamp")
+    }
+
+    #[rstest::rstest]
+    #[case::daily_uncompressed(UnchangedBarCase::DailyUncompressed)]
+    #[case::minute_compressed(UnchangedBarCase::MinuteCompressed)]
+    #[tokio::test]
+    async fn upsert_bars_skips_unchanged_bar_and_coverage_updates(#[case] case: UnchangedBarCase) {
+        let db = crate::test_support::create_test_transaction().await;
+        let instrument_id = "DEMO-BAR-UNCHANGED";
+        insert_test_instrument(&db, instrument_id).await;
+        let now = Utc::now();
+        let bar = prepare_unchanged_bar_case(&db, instrument_id, now, case).await;
+
+        let compressed_before = find_bar_chunk_compression_status(&db, bar.timestamp).await;
+
+        let update_counts_before = find_bar_update_counts(&db).await;
+
+        upsert_bars(&db, vec![bar.clone()])
+            .await
+            .expect("upsert unchanged bar");
+
+        let update_counts_after = find_bar_update_counts(&db).await;
+        let compressed_after = find_bar_chunk_compression_status(&db, bar.timestamp).await;
+        let actual = find_bars(
+            &db,
+            BarsQuery {
+                instrument_id: instrument_id.to_owned(),
+                timeframe: bar.timeframe.to_string(),
+                from: Some(bar.timestamp.fixed_offset()),
+                to: Some(bar.timestamp.fixed_offset()),
+            },
+        )
+        .await
+        .expect("find bar")
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<Bar>>();
+
+        assert_eq!(
+            (
+                update_counts_after,
+                actual,
+                compressed_before,
+                compressed_after,
+            ),
+            (
+                update_counts_before,
+                vec![bar],
+                case.is_compressed(),
+                case.is_compressed(),
+            ),
+        );
     }
 
     fn make_test_minute_bar(

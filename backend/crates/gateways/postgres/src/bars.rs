@@ -483,6 +483,28 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
 
+    async fn read_bar_coverage(
+        db: &impl ConnectionTrait,
+        instrument_id: &str,
+    ) -> (DateTime<FixedOffset>, DateTime<FixedOffset>) {
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT earliest_timestamp, latest_timestamp FROM bars_timestamp_coverage \
+                 WHERE instrument_id = $1 AND timeframe = '1m'",
+                [instrument_id.into()],
+            ))
+            .await
+            .expect("find minute coverage")
+            .expect("minute coverage row");
+        (
+            row.try_get::<DateTime<FixedOffset>>("", "earliest_timestamp")
+                .expect("decode earliest minute"),
+            row.try_get::<DateTime<FixedOffset>>("", "latest_timestamp")
+                .expect("decode latest minute"),
+        )
+    }
+
     struct TestWriteLock;
 
     struct TestWriteLockGuard;
@@ -593,6 +615,7 @@ mod tests {
             .commit(first_transaction)
             .await
             .expect("commit first transaction");
+        let initial_coverage = read_bar_coverage(&db, &instrument_id).await;
 
         let second_transaction = unit_of_work
             .begin()
@@ -601,40 +624,38 @@ mod tests {
         repository
             .upsert_bars(
                 &second_transaction,
-                vec![
-                    test_bar(&instrument_id, Timeframe::Minute, timestamp(1)),
-                    test_bar(&instrument_id, Timeframe::Minute, timestamp(4)),
-                ],
+                vec![test_bar(&instrument_id, Timeframe::Minute, timestamp(1))],
             )
             .await
-            .expect("upsert later bars");
+            .expect("extend earliest coverage");
         unit_of_work
             .commit(second_transaction)
             .await
             .expect("commit second transaction");
+        let earliest_coverage = read_bar_coverage(&db, &instrument_id).await;
 
-        let coverage_row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT earliest_timestamp, latest_timestamp FROM bars_timestamp_coverage \
-                 WHERE instrument_id = $1 AND timeframe = '1m'",
-                [instrument_id.into()],
-            ))
+        let third_transaction = unit_of_work.begin().await.expect("begin third transaction");
+        repository
+            .upsert_bars(
+                &third_transaction,
+                vec![test_bar(&instrument_id, Timeframe::Minute, timestamp(4))],
+            )
             .await
-            .expect("find minute coverage")
-            .expect("minute coverage row");
-        let actual = (
-            coverage_row
-                .try_get::<DateTime<FixedOffset>>("", "earliest_timestamp")
-                .expect("decode earliest minute"),
-            coverage_row
-                .try_get::<DateTime<FixedOffset>>("", "latest_timestamp")
-                .expect("decode latest minute"),
-        );
+            .expect("extend latest coverage");
+        unit_of_work
+            .commit(third_transaction)
+            .await
+            .expect("commit third transaction");
+
+        let expanded_coverage = read_bar_coverage(&db, &instrument_id).await;
 
         assert_eq!(
-            actual,
-            (timestamp(1).fixed_offset(), timestamp(4).fixed_offset())
+            (initial_coverage, earliest_coverage, expanded_coverage),
+            (
+                (timestamp(2).fixed_offset(), timestamp(3).fixed_offset()),
+                (timestamp(1).fixed_offset(), timestamp(3).fixed_offset()),
+                (timestamp(1).fixed_offset(), timestamp(4).fixed_offset()),
+            ),
         );
     }
 
