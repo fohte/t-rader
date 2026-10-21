@@ -1,3 +1,11 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
+
 export interface PurposeSelectProps {
   purposes: string[]
   selectedPurpose: string
@@ -11,25 +19,41 @@ export function PurposeSelect({
   onPurposeChange,
   disabled,
 }: PurposeSelectProps): React.ReactElement {
+  const selectablePurposes =
+    selectedPurpose === '' || purposes.includes(selectedPurpose)
+      ? purposes
+      : [selectedPurpose, ...purposes]
+  const items = [
+    { value: null, label: '既定の設定' },
+    ...selectablePurposes.map((purpose) => ({
+      value: purpose,
+      label: purpose,
+    })),
+  ]
+
   return (
     <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
       <span>実行目的</span>
-      <select
-        aria-label="実行目的"
-        value={selectedPurpose}
-        onChange={(e) => {
-          onPurposeChange(e.target.value)
+      <Select
+        items={items}
+        value={selectedPurpose || null}
+        onValueChange={(value) => {
+          onPurposeChange(value ?? '')
         }}
         disabled={disabled}
-        className="min-w-0 flex-1 border border-border bg-background px-2 py-1.5 text-foreground outline-none disabled:opacity-60"
       >
-        <option value="">既定の設定</option>
-        {purposes.map((purpose) => (
-          <option key={purpose} value={purpose}>
-            {purpose}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger aria-label="実行目的" className="min-w-0 flex-1">
+          <SelectValue placeholder="既定の設定" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={null}>既定の設定</SelectItem>
+          {selectablePurposes.map((purpose) => (
+            <SelectItem key={purpose} value={purpose}>
+              {purpose}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </label>
   )
 }

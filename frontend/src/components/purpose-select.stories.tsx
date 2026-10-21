@@ -23,7 +23,7 @@ export const Default: Story = {
 }
 
 export const Selected: Story = {
-  name: 'shows a selected purpose among the available configurations.',
+  name: 'shows a selected configuration among the available choices.',
   args: {
     purposes: ['purpose-alpha', 'purpose-beta'],
     selectedPurpose: 'purpose-alpha',
@@ -33,7 +33,7 @@ export const Selected: Story = {
 }
 
 export const Disabled: Story = {
-  name: 'keeps the purpose selector disabled while a task is running.',
+  name: 'disables changing the selected configuration.',
   args: {
     purposes: ['purpose-alpha', 'purpose-beta'],
     selectedPurpose: 'purpose-alpha',

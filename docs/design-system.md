@@ -53,14 +53,18 @@ t-rader 固有の CSS 変数は `:root` に定義する。
 | `--input`         | `#2a2a2a` | `border-input`         | フォーム input の border (`--border` と同値) |
 | `--border-strong` | `#71717a` | `border-border-strong` | 強調した border                              |
 
-### Accent (唯一の色)
+### 色の役割
 
-| Token                  | 値        | Tailwind utility                                 | 用途                                                                      |
-| ---------------------- | --------- | ------------------------------------------------ | ------------------------------------------------------------------------- |
-| `--primary`            | `#ef4444` | `text-primary` / `bg-primary` / `border-primary` | 唯一の赤アクセント。強調テキスト、アイコン、focus など punctuation に使う |
-| `--primary-foreground` | `#fafafa` | `text-primary-foreground`                        | `bg-primary` 上のテキスト                                                 |
-| `--destructive`        | `#ef4444` | `text-destructive` / `border-destructive`        | `--primary` と同じ赤 (accent と danger を同じ 1 色で表現する)             |
-| `--ring`               | `#ef4444` | `ring-ring`                                      | focus ring 色                                                             |
+通常 UI の選択状態・リンク・ブランド強調には赤を使わず、中立色を使う。選択中の面は `bg-accent` や `bg-surface-strong`、文字やアイコンは `text-foreground` など既存の中立 token で表現する。`@fohte/ui` の token 値は t-rader で再定義しない。
+
+| Token                  | 値        | Tailwind utility                                 | 用途                                                     |
+| ---------------------- | --------- | ------------------------------------------------ | -------------------------------------------------------- |
+| `--primary`            | `#ef4444` | `text-primary` / `bg-primary` / `border-primary` | 共通 token。通常の選択・リンク・ブランド強調には使わない |
+| `--primary-foreground` | `#fafafa` | `text-primary-foreground`                        | `bg-primary` 上のテキスト                                |
+| `--destructive`        | `#ef4444` | `text-destructive` / `border-destructive`        | 削除、invalid、注意、未読などの意味色                    |
+| `--ring`               | `#ef4444` | `ring-ring`                                      | 共通 focus ring                                          |
+
+削除などの操作に使う plain button の hover 表示も維持する。通常の選択・リンク・ブランド表現を中立色に揃えても、意味を持つ赤は残す。
 
 ### 株価の方向 (t-rader 固有)
 
