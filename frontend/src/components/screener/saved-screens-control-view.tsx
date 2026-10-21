@@ -88,7 +88,7 @@ export function SavedScreensControlView({
         {selectedScreen != null && selectedScreenHasChanges && (
           <Button
             type="button"
-            variant="plain"
+            variant="outline"
             disabled={saveActionDisabled}
             onClick={() => {
               onOverwrite()
@@ -101,7 +101,7 @@ export function SavedScreensControlView({
         )}
         <Button
           type="button"
-          variant="plain"
+          variant="outline"
           disabled={saveActionDisabled}
           onClick={() => {
             onDialogChange({ type: 'save' })
@@ -218,7 +218,7 @@ export function SavedScreensControlView({
                               onDialogChange({ type: 'rename', savedScreen })
                               onMenuOpenChange(false)
                             }}
-                            className="size-9 shrink-0"
+                            className="size-9 shrink-0 pointer-coarse:size-11"
                           >
                             <Pencil aria-hidden="true" className="size-3.5" />
                           </Button>
@@ -230,7 +230,7 @@ export function SavedScreensControlView({
                               onDialogChange({ type: 'delete', savedScreen })
                               onMenuOpenChange(false)
                             }}
-                            className="size-9 shrink-0"
+                            className="size-9 shrink-0 pointer-coarse:size-11"
                           >
                             <Trash2 aria-hidden="true" className="size-3.5" />
                           </Button>

@@ -95,6 +95,34 @@ describe('ScreenerPageView', () => {
     expect(onAskAgent.mock.calls).toEqual([[search]])
   })
 
+  it('opens the mobile condition dialog from its closed state', async () => {
+    const user = userEvent.setup()
+    const args = {
+      search: {},
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    await user.click(screen.getByRole('button', { name: '条件 (0)' }))
+    const dialog = screen.queryByRole('dialog')
+
+    expect(readMobileActionOutput([], dialog)).toEqual({
+      calls: [],
+      conditionPanelVisible: true,
+      validationError: null,
+    })
+  })
+
   it('keeps mobile actions outside the scroll area and passes filter edits to the agent', async () => {
     const user = userEvent.setup()
     const onAskAgent = vi.fn()
