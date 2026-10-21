@@ -1,3 +1,5 @@
+import { Button } from '@fohte/ui/button'
+import { Checkbox } from '@fohte/ui/checkbox'
 import type { RefObject } from 'react'
 
 import {
@@ -78,12 +80,10 @@ export function AgentGraphForm({
     <div className="space-y-3">
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground-strong">
-          <input
-            type="checkbox"
-            aria-label="フェーズ分割を有効にする"
+          <Checkbox
             checked={enabled}
-            onChange={(e) => {
-              handleToggle(e.target.checked)
+            onCheckedChange={(checked) => {
+              handleToggle(checked)
             }}
           />
           フェーズ分割を有効にする
@@ -187,15 +187,16 @@ export function AgentGraphForm({
               />
             </PhaseCard>
           ))}
-          <button
+          <Button
             type="button"
+            variant="plain"
             onClick={() => {
               onChange(addPhase(value))
             }}
-            className="w-full border border-dashed border-border py-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
+            className="w-full"
           >
             + フェーズを追加
-          </button>
+          </Button>
         </div>
       )}
     </div>

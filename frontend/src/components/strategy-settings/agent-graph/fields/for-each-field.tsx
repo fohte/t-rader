@@ -1,3 +1,4 @@
+import { Chip } from '@fohte/ui/chip'
 import {
   Select,
   SelectContent,
@@ -35,9 +36,7 @@ export function ForEachField({
 
   return (
     <>
-      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
-        実行回数
-      </span>
+      <Chip>実行回数</Chip>
       <Select
         items={items}
         value={value ?? ONCE_VALUE}
@@ -48,20 +47,21 @@ export function ForEachField({
         }}
         defaultOpen={selectDefaultOpen}
       >
-        <SelectTrigger
-          aria-label="実行回数"
-          className="h-auto w-full max-w-sm rounded-none border-border bg-background py-1 font-mono text-xs text-foreground"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ONCE_VALUE}>1 実行につき 1 回</SelectItem>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
+        <div className="w-full max-w-sm font-mono">
+          <SelectTrigger aria-label="実行回数" className="w-full justify-start">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ONCE_VALUE}>
+              <span className="font-mono">1 実行につき 1 回</span>
             </SelectItem>
-          ))}
-        </SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <span className="font-mono">{option.label}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </div>
       </Select>
     </>
   )
