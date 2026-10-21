@@ -1,13 +1,9 @@
 use std::collections::HashSet;
 
-use chrono::{DateTime, TimeZone, Utc};
-use core_domain::bar::Timeframe;
+use chrono::{DateTime, Utc};
 
 use super::error::BarsUseCaseError;
-use super::types::{
-    UsStockBarTarget, UsStockBarsIngestStats, UsStockSipBarRefetchCursor,
-    UsStockSipBarRefetchTimeframe,
-};
+use super::types::{UsStockBarTarget, UsStockBarsIngestStats, UsStockSipBarRefetchCursor};
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
@@ -22,6 +18,7 @@ mod page_write;
 mod request_budget;
 mod sip_refetch;
 mod split;
+mod timeframe;
 mod write_lock;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
@@ -125,64 +122,6 @@ struct UsStockSplitHistoryRange {
     hourly_from: DateTime<Utc>,
     to: DateTime<Utc>,
     hourly_to: DateTime<Utc>,
-}
-
-impl UsStockBarTimeframe {
-    fn timeframe(self) -> Timeframe {
-        match self {
-            Self::Daily => Timeframe::Daily,
-            Self::Minute => Timeframe::Minute,
-            Self::Hourly => Timeframe::Hourly,
-        }
-    }
-
-    const fn as_sip_refetch_timeframe(self) -> UsStockSipBarRefetchTimeframe {
-        match self {
-            Self::Daily => UsStockSipBarRefetchTimeframe::Daily,
-            Self::Hourly => UsStockSipBarRefetchTimeframe::Hourly,
-            Self::Minute => UsStockSipBarRefetchTimeframe::Minute,
-        }
-    }
-
-    fn history_cursor(self, target: &UsStockBarTarget) -> Option<DateTime<Utc>> {
-        match self {
-            Self::Daily => target.latest_daily_bar,
-            Self::Minute => target.latest_minute_bar,
-            Self::Hourly => target.latest_hourly_bar,
-        }
-    }
-
-    fn earliest_bar(self, target: &UsStockBarTarget) -> Option<DateTime<Utc>> {
-        match self {
-            Self::Daily => target.earliest_daily_bar,
-            Self::Minute => target.earliest_minute_bar,
-            Self::Hourly => target.earliest_hourly_bar,
-        }
-    }
-
-    fn history_start(self, now: DateTime<Utc>) -> DateTime<Utc> {
-        match self {
-            Self::Daily => Utc.timestamp_opt(0, 0).single().unwrap_or(now),
-            Self::Minute => us_stock_hourly_history_cutoff(now),
-            Self::Hourly => Utc
-                .with_ymd_and_hms(2016, 1, 1, 0, 0, 0)
-                .single()
-                .unwrap_or(now),
-        }
-    }
-
-    fn history_end(self, now: DateTime<Utc>) -> DateTime<Utc> {
-        let end = match self {
-            Self::Hourly => us_stock_hourly_history_cutoff(now),
-            Self::Daily | Self::Minute => now,
-        };
-        end.min(us_stock_sip_bars_history_cutoff(now))
-    }
-
-    fn is_complete(self, target: &UsStockBarTarget) -> bool {
-        // API は初回の履歴取得に使い、その後の時間足は古くなった分足から補う。
-        self == Self::Hourly && target.has_hourly_history_backfill()
-    }
 }
 
 impl UsStockBarsIngestUseCases {
