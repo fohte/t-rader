@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     formula::{FormulaExpression, parse_formula},
+    range::WidgetTimeRange,
     types::{
         WidgetAggregation, WidgetBy, WidgetDefinition, WidgetMetric, WidgetQuery, WidgetUniverse,
         WidgetVisualization,
@@ -141,10 +142,24 @@ pub(super) fn validate_widget(
                 &mut errors,
             );
         }
-        WidgetVisualization::Line { .. } => errors.push(WidgetValidationError::new(
-            "viz.type",
-            "line visualization is not supported yet",
-        )),
+        WidgetVisualization::Line { series } => {
+            if series.is_empty() {
+                errors.push(WidgetValidationError::new(
+                    "viz.series",
+                    "at least one series is required",
+                ));
+            }
+            for name in series {
+                validate_value_reference("viz.series", name, definition, &mut errors);
+            }
+            validate_matching_dimensions(
+                "viz.series",
+                series.iter().map(String::as_str),
+                definition,
+                &parsed_formulas,
+                &mut errors,
+            );
+        }
     }
 
     for (name, display) in &definition.display {
@@ -166,11 +181,29 @@ pub(super) fn validate_widget(
         }
     }
 
-    if definition.time.range.is_some() {
-        errors.push(WidgetValidationError::new(
+    let is_line = matches!(&definition.viz, WidgetVisualization::Line { .. });
+    match (is_line, definition.time.range.as_deref()) {
+        (true, None) => errors.push(WidgetValidationError::new(
             "time.range",
-            "time ranges are not supported yet",
-        ));
+            "range is required for line visualization",
+        )),
+        (true, Some(value)) => match WidgetTimeRange::parse(value) {
+            Ok(WidgetTimeRange::Dates { to, .. })
+                if definition.time.as_of.is_some_and(|as_of| to > as_of) =>
+            {
+                errors.push(WidgetValidationError::new(
+                    "time.range",
+                    "range end must not be after time.as_of",
+                ));
+            }
+            Ok(_) => {}
+            Err(message) => errors.push(WidgetValidationError::new("time.range", message)),
+        },
+        (false, Some(_)) => errors.push(WidgetValidationError::new(
+            "time.range",
+            "range is only valid for line visualization",
+        )),
+        (false, None) => {}
     }
 
     if errors.is_empty() {
@@ -540,6 +573,7 @@ mod tests {
         Valid,
         ValidTable,
         ValidIndicator,
+        ValidLine,
         LineVisualization,
         EmptyTableColumns,
         UnknownTableColumn,
@@ -549,7 +583,10 @@ mod tests {
         IndicatorAggregationForbidden,
         IndicatorUniverseForbidden,
         PeriodForbiddenForSnapshotMetric,
+        RangeOnSnapshotVisualization,
         UnsupportedRange,
+        InvalidLineRange,
+        LineRangeAfterAsOf,
         UnknownVisualizationValue,
         GroupAxisMissing,
         GroupAggregationMissing,
@@ -585,6 +622,12 @@ mod tests {
                 query.period = None;
                 query.indicator = Some("demo-indicator".to_string());
                 query.agg = None;
+            }
+            SemanticValidationCase::ValidLine => {
+                widget.viz = WidgetVisualization::Line {
+                    series: vec!["sector".to_string()],
+                };
+                widget.time.range = Some("3m".to_string());
             }
             SemanticValidationCase::LineVisualization => {
                 widget.viz = WidgetVisualization::Line {
@@ -651,8 +694,26 @@ mod tests {
                 query.period = Some(WidgetPeriod::OneDay);
                 query.agg = Some(WidgetAggregation::Mean);
             }
+            SemanticValidationCase::RangeOnSnapshotVisualization => {
+                widget.time.range = Some("3m".to_string());
+            }
             SemanticValidationCase::UnsupportedRange => {
-                widget.time.range = Some("1y".to_string());
+                widget.viz = WidgetVisualization::Line {
+                    series: vec!["market".to_string()],
+                };
+                widget.time.range = Some("2y".to_string());
+            }
+            SemanticValidationCase::InvalidLineRange => {
+                widget.viz = WidgetVisualization::Line {
+                    series: vec!["market".to_string()],
+                };
+                widget.time.range = Some("2096-12-30..2098-01-04".to_string());
+            }
+            SemanticValidationCase::LineRangeAfterAsOf => {
+                widget.viz = WidgetVisualization::Line {
+                    series: vec!["market".to_string()],
+                };
+                widget.time.range = Some("2098-01-04..2098-01-06".to_string());
             }
             SemanticValidationCase::UnknownVisualizationValue => {
                 widget.viz = WidgetVisualization::Treemap {
@@ -867,9 +928,10 @@ mod tests {
     #[case::valid(SemanticValidationCase::Valid, None)]
     #[case::valid_table_with_query_and_formula_columns(SemanticValidationCase::ValidTable, None)]
     #[case::valid_indicator_without_aggregation(SemanticValidationCase::ValidIndicator, None)]
-    #[case::line_visualization_remains_reserved(
+    #[case::valid_line_with_relative_range(SemanticValidationCase::ValidLine, None)]
+    #[case::line_requires_a_range(
         SemanticValidationCase::LineVisualization,
-        Some("viz.type: line visualization is not supported yet")
+        Some("time.range: range is required for line visualization")
     )]
     #[case::table_requires_columns(
         SemanticValidationCase::EmptyTableColumns,
@@ -903,9 +965,21 @@ mod tests {
         SemanticValidationCase::PeriodForbiddenForSnapshotMetric,
         Some("queries.market.period: period is only valid for change metrics")
     )]
-    #[case::unsupported_range(
+    #[case::range_is_only_valid_for_line_visualization(
+        SemanticValidationCase::RangeOnSnapshotVisualization,
+        Some("time.range: range is only valid for line visualization")
+    )]
+    #[case::line_rejects_unsupported_range(
         SemanticValidationCase::UnsupportedRange,
-        Some("time.range: time ranges are not supported yet")
+        Some("time.range: range must be `3m`, `1y`, or `YYYY-MM-DD..YYYY-MM-DD`")
+    )]
+    #[case::line_rejects_ranges_longer_than_one_year(
+        SemanticValidationCase::InvalidLineRange,
+        Some("time.range: range must not exceed one year")
+    )]
+    #[case::line_range_must_not_follow_as_of(
+        SemanticValidationCase::LineRangeAfterAsOf,
+        Some("time.range: range end must not be after time.as_of")
     )]
     #[case::unknown_viz_value(
         SemanticValidationCase::UnknownVisualizationValue,
@@ -993,17 +1067,14 @@ mod tests {
     }
 
     #[test]
-    fn parses_supported_metrics_and_reserved_visualizations_before_reporting_them_unsupported() {
+    fn parses_supported_metrics_and_line_visualization() {
         let parsed = WidgetDefinition::from_json(
-            r#"{"queries":{"value":{"metric":"close","by":"stock"}},"viz":{"type":"line","series":["value"]}}"#,
+            r#"{"queries":{"value":{"metric":"close","by":"stock"}},"viz":{"type":"line","series":["value"]},"time":{"range":"3m"}}"#,
         )
-        .expect("parse reserved schema");
+        .expect("parse line schema");
 
         let actual = parsed.validate().map_err(|errors| errors.to_string());
-        assert_eq!(
-            actual,
-            Err("viz.type: line visualization is not supported yet".to_string()),
-        );
+        assert_eq!(actual, Ok(()));
     }
 
     #[rstest]

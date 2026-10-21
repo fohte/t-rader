@@ -3193,6 +3193,7 @@ export interface components {
       /** Format: date */
       as_of: string
       rows: components['schemas']['WidgetQueryResultRow'][]
+      series?: components['schemas']['WidgetSeriesDto'][] | null
     }
     WidgetQueryResultRow: {
       classification?:
@@ -3213,10 +3214,27 @@ export interface components {
       /** Format: double */
       min: number
     }
+    WidgetSeriesDto: {
+      key: string
+      name: string
+      points: components['schemas']['WidgetSeriesPointDto'][]
+      query: string
+      target?: null | components['schemas']['WidgetSeriesTargetDto']
+    }
+    WidgetSeriesPointDto: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      value?: number | null
+    }
+    WidgetSeriesTargetDto: {
+      key: string
+      name: string
+    }
     WidgetTimeRequest: {
       /** Format: date */
       as_of?: string | null
-      /** @description 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。 */
+      /** @description `line` では `3m`、`1y`、または両端を含む `YYYY-MM-DD..YYYY-MM-DD` を指定します。 */
       range?: string | null
     }
     WidgetUniverseGroupRequest: {
@@ -10266,6 +10284,14 @@ export interface operations {
         }
       }
       500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      503: {
         headers: {
           [name: string]: unknown
         }

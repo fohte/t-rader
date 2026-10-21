@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, btree_map::Entry},
     sync::Arc,
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -13,6 +14,8 @@ use crate::stock_group::{StockGroupMembership, StockGroupUseCaseError, StockGrou
 
 use super::{
     formula::FormulaExpression,
+    range::WidgetTimeRange,
+    series::{WidgetSeries, WidgetSeriesQueryRow, query_line},
     types::{
         WidgetBy, WidgetDefinition, WidgetQuery, WidgetVisualization, WidgetVisualizationOrder,
     },
@@ -70,6 +73,7 @@ pub struct WidgetGroup {
 pub struct WidgetQueryResponse {
     pub as_of: NaiveDate,
     pub rows: Vec<WidgetValueRow>,
+    pub series: Option<Vec<WidgetSeries>>,
 }
 
 #[derive(Debug, Error)]
@@ -80,6 +84,12 @@ pub enum WidgetQueryError {
     StockGroups(#[from] StockGroupUseCaseError),
     #[error("amount aggregation across multiple stocks requires confirmed currencies")]
     IncompatibleCurrencies,
+    #[error("widget query input exceeds {limit} daily values")]
+    InputLimitExceeded { limit: u64 },
+    #[error("widget query exceeded its time limit")]
+    Timeout,
+    #[error("series queries are not supported by this source")]
+    SeriesUnsupported,
 }
 
 #[async_trait]
@@ -102,6 +112,14 @@ pub trait WidgetQuerySource: Send + Sync {
         as_of: NaiveDate,
         definition: &WidgetQuery,
     ) -> Result<Vec<WidgetQueryRow>, WidgetQueryError>;
+
+    async fn query_series(
+        &self,
+        _range: super::range::ResolvedWidgetTimeRange,
+        _definition: &WidgetQuery,
+    ) -> Result<Vec<WidgetSeriesQueryRow>, WidgetQueryError> {
+        Err(WidgetQueryError::SeriesUnsupported)
+    }
 }
 
 #[async_trait]
@@ -138,6 +156,8 @@ pub enum WidgetUseCaseError {
     NoData,
     #[error(transparent)]
     Query(#[from] WidgetQueryError),
+    #[error("widget query exceeded its time limit")]
+    Timeout,
 }
 
 #[derive(Clone)]
@@ -161,8 +181,55 @@ impl WidgetUseCases {
         &self,
         definition: WidgetDefinition,
     ) -> Result<WidgetQueryResponse, WidgetUseCaseError> {
+        tokio::time::timeout(
+            Duration::from_secs(15),
+            self.query_within_deadline(definition),
+        )
+        .await
+        .map_err(|_| WidgetUseCaseError::Timeout)?
+    }
+
+    async fn query_within_deadline(
+        &self,
+        definition: WidgetDefinition,
+    ) -> Result<WidgetQueryResponse, WidgetUseCaseError> {
         let parsed_formulas = validate_widget(&definition)?;
         let queries = definition.queries.values().cloned().collect::<Vec<_>>();
+        if let WidgetVisualization::Line { .. } = &definition.viz {
+            let time_range =
+                WidgetTimeRange::parse(definition.time.range.as_deref().unwrap_or_default())
+                    .map_err(|message| {
+                        WidgetUseCaseError::Validation(WidgetValidationErrors(vec![
+                            WidgetValidationError {
+                                path: "time.range".to_string(),
+                                message,
+                            },
+                        ]))
+                    })?;
+            let range_end = match (time_range, definition.time.as_of) {
+                (WidgetTimeRange::Dates { to, .. }, _) => to,
+                (WidgetTimeRange::ThreeMonths | WidgetTimeRange::OneYear, Some(as_of)) => as_of,
+                (WidgetTimeRange::ThreeMonths | WidgetTimeRange::OneYear, None) => self
+                    .query_source
+                    .resolve_as_of_for_queries(None, &queries)
+                    .await?
+                    .ok_or(WidgetUseCaseError::NoData)?,
+            };
+            let as_of = definition.time.as_of.unwrap_or(range_end);
+            let series = query_line(
+                self.query_source.as_ref(),
+                &definition,
+                &parsed_formulas,
+                time_range,
+                range_end,
+            )
+            .await?;
+            return Ok(WidgetQueryResponse {
+                as_of,
+                rows: Vec::new(),
+                series: Some(series),
+            });
+        }
         let as_of = self
             .query_source
             .resolve_as_of_for_queries(definition.time.as_of, &queries)
@@ -221,7 +288,11 @@ impl WidgetUseCases {
                 .await?;
         }
 
-        Ok(WidgetQueryResponse { as_of, rows })
+        Ok(WidgetQueryResponse {
+            as_of,
+            rows,
+            series: None,
+        })
     }
 
     async fn attach_classifications(
@@ -656,6 +727,7 @@ mod tests {
                         classification: None,
                     },
                 ],
+                series: None,
             },
         );
     }
@@ -700,6 +772,7 @@ mod tests {
                         classification: None,
                     },
                 ],
+                series: None,
             },
         );
     }
@@ -766,6 +839,7 @@ mod tests {
                         classification: None,
                     },
                 ],
+                series: None,
             },
         );
     }
@@ -872,6 +946,7 @@ mod tests {
                         }),
                     },
                 ],
+                series: None,
             },
         );
     }

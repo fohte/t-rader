@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 use chrono::{DateTime, FixedOffset};
-use core_application::widget::WidgetValueRow;
+use core_application::widget::{WidgetSeries, WidgetValueRow};
 use rust_decimal::Decimal;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -180,6 +180,53 @@ pub struct DashboardWidgetPreview {
     pub width: DashboardWidgetWidthPreview,
     pub as_of: NaiveDate,
     pub rows: Vec<DashboardWidgetRowPreview>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<Vec<DashboardWidgetSeriesPreview>>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardWidgetSeriesPreview {
+    pub key: String,
+    pub query: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<DashboardWidgetSeriesTarget>,
+    pub points: Vec<DashboardWidgetSeriesPoint>,
+}
+
+impl From<WidgetSeries> for DashboardWidgetSeriesPreview {
+    fn from(series: WidgetSeries) -> Self {
+        Self {
+            key: series.key,
+            query: series.query,
+            name: series.name,
+            target: series.target.map(|target| DashboardWidgetSeriesTarget {
+                key: target.key,
+                name: target.name,
+            }),
+            points: series
+                .points
+                .into_iter()
+                .map(|point| DashboardWidgetSeriesPoint {
+                    date: point.date,
+                    value: point.value,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardWidgetSeriesTarget {
+    pub key: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardWidgetSeriesPoint {
+    pub date: NaiveDate,
+    #[schemars(with = "Option<f64>")]
+    pub value: Option<Decimal>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
