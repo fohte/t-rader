@@ -2,7 +2,6 @@ import { Button } from '@fohte/ui/button'
 import { Checkbox } from '@fohte/ui/checkbox'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 
-import { RssFeedDialog } from '#components/settings/rss-feed-dialog'
 import { SettingsBackLink } from '#components/settings/settings-back-link'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
@@ -12,25 +11,19 @@ type RssFeed = components['schemas']['RssFeed']
 export interface RssFeedsPageViewProps {
   feeds: RssFeed[] | undefined
   isPending: boolean
-  dialogOpen: boolean
-  editingFeed: RssFeed | null
   onAddFeed: () => void
   onToggleEnabled: (feed: RssFeed) => void
   onEditFeed: (feed: RssFeed) => void
   onDeleteFeed: (feed: RssFeed) => void
-  onDialogOpenChange: (open: boolean) => void
 }
 
 export function RssFeedsPageView({
   feeds,
   isPending,
-  dialogOpen,
-  editingFeed,
   onAddFeed,
   onToggleEnabled,
   onEditFeed,
   onDeleteFeed,
-  onDialogOpenChange,
 }: RssFeedsPageViewProps) {
   return (
     <div className="space-y-5">
@@ -132,12 +125,6 @@ export function RssFeedsPageView({
           </table>
         </div>
       )}
-
-      <RssFeedDialog
-        open={dialogOpen}
-        onOpenChange={onDialogOpenChange}
-        feed={editingFeed}
-      />
     </div>
   )
 }

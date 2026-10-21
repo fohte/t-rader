@@ -4,9 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RssFeedsPageView } from '#components/settings/rss-feeds-page-view'
 import type { components } from '#lib/api/schema.gen'
 
-vi.mock('#components/settings/rss-feed-dialog', () => ({
-  RssFeedDialog: () => null,
-}))
 vi.mock('#components/settings/settings-back-link', () => ({
   SettingsBackLink: () => null,
 }))
@@ -30,14 +27,11 @@ function renderPage() {
     toggled: [] as RssFeed[],
     edited: [] as RssFeed[],
     deleted: [] as RssFeed[],
-    dialogOpenChanges: [] as boolean[],
   }
   render(
     <RssFeedsPageView
       feeds={[feed]}
       isPending={false}
-      dialogOpen={false}
-      editingFeed={null}
       onAddFeed={() => {
         actions.add += 1
       }}
@@ -49,9 +43,6 @@ function renderPage() {
       }}
       onDeleteFeed={(value) => {
         actions.deleted.push(value)
-      }}
-      onDialogOpenChange={(open) => {
-        actions.dialogOpenChanges.push(open)
       }}
     />,
   )
@@ -76,7 +67,6 @@ describe('RssFeedsPageView', () => {
       toggled: [feed],
       edited: [feed],
       deleted: [feed],
-      dialogOpenChanges: [],
     })
   })
 })

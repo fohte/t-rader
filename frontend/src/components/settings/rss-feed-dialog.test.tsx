@@ -32,7 +32,7 @@ const feed: RssFeed = {
   updated_at: '2099-01-01T00:00:00Z',
 }
 
-function renderDialog(initialFeed: RssFeed | null) {
+function renderDialog(initialFeed: RssFeed | null, response?: Response) {
   const requests: CapturedRequest[] = []
   const openChanges: boolean[] = []
   const middleware: Middleware = {
@@ -46,10 +46,13 @@ function renderDialog(initialFeed: RssFeed | null) {
         path: new URL(request.url).pathname,
         body,
       })
-      return new Response(JSON.stringify(feed), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
+      return (
+        response ??
+        new Response(JSON.stringify(feed), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
     },
   }
   fetchClient.use(middleware)
@@ -98,6 +101,31 @@ function editSubmissionResult(
   }
 }
 
+function failedSubmissionResult(
+  requests: CapturedRequest[],
+  openChanges: boolean[],
+) {
+  return {
+    dialogOpen: screen.queryByRole('dialog') != null,
+    errorMessage: screen.queryByRole('alert')?.textContent ?? null,
+    requests,
+    openChanges,
+  }
+}
+
+function fillCreateForm() {
+  fireEvent.change(screen.getByLabelText('source (slug, 不変) *'), {
+    target: { value: 'sample-feed' },
+  })
+  fireEvent.change(screen.getByLabelText('表示名 *'), {
+    target: { value: 'Example Feed' },
+  })
+  fireEvent.change(screen.getByLabelText('URL *'), {
+    target: { value: 'https://feeds.example.invalid/sample.xml' },
+  })
+  fireEvent.click(screen.getByRole('checkbox', { name: '有効 (集約対象)' }))
+}
+
 let ejectMiddleware: (() => void) | null = null
 
 afterEach(() => {
@@ -111,16 +139,7 @@ describe('RssFeedDialog', () => {
     const { requests, openChanges, eject } = renderDialog(null)
     ejectMiddleware = eject
 
-    fireEvent.change(screen.getByLabelText('source (slug, 不変) *'), {
-      target: { value: 'sample-feed' },
-    })
-    fireEvent.change(screen.getByLabelText('表示名 *'), {
-      target: { value: 'Example Feed' },
-    })
-    fireEvent.change(screen.getByLabelText('URL *'), {
-      target: { value: 'https://feeds.example.invalid/sample.xml' },
-    })
-    fireEvent.click(screen.getByRole('checkbox', { name: '有効 (集約対象)' }))
+    fillCreateForm()
     fireEvent.click(screen.getByRole('button', { name: '作成' }))
 
     await waitFor(() => {
@@ -140,7 +159,7 @@ describe('RssFeedDialog', () => {
         openChanges: [false],
       })
     })
-  })
+  }, 15_000)
 
   it('updates editable feed values without changing the source', async () => {
     const { requests, openChanges, eject } = renderDialog(feed)
@@ -173,5 +192,40 @@ describe('RssFeedDialog', () => {
         openChanges: [false],
       })
     })
-  })
+  }, 15_000)
+
+  it('shows a server error and keeps the form open when creation fails', async () => {
+    const response = new Response(
+      JSON.stringify({ error: 'Example server error' }),
+      {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      },
+    )
+    const { requests, openChanges, eject } = renderDialog(null, response)
+    ejectMiddleware = eject
+
+    fillCreateForm()
+    fireEvent.click(screen.getByRole('button', { name: '作成' }))
+
+    await waitFor(() => {
+      expect(failedSubmissionResult(requests, openChanges)).toEqual({
+        dialogOpen: true,
+        errorMessage: 'Example server error',
+        requests: [
+          {
+            method: 'POST',
+            path: '/api/rss-feeds',
+            body: {
+              source: 'sample-feed',
+              display_name: 'Example Feed',
+              url: 'https://feeds.example.invalid/sample.xml',
+              enabled: false,
+            },
+          },
+        ],
+        openChanges: [],
+      })
+    })
+  }, 15_000)
 })

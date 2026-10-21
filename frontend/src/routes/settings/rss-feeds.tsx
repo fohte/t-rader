@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { RssFeedDialog } from '#components/settings/rss-feed-dialog'
 import { RssFeedsPageView } from '#components/settings/rss-feeds-page-view'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
@@ -72,16 +73,20 @@ function RssFeedsSettingsPage() {
   }
 
   return (
-    <RssFeedsPageView
-      feeds={feeds}
-      isPending={isPending}
-      dialogOpen={dialogOpen}
-      editingFeed={editing}
-      onAddFeed={openCreate}
-      onToggleEnabled={toggleEnabled}
-      onEditFeed={openEdit}
-      onDeleteFeed={handleDelete}
-      onDialogOpenChange={setDialogOpen}
-    />
+    <>
+      <RssFeedsPageView
+        feeds={feeds}
+        isPending={isPending}
+        onAddFeed={openCreate}
+        onToggleEnabled={toggleEnabled}
+        onEditFeed={openEdit}
+        onDeleteFeed={handleDelete}
+      />
+      <RssFeedDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        feed={editing}
+      />
+    </>
   )
 }

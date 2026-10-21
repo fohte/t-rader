@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 
 import { RssFeedsPageView } from '#components/settings/rss-feeds-page-view'
@@ -8,7 +7,6 @@ import { createStoryRouter } from '#storybook/story-router'
 
 type RssFeed = components['schemas']['RssFeed']
 
-const queryClient = new QueryClient()
 const exampleFeeds: RssFeed[] = [
   {
     id: '00000000-0000-0000-0000-000000000002',
@@ -33,7 +31,6 @@ const exampleFeeds: RssFeed[] = [
 ]
 
 const onFeedAction = () => {}
-const onDialogOpenChange = () => {}
 
 const meta = {
   title: 'Settings/RssFeedsPageView',
@@ -41,16 +38,14 @@ const meta = {
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider
-          router={createStoryRouter(
-            () => (
-              <Story />
-            ),
-            { paths: ['/settings'] },
-          )}
-        />
-      </QueryClientProvider>
+      <RouterProvider
+        router={createStoryRouter(
+          () => (
+            <Story />
+          ),
+          { paths: ['/settings'] },
+        )}
+      />
     ),
   ],
 } satisfies Meta<typeof RssFeedsPageView>
@@ -63,13 +58,10 @@ export const Loading: Story = {
   args: {
     feeds: undefined,
     isPending: true,
-    dialogOpen: false,
-    editingFeed: null,
     onAddFeed: onFeedAction,
     onToggleEnabled: onFeedAction,
     onEditFeed: onFeedAction,
     onDeleteFeed: onFeedAction,
-    onDialogOpenChange,
   },
 }
 
@@ -78,13 +70,10 @@ export const Empty: Story = {
   args: {
     feeds: [],
     isPending: false,
-    dialogOpen: false,
-    editingFeed: null,
     onAddFeed: onFeedAction,
     onToggleEnabled: onFeedAction,
     onEditFeed: onFeedAction,
     onDeleteFeed: onFeedAction,
-    onDialogOpenChange,
   },
 }
 
@@ -93,12 +82,9 @@ export const Feeds: Story = {
   args: {
     feeds: exampleFeeds,
     isPending: false,
-    dialogOpen: false,
-    editingFeed: null,
     onAddFeed: onFeedAction,
     onToggleEnabled: onFeedAction,
     onEditFeed: onFeedAction,
     onDeleteFeed: onFeedAction,
-    onDialogOpenChange,
   },
 }
