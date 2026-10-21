@@ -494,6 +494,38 @@ describe('TriggersTab', () => {
     })
   }, 15_000)
 
+  it('フォームの enabled checkbox を解除して保存すると enabled: false が PUT される', async () => {
+    const user = userEvent.setup()
+    setup([
+      makeTrigger({
+        trigger_id: 'demo-trigger',
+        kind: 'cron',
+        schedule: '15 10 * * 2',
+        prompt_template: 'sample prompt',
+        enabled: true,
+      }),
+    ])
+
+    await screen.findByLabelText('prompt_template')
+    await user.click(screen.getByLabelText('enabled'))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(activeMiddleware?.store.updateCalls).toEqual([
+        {
+          triggerId: 'demo-trigger',
+          body: {
+            purpose: null,
+            prompt_template: 'sample prompt',
+            enabled: false,
+            event_match: null,
+            schedule: '15 10 * * 2',
+          },
+        },
+      ])
+    })
+  }, 15_000)
+
   it('event trigger を編集すると event_type と event_match が PUT される', async () => {
     const user = userEvent.setup()
     setup([

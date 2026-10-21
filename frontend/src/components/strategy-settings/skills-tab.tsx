@@ -1,11 +1,10 @@
 import { Button } from '@fohte/ui/button'
-import { ButtonGroup } from '@fohte/ui/button-group'
-import { Chip } from '@fohte/ui/chip'
 import { Input } from '@fohte/ui/input'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
 import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
+import { SelectableListRow } from '#components/strategy-settings/selectable-list-row'
 import { validateSkillName } from '#components/strategy-settings/skill-name'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
@@ -185,37 +184,20 @@ export function SkillsTab({ purpose }: SkillsTabProps) {
             </li>
           )}
           {names.map((name) => (
-            <li
+            <SelectableListRow
               key={name}
-              className="border-b border-border px-1 py-1 font-mono text-xs last:border-b-0"
+              selected={selected === name}
+              onSelect={() => {
+                setSelected(name)
+                setSaveError(null)
+              }}
+              deleteLabel={`skill "${name}" を削除`}
+              onDelete={() => {
+                handleDelete(name)
+              }}
             >
-              <ButtonGroup className="w-full">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setSelected(name)
-                    setSaveError(null)
-                  }}
-                  aria-pressed={selected === name}
-                  className="min-w-0 flex-1 justify-start"
-                >
-                  <span className="min-w-0 flex-1 truncate">{name}</span>
-                  {selected === name && <Chip tone="strong">選択中</Chip>}
-                </Button>
-                <Button
-                  type="button"
-                  variant="plain"
-                  onClick={() => {
-                    handleDelete(name)
-                  }}
-                  aria-label={`skill "${name}" を削除`}
-                  className="ml-2"
-                >
-                  削除
-                </Button>
-              </ButtonGroup>
-            </li>
+              <span className="min-w-0 flex-1 truncate">{name}</span>
+            </SelectableListRow>
           ))}
         </ul>
       </aside>

@@ -162,38 +162,36 @@ export function TriggerForm({
       </div>
 
       <div className="space-y-1.5">
-        <div className="space-y-1.5">
-          <span
-            id="trigger-kind-label"
-            className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
+        <span
+          id="trigger-kind-label"
+          className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
+        >
+          kind
+        </span>
+        <Select
+          defaultOpen={defaultKindSelectOpen}
+          items={TRIGGER_KINDS}
+          value={form.kind}
+          disabled={mode === 'edit'}
+          onValueChange={(value) => {
+            if (value != null) update('kind', parseKind(value))
+          }}
+        >
+          <SelectTrigger
+            id="trigger-kind"
+            aria-labelledby="trigger-kind-label"
+            className="w-full"
           >
-            kind
-          </span>
-          <Select
-            defaultOpen={defaultKindSelectOpen}
-            items={TRIGGER_KINDS}
-            value={form.kind}
-            disabled={mode === 'edit'}
-            onValueChange={(value) => {
-              if (value != null) update('kind', parseKind(value))
-            }}
-          >
-            <SelectTrigger
-              id="trigger-kind"
-              aria-labelledby="trigger-kind-label"
-              className="w-full"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TRIGGER_KINDS.map(({ label, value }) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TRIGGER_KINDS.map(({ label, value }) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {mode === 'edit' && (
           <p className="font-mono text-2xs text-muted-foreground">
             kind は作成後に変更できません。

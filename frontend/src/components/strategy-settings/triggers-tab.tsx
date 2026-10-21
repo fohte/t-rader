@@ -1,10 +1,9 @@
 import { Button } from '@fohte/ui/button'
-import { ButtonGroup } from '@fohte/ui/button-group'
 import { Checkbox } from '@fohte/ui/checkbox'
-import { Chip } from '@fohte/ui/chip'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
+import { SelectableListRow } from '#components/strategy-settings/selectable-list-row'
 import type { FormState } from '#components/strategy-settings/trigger-form'
 import {
   EMPTY_FORM,
@@ -280,31 +279,18 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
           {triggers.map((t) => {
             const label = triggerLabel(t)
             return (
-              <li
+              <SelectableListRow
                 key={t.trigger_id}
-                className="border-b border-border px-1 py-1 font-mono text-xs last:border-b-0"
-              >
-                <ButtonGroup
-                  className="w-full"
-                  aria-label={`trigger ${t.kind} ${label} の操作`}
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      selectTrigger(t.trigger_id)
-                    }}
-                    aria-pressed={selectedId === t.trigger_id && !isCreate}
-                    className="min-w-0 flex-1 justify-start"
-                  >
-                    <span className="shrink-0 uppercase">{t.kind}</span>
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      {label}
-                    </span>
-                    {selectedId === t.trigger_id && !isCreate && (
-                      <Chip tone="strong">選択中</Chip>
-                    )}
-                  </Button>
+                selected={selectedId === t.trigger_id && !isCreate}
+                onSelect={() => {
+                  selectTrigger(t.trigger_id)
+                }}
+                deleteLabel={`trigger ${t.kind} ${label} を削除`}
+                onDelete={() => {
+                  handleDelete(t)
+                }}
+                groupLabel={`trigger ${t.kind} ${label} の操作`}
+                trailingControl={
                   <Checkbox
                     className="mx-1"
                     aria-label={`trigger ${t.kind} ${label} の有効化`}
@@ -314,19 +300,13 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
                       handleToggleEnabled(t, checked)
                     }}
                   />
-                  <Button
-                    type="button"
-                    variant="plain"
-                    onClick={() => {
-                      handleDelete(t)
-                    }}
-                    aria-label={`trigger ${t.kind} ${label} を削除`}
-                    className="ml-1"
-                  >
-                    削除
-                  </Button>
-                </ButtonGroup>
-              </li>
+                }
+              >
+                <span className="shrink-0 uppercase">{t.kind}</span>
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {label}
+                </span>
+              </SelectableListRow>
             )
           })}
         </ul>

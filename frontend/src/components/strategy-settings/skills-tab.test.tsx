@@ -109,6 +109,19 @@ describe('SkillsTab', () => {
     expect(within(list).getByText('recap')).toBeInTheDocument()
   })
 
+  it('別の既存 skill を選ぶと、その内容がエディタに表示される', async () => {
+    const user = userEvent.setup()
+    setup({ 'sample-alpha': 'sample text A', 'demo-guide': 'sample text B' })
+
+    await user.click(await screen.findByRole('button', { name: 'demo-guide' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText<HTMLTextAreaElement>('source').value,
+      ).toEqual('sample text B')
+    })
+  })
+
   it('skill を追加すると一覧に反映され、そのまま選択される', async () => {
     const user = userEvent.setup()
     setup({})
