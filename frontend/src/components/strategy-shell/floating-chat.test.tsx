@@ -82,6 +82,11 @@ function readChatRequests(requests: CapturedRequest[]) {
     .map(({ method, path, body }) => ({ method, path, body }))
 }
 
+async function selectStrategyA(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('combobox', { name: '戦略' }))
+  await user.click(await screen.findByRole('option', { name: '例示戦略 A' }))
+}
+
 function StockContextRoute() {
   useChatContext({ kind: 'stock', id: 'DEMO-A', label: '架空銘柄' })
   return null
@@ -373,8 +378,7 @@ describe('FloatingChat', () => {
       }),
     )
     await screen.findByText('ノート: 架空ノート')
-    await user.click(screen.getByRole('combobox', { name: '戦略' }))
-    await user.click(await screen.findByRole('option', { name: '例示戦略 A' }))
+    await selectStrategyA(user)
     fireEvent.click(screen.getByRole('button', { name: '送信' }))
 
     await waitFor(() => {
@@ -398,8 +402,7 @@ describe('FloatingChat', () => {
       await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
     )
     await screen.findByText('銘柄: 架空銘柄')
-    await user.click(screen.getByRole('combobox', { name: '戦略' }))
-    await user.click(await screen.findByRole('option', { name: '例示戦略 A' }))
+    await selectStrategyA(user)
     fireEvent.change(screen.getByLabelText('メッセージ入力'), {
       target: { value: 'この銘柄を確認する' },
     })
@@ -457,8 +460,7 @@ describe('FloatingChat', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: '文脈を外す' })).toBeNull()
     })
-    await user.click(screen.getByRole('combobox', { name: '戦略' }))
-    await user.click(await screen.findByRole('option', { name: '例示戦略 A' }))
+    await selectStrategyA(user)
     fireEvent.change(screen.getByLabelText('メッセージ入力'), {
       target: { value: '対象なしで確認する' },
     })
