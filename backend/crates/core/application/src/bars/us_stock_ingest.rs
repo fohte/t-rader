@@ -95,6 +95,11 @@ struct SipRefetchProgressContext {
     resume_after: Option<UsStockSipBarRefetchCursor>,
 }
 
+struct BatchIngestOutcome {
+    completed: bool,
+    requested: bool,
+}
+
 pub(super) struct UsStockSipBarRefetchCheckpoint {
     pub instrument_id: String,
     pub cursor: Option<UsStockSipBarRefetchCursor>,
@@ -272,33 +277,45 @@ impl UsStockBarsIngestUseCases {
         range: UsStockBarRange,
         context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
-        let requests_attempted_before = context.stats.requests_attempted;
-        let (completed, skipped_instrument_ids) = {
+        let (outcome, skipped_instrument_ids) = {
             let mut batch_context = BatchIngestContext::new(context);
-            let completed = self
+            let outcome = self
                 .ingest_batch(source, instrument_ids, timeframe, range, &mut batch_context)
                 .await?;
-            (completed, batch_context.skipped_instrument_ids)
+            (outcome, batch_context.skipped_instrument_ids)
         };
-        if completed && timeframe == UsStockBarTimeframe::Hourly {
+        if outcome.completed && timeframe == UsStockBarTimeframe::Hourly {
             self.mark_hourly_history_completed(instrument_ids, range.to, &skipped_instrument_ids)
                 .await?;
         }
-        if completed
-            && timeframe == UsStockBarTimeframe::Minute
-            && context.stats.requests_attempted > requests_attempted_before
-        {
-            let completed_instrument_ids = instrument_ids
-                .iter()
-                .filter(|instrument_id| !skipped_instrument_ids.contains(*instrument_id))
-                .cloned()
-                .collect::<Vec<_>>();
-            self.bars
-                .repository
-                .mark_us_stock_minute_bar_history_completed(&completed_instrument_ids, range.to)
+        if outcome.completed && outcome.requested && timeframe == UsStockBarTimeframe::Minute {
+            self.mark_minute_history_completed(instrument_ids, range.to, &skipped_instrument_ids)
                 .await?;
         }
-        Ok(completed)
+        Ok(outcome.completed)
+    }
+
+    async fn mark_minute_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+        skipped_instrument_ids: &HashSet<String>,
+    ) -> Result<(), BarsUseCaseError> {
+        let completed_instrument_ids = instrument_ids
+            .iter()
+            .filter(|instrument_id| !skipped_instrument_ids.contains(*instrument_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !completed_instrument_ids.is_empty() {
+            self.bars
+                .repository
+                .mark_us_stock_minute_bar_history_completed(
+                    &completed_instrument_ids,
+                    completed_through,
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn ingest_batch(
@@ -308,14 +325,21 @@ impl UsStockBarsIngestUseCases {
         timeframe: UsStockBarTimeframe,
         range: UsStockBarRange,
         context: &mut BatchIngestContext<'_>,
-    ) -> Result<bool, BarsUseCaseError> {
+    ) -> Result<BatchIngestOutcome, BarsUseCaseError> {
         if range.from >= range.to {
-            return Ok(true);
+            return Ok(BatchIngestOutcome {
+                completed: true,
+                requested: false,
+            });
         }
         let mut page_token = context.page_token.take();
+        let mut requested = false;
         loop {
             if !context.budget.take_at(1, self.clock.instant()) {
-                return Ok(false);
+                return Ok(BatchIngestOutcome {
+                    completed: false,
+                    requested,
+                });
             }
             context.stats.requests_attempted += 1;
             let page = match source
@@ -334,7 +358,10 @@ impl UsStockBarsIngestUseCases {
                 Ok(page) => page,
                 Err(UsStockBarSourceError::RunDeadlineExceeded) => {
                     context.record_deadline_before_request();
-                    return Ok(false);
+                    return Ok(BatchIngestOutcome {
+                        completed: false,
+                        requested,
+                    });
                 }
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
                     let (first, second) = match split_rejected_batch(instrument_ids, reason) {
@@ -344,19 +371,32 @@ impl UsStockBarsIngestUseCases {
                             reason,
                         } => {
                             context.record_skipped(instrument_id, reason);
-                            return Ok(true);
+                            return Ok(BatchIngestOutcome {
+                                completed: true,
+                                requested: true,
+                            });
                         }
                     };
-                    if !Box::pin(self.ingest_batch(source, first, timeframe, range, context))
-                        .await?
-                    {
-                        return Ok(false);
+                    let first_outcome =
+                        Box::pin(self.ingest_batch(source, first, timeframe, range, context))
+                            .await?;
+                    if !first_outcome.completed {
+                        return Ok(BatchIngestOutcome {
+                            completed: false,
+                            requested: true,
+                        });
                     }
-                    return Box::pin(self.ingest_batch(source, second, timeframe, range, context))
-                        .await;
+                    let second_outcome =
+                        Box::pin(self.ingest_batch(source, second, timeframe, range, context))
+                            .await?;
+                    return Ok(BatchIngestOutcome {
+                        requested: true,
+                        ..second_outcome
+                    });
                 }
                 Err(error) => return Err(error.into()),
             };
+            requested = true;
             for skipped in page.skipped_instruments {
                 context.record_skipped(skipped.instrument_id, skipped.reason);
             }
@@ -397,11 +437,17 @@ impl UsStockBarsIngestUseCases {
                 )
                 .await?
             {
-                return Ok(false);
+                return Ok(BatchIngestOutcome {
+                    completed: false,
+                    requested,
+                });
             }
 
             let Some(next_page_token) = next_page_token else {
-                return Ok(true);
+                return Ok(BatchIngestOutcome {
+                    completed: true,
+                    requested,
+                });
             };
             if page_token.as_ref() == Some(&next_page_token) {
                 return Err(BarsUseCaseError::UsStockBarSource(
@@ -3033,7 +3079,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn groups_existing_symbols_by_their_own_latest_bar(harness: Harness) {
+    async fn groups_existing_symbols_by_latest_bar_or_saved_progress(harness: Harness) {
         let instrument_ids = (0..101)
             .map(|index| format!("US:QZ{index:03}"))
             .collect::<Vec<_>>();
@@ -3095,16 +3141,16 @@ mod tests {
                 page_token: None,
             },
             UsStockBarQuery {
-                instrument_ids: instrument_ids[..100].to_vec(),
+                instrument_ids: instrument_ids[1..].to_vec(),
                 timeframe: Timeframe::Minute,
-                from: older_bar,
+                from: recent_bar,
                 to: cutoff,
                 page_token: None,
             },
             UsStockBarQuery {
-                instrument_ids: vec![instrument_ids[100].clone()],
+                instrument_ids: vec![instrument_ids[0].clone()],
                 timeframe: Timeframe::Minute,
-                from: recent_bar,
+                from: date("2040-01-02T10:00:00Z"),
                 to: cutoff,
                 page_token: None,
             },

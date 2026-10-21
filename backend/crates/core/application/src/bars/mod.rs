@@ -32,6 +32,7 @@ pub use write_lock::{SharedUsStockBarsWriteLock, UsStockBarsWriteLock, UsStockBa
 use chrono::{DateTime, Duration, Months, Timelike, Utc};
 
 pub(super) const HOURLY_HISTORY_MONTHS: u32 = 12;
+pub(super) const US_STOCK_SIP_DELAY_MINUTES: i64 = 16;
 
 /// 日足取り込み後の stats 記録に時間を残すための上限。
 pub const US_STOCK_DAILY_BARS_MAX_RUN_DURATION: std::time::Duration =
@@ -50,7 +51,9 @@ pub fn us_stock_hourly_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
 }
 
 pub(super) fn us_stock_sip_bars_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
-    let cutoff = now.checked_sub_signed(Duration::minutes(16)).unwrap_or(now);
+    let cutoff = now
+        .checked_sub_signed(Duration::minutes(US_STOCK_SIP_DELAY_MINUTES))
+        .unwrap_or(now);
     cutoff
         .with_second(0)
         .and_then(|cutoff| cutoff.with_nanosecond(0))

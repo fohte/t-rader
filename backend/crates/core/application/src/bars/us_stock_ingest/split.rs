@@ -419,6 +419,7 @@ impl UsStockBarsIngestUseCases {
                 &mut batch_context,
             )
             .await?
+            .completed
         } else {
             true
         };

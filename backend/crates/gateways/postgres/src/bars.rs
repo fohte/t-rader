@@ -956,6 +956,10 @@ mod tests {
             )
             .await
             .expect("ignore older minute progress");
+        repository
+            .mark_us_stock_minute_bar_history_completed(&[], later_minute_progress)
+            .await
+            .expect("empty minute progress update succeeds");
 
         let actual = repository
             .find_us_stock_minute_bar_targets()

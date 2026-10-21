@@ -3,9 +3,10 @@ use chrono::{
 };
 use chrono_tz::America::New_York;
 
+use super::super::US_STOCK_SIP_DELAY_MINUTES;
+
 const INGEST_WINDOW_START_MINUTE: u32 = 4 * 60 + 20;
 const INGEST_WINDOW_END_MINUTE: u32 = 20 * 60 + 20;
-const SIP_DELAY_MINUTES: i64 = 16;
 
 pub(super) fn is_us_stock_minute_ingest_window(now: DateTime<Utc>) -> bool {
     let eastern = now.with_timezone(&New_York);
@@ -25,7 +26,7 @@ pub(super) fn most_recent_us_stock_minute_ingest_cutoff(
     } else {
         previous_weekday(eastern.date_naive())?
     };
-    let cutoff_minute = i64::from(INGEST_WINDOW_END_MINUTE) - SIP_DELAY_MINUTES;
+    let cutoff_minute = i64::from(INGEST_WINDOW_END_MINUTE) - US_STOCK_SIP_DELAY_MINUTES;
     let local_cutoff = date.and_time(NaiveTime::MIN + Duration::minutes(cutoff_minute));
 
     New_York
