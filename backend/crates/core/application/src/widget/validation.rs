@@ -123,10 +123,24 @@ pub(super) fn validate_widget(
                 validate_scale("viz.bar_scale", scale, &mut errors);
             }
         }
-        WidgetVisualization::Table { .. } => errors.push(WidgetValidationError::new(
-            "viz.type",
-            "table visualization is not supported yet",
-        )),
+        WidgetVisualization::Table { columns } => {
+            if columns.is_empty() {
+                errors.push(WidgetValidationError::new(
+                    "viz.columns",
+                    "at least one column is required",
+                ));
+            }
+            for column in columns {
+                validate_value_reference("viz.columns", column, definition, &mut errors);
+            }
+            validate_matching_dimensions(
+                "viz.columns",
+                columns.iter().map(String::as_str),
+                definition,
+                &parsed_formulas,
+                &mut errors,
+            );
+        }
         WidgetVisualization::Line { .. } => errors.push(WidgetValidationError::new(
             "viz.type",
             "line visualization is not supported yet",
@@ -212,22 +226,17 @@ impl std::fmt::Display for WidgetValidationErrors {
 impl std::error::Error for WidgetValidationErrors {}
 
 fn validate_query(name: &str, query: &WidgetQuery, errors: &mut Vec<WidgetValidationError>) {
-    if !matches!(query.metric, WidgetMetric::Change | WidgetMetric::MktCap) {
-        errors.push(WidgetValidationError::new(
-            format!("queries.{name}.metric"),
-            format!("metric `{}` is not supported yet", query.metric.as_str()),
-        ));
-    }
-
     match query.metric {
         WidgetMetric::Change if query.period.is_none() => errors.push(WidgetValidationError::new(
             format!("queries.{name}.period"),
             "period is required for change metrics",
         )),
-        WidgetMetric::MktCap if query.period.is_some() => errors.push(WidgetValidationError::new(
-            format!("queries.{name}.period"),
-            "period is only valid for change metrics",
-        )),
+        metric if metric != WidgetMetric::Change && query.period.is_some() => {
+            errors.push(WidgetValidationError::new(
+                format!("queries.{name}.period"),
+                "period is only valid for change metrics",
+            ));
+        }
         _ => {}
     }
 
@@ -245,16 +254,24 @@ fn validate_query(name: &str, query: &WidgetQuery, errors: &mut Vec<WidgetValida
     }
 
     match (query.by, query.agg) {
-        (WidgetBy::Stock, Some(_)) => errors.push(WidgetValidationError::new(
-            format!("queries.{name}.agg"),
-            "agg is not valid when by is stock",
-        )),
+        (WidgetBy::Stock, Some(_)) if query.metric != WidgetMetric::Indicator => {
+            errors.push(WidgetValidationError::new(
+                format!("queries.{name}.agg"),
+                "agg is not valid when by is stock",
+            ));
+        }
+        (WidgetBy::Stock, Some(_)) => {}
         (WidgetBy::Stock, None) => {}
-        (_, None) => errors.push(WidgetValidationError::new(
-            format!("queries.{name}.agg"),
-            "agg is required when by is none or group",
-        )),
-        (_, Some(WidgetAggregation::MarketCapWeighted)) if query.metric != WidgetMetric::Change => {
+        (WidgetBy::None | WidgetBy::Group, None) if query.metric == WidgetMetric::Indicator => {}
+        (WidgetBy::None | WidgetBy::Group, None) => {
+            errors.push(WidgetValidationError::new(
+                format!("queries.{name}.agg"),
+                "agg is required when by is none or group",
+            ));
+        }
+        (_, Some(WidgetAggregation::MarketCapWeighted))
+            if query.metric != WidgetMetric::Change && query.metric != WidgetMetric::Indicator =>
+        {
             errors.push(WidgetValidationError::new(
                 format!("queries.{name}.agg"),
                 "mkt_cap_weighted is only valid for change metrics",
@@ -301,14 +318,38 @@ fn validate_query(name: &str, query: &WidgetQuery, errors: &mut Vec<WidgetValida
 }
 
 fn validate_indicator(name: &str, query: &WidgetQuery, errors: &mut Vec<WidgetValidationError>) {
-    if query.metric == WidgetMetric::Indicator
-        && query.indicator.as_deref().unwrap_or_default().is_empty()
-    {
-        errors.push(WidgetValidationError::new(
-            format!("queries.{name}.indicator"),
-            "indicator id is required for indicator metrics",
-        ));
-    } else if query.metric != WidgetMetric::Indicator && query.indicator.is_some() {
+    if query.metric == WidgetMetric::Indicator {
+        if query
+            .indicator
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+        {
+            errors.push(WidgetValidationError::new(
+                format!("queries.{name}.indicator"),
+                "indicator id is required for indicator metrics",
+            ));
+        }
+        if query.by != WidgetBy::None {
+            errors.push(WidgetValidationError::new(
+                format!("queries.{name}.by"),
+                "indicator metrics require by none",
+            ));
+        }
+        if query.agg.is_some() {
+            errors.push(WidgetValidationError::new(
+                format!("queries.{name}.agg"),
+                "aggregation is not valid for indicator metrics",
+            ));
+        }
+        if query.universe.is_some() {
+            errors.push(WidgetValidationError::new(
+                format!("queries.{name}.universe"),
+                "universe is not valid for indicator metrics",
+            ));
+        }
+    } else if query.indicator.is_some() {
         errors.push(WidgetValidationError::new(
             format!("queries.{name}.indicator"),
             "indicator is only valid for indicator metrics",
@@ -387,7 +428,7 @@ fn validate_matching_dimensions<'a>(
     }
 }
 
-fn query_dimension(
+pub(super) fn query_dimension(
     name: &str,
     definition: &WidgetDefinition,
     parsed_formulas: &BTreeMap<&str, FormulaExpression>,
@@ -424,7 +465,7 @@ fn query_dimension(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum QueryDimension {
+pub(super) enum QueryDimension {
     Market,
     Stock,
     Group(String),
@@ -497,7 +538,17 @@ mod tests {
     #[derive(Clone, Copy)]
     enum SemanticValidationCase {
         Valid,
-        UnsupportedMetric,
+        ValidTable,
+        ValidIndicator,
+        LineVisualization,
+        EmptyTableColumns,
+        UnknownTableColumn,
+        MismatchedTableDimensions,
+        MissingIndicatorId,
+        IndicatorRequiresMarketRows,
+        IndicatorAggregationForbidden,
+        IndicatorUniverseForbidden,
+        PeriodForbiddenForSnapshotMetric,
         UnsupportedRange,
         UnknownVisualizationValue,
         GroupAxisMissing,
@@ -523,10 +574,82 @@ mod tests {
         let mut widget = definition();
         match case {
             SemanticValidationCase::Valid => {}
-            SemanticValidationCase::UnsupportedMetric => {
+            SemanticValidationCase::ValidTable => {
+                widget.viz = WidgetVisualization::Table {
+                    columns: vec!["sector".to_string(), "relative".to_string()],
+                };
+            }
+            SemanticValidationCase::ValidIndicator => {
+                let query = widget.queries.get_mut("market").expect("market query");
+                query.metric = WidgetMetric::Indicator;
+                query.period = None;
+                query.indicator = Some("demo-indicator".to_string());
+                query.agg = None;
+            }
+            SemanticValidationCase::LineVisualization => {
+                widget.viz = WidgetVisualization::Line {
+                    series: vec!["market".to_string()],
+                };
+            }
+            SemanticValidationCase::EmptyTableColumns => {
+                widget.viz = WidgetVisualization::Table {
+                    columns: Vec::new(),
+                };
+            }
+            SemanticValidationCase::UnknownTableColumn => {
+                widget.viz = WidgetVisualization::Table {
+                    columns: vec!["fictional-missing-query".to_string()],
+                };
+            }
+            SemanticValidationCase::MismatchedTableDimensions => {
+                let mut stock_query = widget.queries.get("market").expect("market query").clone();
+                stock_query.by = WidgetBy::Stock;
+                stock_query.agg = None;
+                widget.queries.insert("stock".to_string(), stock_query);
+                widget.viz = WidgetVisualization::Table {
+                    columns: vec!["sector".to_string(), "stock".to_string()],
+                };
+            }
+            SemanticValidationCase::MissingIndicatorId => {
+                let query = widget.queries.get_mut("market").expect("market query");
+                query.metric = WidgetMetric::Indicator;
+                query.period = None;
+                query.agg = None;
+            }
+            SemanticValidationCase::IndicatorRequiresMarketRows => {
+                let query = widget.queries.get_mut("market").expect("market query");
+                query.metric = WidgetMetric::Indicator;
+                query.period = None;
+                query.by = WidgetBy::Stock;
+                query.agg = None;
+                query.indicator = Some("demo-indicator".to_string());
+                widget.formulas.clear();
+                widget.viz = WidgetVisualization::Table {
+                    columns: vec!["market".to_string()],
+                };
+            }
+            SemanticValidationCase::IndicatorAggregationForbidden => {
+                let query = widget.queries.get_mut("market").expect("market query");
+                query.metric = WidgetMetric::Indicator;
+                query.period = None;
+                query.agg = Some(WidgetAggregation::Mean);
+                query.indicator = Some("demo-indicator".to_string());
+            }
+            SemanticValidationCase::IndicatorUniverseForbidden => {
+                let query = widget.queries.get_mut("market").expect("market query");
+                query.metric = WidgetMetric::Indicator;
+                query.period = None;
+                query.indicator = Some("demo-indicator".to_string());
+                query.agg = None;
+                query.universe = Some(WidgetUniverse::Stocks {
+                    stocks: vec!["DEMO".to_string()],
+                });
+            }
+            SemanticValidationCase::PeriodForbiddenForSnapshotMetric => {
                 let query = widget.queries.get_mut("market").expect("market query");
                 query.metric = WidgetMetric::Per;
-                query.agg = Some(WidgetAggregation::Count);
+                query.period = Some(WidgetPeriod::OneDay);
+                query.agg = Some(WidgetAggregation::Mean);
             }
             SemanticValidationCase::UnsupportedRange => {
                 widget.time.range = Some("1y".to_string());
@@ -742,9 +865,43 @@ mod tests {
 
     #[rstest]
     #[case::valid(SemanticValidationCase::Valid, None)]
-    #[case::unsupported_metric(
-        SemanticValidationCase::UnsupportedMetric,
-        Some("queries.market.metric: metric `per` is not supported yet")
+    #[case::valid_table_with_query_and_formula_columns(SemanticValidationCase::ValidTable, None)]
+    #[case::valid_indicator_without_aggregation(SemanticValidationCase::ValidIndicator, None)]
+    #[case::line_visualization_remains_reserved(
+        SemanticValidationCase::LineVisualization,
+        Some("viz.type: line visualization is not supported yet")
+    )]
+    #[case::table_requires_columns(
+        SemanticValidationCase::EmptyTableColumns,
+        Some("viz.columns: at least one column is required")
+    )]
+    #[case::table_columns_must_reference_a_value(
+        SemanticValidationCase::UnknownTableColumn,
+        Some("viz.columns: unknown query or formula name: `fictional-missing-query`")
+    )]
+    #[case::table_columns_must_share_a_row_dimension(
+        SemanticValidationCase::MismatchedTableDimensions,
+        Some("viz.columns: values must use the same row dimension")
+    )]
+    #[case::indicator_requires_an_id(
+        SemanticValidationCase::MissingIndicatorId,
+        Some("queries.market.indicator: indicator id is required for indicator metrics")
+    )]
+    #[case::indicator_requires_market_rows(
+        SemanticValidationCase::IndicatorRequiresMarketRows,
+        Some("queries.market.by: indicator metrics require by none")
+    )]
+    #[case::indicator_disallows_aggregation(
+        SemanticValidationCase::IndicatorAggregationForbidden,
+        Some("queries.market.agg: aggregation is not valid for indicator metrics")
+    )]
+    #[case::indicator_disallows_universes(
+        SemanticValidationCase::IndicatorUniverseForbidden,
+        Some("queries.market.universe: universe is not valid for indicator metrics")
+    )]
+    #[case::snapshot_metric_disallows_periods(
+        SemanticValidationCase::PeriodForbiddenForSnapshotMetric,
+        Some("queries.market.period: period is only valid for change metrics")
     )]
     #[case::unsupported_range(
         SemanticValidationCase::UnsupportedRange,
@@ -836,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_reserved_metrics_and_visualizations_before_reporting_them_unsupported() {
+    fn parses_supported_metrics_and_reserved_visualizations_before_reporting_them_unsupported() {
         let parsed = WidgetDefinition::from_json(
             r#"{"queries":{"value":{"metric":"close","by":"stock"}},"viz":{"type":"line","series":["value"]}}"#,
         )
@@ -845,7 +1002,7 @@ mod tests {
         let actual = parsed.validate().map_err(|errors| errors.to_string());
         assert_eq!(
             actual,
-            Err("queries.value.metric: metric `close` is not supported yet; viz.type: line visualization is not supported yet".to_string()),
+            Err("viz.type: line visualization is not supported yet".to_string()),
         );
     }
 

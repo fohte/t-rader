@@ -11,7 +11,7 @@ fn widget_use_case_to_mcp(error: WidgetUseCaseError) -> McpError {
     match error {
         WidgetUseCaseError::Validation(errors) => invalid_params(errors.to_string()),
         WidgetUseCaseError::NoData => {
-            invalid_params("no daily bar data is available on or before the requested date")
+            invalid_params("no widget data is available on or before the requested date")
         }
         WidgetUseCaseError::Query(WidgetQueryError::Database(error)) => {
             super::persistence_error_to_mcp(error)
@@ -19,6 +19,9 @@ fn widget_use_case_to_mcp(error: WidgetUseCaseError) -> McpError {
         WidgetUseCaseError::Query(WidgetQueryError::StockGroups(error)) => {
             tracing::error!(error = %error, "strategy mcp widget stock group membership query failed");
             internal_error(format!("stock group membership query failed: {error}"))
+        }
+        WidgetUseCaseError::Query(error @ WidgetQueryError::IncompatibleCurrencies) => {
+            invalid_params(error.to_string())
         }
     }
 }

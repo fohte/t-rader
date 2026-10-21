@@ -12,7 +12,7 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
     match error {
         WidgetUseCaseError::Validation(errors) => AppError::Validation(errors.to_string()),
         WidgetUseCaseError::NoData => AppError::NotFound(
-            "no daily bar data is available on or before the requested date".to_string(),
+            "no widget data is available on or before the requested date".to_string(),
         ),
         WidgetUseCaseError::Query(WidgetQueryError::Database(error)) => match error {
             database_error @ PersistenceError::Database(_) => {
@@ -22,6 +22,9 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
         },
         WidgetUseCaseError::Query(WidgetQueryError::StockGroups(error)) => {
             AppError::Internal(error.to_string())
+        }
+        WidgetUseCaseError::Query(error @ WidgetQueryError::IncompatibleCurrencies) => {
+            AppError::Validation(error.to_string())
         }
     }
 }
