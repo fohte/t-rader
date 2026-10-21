@@ -64,11 +64,11 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                            WHEN stock.id ~ '^[A-Z]{2}:' THEN NULL
                            ELSE LEFT(stock.id, 4)
                        END AS valuation_code,
-                       -- DB に通貨列がないため、外国株 ID の国コードを安全側の境界にする。
+                       -- 外国株 ID は国を示すが、DB に通貨情報がないため通貨を特定できない。
                        CASE
-                           WHEN stock.id ~ '^[A-Z]{2}:' THEN LEFT(stock.id, 2)
-                           ELSE 'JP'
-                       END AS currency_partition
+                           WHEN stock.id ~ '^[A-Z]{2}:' THEN NULL
+                           ELSE 'JPY'
+                       END AS currency_code
                 FROM stock
                 WHERE (cardinality($9::text[]) = 0 OR stock.id = ANY($9::text[]))
                   AND (
@@ -132,7 +132,7 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
             stock_values AS (
                 SELECT candidate_stocks.id,
                        candidate_stocks.name,
-                       candidate_stocks.currency_partition,
+                       candidate_stocks.currency_code,
                        valuations.mkt_cap,
                        CASE $3::text
                            WHEN 'change' THEN stock_changes.change_rate
@@ -202,7 +202,7 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                        END AS row_name,
                        stock_values.value,
                        stock_values.mkt_cap,
-                       stock_values.currency_partition
+                       stock_values.currency_code
                 FROM stock_values
                 LEFT JOIN group_members AS query_group
                   ON query_group.stock_id = stock_values.id
@@ -222,9 +222,32 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                                    / NULLIF(SUM(mkt_cap) FILTER (WHERE value IS NOT NULL), 0)
                        END AS value,
                        $10::boolean
-                           AND COUNT(DISTINCT currency_partition) FILTER (
-                               WHERE value IS NOT NULL
-                           ) > 1 AS incompatible_currencies
+                           AND (
+                               COUNT(DISTINCT currency_code) FILTER (
+                                   WHERE value IS NOT NULL
+                                     AND (
+                                         $5::text <> 'mkt_cap_weighted'
+                                         OR mkt_cap IS NOT NULL
+                                     )
+                               ) > 1
+                               OR (
+                                   COUNT(*) FILTER (
+                                       WHERE value IS NOT NULL
+                                         AND (
+                                             $5::text <> 'mkt_cap_weighted'
+                                             OR mkt_cap IS NOT NULL
+                                         )
+                                         AND currency_code IS NULL
+                                   ) > 0
+                                   AND COUNT(*) FILTER (
+                                       WHERE value IS NOT NULL
+                                         AND (
+                                             $5::text <> 'mkt_cap_weighted'
+                                             OR mkt_cap IS NOT NULL
+                                         )
+                                   ) > 1
+                               )
+                           ) AS incompatible_currencies
                 FROM grouped_values
                 GROUP BY row_key, row_name
             )
@@ -856,27 +879,31 @@ mod tests {
         );
     }
 
-    #[backend_test_macros::database_test]
-    async fn amount_aggregations_reject_mixed_country_partitions(db: DatabaseHandle) {
+    async fn insert_amount_aggregation_fixture(db: &DatabaseHandle) {
         for (id, name) in [
             ("DEMO", "Demo Local A"),
             ("TEST", "Demo Local B"),
             ("US:DEMO-A", "Demo Foreign A"),
-            ("CA:TEST-B", "Demo Foreign B"),
+            ("US:TEST-B", "Demo Foreign B"),
         ] {
-            insert_stock(&db, id, name).await;
-            insert_bar(&db, id, 1, 100).await;
+            insert_stock(db, id, name).await;
+            insert_bar(db, id, 1, 100).await;
         }
         for (id, close) in [
             ("DEMO", 110),
             ("TEST", 90),
             ("US:DEMO-A", 110),
-            ("CA:TEST-B", 90),
+            ("US:TEST-B", 90),
         ] {
-            insert_bar(&db, id, 2, close).await;
+            insert_bar(db, id, 2, close).await;
         }
-        insert_valuation(&db, "DEMO", 1_000).await;
-        insert_valuation(&db, "TEST", 3_000).await;
+        insert_valuation(db, "DEMO", 1_000).await;
+        insert_valuation(db, "TEST", 3_000).await;
+    }
+
+    #[backend_test_macros::database_test]
+    async fn amount_aggregations_reject_unverified_foreign_currency(db: DatabaseHandle) {
+        insert_amount_aggregation_fixture(&db).await;
 
         let source = PostgresWidgetQuerySource::new(db.clone());
         let mut same_currency = market_query(WidgetMetric::Close, None, WidgetAggregation::Sum);
@@ -894,20 +921,26 @@ mod tests {
             )
             .await
             .map_err(|error| error.to_string());
-        let mixed_weighted_change_result = source
+        let same_country_foreign_sum_result = source
             .query(
                 date(2),
-                &market_query(
-                    WidgetMetric::Change,
-                    Some(WidgetPeriod::OneDay),
-                    WidgetAggregation::MarketCapWeighted,
-                ),
+                &WidgetQuery {
+                    metric: WidgetMetric::Close,
+                    period: None,
+                    by: WidgetBy::None,
+                    axis: None,
+                    indicator: None,
+                    universe: Some(WidgetUniverse::Stocks {
+                        stocks: vec!["US:DEMO-A".to_string(), "US:TEST-B".to_string()],
+                    }),
+                    agg: Some(WidgetAggregation::Sum),
+                },
             )
             .await
             .map_err(|error| error.to_string());
         let axis_id = insert_group_axis(&db, "demo-axis", "Demo Axis").await;
         let group_id = insert_group(&db, axis_id, "demo-group", "Demo Group").await;
-        for id in ["US:DEMO-A", "CA:TEST-B"] {
+        for id in ["US:DEMO-A", "US:TEST-B"] {
             insert_group_member(&db, id, group_id).await;
         }
         let mixed_group_sum_result = source
@@ -930,7 +963,7 @@ mod tests {
             (
                 same_currency_result,
                 mixed_close_result,
-                mixed_weighted_change_result,
+                same_country_foreign_sum_result,
                 mixed_group_sum_result,
             ),
             (
@@ -949,6 +982,33 @@ mod tests {
                     "amount aggregations across different currencies are not supported".to_string()
                 ),
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn weighted_change_ignores_foreign_stocks_without_market_cap(db: DatabaseHandle) {
+        insert_amount_aggregation_fixture(&db).await;
+        let source = PostgresWidgetQuerySource::new(db);
+
+        let result = source
+            .query(
+                date(2),
+                &market_query(
+                    WidgetMetric::Change,
+                    Some(WidgetPeriod::OneDay),
+                    WidgetAggregation::MarketCapWeighted,
+                ),
+            )
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            result,
+            Ok(vec![WidgetQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                value: Decimal::new(-5, 2),
+            }]),
         );
     }
 
