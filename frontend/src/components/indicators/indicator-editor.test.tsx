@@ -18,7 +18,7 @@ vi.mock('#components/indicators/monaco-setup', () => ({}))
 afterEach(cleanup)
 
 const BASE_INITIAL: IndicatorEditorValue = {
-  name: 'rsi',
+  name: 'demo-indicator',
   code: "print('{}')",
   inputSchema: '{}',
   outputSchema: '{}',

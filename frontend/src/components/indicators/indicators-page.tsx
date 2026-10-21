@@ -1,16 +1,13 @@
-import { Button } from '@fohte/ui/button'
 import { useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
 import { err, ok, Result, ResultAsync } from 'neverthrow'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import {
-  IndicatorEditor,
-  type IndicatorEditorValue,
-  type IndicatorScopeLabel,
-  type PreviewState,
+import type {
+  IndicatorEditorValue,
+  IndicatorScopeLabel,
+  PreviewState,
 } from '#components/indicators/indicator-editor'
-import { Skeleton } from '#components/ui/skeleton'
+import { IndicatorsPageView } from '#components/indicators/indicators-page-view'
 import { $api, fetchClient } from '#lib/api/client'
 import { parseJson } from '#lib/json'
 
@@ -339,77 +336,24 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
     updateMutation.isPending
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-indicators-list)">
-        <aside className="space-y-2 border-r border-border pr-4">
-          <Button
-            type="button"
-            onClick={() => {
-              selectIndicator({ id: null, creating: true })
-            }}
-            className="w-full justify-start gap-1.5"
-          >
-            <Plus className="size-3.5" /> 新規 indicator
-          </Button>
-          {isPending ? (
-            <Skeleton className="h-30 w-full" />
-          ) : (
-            <ul
-              data-testid="indicator-list"
-              className="space-y-0.5 font-mono text-sm"
-            >
-              {indicators.map((i) => {
-                const active = selectedId === i.indicator_id
-                return (
-                  <li key={i.indicator_id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        selectIndicator({
-                          id: i.indicator_id,
-                          creating: false,
-                        })
-                      }}
-                      data-active={active}
-                      className="w-full truncate border border-transparent px-2 py-1 text-left data-[active=true]:border-muted-foreground data-[active=true]:bg-surface-strong"
-                    >
-                      {i.name}
-                    </button>
-                  </li>
-                )
-              })}
-              {indicators.length === 0 && (
-                <li className="px-2 py-1 text-muted-foreground">
-                  まだ indicator がありません
-                </li>
-              )}
-            </ul>
-          )}
-        </aside>
-
-        <section>
-          {selectedId == null && !isCreating ? (
-            <div className="font-mono text-xs text-muted-foreground">
-              左から indicator を選択するか、「新規
-              indicator」を押してください。
-            </div>
-          ) : (
-            <IndicatorEditor
-              key={isCreating ? 'new' : selectedId}
-              scope={scope}
-              initial={initial}
-              nameReadOnly={!isCreating}
-              onSave={handleSave}
-              isSaving={isSaving}
-              saveError={saveError}
-              onPreview={(p) => {
-                void handlePreview(p)
-              }}
-              preview={preview}
-            />
-          )}
-        </section>
-      </div>
-    </div>
+    <IndicatorsPageView
+      scope={scope}
+      indicators={indicators.map((indicator) => ({
+        id: indicator.indicator_id,
+        name: indicator.name,
+      }))}
+      isPending={isPending}
+      selectedId={selectedId}
+      isCreating={isCreating}
+      initial={initial}
+      isSaving={isSaving}
+      saveError={saveError}
+      onSelectIndicator={selectIndicator}
+      onSave={handleSave}
+      onPreview={(p) => {
+        void handlePreview(p)
+      }}
+      preview={preview}
+    />
   )
 }

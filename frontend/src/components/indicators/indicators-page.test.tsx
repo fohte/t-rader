@@ -172,6 +172,17 @@ function setup(
   return { client }
 }
 
+function readIndicatorTabState() {
+  const nameInput = screen.getByLabelText('name')
+  return {
+    tabs: screen.getAllByRole('tab').map((tab) => ({
+      name: tab.textContent,
+      selected: tab.getAttribute('aria-selected'),
+    })),
+    editorName: nameInput instanceof HTMLInputElement ? nameInput.value : null,
+  }
+}
+
 afterEach(() => {
   cleanup()
   active?.eject()
@@ -183,38 +194,63 @@ describe('IndicatorsPage', () => {
     setup(
       {
         global: [
-          fixedRow({ indicator_id: 'g1', name: 'rsi-global' }),
-          fixedRow({ indicator_id: 'g2', name: 'macd-global' }),
+          fixedRow({ indicator_id: 'g1', name: 'demo-global-a' }),
+          fixedRow({ indicator_id: 'g2', name: 'demo-global-b' }),
         ],
         strategy: new Map([
-          ['s-1', [fixedRow({ indicator_id: 's1', name: 'only-s1' })]],
+          ['s-1', [fixedRow({ indicator_id: 's1', name: 'demo-strategy-a' })]],
         ]),
       },
       <IndicatorsPage scope="global" />,
     )
 
     const list = await screen.findByTestId('indicator-list')
-    expect(within(list).getByText('rsi-global')).toBeInTheDocument()
-    expect(within(list).getByText('macd-global')).toBeInTheDocument()
-    expect(within(list).queryByText('only-s1')).toBeNull()
+    expect(within(list).getByText('demo-global-a')).toBeInTheDocument()
+    expect(within(list).getByText('demo-global-b')).toBeInTheDocument()
+    expect(within(list).queryByText('demo-strategy-a')).toBeNull()
   })
 
   it('strategy scope: 指定戦略の indicator のみを一覧表示する', async () => {
     setup(
       {
-        global: [fixedRow({ indicator_id: 'g1', name: 'rsi-global' })],
+        global: [fixedRow({ indicator_id: 'g1', name: 'demo-global-a' })],
         strategy: new Map([
-          ['s-1', [fixedRow({ indicator_id: 's1', name: 'only-s1' })]],
-          ['s-2', [fixedRow({ indicator_id: 's2', name: 'only-s2' })]],
+          ['s-1', [fixedRow({ indicator_id: 's1', name: 'demo-strategy-a' })]],
+          ['s-2', [fixedRow({ indicator_id: 's2', name: 'demo-strategy-b' })]],
         ]),
       },
       <IndicatorsPage scope="strategy" strategyId="s-1" />,
     )
 
     const list = await screen.findByTestId('indicator-list')
-    expect(within(list).getByText('only-s1')).toBeInTheDocument()
-    expect(within(list).queryByText('only-s2')).toBeNull()
-    expect(within(list).queryByText('rsi-global')).toBeNull()
+    expect(within(list).getByText('demo-strategy-a')).toBeInTheDocument()
+    expect(within(list).queryByText('demo-strategy-b')).toBeNull()
+    expect(within(list).queryByText('demo-global-a')).toBeNull()
+  })
+
+  it('indicator tabs select the matching editor', async () => {
+    const user = userEvent.setup()
+    setup(
+      {
+        global: [
+          fixedRow({ indicator_id: 'id-a', name: 'demo-indicator-a' }),
+          fixedRow({ indicator_id: 'id-b', name: 'demo-indicator-b' }),
+        ],
+      },
+      <IndicatorsPage scope="global" />,
+    )
+
+    await screen.findByLabelText('name')
+    await user.click(screen.getByRole('tab', { name: 'demo-indicator-b' }))
+
+    expect(readIndicatorTabState()).toEqual({
+      tabs: [
+        { name: 'demo-indicator-a', selected: 'false' },
+        { name: 'demo-indicator-b', selected: 'true' },
+        { name: '新規 indicator', selected: 'false' },
+      ],
+      editorName: 'demo-indicator-b',
+    })
   })
 
   it('プレビューを実行すると POST /api/indicators/preview に code/schemas/args が送られ、結果が描画される', async () => {
@@ -224,7 +260,7 @@ describe('IndicatorsPage', () => {
         global: [
           fixedRow({
             indicator_id: 'g1',
-            name: 'rsi',
+            name: 'demo-indicator',
             code: "print('{}')",
             input_schema: { type: 'object' },
             output_schema: { type: 'object' },
@@ -234,9 +270,9 @@ describe('IndicatorsPage', () => {
       <IndicatorsPage scope="global" />,
     )
 
-    await screen.findByText('rsi')
+    await screen.findByText('demo-indicator')
     const argsArea = await screen.findByLabelText('preview args')
-    fireEvent.change(argsArea, { target: { value: '{"period": 14}' } })
+    fireEvent.change(argsArea, { target: { value: '{"value": 7}' } })
 
     await user.click(screen.getByRole('button', { name: 'プレビュー実行' }))
 
@@ -259,7 +295,7 @@ describe('IndicatorsPage', () => {
         code: "print('{}')",
         input_schema: { type: 'object' },
         output_schema: { type: 'object' },
-        args: { period: 14 },
+        args: { value: 7 },
       },
     ])
   })
@@ -267,10 +303,10 @@ describe('IndicatorsPage', () => {
   it('args が JSON として不正な場合、プレビューを送らずエラー表示する', async () => {
     const user = userEvent.setup()
     setup(
-      { global: [fixedRow({ indicator_id: 'g1', name: 'rsi' })] },
+      { global: [fixedRow({ indicator_id: 'g1', name: 'demo-indicator' })] },
       <IndicatorsPage scope="global" />,
     )
-    await screen.findByText('rsi')
+    await screen.findByText('demo-indicator')
 
     const argsArea = await screen.findByLabelText('preview args')
     fireEvent.change(argsArea, { target: { value: '{not-json' } })
@@ -287,14 +323,14 @@ describe('IndicatorsPage', () => {
     const user = userEvent.setup()
     setup({ global: [] }, <IndicatorsPage scope="global" />)
 
-    await user.click(screen.getByRole('button', { name: /新規 indicator/ }))
+    await user.click(screen.getByRole('tab', { name: /新規 indicator/ }))
     const nameInput = await screen.findByLabelText('name')
-    await user.type(nameInput, 'fresh')
+    await user.type(nameInput, 'demo-indicator-new')
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => {
       const list = screen.getByTestId('indicator-list')
-      expect(within(list).getByText('fresh')).toBeInTheDocument()
+      expect(within(list).getByText('demo-indicator-new')).toBeInTheDocument()
     })
   })
 })

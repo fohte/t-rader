@@ -74,10 +74,12 @@ export function IndicatorDetailPage(props: IndicatorDetailPageProps) {
               {changeLabel != null && (
                 <span
                   className={
-                    observationSummary.change != null &&
-                    observationSummary.change < 0
-                      ? 'font-mono text-sm tabular-nums text-destructive'
-                      : 'font-mono text-sm tabular-nums text-emerald-600 dark:text-emerald-400'
+                    observationSummary.change === null ||
+                    observationSummary.change === 0
+                      ? 'font-mono text-sm tabular-nums text-muted-foreground-strong'
+                      : observationSummary.change < 0
+                        ? 'font-mono text-sm tabular-nums text-down'
+                        : 'font-mono text-sm tabular-nums text-up'
                   }
                 >
                   {changeLabel}
