@@ -21,6 +21,7 @@ WITH seed AS (
         MIN(reference_date) AS reference_date
     FROM query_perf_seed_metadata
 ),
+-- 基準日から期待範囲を独立に導出し、seed が作ったデータの不足を検出する。
 expected_daily_dates AS (
     SELECT day::date AS bar_date
     FROM seed
@@ -101,6 +102,35 @@ coverage_by_timeframe AS (
         MAX((latest_timestamp AT TIME ZONE 'UTC')::date) AS last_date
     FROM bars_timestamp_coverage
     GROUP BY timeframe
+),
+minute_profiles AS (
+    SELECT
+        instrument_id,
+        (timestamp AT TIME ZONE 'UTC')::date AS bar_date,
+        COUNT(*)::bigint AS row_count,
+        COUNT(*) FILTER (
+            WHERE (timestamp AT TIME ZONE 'UTC')::time BETWEEN TIME '09:00' AND TIME '15:29'
+        ) AS session_row_count,
+        MIN((timestamp AT TIME ZONE 'UTC')::time) AS first_time,
+        MAX((timestamp AT TIME ZONE 'UTC')::time) AS last_time
+    FROM bars
+    WHERE timeframe = '1m'
+    GROUP BY instrument_id, (timestamp AT TIME ZONE 'UTC')::date
+),
+minute_profile_metrics AS (
+    SELECT
+        COUNT(*)::bigint AS profile_count,
+        COUNT(*) FILTER (
+            WHERE row_count = 390
+              AND session_row_count = 390
+              AND first_time = TIME '09:00'
+              AND last_time = TIME '15:29'
+        )::bigint AS complete_profile_count,
+        COUNT(DISTINCT instrument_id)::bigint AS instrument_count,
+        COUNT(DISTINCT bar_date)::bigint AS trading_day_count,
+        MIN(bar_date) AS first_date,
+        MAX(bar_date) AS last_date
+    FROM minute_profiles
 ),
 latest_chunk AS (
     SELECT range_start, range_end
@@ -190,6 +220,13 @@ SELECT jsonb_build_object(
     'expected_minute_first_date', expected_minute.first_date,
     'expected_minute_last_date', expected_minute.last_date,
     'expected_minute_trading_days', expected_minute.trading_days,
+    'minute_profile_count', minute_profile_metrics.profile_count,
+    'minute_complete_profile_count', minute_profile_metrics.complete_profile_count,
+    'minute_profile_instrument_count', minute_profile_metrics.instrument_count,
+    'minute_trading_day_count', minute_profile_metrics.trading_day_count
+) || jsonb_build_object(
+    'minute_profile_first_date', minute_profile_metrics.first_date,
+    'minute_profile_last_date', minute_profile_metrics.last_date,
     'valuation_row_count', valuation_metrics.row_count,
     'valuation_date_count', valuation_metrics.date_count,
     'valuation_first_date', valuation_metrics.first_date,
@@ -215,6 +252,7 @@ CROSS JOIN expected_valuation
 CROSS JOIN schema_metrics
 CROSS JOIN coverage
 CROSS JOIN valuation_metrics
+CROSS JOIN minute_profile_metrics
 CROSS JOIN group_metrics
 CROSS JOIN latest_chunk_metrics
 LEFT JOIN coverage_by_timeframe AS daily ON daily.timeframe = '1d'
@@ -267,6 +305,16 @@ BEGIN
         RAISE EXCEPTION 'minute bars do not cover the expected 10 trading days: actual=%..%, expected=%..%',
             metrics->>'minute_first_date', metrics->>'minute_last_date',
             metrics->>'expected_minute_first_date', metrics->>'expected_minute_last_date';
+    END IF;
+    IF (metrics->>'minute_profile_count')::bigint <> 30000
+        OR (metrics->>'minute_complete_profile_count')::bigint <> 30000
+        OR (metrics->>'minute_profile_instrument_count')::bigint <> 3000
+        OR (metrics->>'minute_trading_day_count')::bigint <> (metrics->>'expected_minute_trading_days')::bigint
+        OR metrics->>'minute_profile_first_date' IS DISTINCT FROM metrics->>'expected_minute_first_date'
+        OR metrics->>'minute_profile_last_date' IS DISTINCT FROM metrics->>'expected_minute_last_date' THEN
+        RAISE EXCEPTION 'each minute instrument must have 390 bars from 09:00 through 15:29 on every expected trading day: profiles=%, complete=%, instruments=%, days=%',
+            metrics->>'minute_profile_count', metrics->>'minute_complete_profile_count',
+            metrics->>'minute_profile_instrument_count', metrics->>'minute_trading_day_count';
     END IF;
     IF (metrics->>'valuation_row_count')::bigint < 2000000
         OR (metrics->>'valuation_date_count')::bigint < 134

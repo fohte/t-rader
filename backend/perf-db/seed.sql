@@ -164,7 +164,7 @@ FROM synthetic_stocks
 JOIN synthetic_hourly_trading_days ON synthetic_stocks.n <= 300
 CROSS JOIN LATERAL generate_series(0, 6) AS hourly_bars(hour)
 CROSS JOIN LATERAL (
-    SELECT (50 + synthetic_stocks.n %% 300 + hourly_bars.hour %% 20 / 10.0)::numeric AS close
+    SELECT (50 + synthetic_stocks.n % 300 + hourly_bars.hour % 20 / 10.0)::numeric AS close
 ) AS price;
 
 SELECT format(
