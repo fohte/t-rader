@@ -39,7 +39,7 @@
 //!     verbs: ["get"]
 //!   - apiGroups: [""]
 //!     resources: ["pods/attach"]
-//!     verbs: ["get"]
+//!     verbs: ["create", "get"]
 //! ```
 //!
 //! NetworkPolicy で `t-rader-exec` namespace の egress を全 deny、PSA は
