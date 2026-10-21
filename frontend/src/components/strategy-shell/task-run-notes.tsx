@@ -27,7 +27,7 @@ export function TaskRunNotes({
           id="task-run-notes-heading"
           className="font-mono text-xs text-muted-foreground-strong"
         >
-          <span aria-hidden="true" className="text-primary">
+          <span aria-hidden="true" className="text-foreground">
             &gt;
           </span>{' '}
           作成・更新したノート
@@ -56,7 +56,7 @@ export function TaskRunNotes({
               <Link
                 to="/notes/$noteId"
                 params={{ noteId: note.id }}
-                className="flex items-baseline gap-2 border border-border bg-background px-2.5 py-1.5 hover:border-primary"
+                className="flex items-baseline gap-2 border border-border bg-background px-2.5 py-1.5 hover:border-muted-foreground"
               >
                 <span className="flex-1 text-xs text-foreground">
                   {note.title}

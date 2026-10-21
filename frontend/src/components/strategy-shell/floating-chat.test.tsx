@@ -14,6 +14,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -79,6 +80,11 @@ function readChatRequests(requests: CapturedRequest[]) {
   return requests
     .filter(({ method, path }) => method === 'post' && path.includes('/chat'))
     .map(({ method, path, body }) => ({ method, path, body }))
+}
+
+async function selectStrategyA(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('combobox', { name: '戦略' }))
+  await user.click(await screen.findByRole('option', { name: '例示戦略 A' }))
 }
 
 function StockContextRoute() {
@@ -361,6 +367,7 @@ describe('FloatingChat', () => {
   })
 
   it('opens the note prompt with its registered context', async () => {
+    const user = userEvent.setup()
     const requests: CapturedRequest[] = []
     mockChatApi(requests)
     renderFloatingChat('/notes/demo-note')
@@ -371,9 +378,7 @@ describe('FloatingChat', () => {
       }),
     )
     await screen.findByText('ノート: 架空ノート')
-    fireEvent.change(screen.getByLabelText('戦略'), {
-      target: { value: 'demo-strategy-a' },
-    })
+    await selectStrategyA(user)
     fireEvent.click(screen.getByRole('button', { name: '送信' }))
 
     await waitFor(() => {
@@ -388,6 +393,7 @@ describe('FloatingChat', () => {
   })
 
   it('sends the active stock as context', async () => {
+    const user = userEvent.setup()
     const requests: CapturedRequest[] = []
     mockChatApi(requests)
     renderFloatingChat('/stocks/DEMO-A')
@@ -396,9 +402,7 @@ describe('FloatingChat', () => {
       await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
     )
     await screen.findByText('銘柄: 架空銘柄')
-    fireEvent.change(screen.getByLabelText('戦略'), {
-      target: { value: 'demo-strategy-a' },
-    })
+    await selectStrategyA(user)
     fireEvent.change(screen.getByLabelText('メッセージ入力'), {
       target: { value: 'この銘柄を確認する' },
     })
@@ -443,6 +447,7 @@ describe('FloatingChat', () => {
   })
 
   it('clears the registered context when leaving its screen', async () => {
+    const user = userEvent.setup()
     const requests: CapturedRequest[] = []
     mockChatApi(requests)
     const router = renderFloatingChat('/stocks/DEMO-A')
@@ -455,9 +460,7 @@ describe('FloatingChat', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: '文脈を外す' })).toBeNull()
     })
-    fireEvent.change(screen.getByLabelText('戦略'), {
-      target: { value: 'demo-strategy-a' },
-    })
+    await selectStrategyA(user)
     fireEvent.change(screen.getByLabelText('メッセージ入力'), {
       target: { value: '対象なしで確認する' },
     })
