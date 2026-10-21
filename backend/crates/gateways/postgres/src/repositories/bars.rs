@@ -552,30 +552,37 @@ mod tests {
         assert_eq!(actual, vec![corrected]);
     }
 
-    #[derive(Debug, FromQueryResult)]
-    struct RowTupleLocation {
-        ctid: String,
+    #[derive(Debug, Eq, PartialEq, FromQueryResult)]
+    struct BarUpdateCounts {
+        bars: i64,
+        coverage: i64,
     }
 
-    async fn find_row_tuple_location(
-        db: &impl ConnectionTrait,
-        table: &str,
-        instrument_id: &str,
-        timeframe: &str,
-    ) -> String {
+    async fn find_bar_update_counts(db: &impl ConnectionTrait) -> BarUpdateCounts {
         let row = db
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                format!(
-                    "SELECT ctid::text AS ctid FROM {table} WHERE instrument_id = $1 AND timeframe = $2"
-                ),
-                [instrument_id.into(), timeframe.into()],
+                "SELECT \
+                    ( \
+                        SELECT COALESCE(SUM(n_tup_upd), 0)::bigint \
+                        FROM pg_stat_xact_all_tables \
+                        WHERE relid IN ( \
+                            SELECT format('%I.%I', chunk_schema, chunk_name)::regclass \
+                            FROM timescaledb_information.chunks \
+                            WHERE hypertable_schema = 'public' AND hypertable_name = 'bars' \
+                        ) \
+                    ) AS bars, \
+                    COALESCE(( \
+                        SELECT n_tup_upd \
+                        FROM pg_stat_xact_all_tables \
+                        WHERE relid = 'public.bars_timestamp_coverage'::regclass \
+                    ), 0) AS coverage",
+                [],
             ))
-        .await
-        .expect("query row location")
-        .expect("row exists");
-        let row = RowTupleLocation::from_query_result(&row, "").expect("decode row location");
-        row.ctid
+            .await
+            .expect("query bar update counts")
+            .expect("update counts exist");
+        BarUpdateCounts::from_query_result(&row, "").expect("decode update counts")
     }
 
     #[backend_test_macros::database_test]
@@ -593,21 +600,15 @@ mod tests {
             .await
             .expect("insert bar");
 
-        let locations_before = (
-            find_row_tuple_location(&db, "bars", instrument_id, "1d").await,
-            find_row_tuple_location(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
-        );
+        let update_counts_before = find_bar_update_counts(&db).await;
 
         upsert_bars(&db, vec![bar])
             .await
             .expect("upsert unchanged bar");
 
-        let locations_after = (
-            find_row_tuple_location(&db, "bars", instrument_id, "1d").await,
-            find_row_tuple_location(&db, "bars_timestamp_coverage", instrument_id, "1d").await,
-        );
+        let update_counts_after = find_bar_update_counts(&db).await;
 
-        assert_eq!(locations_after, locations_before);
+        assert_eq!(update_counts_after, update_counts_before);
     }
 
     fn make_test_minute_bar(
