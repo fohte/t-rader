@@ -88,8 +88,10 @@ export function IndicatorEditorView({
         />
       </div>
 
-      <div className="space-y-1.5 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-        <div>code (Python)</div>
+      <div className="space-y-1.5">
+        <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+          code (Python)
+        </div>
         <CodeEditor
           language="python"
           value={value.code}
@@ -103,8 +105,10 @@ export function IndicatorEditorView({
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="space-y-1.5 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          <div>input_schema (JSON Schema)</div>
+        <div className="space-y-1.5">
+          <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+            input_schema (JSON Schema)
+          </div>
           <CodeEditor
             language="json"
             value={value.inputSchema}
@@ -116,8 +120,10 @@ export function IndicatorEditorView({
             height={200}
           />
         </div>
-        <div className="space-y-1.5 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          <div>output_schema (JSON Schema)</div>
+        <div className="space-y-1.5">
+          <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+            output_schema (JSON Schema)
+          </div>
           <CodeEditor
             language="json"
             value={value.outputSchema}
