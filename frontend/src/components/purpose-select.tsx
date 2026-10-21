@@ -33,8 +33,8 @@ export function PurposeSelect({
   ]
 
   return (
-    <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-      <span>実行目的</span>
+    <label className="flex items-center gap-2 font-mono text-xs">
+      <span className="text-muted-foreground">実行目的</span>
       <Select
         items={items}
         value={selectedPurpose || null}

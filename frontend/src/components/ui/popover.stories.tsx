@@ -15,14 +15,16 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   name: 'opens a centered popover with standard padding.',
   render: () => (
-    <Popover defaultOpen>
-      <PopoverTrigger
-        render={<Button variant="outline">ポップオーバー</Button>}
-      />
-      <PopoverContent>
-        <p>説明文を表示します。</p>
-      </PopoverContent>
-    </Popover>
+    <div className="grid min-h-screen place-items-center">
+      <Popover defaultOpen>
+        <PopoverTrigger
+          render={<Button variant="outline">ポップオーバー</Button>}
+        />
+        <PopoverContent>
+          <p>説明文を表示します。</p>
+        </PopoverContent>
+      </Popover>
+    </div>
   ),
 }
 
@@ -44,17 +46,19 @@ export const CandidateList: Story = {
 export const ExplicitPosition: Story = {
   name: 'places the popover above and aligns its end with the trigger.',
   render: () => (
-    <Popover defaultOpen>
-      <PopoverTrigger render={<Button variant="outline">位置指定</Button>} />
-      <PopoverContent
-        side="top"
-        sideOffset={8}
-        align="end"
-        alignOffset={4}
-        padding="sm"
-      >
-        <p>位置を明示した内容</p>
-      </PopoverContent>
-    </Popover>
+    <div className="grid min-h-screen place-items-center">
+      <Popover defaultOpen>
+        <PopoverTrigger render={<Button variant="outline">位置指定</Button>} />
+        <PopoverContent
+          side="top"
+          sideOffset={8}
+          align="end"
+          alignOffset={4}
+          padding="sm"
+        >
+          <p>位置を明示した内容</p>
+        </PopoverContent>
+      </Popover>
+    </div>
   ),
 }
