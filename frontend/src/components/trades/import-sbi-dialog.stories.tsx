@@ -20,8 +20,8 @@ function strategyStub(id: string, name: string, sortOrder: number): Strategy {
 }
 
 const strategies: Strategy[] = [
-  strategyStub('00000000-0000-0000-0000-000000000001', '半導体短期スイング', 0),
-  strategyStub('00000000-0000-0000-0000-000000000002', '高配当バリュー長期', 1),
+  strategyStub('00000000-0000-0000-0000-000000000001', '架空戦略 A', 0),
+  strategyStub('00000000-0000-0000-0000-000000000002', '架空戦略 B', 1),
 ]
 
 const meta = {

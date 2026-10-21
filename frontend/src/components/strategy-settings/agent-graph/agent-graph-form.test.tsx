@@ -32,26 +32,26 @@ beforeAll(() => {
 })
 
 const SAMPLE = `phases:
-  - key: plan
-    label: 見出し案
+  - key: alpha
+    label: サンプル
     model: fictional-model-orbit
-    prompt: テーマを読みやすい節に分ける
+    prompt: sample prompt
     output:
-      sections:
+      records:
         type: array
         items:
-          title: { type: string }
-      appendices:
+          name: { type: string }
+      entries:
         type: array
         items:
-          title: { type: string }
-  - key: compose
-    label: 節の作成
+          value: { type: string }
+  - key: beta
+    label: 次の段階
     model: fictional-model-lantern
-    for_each: plan.sections
-    label_field: title
+    for_each: alpha.records
+    label_field: name
     max_parallel: 4
-    prompt: 割り当てられた見出しに沿って、説明文を作成する。
+    prompt: sample prompt
 `
 
 const MODELS = [
@@ -71,12 +71,12 @@ const MODELS = [
   },
 ]
 const TOOLS = [
-  { name: 'find_reference', description: null },
-  { name: 'read_reference', description: null },
+  { name: 'tool_alpha', description: null },
+  { name: 'tool_beta', description: null },
 ]
 const SKILLS = {
-  outline_guide: '# outline_guide\n',
-  style_guide: '# style_guide\n',
+  skill_alpha: '# skill_alpha\n',
+  skill_beta: '# skill_beta\n',
 }
 
 function installMiddleware() {
@@ -129,7 +129,7 @@ function Controlled({
   return (
     <>
       <AgentGraphForm
-        purpose="explore"
+        purpose="sample-purpose"
         value={value}
         onChange={setValue}
         errorPhaseKey={errorPhaseKey}
@@ -164,65 +164,75 @@ afterEach(() => {
 describe('AgentGraphForm', () => {
   it('value が空文字列なら分割トグルが off で表示され、カードは出ない', () => {
     renderForm({ initial: '' })
-    expect(screen.getByLabelText('フェーズ分割を有効にする')).not.toBeChecked()
-    expect(screen.queryByTestId('phase-card-plan')).toBeNull()
+    expect(
+      screen.getByRole('checkbox', { name: 'フェーズ分割を有効にする' }),
+    ).not.toBeChecked()
+    expect(screen.queryByTestId('phase-card-alpha')).toBeNull()
   })
 
   it('value がフェーズを含めば分割トグルが on で、フェーズカードを表示する', () => {
     renderForm({ initial: SAMPLE })
-    expect(screen.getByLabelText('フェーズ分割を有効にする')).toBeChecked()
-    expect(screen.getByTestId('phase-card-plan')).toBeInTheDocument()
-    expect(screen.getByTestId('phase-card-compose')).toBeInTheDocument()
+    expect(
+      screen.getByRole('checkbox', { name: 'フェーズ分割を有効にする' }),
+    ).toBeChecked()
+    expect(screen.getByTestId('phase-card-alpha')).toBeInTheDocument()
+    expect(screen.getByTestId('phase-card-beta')).toBeInTheDocument()
   })
 
   it('トグルを off にすると値が空文字列になり、on に戻すと復元される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
 
-    await user.click(screen.getByLabelText('フェーズ分割を有効にする'))
-    expect(screen.queryByTestId('phase-card-plan')).toBeNull()
+    await user.click(
+      screen.getByRole('checkbox', { name: 'フェーズ分割を有効にする' }),
+    )
+    expect(screen.queryByTestId('phase-card-alpha')).toBeNull()
 
-    await user.click(screen.getByLabelText('フェーズ分割を有効にする'))
-    expect(screen.getByTestId('phase-card-plan')).toBeInTheDocument()
-    expect(screen.getByTestId('phase-card-compose')).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('checkbox', { name: 'フェーズ分割を有効にする' }),
+    )
+    expect(screen.getByTestId('phase-card-alpha')).toBeInTheDocument()
+    expect(screen.getByTestId('phase-card-beta')).toBeInTheDocument()
   })
 
   it('未設定の状態でトグルを on にすると最小構成のフェーズが 1 件作られる', async () => {
     const user = userEvent.setup()
     renderForm({ initial: '' })
-    await user.click(screen.getByLabelText('フェーズ分割を有効にする'))
+    await user.click(
+      screen.getByRole('checkbox', { name: 'フェーズ分割を有効にする' }),
+    )
     expect(screen.getAllByTestId(/^phase-card-/)).toHaveLength(1)
   })
 
   it('フェーズ名を編集すると値に反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
 
-    const labelInput = planCard.getByLabelText('フェーズ名')
+    const labelInput = alphaCard.getByLabelText('フェーズ名')
     await user.clear(labelInput)
-    await user.type(labelInput, '新しい見出し案')
-    expect(labelInput).toHaveValue('新しい見出し案')
+    await user.type(labelInput, '新しいサンプル')
+    expect(labelInput).toHaveValue('新しいサンプル')
 
     const yamlValue = screen.getByTestId('yaml-value').textContent
     expect(parseAgentGraphPhases(yamlValue)?.[0]).toEqual({
-      key: 'plan',
-      label: '新しい見出し案',
+      key: 'alpha',
+      label: '新しいサンプル',
       model: 'fictional-model-orbit',
-      prompt: 'テーマを読みやすい節に分ける',
+      prompt: 'sample prompt',
       forEach: undefined,
       labelField: undefined,
       maxParallel: undefined,
       skills: [],
       tools: undefined,
       output: {
-        sections: {
+        records: {
           type: 'array',
-          items: { title: { type: 'string' } },
+          items: { name: { type: 'string' } },
         },
-        appendices: {
+        entries: {
           type: 'array',
-          items: { title: { type: 'string' } },
+          items: { value: { type: 'string' } },
         },
       },
     })
@@ -231,9 +241,9 @@ describe('AgentGraphForm', () => {
   it('プロンプトを編集すると値に反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
 
-    const promptInput = planCard.getByLabelText('プロンプト')
+    const promptInput = alphaCard.getByLabelText('プロンプト')
     await user.clear(promptInput)
     await user.type(promptInput, '新しいプロンプト')
     expect(promptInput).toHaveValue('新しいプロンプト')
@@ -242,9 +252,9 @@ describe('AgentGraphForm', () => {
   it('モデルを select から選ぶと値に反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
 
-    const trigger = await planCard.findByRole('combobox', { name: 'モデル' })
+    const trigger = await alphaCard.findByRole('combobox', { name: 'モデル' })
     expect(trigger).toHaveTextContent('fictional-model-orbit')
 
     await user.click(trigger)
@@ -257,47 +267,43 @@ describe('AgentGraphForm', () => {
   it('tool チップを追加・削除でき、絞り込みの有無を tools キーの有無で表現する', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
 
     // 初期状態は tools 省略 (全 tool 使用可)
-    expect(await planCard.findByText('すべての tool')).toBeInTheDocument()
+    expect(await alphaCard.findByText('すべての tool')).toBeInTheDocument()
 
-    await user.click(planCard.getByRole('button', { name: '絞り込む' }))
-    expect(planCard.queryByText('すべての tool')).toBeNull()
+    await user.click(alphaCard.getByRole('button', { name: '絞り込む' }))
+    expect(alphaCard.queryByText('すべての tool')).toBeNull()
 
-    await user.click(planCard.getByRole('button', { name: 'tool を追加' }))
-    await user.click(
-      await screen.findByRole('button', { name: 'find_reference' }),
-    )
-    expect(planCard.getByText('find_reference')).toBeInTheDocument()
+    await user.click(alphaCard.getByRole('button', { name: 'tool を追加' }))
+    await user.click(await screen.findByRole('button', { name: 'tool_alpha' }))
+    expect(alphaCard.getByText('tool_alpha')).toBeInTheDocument()
 
     await user.click(
-      planCard.getByRole('button', { name: 'tool "find_reference" を外す' }),
+      alphaCard.getByRole('button', { name: 'tool "tool_alpha" を外す' }),
     )
-    expect(planCard.queryByText('find_reference')).toBeNull()
+    expect(alphaCard.queryByText('tool_alpha')).toBeNull()
 
-    await user.click(planCard.getByRole('button', { name: '全 tool に戻す' }))
-    expect(await planCard.findByText('すべての tool')).toBeInTheDocument()
+    await user.click(alphaCard.getByRole('button', { name: '全 tool に戻す' }))
+    expect(await alphaCard.findByText('すべての tool')).toBeInTheDocument()
   })
 
   it('skill チップを追加・削除できる', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
 
     // tools が未設定 (絞り込む前) の間は「+ 追加」ボタンは skills 側だけに存在する
     await user.click(
-      await planCard.findByRole('button', { name: 'skill を追加' }),
+      await alphaCard.findByRole('button', { name: 'skill を追加' }),
     )
-    await user.click(
-      await screen.findByRole('button', { name: 'outline_guide' }),
-    )
-    expect(planCard.getByText('outline_guide')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'skill_alpha' }))
+    expect(alphaCard.getByText('skill_alpha')).toBeInTheDocument()
 
     await user.click(
-      planCard.getByRole('button', { name: 'skill "outline_guide" を外す' }),
+      alphaCard.getByRole('button', { name: 'skill "skill_alpha" を外す' }),
     )
-    expect(planCard.queryByText('outline_guide')).toBeNull()
+    expect(alphaCard.queryByText('skill_alpha')).toBeNull()
   })
 
   it('「+ フェーズを追加」で末尾にカードが増える', async () => {
@@ -311,66 +317,64 @@ describe('AgentGraphForm', () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
     await user.click(
-      screen.getByRole('button', { name: 'フェーズ 見出し案 を削除' }),
+      screen.getByRole('button', { name: 'フェーズ サンプル を削除' }),
     )
     expect(screen.getAllByTestId(/^phase-card-/)).toHaveLength(1)
-    expect(screen.getByTestId('phase-card-compose')).toBeInTheDocument()
+    expect(screen.getByTestId('phase-card-beta')).toBeInTheDocument()
   })
 
   it('並び替えでカードの表示順が入れ替わる', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
     await user.click(
-      screen.getByRole('button', { name: 'フェーズ 節の作成 を上に移動' }),
+      screen.getByRole('button', { name: 'フェーズ 次の段階 を上に移動' }),
     )
     const cards = screen.getAllByTestId(/^phase-card-/)
     expect(cards.map((c) => c.dataset['testid'])).toEqual([
-      'phase-card-compose',
-      'phase-card-plan',
+      'phase-card-beta',
+      'phase-card-alpha',
     ])
   })
 
   it('errorPhaseKey と一致するカードにだけエラーを表示する', () => {
-    renderForm({ initial: SAMPLE, errorPhaseKey: 'compose' })
-    const composeCard = screen.getByTestId('phase-card-compose')
-    const planCard = screen.getByTestId('phase-card-plan')
-    expect(
-      composeCard.querySelector('[data-testid="phase-error"]'),
-    ).not.toBeNull()
-    expect(planCard.querySelector('[data-testid="phase-error"]')).toBeNull()
+    renderForm({ initial: SAMPLE, errorPhaseKey: 'beta' })
+    const betaCard = screen.getByTestId('phase-card-beta')
+    const alphaCard = screen.getByTestId('phase-card-alpha')
+    expect(betaCard.querySelector('[data-testid="phase-error"]')).not.toBeNull()
+    expect(alphaCard.querySelector('[data-testid="phase-error"]')).toBeNull()
   })
 
   it('for_each を持つフェーズは参照元フェーズの label を説明文に使う', () => {
     renderForm({ initial: SAMPLE })
-    expect(screen.getByText(/見出し案 が返す/)).toBeInTheDocument()
+    expect(screen.getByText(/サンプル が返す/)).toBeInTheDocument()
   })
 
   it('for_each を持たないフェーズにはノード名・並列上限を表示しない', () => {
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
-    expect(planCard.queryByLabelText('ノード名')).toBeNull()
-    expect(planCard.queryByLabelText('並列上限')).toBeNull()
+    const alphaCard = within(screen.getByTestId('phase-card-alpha'))
+    expect(alphaCard.queryByLabelText('ノード名')).toBeNull()
+    expect(alphaCard.queryByLabelText('並列上限')).toBeNull()
   })
 
   it('for_each を持つフェーズにはノード名・並列上限を表示する', () => {
     renderForm({ initial: SAMPLE })
-    const composeCard = within(screen.getByTestId('phase-card-compose'))
-    expect(composeCard.getByLabelText('実行回数')).toBeInTheDocument()
-    expect(composeCard.getByLabelText('ノード名')).toBeInTheDocument()
-    expect(composeCard.getByLabelText('並列上限')).toBeInTheDocument()
+    const betaCard = within(screen.getByTestId('phase-card-beta'))
+    expect(betaCard.getByLabelText('実行回数')).toBeInTheDocument()
+    expect(betaCard.getByLabelText('ノード名')).toBeInTheDocument()
+    expect(betaCard.getByLabelText('並列上限')).toBeInTheDocument()
   })
 
   it('並列上限は既存の値を反映する', () => {
     renderForm({ initial: SAMPLE })
-    const composeCard = within(screen.getByTestId('phase-card-compose'))
-    expect(composeCard.getByLabelText('並列上限')).toHaveValue(4)
+    const betaCard = within(screen.getByTestId('phase-card-beta'))
+    expect(betaCard.getByLabelText('並列上限')).toHaveValue(4)
   })
 
   it('並列上限を編集すると値に反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const composeCard = within(screen.getByTestId('phase-card-compose'))
-    const maxParallelInput = composeCard.getByLabelText('並列上限')
+    const betaCard = within(screen.getByTestId('phase-card-beta'))
+    const maxParallelInput = betaCard.getByLabelText('並列上限')
     await user.clear(maxParallelInput)
     await user.type(maxParallelInput, '8')
     expect(maxParallelInput).toHaveValue(8)
@@ -379,51 +383,49 @@ describe('AgentGraphForm', () => {
   it('実行回数を別の参照先に切り替えると、旧参照先の items に紐づくノード名の選択がリセットされる', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const composeCard = within(screen.getByTestId('phase-card-compose'))
-    expect(composeCard.getByLabelText('ノード名')).toHaveTextContent('title')
+    const betaCard = within(screen.getByTestId('phase-card-beta'))
+    expect(betaCard.getByLabelText('ノード名')).toHaveTextContent('name')
 
-    await user.click(composeCard.getByLabelText('実行回数'))
+    await user.click(betaCard.getByLabelText('実行回数'))
     await user.click(
-      await screen.findByRole('option', { name: /appendices\[\] の要素ごと/ }),
+      await screen.findByRole('option', { name: /entries\[\] の要素ごと/ }),
     )
 
     expect(
-      within(screen.getByTestId('phase-card-compose')).getByLabelText(
-        'ノード名',
-      ),
+      within(screen.getByTestId('phase-card-beta')).getByLabelText('ノード名'),
     ).toHaveTextContent('(選択肢なし)')
   })
 
   it('出力スキーマを編集すると value (YAML) の output に反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const composeCard = within(screen.getByTestId('phase-card-compose'))
+    const betaCard = within(screen.getByTestId('phase-card-beta'))
 
-    const outputInput = composeCard.getByLabelText('出力スキーマ')
-    await user.type(outputInput, 'abstract:{enter}  type: string')
+    const outputInput = betaCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'x:{enter}  type: string')
 
-    expect(composeCard.getByText('✓ valid')).toBeInTheDocument()
+    expect(betaCard.getByText('✓ valid')).toBeInTheDocument()
     const yamlValue = screen.getByTestId('yaml-value').textContent
     expect(parseAgentGraphPhases(yamlValue)?.[1]?.output).toEqual({
-      abstract: { type: 'string' },
+      x: { type: 'string' },
     })
   })
 
   it('不正な出力スキーマは検証エラーを表示しつつも value (YAML) には反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const composeCard = within(screen.getByTestId('phase-card-compose'))
+    const betaCard = within(screen.getByTestId('phase-card-beta'))
 
-    const outputInput = composeCard.getByLabelText('出力スキーマ')
-    await user.type(outputInput, 'abstract:{enter}  enum: brief')
+    const outputInput = betaCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'x:{enter}  enum: brief')
 
     expect(
-      composeCard.getByText(/enum は配列である必要があります/),
+      betaCard.getByText(/enum は配列である必要があります/),
     ).toBeInTheDocument()
     // 構造的な issue は警告に留め、YAML として妥当な限り value への反映はブロックしない
     const yamlValue = screen.getByTestId('yaml-value').textContent
     expect(parseAgentGraphPhases(yamlValue)?.[1]?.output).toEqual({
-      abstract: { enum: 'brief' },
+      x: { enum: 'brief' },
     })
   })
 })

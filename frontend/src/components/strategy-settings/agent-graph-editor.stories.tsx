@@ -31,13 +31,13 @@ const MODELS = [
   },
 ]
 const TOOLS = [
-  { name: 'find_reference', description: null },
-  { name: 'read_reference', description: null },
-  { name: 'save_draft', description: null },
+  { name: 'tool_alpha', description: null },
+  { name: 'tool_beta', description: null },
+  { name: 'tool_gamma', description: null },
 ]
 const SKILLS = {
-  outline_guide: '# outline_guide\n',
-  style_guide: '# style_guide\n',
+  skill_alpha: '# skill_alpha\n',
+  skill_beta: '# skill_beta\n',
 }
 
 // Storybook にはグローバルな QueryClientProvider が無いため、$api.useQuery を使う
@@ -102,33 +102,33 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 const SAMPLE = `phases:
-  - key: plan
-    label: 見出し案
+  - key: alpha
+    label: サンプル
     model: fictional-model-orbit
     runs: once
-    tools: [find_reference]
-    skills: [outline_guide]
-    prompt: 与えられたテーマを 2-4 個の見出しに分ける。
+    tools: [tool_alpha]
+    skills: [skill_alpha]
+    prompt: sample prompt
     output:
-      sections:
+      records:
         type: array
-  - key: compose
-    label: 節の作成
+  - key: beta
+    label: 次の段階
     model: fictional-model-lantern
-    for_each: plan.sections
-    label_field: title
+    for_each: alpha.records
+    label_field: name
     max_parallel: 4
-    prompt: 割り当てられた見出しに沿って、説明文を作成する。
-  - key: synthesize
-    label: 統合
+    prompt: sample prompt
+  - key: gamma
+    label: 最後の段階
     model: fictional-model-maple
-    prompt: 作成した節を読みやすい順序にまとめ、全体の概要を記す。
+    prompt: sample prompt
 `
 
 export const FormView: Story = {
   name: 'shows a populated multi-phase agent graph form.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     initialValue: SAMPLE,
     onSave: () => {},
   },
@@ -137,7 +137,7 @@ export const FormView: Story = {
 export const PhaseSplitDisabled: Story = {
   name: 'shows the phase split toggle switched off with no phase cards.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     initialValue: '',
     onSave: () => {},
   },
@@ -146,7 +146,7 @@ export const PhaseSplitDisabled: Story = {
 export const BrokenYaml: Story = {
   name: 'shows a parse error for malformed graph YAML.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     initialValue: 'phases: [',
     onSave: () => {},
   },
@@ -155,17 +155,17 @@ export const BrokenYaml: Story = {
 export const SaveErrorOnPhase: Story = {
   name: 'shows a save error attached to a specific phase.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     initialValue: SAMPLE,
     onSave: () => {},
-    saveError: 'phase key "plan" is duplicated',
+    saveError: 'phase key "alpha" is duplicated',
   },
 }
 
 export const Saving: Story = {
   name: 'shows the graph editor while changes are being saved.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     initialValue: SAMPLE,
     onSave: () => {},
     isSaving: true,

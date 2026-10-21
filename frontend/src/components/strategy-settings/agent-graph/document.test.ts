@@ -15,23 +15,23 @@ import {
 } from '#components/strategy-settings/agent-graph/document'
 
 const SAMPLE = `phases:
-  - key: plan
-    label: 見出し案
+  - key: alpha
+    label: サンプル
     model: fictional-model-orbit
     runs: once
-    prompt: テーマを読みやすい節に分ける
-  - key: compose
-    label: 節の作成
+    prompt: sample prompt
+  - key: beta
+    label: 次の段階
     model: fictional-model-lantern
-    for_each: plan.sections
-    label_field: title
+    for_each: alpha.records
+    label_field: name
     max_parallel: 4
-    prompt: 割り当てられた見出しに沿って、説明文を作成する。
-    tools: [read_reference, save_draft]
+    prompt: sample prompt
+    tools: [tool_beta, tool_gamma]
 `
 
 const INCOMPLETE_PHASE = `phases:
-  - key: plan
+  - key: alpha
     label: l
 `
 
@@ -44,10 +44,10 @@ describe('parseAgentGraphPhases', () => {
   it('runs を含む有効な YAML から編集用フェーズを取り出す (runs 自体はフォームの型に出さない)', () => {
     expect(parseAgentGraphPhases(SAMPLE)).toEqual([
       {
-        key: 'plan',
-        label: '見出し案',
+        key: 'alpha',
+        label: 'サンプル',
         model: 'fictional-model-orbit',
-        prompt: 'テーマを読みやすい節に分ける',
+        prompt: 'sample prompt',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
@@ -56,15 +56,15 @@ describe('parseAgentGraphPhases', () => {
         output: {},
       },
       {
-        key: 'compose',
-        label: '節の作成',
+        key: 'beta',
+        label: '次の段階',
         model: 'fictional-model-lantern',
-        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-        forEach: 'plan.sections',
-        labelField: 'title',
+        prompt: 'sample prompt',
+        forEach: 'alpha.records',
+        labelField: 'name',
         maxParallel: 4,
         skills: [],
-        tools: ['read_reference', 'save_draft'],
+        tools: ['tool_beta', 'tool_gamma'],
         output: {},
       },
     ])
@@ -96,10 +96,10 @@ describe('setPhaseField', () => {
     const next = setPhaseField(SAMPLE, 0, 'model', 'fictional-model-maple')
     expect(parseAgentGraphPhases(next)).toEqual([
       {
-        key: 'plan',
-        label: '見出し案',
+        key: 'alpha',
+        label: 'サンプル',
         model: 'fictional-model-maple',
-        prompt: 'テーマを読みやすい節に分ける',
+        prompt: 'sample prompt',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
@@ -108,15 +108,15 @@ describe('setPhaseField', () => {
         output: {},
       },
       {
-        key: 'compose',
-        label: '節の作成',
+        key: 'beta',
+        label: '次の段階',
         model: 'fictional-model-lantern',
-        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-        forEach: 'plan.sections',
-        labelField: 'title',
+        prompt: 'sample prompt',
+        forEach: 'alpha.records',
+        labelField: 'name',
         maxParallel: 4,
         skills: [],
-        tools: ['read_reference', 'save_draft'],
+        tools: ['tool_beta', 'tool_gamma'],
         output: {},
       },
     ])
@@ -125,12 +125,12 @@ describe('setPhaseField', () => {
   })
 
   it('label を書き換えられる', () => {
-    const next = setPhaseField(SAMPLE, 0, 'label', '新しい見出し案')
+    const next = setPhaseField(SAMPLE, 0, 'label', '新しいサンプル')
     expect(parseAgentGraphPhases(next)?.[0]).toEqual({
-      key: 'plan',
-      label: '新しい見出し案',
+      key: 'alpha',
+      label: '新しいサンプル',
       model: 'fictional-model-orbit',
-      prompt: 'テーマを読みやすい節に分ける',
+      prompt: 'sample prompt',
       forEach: undefined,
       labelField: undefined,
       maxParallel: undefined,
@@ -150,13 +150,13 @@ describe('setPhaseField', () => {
 
 describe('setPhaseForEach', () => {
   it('値を設定すると for_each が書き込まれる', () => {
-    const next = setPhaseForEach(SAMPLE, 0, 'plan.sections')
+    const next = setPhaseForEach(SAMPLE, 0, 'alpha.records')
     expect(parseAgentGraphPhases(next)?.[0]).toEqual({
-      key: 'plan',
-      label: '見出し案',
+      key: 'alpha',
+      label: 'サンプル',
       model: 'fictional-model-orbit',
-      prompt: 'テーマを読みやすい節に分ける',
-      forEach: 'plan.sections',
+      prompt: 'sample prompt',
+      forEach: 'alpha.records',
       labelField: undefined,
       maxParallel: undefined,
       skills: [],
@@ -168,15 +168,15 @@ describe('setPhaseForEach', () => {
   it('undefined を渡すと for_each キーごと消える (label_field/max_parallel は残す)', () => {
     const next = setPhaseForEach(SAMPLE, 1, undefined)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'compose',
-      label: '節の作成',
+      key: 'beta',
+      label: '次の段階',
       model: 'fictional-model-lantern',
-      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
+      prompt: 'sample prompt',
       forEach: undefined,
-      labelField: 'title',
+      labelField: 'name',
       maxParallel: 4,
       skills: [],
-      tools: ['read_reference', 'save_draft'],
+      tools: ['tool_beta', 'tool_gamma'],
       output: {},
     })
   })
@@ -186,15 +186,15 @@ describe('setPhaseLabelField', () => {
   it('値を設定すると label_field が書き込まれる', () => {
     const next = setPhaseLabelField(SAMPLE, 1, 'overview')
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'compose',
-      label: '節の作成',
+      key: 'beta',
+      label: '次の段階',
       model: 'fictional-model-lantern',
-      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-      forEach: 'plan.sections',
+      prompt: 'sample prompt',
+      forEach: 'alpha.records',
       labelField: 'overview',
       maxParallel: 4,
       skills: [],
-      tools: ['read_reference', 'save_draft'],
+      tools: ['tool_beta', 'tool_gamma'],
       output: {},
     })
   })
@@ -202,15 +202,15 @@ describe('setPhaseLabelField', () => {
   it('undefined を渡すと label_field キーごと消える', () => {
     const next = setPhaseLabelField(SAMPLE, 1, undefined)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'compose',
-      label: '節の作成',
+      key: 'beta',
+      label: '次の段階',
       model: 'fictional-model-lantern',
-      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-      forEach: 'plan.sections',
+      prompt: 'sample prompt',
+      forEach: 'alpha.records',
       labelField: undefined,
       maxParallel: 4,
       skills: [],
-      tools: ['read_reference', 'save_draft'],
+      tools: ['tool_beta', 'tool_gamma'],
       output: {},
     })
   })
@@ -220,15 +220,15 @@ describe('setPhaseMaxParallel', () => {
   it('値を設定すると max_parallel が書き込まれる', () => {
     const next = setPhaseMaxParallel(SAMPLE, 1, 8)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'compose',
-      label: '節の作成',
+      key: 'beta',
+      label: '次の段階',
       model: 'fictional-model-lantern',
-      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-      forEach: 'plan.sections',
-      labelField: 'title',
+      prompt: 'sample prompt',
+      forEach: 'alpha.records',
+      labelField: 'name',
       maxParallel: 8,
       skills: [],
-      tools: ['read_reference', 'save_draft'],
+      tools: ['tool_beta', 'tool_gamma'],
       output: {},
     })
   })
@@ -236,15 +236,15 @@ describe('setPhaseMaxParallel', () => {
   it('undefined を渡すと max_parallel キーごと消える', () => {
     const next = setPhaseMaxParallel(SAMPLE, 1, undefined)
     expect(parseAgentGraphPhases(next)?.[1]).toEqual({
-      key: 'compose',
-      label: '節の作成',
+      key: 'beta',
+      label: '次の段階',
       model: 'fictional-model-lantern',
-      prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-      forEach: 'plan.sections',
-      labelField: 'title',
+      prompt: 'sample prompt',
+      forEach: 'alpha.records',
+      labelField: 'name',
       maxParallel: undefined,
       skills: [],
-      tools: ['read_reference', 'save_draft'],
+      tools: ['tool_beta', 'tool_gamma'],
       output: {},
     })
   })
@@ -253,41 +253,41 @@ describe('setPhaseMaxParallel', () => {
 describe('setPhaseOutput', () => {
   it('指定したフェーズの output だけを書き換え、他フィールド・他フェーズはそのまま残す', () => {
     const next = setPhaseOutput(SAMPLE, 0, {
-      sections: {
+      records: {
         type: 'array',
-        items: { title: { type: 'string' } },
-        required: ['title'],
+        items: { name: { type: 'string' } },
+        required: ['name'],
       },
     })
     expect(parseAgentGraphPhases(next)).toEqual([
       {
-        key: 'plan',
-        label: '見出し案',
+        key: 'alpha',
+        label: 'サンプル',
         model: 'fictional-model-orbit',
-        prompt: 'テーマを読みやすい節に分ける',
+        prompt: 'sample prompt',
         forEach: undefined,
         labelField: undefined,
         maxParallel: undefined,
         skills: [],
         tools: undefined,
         output: {
-          sections: {
+          records: {
             type: 'array',
-            items: { title: { type: 'string' } },
-            required: ['title'],
+            items: { name: { type: 'string' } },
+            required: ['name'],
           },
         },
       },
       {
-        key: 'compose',
-        label: '節の作成',
+        key: 'beta',
+        label: '次の段階',
         model: 'fictional-model-lantern',
-        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-        forEach: 'plan.sections',
-        labelField: 'title',
+        prompt: 'sample prompt',
+        forEach: 'alpha.records',
+        labelField: 'name',
         maxParallel: 4,
         skills: [],
-        tools: ['read_reference', 'save_draft'],
+        tools: ['tool_beta', 'tool_gamma'],
         output: {},
       },
     ])
@@ -297,7 +297,7 @@ describe('setPhaseOutput', () => {
 
   it('空オブジェクトを書き込むと output は空になる', () => {
     const withOutput = setPhaseOutput(SAMPLE, 0, {
-      abstract: { type: 'string' },
+      sample_field: { type: 'string' },
     })
     const cleared = setPhaseOutput(withOutput, 0, {})
     expect(parseAgentGraphPhases(cleared)?.[0]?.output).toEqual({})
@@ -310,10 +310,10 @@ describe('setPhaseArrayField', () => {
     expect(parseAgentGraphPhases(next)?.[0]?.tools).toEqual(['read_note'])
     // 他のフィールドは変化しない
     expect(parseAgentGraphPhases(next)?.[0]).toEqual({
-      key: 'plan',
-      label: '見出し案',
+      key: 'alpha',
+      label: 'サンプル',
       model: 'fictional-model-orbit',
-      prompt: 'テーマを読みやすい節に分ける',
+      prompt: 'sample prompt',
       forEach: undefined,
       labelField: undefined,
       maxParallel: undefined,
@@ -323,8 +323,8 @@ describe('setPhaseArrayField', () => {
     })
     // 他のフェーズは変化しない
     expect(parseAgentGraphPhases(next)?.[1]?.tools).toEqual([
-      'read_reference',
-      'save_draft',
+      'tool_beta',
+      'tool_gamma',
     ])
     // runs はフォームの型には出ないが、YAML 上は素通しされたままであること
     expect(parseDocument(next).getIn(['phases', 0, 'runs'])).toBe('once')
@@ -345,8 +345,8 @@ describe('setPhaseArrayField', () => {
   })
 
   it('skills にも配列を書き込める', () => {
-    const next = setPhaseArrayField(SAMPLE, 0, 'skills', ['outline_guide'])
-    expect(parseAgentGraphPhases(next)?.[0]?.skills).toEqual(['outline_guide'])
+    const next = setPhaseArrayField(SAMPLE, 0, 'skills', ['skill_alpha'])
+    expect(parseAgentGraphPhases(next)?.[0]?.skills).toEqual(['skill_alpha'])
   })
 })
 
@@ -392,15 +392,15 @@ describe('removePhase', () => {
     const next = removePhase(SAMPLE, 0)
     expect(parseAgentGraphPhases(next)).toEqual([
       {
-        key: 'compose',
-        label: '節の作成',
+        key: 'beta',
+        label: '次の段階',
         model: 'fictional-model-lantern',
-        prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-        forEach: 'plan.sections',
-        labelField: 'title',
+        prompt: 'sample prompt',
+        forEach: 'alpha.records',
+        labelField: 'name',
         maxParallel: 4,
         skills: [],
-        tools: ['read_reference', 'save_draft'],
+        tools: ['tool_beta', 'tool_gamma'],
         output: {},
       },
     ])
@@ -411,16 +411,16 @@ describe('movePhase', () => {
   it('up で 1 つ前と入れ替える', () => {
     const next = movePhase(SAMPLE, 1, 'up')
     expect(parseAgentGraphPhases(next)?.map((p) => p.key)).toEqual([
-      'compose',
-      'plan',
+      'beta',
+      'alpha',
     ])
   })
 
   it('down で 1 つ後ろと入れ替える', () => {
     const next = movePhase(SAMPLE, 0, 'down')
     expect(parseAgentGraphPhases(next)?.map((p) => p.key)).toEqual([
-      'compose',
-      'plan',
+      'beta',
+      'alpha',
     ])
   })
 

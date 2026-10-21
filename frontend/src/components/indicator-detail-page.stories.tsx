@@ -14,7 +14,7 @@ const notes: Note[] = [
     version_id: 'fake-version-a',
     version_no: 1,
     is_current: true,
-    title: '為替変動を確認するメモ',
+    title: 'サンプル値を確認するメモ',
     body_md: '表示用の架空ノートです。',
     frontmatter_json: {},
     resolved_price_references_json: {},
@@ -25,14 +25,14 @@ const notes: Note[] = [
     trigger: null,
     trigger_label: null,
     created_by_kind: 'llm',
-    created_at: '2026-10-09T03:00:00Z',
-    updated_at: '2026-10-09T03:00:00Z',
+    created_at: '2040-01-02T03:00:00Z',
+    updated_at: '2040-01-02T03:00:00Z',
   },
 ]
 
 const observations = [
-  { date: '2026-10-08', value: 151.52 },
-  { date: '2026-10-09', value: 152.34 },
+  { date: '2040-01-01', value: 100 },
+  { date: '2040-01-02', value: 103 },
 ]
 
 function withRouter(Story: ComponentType) {
@@ -60,7 +60,7 @@ type Story = StoryObj<typeof meta>
 
 const loadedArgs = {
   state: 'loaded',
-  indicator: { id: 'DEMO_FX', name: 'デモ為替', kind: 'macro' },
+  indicator: { id: 'demo-indicator', name: 'サンプル指標', kind: 'demo-kind' },
   observations,
   visibleObservations: observations,
   isObservationsLoading: false,
@@ -124,8 +124,38 @@ export const NoPreviousValue: Story = {
   name: 'the page omits the change when there is no previous value.',
   args: {
     ...loadedArgs,
-    observations: [{ date: '2026-10-09', value: 152.34 }],
-    visibleObservations: [{ date: '2026-10-09', value: 152.34 }],
+    observations: [{ date: '2040-01-02', value: 103 }],
+    visibleObservations: [{ date: '2040-01-02', value: 103 }],
+  },
+}
+
+export const LatestValueDecline: Story = {
+  name: 'the page shows a negative change with the down color.',
+  args: {
+    ...loadedArgs,
+    observations: [
+      { date: '2040-01-01', value: 103 },
+      { date: '2040-01-02', value: 100 },
+    ],
+    visibleObservations: [
+      { date: '2040-01-01', value: 103 },
+      { date: '2040-01-02', value: 100 },
+    ],
+  },
+}
+
+export const LatestValueUnchanged: Story = {
+  name: 'the page shows an unchanged value with a neutral color.',
+  args: {
+    ...loadedArgs,
+    observations: [
+      { date: '2040-01-01', value: 100 },
+      { date: '2040-01-02', value: 100 },
+    ],
+    visibleObservations: [
+      { date: '2040-01-01', value: 100 },
+      { date: '2040-01-02', value: 100 },
+    ],
   },
 }
 

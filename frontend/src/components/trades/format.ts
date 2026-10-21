@@ -16,10 +16,22 @@ export function formatYen(value: number, signed = false): string {
   return rounded < 0 ? `−¥${abs}` : `¥${abs}`
 }
 
+export type PnlTone = 'positive' | 'negative' | 'muted'
+
+const pnlClassByTone: Record<PnlTone, string> = {
+  positive: 'text-up',
+  negative: 'text-down',
+  muted: 'text-muted-foreground-strong',
+}
+
+export function pnlTone(value: number): PnlTone {
+  if (value > 0) return 'positive'
+  if (value < 0) return 'negative'
+  return 'muted'
+}
+
 export function pnlColorClass(value: number): string {
-  if (value > 0) return 'text-up'
-  if (value < 0) return 'text-down'
-  return 'text-muted-foreground-strong'
+  return pnlClassByTone[pnlTone(value)]
 }
 
 export function formatOptionalPercent(

@@ -6,86 +6,86 @@ import {
 } from '#components/strategy-settings/agent-graph/output-fields'
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 
-const PLAN: AgentGraphPhaseForm = {
-  key: 'plan',
-  label: '見出し案',
+const ALPHA: AgentGraphPhaseForm = {
+  key: 'alpha',
+  label: 'サンプル',
   model: 'fictional-model-orbit',
-  prompt: 'テーマを読みやすい節に分ける',
+  prompt: 'sample prompt',
   skills: [],
   tools: [],
   output: {
-    sections: {
+    records: {
       type: 'array',
       items: {
-        title: { type: 'string' },
-        description: { type: 'string' },
-        key_points: { type: 'array', items: { type: 'string' } },
+        name: { type: 'string' },
+        value: { type: 'string' },
+        entries: { type: 'array', items: { type: 'string' } },
       },
-      required: ['title', 'description'],
+      required: ['name', 'value'],
     },
-    overview: { type: 'string' },
+    sample_field: { type: 'string' },
   },
 }
 
-const COMPOSE: AgentGraphPhaseForm = {
-  key: 'compose',
-  label: '節の作成',
+const BETA: AgentGraphPhaseForm = {
+  key: 'beta',
+  label: '次の段階',
   model: 'fictional-model-lantern',
-  prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-  forEach: 'plan.sections',
+  prompt: 'sample prompt',
+  forEach: 'alpha.records',
   skills: [],
   tools: [],
   output: {
-    abstract: { enum: ['short', 'long'] },
+    sample_field: { enum: ['short', 'long'] },
   },
 }
 
 describe('getForEachOptions', () => {
   it('前段フェーズの output の配列フィールドだけを列挙する', () => {
-    expect(getForEachOptions([PLAN, COMPOSE], 1)).toEqual([
-      { value: 'plan.sections', label: '見出し案 → sections[] の要素ごと' },
+    expect(getForEachOptions([ALPHA, BETA], 1)).toEqual([
+      { value: 'alpha.records', label: 'サンプル → records[] の要素ごと' },
     ])
   })
 
   it('自身より後ろのフェーズは対象にしない', () => {
-    expect(getForEachOptions([PLAN, COMPOSE], 0)).toEqual([])
+    expect(getForEachOptions([ALPHA, BETA], 0)).toEqual([])
   })
 
   it('output が空のフェーズしかなければ空配列を返す', () => {
-    const noOutput: AgentGraphPhaseForm = { ...PLAN, output: {} }
+    const noOutput: AgentGraphPhaseForm = { ...ALPHA, output: {} }
     expect(getForEachOptions([noOutput], 1)).toEqual([])
   })
 })
 
 describe('getLabelFieldOptions', () => {
   it('for_each が指す配列フィールドの items から string 型の property だけを列挙する', () => {
-    expect(getLabelFieldOptions([PLAN, COMPOSE], 'plan.sections')).toEqual([
-      'title',
-      'description',
+    expect(getLabelFieldOptions([ALPHA, BETA], 'alpha.records')).toEqual([
+      'name',
+      'value',
     ])
   })
 
   it('for_each が未設定なら空配列を返す', () => {
-    expect(getLabelFieldOptions([PLAN, COMPOSE], undefined)).toEqual([])
+    expect(getLabelFieldOptions([ALPHA, BETA], undefined)).toEqual([])
   })
 
   it('参照先フェーズが存在しなければ空配列を返す', () => {
-    expect(getLabelFieldOptions([PLAN], 'missing.sections')).toEqual([])
+    expect(getLabelFieldOptions([ALPHA], 'missing.records')).toEqual([])
   })
 
   it('参照先フィールドが存在しなければ空配列を返す', () => {
-    expect(getLabelFieldOptions([PLAN], 'plan.missing_section')).toEqual([])
+    expect(getLabelFieldOptions([ALPHA], 'alpha.missing_field')).toEqual([])
   })
 
   it('items がプリミティブ配列 (string 型の property を持たない) なら空配列を返す', () => {
     const primitiveArrayOnly: AgentGraphPhaseForm = {
-      ...PLAN,
+      ...ALPHA,
       output: {
-        key_points: { type: 'array', items: { type: 'string' } },
+        entries: { type: 'array', items: { type: 'string' } },
       },
     }
-    expect(
-      getLabelFieldOptions([primitiveArrayOnly], 'plan.key_points'),
-    ).toEqual([])
+    expect(getLabelFieldOptions([primitiveArrayOnly], 'alpha.entries')).toEqual(
+      [],
+    )
   })
 })

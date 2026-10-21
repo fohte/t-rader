@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import {
   CommandPalette,
   type CommandPaletteGroup,
@@ -27,7 +28,9 @@ export function QuickSwitcherView({
 }) {
   return (
     <>
-      <button
+      <Button
+        variant="secondary"
+        size="sm"
         type="button"
         aria-label="探す"
         aria-haspopup="dialog"
@@ -36,14 +39,13 @@ export function QuickSwitcherView({
         onClick={() => {
           onOpenChange(!open)
         }}
-        className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center gap-1.5 border border-border px-0 py-1 font-mono text-xs text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground md:h-auto md:w-auto md:px-2.5"
       >
         <Search aria-hidden="true" className="size-3.5" />
         <span className="hidden md:inline">探す</span>
         <kbd className="hidden border border-border bg-surface-strong px-1 text-2xs text-muted-foreground md:inline">
           {shortcutLabel}
         </kbd>
-      </button>
+      </Button>
       <CommandPalette
         open={open}
         onOpenChange={onOpenChange}

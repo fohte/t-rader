@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export const NOTE_BODY_GUTTER_CARD_PADDING_REM = 2.25
+const NOTE_BODY_GUTTER_CARD_PADDING_REM = 2.25
 
 interface NoteBodyCardProps {
   children: ReactNode

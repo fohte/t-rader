@@ -2,7 +2,7 @@ import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 
 import { StockNameLink } from '#components/stocks/stock-name-link'
-import { formatYen, pnlColorClass } from '#components/trades/format'
+import { formatYen, pnlTone } from '#components/trades/format'
 import { TradeDetailChartView } from '#components/trades/trade-detail-chart-view'
 import type { TradeDetailChartState } from '#components/trades/trade-detail-model'
 import {
@@ -110,10 +110,10 @@ export function TradeDetailView(props: TradeDetailViewProps) {
                   ? '—'
                   : formatYen(trade.realized_pnl, true)
               }
-              valueClassName={
+              valueTone={
                 trade.realized_pnl == null
                   ? undefined
-                  : pnlColorClass(trade.realized_pnl)
+                  : pnlTone(trade.realized_pnl)
               }
             />
           )}
@@ -246,11 +246,11 @@ function DetailBackLink() {
 function TradeFact({
   label,
   value,
-  valueClassName,
+  valueTone,
 }: {
   label: string
   value: string
-  valueClassName?: string
+  valueTone?: 'positive' | 'negative' | 'muted'
 }) {
   return (
     <div className="flex min-h-18 flex-col justify-center gap-1 bg-card px-3.5 py-3">
@@ -258,10 +258,8 @@ function TradeFact({
         {label}
       </span>
       <span
-        className={
-          'font-mono text-base font-bold tabular-nums ' +
-          (valueClassName ?? 'text-foreground')
-        }
+        data-tone={valueTone}
+        className="font-mono text-base font-bold tabular-nums data-[tone=positive]:text-up data-[tone=negative]:text-down data-[tone=muted]:text-muted-foreground-strong"
       >
         {value}
       </span>

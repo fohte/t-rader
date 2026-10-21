@@ -136,13 +136,13 @@ function getGutterState() {
   const button = screen.getByRole('button', {
     name: '行 3 から 4 にコメント',
   })
-  const marker = button.firstElementChild
+  const marker = button.querySelector('[aria-hidden="true"]')
   return {
     label: button.getAttribute('aria-label'),
     marker: marker?.textContent ?? null,
     markerAccessible: marker?.getAttribute('aria-hidden') ?? null,
     markerClassName: marker?.className ?? null,
-    buttonIsHighlighted: button.classList.contains('text-primary'),
+    buttonIsNeutral: button.classList.contains('text-muted-foreground'),
   }
 }
 
@@ -155,8 +155,8 @@ describe('MarkdownBodyRangeBlock', () => {
       marker: '+',
       markerAccessible: 'true',
       markerClassName:
-        'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary',
-      buttonIsHighlighted: false,
+        'select-none font-mono text-2xs opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100',
+      buttonIsNeutral: true,
     })
   })
 
@@ -172,16 +172,18 @@ describe('MarkdownBodyRangeBlock', () => {
         )
         .map((button) => ({
           label: button.getAttribute('aria-label'),
-          markerClassName: button.firstElementChild?.className ?? null,
+          markerClassName:
+            button.querySelector('[data-source-gutter-marker]')?.className ??
+            null,
         }))
     expect(getGutterMarkerClasses()).toEqual([
       {
         label: '行 2 にコメント',
-        markerClassName: 'opacity-0',
+        markerClassName: 'select-none font-mono text-2xs opacity-0',
       },
       {
         label: '行 1 から 2 にコメント',
-        markerClassName: 'opacity-0',
+        markerClassName: 'select-none font-mono text-2xs opacity-0',
       },
     ])
   })
@@ -193,8 +195,8 @@ describe('MarkdownBodyRangeBlock', () => {
       label: '行 3 から 4 にコメント',
       marker: '●',
       markerAccessible: 'true',
-      markerClassName: '',
-      buttonIsHighlighted: true,
+      markerClassName: 'select-none font-mono text-2xs',
+      buttonIsNeutral: true,
     })
   })
 
@@ -205,8 +207,8 @@ describe('MarkdownBodyRangeBlock', () => {
       label: '行 3 から 4 にコメント',
       marker: '●',
       markerAccessible: 'true',
-      markerClassName: '',
-      buttonIsHighlighted: true,
+      markerClassName: 'select-none font-mono text-2xs',
+      buttonIsNeutral: true,
     })
   })
 

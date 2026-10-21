@@ -26,6 +26,13 @@ const indicators: ChartIndicatorConfig[] = [
 const meta = {
   title: 'Components/ChartIndicatorControl',
   component: ChartIndicatorControl,
+  decorators: [
+    (Story) => (
+      <div className="grid min-h-screen place-items-center">
+        <Story />
+      </div>
+    ),
+  ],
   args: {
     indicators: [],
     onAdd: () => {},
@@ -51,7 +58,7 @@ export const ConfiguredPopover: Story = {
   args: { indicators, layout: 'popover' },
 }
 
-export const ConfiguredMobileSheet: Story = {
-  name: 'the mobile sheet shows editable settings for every indicator type.',
-  args: { indicators, layout: 'sheet' },
+export const ConfiguredDialog: Story = {
+  name: 'the centered dialog shows editable settings for every indicator type.',
+  args: { indicators, layout: 'dialog' },
 }

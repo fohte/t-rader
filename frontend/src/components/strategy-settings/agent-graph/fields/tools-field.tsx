@@ -1,3 +1,6 @@
+import { Button } from '@fohte/ui/button'
+import { Chip } from '@fohte/ui/chip'
+
 import { ChipList } from '#components/strategy-settings/agent-graph/fields/chip-list'
 import type { components } from '#lib/api/schema.gen'
 
@@ -12,23 +15,19 @@ interface ToolsFieldProps {
 export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
   return (
     <>
-      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
-        使える tool
-      </span>
+      <Chip>使える tool</Chip>
       {value === undefined ? (
-        <div className="flex items-center gap-2">
-          <span className="border border-dashed border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
-            すべての tool
-          </span>
-          <button
+        <div className="flex items-center gap-2 font-mono text-2xs">
+          <Chip>すべての tool</Chip>
+          <Button
             type="button"
+            variant="plain"
             onClick={() => {
               onChange([])
             }}
-            className="font-mono text-2xs text-muted-foreground underline hover:text-foreground"
           >
             絞り込む
-          </button>
+          </Button>
         </div>
       ) : (
         <ChipList
@@ -43,15 +42,15 @@ export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
           removeAriaLabel={(name) => `tool "${name}" を外す`}
           addAriaLabel="tool を追加"
           extra={
-            <button
+            <Button
               type="button"
+              variant="plain"
               onClick={() => {
                 onChange(undefined)
               }}
-              className="font-mono text-2xs text-muted-foreground underline hover:text-foreground"
             >
               全 tool に戻す
-            </button>
+            </Button>
           }
         />
       )}

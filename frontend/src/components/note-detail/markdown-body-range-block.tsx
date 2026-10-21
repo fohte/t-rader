@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import {
   Children,
   cloneElement,
@@ -14,7 +15,6 @@ import {
   type MarkdownBodyRangeCommentProps,
   MarkdownBodySourceBlockContext,
   MarkdownBodyTableCellGutterContext,
-  NOTE_BODY_GUTTER_GAP_REM,
   NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import {
@@ -22,16 +22,20 @@ import {
   commentBlockPresentation,
 } from '#components/note-detail/markdown-body-range-comment-presentation'
 import { highlightFirstTextMatch } from '#components/note-detail/markdown-body-text-highlight'
-import { NOTE_BODY_GUTTER_CARD_PADDING_REM } from '#components/note-detail/note-body-card'
 import { LineCommentGroup } from '#components/note-detail/note-version-line-comment-group'
 import type { SourceLineRange } from '#components/note-detail/use-markdown-body-comment-selection'
+import { cn } from '#lib/utils'
 
 type MarkdownNode = NonNullable<ExtraProps['node']>
 
 const DEFAULT_GUTTER_MARKER_CLASS_NAME =
-  'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary'
+  'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100'
 const LIST_GUTTER_MARKER_CLASS_NAME = 'opacity-0'
 const LIST_RANGE_BLOCK_CLASS_NAME = 'note-body-list-range-block'
+
+type RangeBlockStyle = CSSProperties & {
+  '--markdown-body-list-offset'?: string
+}
 
 interface MarkdownBodyRangeBlockProps {
   node?: MarkdownNode
@@ -109,9 +113,9 @@ interface RangeBlockGutterButtonProps {
   isMarked: boolean
   onPointerDown: (range: SourceLineRange) => void
   onClick: (range: SourceLineRange, shiftKey: boolean) => void
-  className: string
-  markerClassName?: string
-  style?: CSSProperties
+  sourceBlockTag: string
+  isTableRow?: boolean
+  listOffset?: string
 }
 
 function RangeBlockGutterButton({
@@ -119,53 +123,79 @@ function RangeBlockGutterButton({
   isMarked,
   onPointerDown,
   onClick,
-  className,
-  markerClassName = DEFAULT_GUTTER_MARKER_CLASS_NAME,
-  style,
+  sourceBlockTag,
+  isTableRow = false,
+  listOffset,
 }: RangeBlockGutterButtonProps) {
   const pointerTypeRef = useRef<string | null>(null)
+  const positionClassName = isTableRow
+    ? '-left-11 top-1.5'
+    : cn(
+        '-left-11',
+        sourceBlockTag === 'li' && 'translate-x-(--markdown-body-list-offset)',
+        sourceBlockTag === 'li' && 'top-0',
+        sourceBlockTag === 'pre' && 'top-3',
+        sourceBlockTag === 'blockquote' && 'top-1.5',
+      )
+  const markerClassName =
+    sourceBlockTag === 'li'
+      ? LIST_GUTTER_MARKER_CLASS_NAME
+      : DEFAULT_GUTTER_MARKER_CLASS_NAME
+  const positionStyle: RangeBlockStyle | undefined =
+    listOffset == null
+      ? undefined
+      : { '--markdown-body-list-offset': listOffset }
 
   return (
-    <button
-      type="button"
-      aria-label={`行 ${String(range.startLine)}${range.endLine > range.startLine ? ` から ${String(range.endLine)}` : ''} にコメント`}
-      data-comment-text-ignore="true"
-      data-source-gutter-button="true"
-      onPointerDown={(event) => {
-        pointerTypeRef.current = event.pointerType
-        if (event.pointerType === 'touch') return
-        onPointerDown(range)
-      }}
-      onPointerCancel={() => {
-        pointerTypeRef.current = null
-      }}
-      onClick={(event) => {
-        const pointerType =
-          'pointerType' in event.nativeEvent
-            ? event.nativeEvent.pointerType
-            : null
-        const isTouchClick =
-          pointerType === 'touch' ||
-          (event.detail > 0 && pointerTypeRef.current === 'touch')
-        pointerTypeRef.current = null
-        if (isTouchClick) return
-        onClick(range, event.shiftKey)
-      }}
-      className={className}
-      style={style}
+    <div
+      className={cn('absolute z-10', positionClassName)}
+      style={positionStyle}
     >
-      {isMarked ? (
-        <span aria-hidden="true">●</span>
-      ) : (
-        <span
-          aria-hidden="true"
-          data-source-gutter-marker="true"
-          className={markerClassName}
-        >
-          +
+      <Button
+        type="button"
+        variant="plain"
+        aria-label={`行 ${String(range.startLine)}${range.endLine > range.startLine ? ` から ${String(range.endLine)}` : ''} にコメント`}
+        data-comment-text-ignore="true"
+        data-source-gutter-button="true"
+        onPointerDown={(event) => {
+          pointerTypeRef.current = event.pointerType
+          if (event.pointerType === 'touch') return
+          onPointerDown(range)
+        }}
+        onPointerCancel={() => {
+          pointerTypeRef.current = null
+        }}
+        onClick={(event) => {
+          const pointerType =
+            'pointerType' in event.nativeEvent
+              ? event.nativeEvent.pointerType
+              : null
+          const isTouchClick =
+            pointerType === 'touch' ||
+            (event.detail > 0 && pointerTypeRef.current === 'touch')
+          pointerTypeRef.current = null
+          if (isTouchClick) return
+          onClick(range, event.shiftKey)
+        }}
+        className="min-h-7 w-11"
+      >
+        <span className="w-full pr-2 text-right">
+          {isMarked ? (
+            <span aria-hidden="true" className="select-none font-mono text-2xs">
+              ●
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              data-source-gutter-marker="true"
+              className={cn('select-none font-mono text-2xs', markerClassName)}
+            >
+              +
+            </span>
+          )}
         </span>
-      )}
-    </button>
+      </Button>
+    </div>
   )
 }
 
@@ -246,18 +276,22 @@ export function MarkdownBodyRangeBlock({
   const { props } = context
   const showThread = presentation.isActive || presentation.comments.length > 0
   const isMarked = presentation.isSelected || presentation.isCommented
-  const gutterButtonClassName = `z-10 min-h-7 w-11 select-none text-right font-mono text-2xs ${isMarked ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`
+  const listOffset = isListSourceBlock
+    ? `-${String(listDepth * NOTE_BODY_INDENT_REM)}rem`
+    : undefined
+  const listIndentStyle: RangeBlockStyle | undefined =
+    listOffset == null
+      ? undefined
+      : { '--markdown-body-list-offset': listOffset }
   const commentMarker = isMarked ? (
     <span
       aria-hidden="true"
       data-comment-text-ignore="true"
-      className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary"
-      style={{
-        left:
-          sourceBlockTag === 'li'
-            ? `calc(-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`
-            : `-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem`,
-      }}
+      className={cn(
+        'pointer-events-none absolute inset-y-0 -left-9 w-0.5 bg-muted-foreground',
+        isListSourceBlock && 'translate-x-(--markdown-body-list-offset)',
+      )}
+      style={listIndentStyle}
     />
   ) : null
   const commentThread = showThread ? (
@@ -276,8 +310,8 @@ export function MarkdownBodyRangeBlock({
           isMarked={isMarked}
           onPointerDown={context.onGutterPointerDown}
           onClick={context.onGutterClick}
-          className={`absolute -left-11 top-1.5 ${gutterButtonClassName}`}
-          style={{ paddingRight: `${String(NOTE_BODY_GUTTER_GAP_REM)}rem` }}
+          sourceBlockTag={sourceBlockTag}
+          isTableRow
         />
         {commentMarker}
       </>
@@ -299,7 +333,11 @@ export function MarkdownBodyRangeBlock({
             data-source-block="true"
             data-source-start-line={range.startLine}
             data-source-end-line={range.endLine}
-            className={`${rowClassName} group ${isBlockSelected ? 'bg-primary/10' : ''}`}
+            className={cn(
+              rowClassName,
+              'group',
+              isBlockSelected && 'bg-muted-foreground/10',
+            )}
           >
             {rowCells}
           </tr>
@@ -318,7 +356,9 @@ export function MarkdownBodyRangeBlock({
   if (!showGutter) {
     return (
       <MarkdownBodySourceBlockContext.Provider value={sourceBlockTag}>
-        <div className={`min-w-0 ${isBlockSelected ? 'bg-primary/10' : ''}`}>
+        <div
+          className={cn('min-w-0', isBlockSelected && 'bg-muted-foreground/10')}
+        >
           <div
             data-source-block="true"
             data-source-start-line={range.startLine}
@@ -332,30 +372,14 @@ export function MarkdownBodyRangeBlock({
     )
   }
 
-  const gutterStyle: CSSProperties = {
-    ...(sourceBlockTag === 'li'
-      ? {
-          left: `calc(-2.75rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`,
-          top: 0,
-        }
-      : sourceBlockTag === 'pre'
-        ? { left: '-2.75rem', top: '0.75rem' }
-        : sourceBlockTag === 'blockquote'
-          ? { left: '-2.75rem', top: '0.375rem' }
-          : { left: '-2.75rem' }),
-    paddingRight: `${String(NOTE_BODY_GUTTER_GAP_REM)}rem`,
-  }
   const gutterButton = (
     <RangeBlockGutterButton
       range={range}
       isMarked={isMarked}
       onPointerDown={context.onGutterPointerDown}
       onClick={context.onGutterClick}
-      className={`absolute ${gutterButtonClassName}`}
-      markerClassName={
-        isListSourceBlock ? LIST_GUTTER_MARKER_CLASS_NAME : undefined
-      }
-      style={gutterStyle}
+      sourceBlockTag={sourceBlockTag}
+      listOffset={listOffset}
     />
   )
 
@@ -364,7 +388,12 @@ export function MarkdownBodyRangeBlock({
     typeof renderedContent.type === 'string'
   if (isIntrinsicElement && isListSourceBlock) {
     const hostElement = cloneElement(renderedContent, {
-      className: `${renderedContent.props.className ?? ''} group relative ${LIST_RANGE_BLOCK_CLASS_NAME} ${isBlockSelected ? 'bg-primary/10' : ''}`,
+      className: cn(
+        renderedContent.props.className,
+        'group relative',
+        LIST_RANGE_BLOCK_CLASS_NAME,
+        isBlockSelected && 'bg-muted-foreground/10',
+      ),
       'data-source-block': 'true',
       'data-source-start-line': range.startLine,
       'data-source-end-line': range.endLine,
@@ -386,7 +415,10 @@ export function MarkdownBodyRangeBlock({
 
   const hostElement = isIntrinsicElement
     ? cloneElement(renderedContent, {
-        className: `${renderedContent.props.className ?? ''} ${isBlockSelected ? 'bg-primary/10' : ''}`,
+        className: cn(
+          renderedContent.props.className,
+          isBlockSelected && 'bg-muted-foreground/10',
+        ),
       })
     : renderedContent
 
@@ -396,7 +428,10 @@ export function MarkdownBodyRangeBlock({
         data-source-block="true"
         data-source-start-line={range.startLine}
         data-source-end-line={range.endLine}
-        className={`group relative min-w-0 ${isListSourceBlock ? LIST_RANGE_BLOCK_CLASS_NAME : ''}`}
+        className={cn(
+          'group relative min-w-0',
+          isListSourceBlock && LIST_RANGE_BLOCK_CLASS_NAME,
+        )}
       >
         {gutterButton}
         {commentMarker}

@@ -103,7 +103,7 @@ function readComposerOutput() {
     submitDisabled: screen
       .getByRole('button', { name: '送信' })
       .hasAttribute('disabled'),
-    strategyValue: screen.getByLabelText<HTMLSelectElement>('戦略').value,
+    strategyLabel: screen.getByLabelText('戦略').textContent,
   }
 }
 
@@ -164,9 +164,7 @@ describe('FloatingChatView', () => {
   it('送信ボタンを押すと onSubmit が呼ばれる', async () => {
     const onSubmit = vi.fn()
     await renderInRouter(
-      <FloatingChatView
-        {...makeProps({ input: '半導体の見立て', onSubmit })}
-      />,
+      <FloatingChatView {...makeProps({ input: '架空の依頼文', onSubmit })} />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: '送信' }))
@@ -177,7 +175,7 @@ describe('FloatingChatView', () => {
     const onRemoveContext = vi.fn()
     const context: ChatContext = {
       kind: 'stock',
-      id: 'FIC-01',
+      id: 'demo-code',
       label: '架空銘柄',
     }
     await renderInRouter(
@@ -198,10 +196,12 @@ describe('FloatingChatView', () => {
   })
 
   it('表示名が無いときは文脈 ID を表示する', async () => {
-    const context: ChatContext = { kind: 'stock', id: 'FIC-01' }
+    const context: ChatContext = { kind: 'stock', id: 'demo-code' }
     await renderInRouter(<FloatingChatView {...makeProps({ context })} />)
 
-    expect(screen.getByText('銘柄: FIC-01').textContent).toBe('銘柄: FIC-01')
+    expect(screen.getByText('銘柄: demo-code').textContent).toBe(
+      '銘柄: demo-code',
+    )
   })
 
   it('文脈が無いときは削除ボタンを表示しない', async () => {
@@ -222,23 +222,41 @@ describe('FloatingChatView', () => {
     expect(onInputChange).toHaveBeenCalledWith('ax')
   })
 
-  it('選んだ戦略 ID を onStrategyChange に渡す', async () => {
-    const onStrategyChange = vi.fn()
-    await renderInRouter(
-      <FloatingChatView
-        {...makeProps({ strategyId: null, onStrategyChange })}
-      />,
-    )
+  it.each([
+    {
+      initialStrategyId: null,
+      optionName: '例示戦略 B',
+      expectedStrategyId: 'S2',
+    },
+    {
+      initialStrategyId: 'S1',
+      optionName: '戦略を選択',
+      expectedStrategyId: null,
+    },
+  ])(
+    '$optionName を選ぶと戦略の変更を通知する',
+    async ({ initialStrategyId, optionName, expectedStrategyId }) => {
+      const onStrategyChange = vi.fn()
+      await renderInRouter(
+        <FloatingChatView
+          {...makeProps({ strategyId: initialStrategyId, onStrategyChange })}
+        />,
+      )
 
-    await userEvent.selectOptions(screen.getByLabelText('戦略'), 'S2')
+      await userEvent.click(screen.getByRole('combobox', { name: '戦略' }))
+      await userEvent.click(
+        await screen.findByRole('option', { name: optionName }),
+      )
 
-    expect(onStrategyChange.mock.calls).toEqual([['S2']])
-  })
+      expect(onStrategyChange.mock.calls).toEqual([[expectedStrategyId]])
+    },
+    10_000,
+  )
 
   it('戦略未選択でも入力できるが送信できない', async () => {
     await renderInRouter(
       <FloatingChatView
-        {...makeProps({ strategyId: null, input: '分析依頼' })}
+        {...makeProps({ strategyId: null, input: '送信する文章' })}
       />,
     )
 
@@ -246,7 +264,7 @@ describe('FloatingChatView', () => {
       inputDisabled: false,
       placeholder: 'プロンプトを入力',
       submitDisabled: true,
-      strategyValue: '',
+      strategyLabel: '戦略を選択',
     })
   })
 
@@ -304,13 +322,13 @@ describe('FloatingChatView', () => {
       <FloatingChatView
         {...makeProps({
           status: { kind: 'completed' },
-          submittedPrompt: '架空銘柄の変化をまとめて',
-          resultText: '前回との差分です。\n\n**次回を確認します。**',
+          submittedPrompt: '架空の依頼文',
+          resultText: '架空の回答です。\n\n**表示例です。**',
           taskStrategyId: 'S1',
           notes: [
             {
               id: 'example-note-a',
-              title: '架空銘柄の分析メモ',
+              title: '架空ノート A',
               updated_at: '2026-06-26T00:00:00Z',
             },
           ],
@@ -322,21 +340,21 @@ describe('FloatingChatView', () => {
       messages: [
         {
           role: 'user',
-          text: '架空銘柄の変化をまとめて',
+          text: '架空の依頼文',
           paragraphs: [],
           strong: [],
         },
         {
           role: 'assistant',
           text: null,
-          paragraphs: ['前回との差分です。', '次回を確認します。'],
-          strong: ['次回を確認します。'],
+          paragraphs: ['架空の回答です。', '表示例です。'],
+          strong: ['表示例です。'],
         },
       ],
       noteLinks: [
         {
           href: '/notes/example-note-a',
-          label: '架空銘柄の分析メモ',
+          label: '架空ノート A',
         },
       ],
       noteFallbackVisible: false,

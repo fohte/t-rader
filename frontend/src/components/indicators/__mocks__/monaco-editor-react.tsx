@@ -1,5 +1,6 @@
 // vitest 用に Monaco Editor を textarea に置換するモック。
 // プロジェクトの jsdom 環境では実際の Monaco がレンダリングできないため。
+import { Textarea } from '@fohte/ui/textarea'
 import type { ChangeEvent } from 'react'
 
 interface MockEditorProps {
@@ -10,7 +11,7 @@ interface MockEditorProps {
 
 export default function Editor({ value, onChange, options }: MockEditorProps) {
   return (
-    <textarea
+    <Textarea
       aria-label={options?.ariaLabel}
       readOnly={options?.readOnly}
       value={value ?? ''}
