@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import call, patch
 
 
 ENTRYPOINT_PATH = Path(__file__).with_name("entrypoint.py")
@@ -220,6 +221,28 @@ class EntryPointTest(unittest.TestCase):
             ),
         )
 
+    def test_reports_unexpected_transfer_errors_in_response(self) -> None:
+        with patch.object(ENTRYPOINT.os, "mkdir", side_effect=OSError("disk full")):
+            response, files = self.run_file_transfer(
+                _input_stream(self.manifest("pass", []), [])
+            )
+
+        self.assertEqual(
+            (response, files),
+            (
+                {
+                    "stdout": "",
+                    "stderr": "",
+                    "stdout_bytes": 0,
+                    "stderr_bytes": 0,
+                    "exit_code": 2,
+                    "error": "file transfer failed",
+                    "files": [],
+                },
+                {},
+            ),
+        )
+
     def test_rejects_text_output_over_the_limit(self) -> None:
         manifest = self.manifest("print('x' * 100)", [])
         manifest["limits"]["max_output_bytes"] = 16
@@ -363,6 +386,32 @@ class EntryPointTest(unittest.TestCase):
             ENTRYPOINT.ENVELOPE_MARKER
             + "\n"
             + json.dumps({"stdout": "ready\n", "stderr": "", "exit_code": 0}),
+        )
+
+    def test_main_dispatches_file_transfer_mode(self) -> None:
+        with (
+            patch.dict(os.environ, {"EXEC_MODE": "file-transfer"}),
+            patch.object(ENTRYPOINT, "_run_file_transfer") as run_file_transfer,
+            patch.object(ENTRYPOINT, "_run_legacy") as run_legacy,
+        ):
+            ENTRYPOINT.main()
+
+        self.assertEqual(
+            (run_file_transfer.call_args_list, run_legacy.call_args_list),
+            ([call()], []),
+        )
+
+    def test_main_dispatches_legacy_mode(self) -> None:
+        with (
+            patch.dict(os.environ, {"EXEC_MODE": "legacy"}),
+            patch.object(ENTRYPOINT, "_run_file_transfer") as run_file_transfer,
+            patch.object(ENTRYPOINT, "_run_legacy") as run_legacy,
+        ):
+            ENTRYPOINT.main()
+
+        self.assertEqual(
+            (run_file_transfer.call_args_list, run_legacy.call_args_list),
+            ([], [call()]),
         )
 
 

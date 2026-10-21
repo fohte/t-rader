@@ -6,9 +6,7 @@ use core_application::kata_exec::{ExecRequest, ExecResult, KataExecError, KataEx
 use futures_util::try_join;
 
 use super::config::{FileTransferLimits, KataExecutorConfig, PodResourceLimits};
-use super::manifest::{
-    PodPhase, RUNTIME_CLASS_NAME, assemble_result, build_pod_manifest, generate_pod_name,
-};
+use super::manifest::{PodPhase, assemble_result, build_pod_manifest, generate_pod_name};
 use super::pod_api::{PodApi, PodAttach, ReqwestPodApi};
 use super::stream;
 
@@ -81,9 +79,9 @@ impl PodExecution {
             mut stdout,
             mut stderr,
             status,
-            _keepalive,
+            keepalive,
         } = self.api.attach(&self.pod_name).await?;
-        let _keepalive = _keepalive;
+        let _guard = keepalive;
         let stderr_task = tokio::spawn(async move { stream::drain_stderr(&mut stderr).await });
         let transfer = stream::transfer(&mut stdin, &mut stdout, request, limits, max_output_bytes);
         let combined = try_join!(transfer, status);
@@ -153,6 +151,11 @@ impl KataExecutor for HttpKataExecutor {
             .unwrap_or(self.default_max_output_bytes);
         if let Some(files) = &request.input_files {
             stream::validate_input_files(files, self.file_transfer_limits)?;
+            if max_output_bytes > super::config::MAX_FILE_TRANSFER_OUTPUT_BYTES {
+                return Err(KataExecError::FileTransfer(
+                    "configured text output limit exceeds the transfer ceiling".to_string(),
+                ));
+            }
         }
         let pod_name = generate_pod_name();
         let manifest = build_pod_manifest(
@@ -162,7 +165,6 @@ impl KataExecutor for HttpKataExecutor {
             &request,
             &self.resource_limits,
             wall_clock_timeout.as_secs().max(1) as i64,
-            Some(RUNTIME_CLASS_NAME),
         );
 
         tracing::debug!(pod = %pod_name, "creating kata exec pod");
@@ -231,6 +233,7 @@ mod tests {
         terminated_reason: Option<String>,
         log_reply: Mutex<Option<LogReply>>,
         attach_hangs: bool,
+        create_count: AtomicUsize,
         delete_count: AtomicUsize,
         spawn_delete_count: AtomicUsize,
     }
@@ -271,15 +274,18 @@ mod tests {
             bytes: b"sample".to_vec(),
         }]);
         let pod_name = super::super::manifest::generate_pod_name();
-        let manifest = build_pod_manifest(
+        let mut manifest = build_pod_manifest(
             &pod_name,
             &namespace,
             &image,
             &request,
             &config.resource_limits,
             60,
-            None,
         );
+        manifest["spec"]
+            .as_object_mut()
+            .unwrap()
+            .remove("runtimeClassName");
         api.create(&manifest).await.unwrap();
         let mut execution = PodExecution::new(api.clone(), pod_name.clone());
         let transfer_result = tokio::time::timeout(
@@ -338,6 +344,7 @@ mod tests {
                 terminated_reason: None,
                 log_reply: Mutex::new(Some(LogReply::Body(log.into()))),
                 attach_hangs: false,
+                create_count: AtomicUsize::new(0),
                 delete_count: AtomicUsize::new(0),
                 spawn_delete_count: AtomicUsize::new(0),
             }
@@ -349,6 +356,7 @@ mod tests {
                 terminated_reason: None,
                 log_reply: Mutex::new(Some(LogReply::Body(String::new()))),
                 attach_hangs: false,
+                create_count: AtomicUsize::new(0),
                 delete_count: AtomicUsize::new(0),
                 spawn_delete_count: AtomicUsize::new(0),
             }
@@ -360,6 +368,7 @@ mod tests {
                 terminated_reason: None,
                 log_reply: Mutex::new(Some(LogReply::Oversized)),
                 attach_hangs: false,
+                create_count: AtomicUsize::new(0),
                 delete_count: AtomicUsize::new(0),
                 spawn_delete_count: AtomicUsize::new(0),
             }
@@ -369,6 +378,7 @@ mod tests {
     #[async_trait]
     impl PodApi for MockPodApi {
         async fn create(&self, _manifest: &serde_json::Value) -> Result<(), KataExecError> {
+            self.create_count.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
 
@@ -415,7 +425,7 @@ mod tests {
                 stdout: Box::pin(stdout),
                 stderr: Box::pin(stderr),
                 status,
-                _keepalive: None,
+                keepalive: None,
             })
         }
 
@@ -524,6 +534,27 @@ mod tests {
             .await
             .expect_err("expected OutputTooLarge");
         assert_eq!(err, KataExecError::OutputTooLarge { limit: 1024 });
+    }
+
+    #[tokio::test]
+    async fn file_transfer_rejects_text_output_limit_before_creating_pod() {
+        let api = Arc::new(MockPodApi::running());
+        let exec = executor_with(api.clone());
+        let mut request = ExecRequest::new("pass").with_files(Vec::new());
+        request.max_output_bytes = Some(super::super::config::MAX_FILE_TRANSFER_OUTPUT_BYTES + 1);
+
+        assert_eq!(
+            (
+                exec.run(request).await,
+                api.create_count.load(Ordering::SeqCst),
+            ),
+            (
+                Err(KataExecError::FileTransfer(
+                    "configured text output limit exceeds the transfer ceiling".to_string(),
+                )),
+                0,
+            ),
+        );
     }
 
     #[tokio::test]

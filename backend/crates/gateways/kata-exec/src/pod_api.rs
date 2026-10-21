@@ -44,7 +44,7 @@ pub(crate) struct PodAttach {
     pub(crate) stdout: Pin<Box<dyn AsyncRead + Send>>,
     pub(crate) stderr: Pin<Box<dyn AsyncRead + Send>>,
     pub(crate) status: AttachStatus,
-    pub(crate) _keepalive: Option<AttachedProcess>,
+    pub(crate) keepalive: Option<AttachedProcess>,
 }
 
 pub(crate) struct ReqwestPodApi {
@@ -251,7 +251,7 @@ impl PodApi for ReqwestPodApi {
             stdout: Box::pin(stdout),
             stderr: Box::pin(stderr),
             status,
-            _keepalive: Some(process),
+            keepalive: Some(process),
         })
     }
 

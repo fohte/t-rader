@@ -6,7 +6,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::config::{
     DEFAULT_FILE_CHUNK_BYTES, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FILE_COUNT,
-    DEFAULT_MAX_TOTAL_FILE_BYTES, FileTransferLimits, MAX_FILE_TRANSFER_OUTPUT_BYTES,
+    DEFAULT_MAX_TOTAL_FILE_BYTES, FileTransferLimits,
 };
 
 const STREAM_MAGIC: &[u8] = b"T-RADER-FILE-TRANSFER-1\n";
@@ -78,12 +78,22 @@ pub(crate) fn validate_input_files(
 }
 
 fn validate_limits(limits: FileTransferLimits) -> Result<(), KataExecError> {
-    if limits.max_files > DEFAULT_MAX_FILE_COUNT
-        || limits.max_file_bytes > DEFAULT_MAX_FILE_BYTES
-        || limits.max_total_bytes > DEFAULT_MAX_TOTAL_FILE_BYTES
-        || limits.chunk_bytes == 0
-        || limits.chunk_bytes > DEFAULT_FILE_CHUNK_BYTES
-    {
+    if limits.max_files > DEFAULT_MAX_FILE_COUNT {
+        return Err(KataExecError::FileTransfer(
+            "configured file count exceeds the transfer ceiling".to_string(),
+        ));
+    }
+    if limits.max_file_bytes > DEFAULT_MAX_FILE_BYTES {
+        return Err(KataExecError::FileTransfer(
+            "configured file size exceeds the transfer ceiling".to_string(),
+        ));
+    }
+    if limits.max_total_bytes > DEFAULT_MAX_TOTAL_FILE_BYTES {
+        return Err(KataExecError::FileTransfer(
+            "configured total file bytes exceed the transfer ceiling".to_string(),
+        ));
+    }
+    if limits.chunk_bytes == 0 || limits.chunk_bytes > DEFAULT_FILE_CHUNK_BYTES {
         return Err(KataExecError::FileTransfer(
             "invalid configured chunk size".to_string(),
         ));
@@ -94,7 +104,7 @@ fn validate_limits(limits: FileTransferLimits) -> Result<(), KataExecError> {
 fn validate_descriptors(
     files: &[FileDescriptor],
     limits: FileTransferLimits,
-) -> Result<usize, KataExecError> {
+) -> Result<(), KataExecError> {
     if files.len() > limits.max_files {
         return Err(KataExecError::FileTransfer(format!(
             "file count exceeds {}",
@@ -144,7 +154,7 @@ fn validate_descriptors(
             }
         }
     }
-    Ok(total)
+    Ok(())
 }
 
 pub(crate) fn validate_relative_path(path: &str) -> Result<(), KataExecError> {
@@ -176,11 +186,6 @@ where
     R: AsyncRead + Unpin,
 {
     validate_limits(limits)?;
-    if max_output_bytes > MAX_FILE_TRANSFER_OUTPUT_BYTES {
-        return Err(KataExecError::FileTransfer(
-            "configured text output limit exceeds the transfer ceiling".to_string(),
-        ));
-    }
     let files = request.input_files.as_deref().ok_or_else(|| {
         KataExecError::FileTransfer("file transfer was not requested".to_string())
     })?;
@@ -311,7 +316,7 @@ where
     let stderr_text =
         read_chunked_bytes(stdout, stderr_bytes, limits.chunk_bytes, "stderr").await?;
 
-    let total_bytes = validate_descriptors(&response.files, limits)?;
+    validate_descriptors(&response.files, limits)?;
     let mut result_files = Vec::with_capacity(response.files.len());
     for descriptor in response.files {
         let expected_bytes = usize::try_from(descriptor.bytes)
@@ -323,8 +328,6 @@ where
             bytes,
         });
     }
-    debug_assert!(total_bytes <= limits.max_total_bytes);
-
     let mut extra = [0; 1];
     let bytes_read = stdout
         .read(&mut extra)

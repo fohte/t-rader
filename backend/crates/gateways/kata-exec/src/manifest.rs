@@ -97,10 +97,9 @@ pub(crate) fn build_pod_manifest(
     request: &ExecRequest,
     limits: &PodResourceLimits,
     active_deadline_seconds: i64,
-    runtime_class_name: Option<&str>,
 ) -> serde_json::Value {
     let file_transfer = request.input_files.is_some();
-    let tmp_empty_dir = if request.input_files.is_some() {
+    let tmp_empty_dir = if file_transfer {
         json!({ "sizeLimit": limits.ephemeral_storage })
     } else {
         json!({ "medium": "Memory", "sizeLimit": "16Mi" })
@@ -182,9 +181,7 @@ pub(crate) fn build_pod_manifest(
         manifest["spec"]["containers"][0]["stdin"] = json!(true);
         manifest["spec"]["containers"][0]["stdinOnce"] = json!(true);
     }
-    if let Some(runtime_class_name) = runtime_class_name {
-        manifest["spec"]["runtimeClassName"] = json!(runtime_class_name);
-    }
+    manifest["spec"]["runtimeClassName"] = json!(RUNTIME_CLASS_NAME);
     manifest
 }
 
@@ -208,7 +205,6 @@ mod tests {
             },
             &PodResourceLimits::default(),
             30,
-            Some(RUNTIME_CLASS_NAME),
         )
     }
 
@@ -304,7 +300,6 @@ mod tests {
             ]),
             &PodResourceLimits::default(),
             30,
-            Some(RUNTIME_CLASS_NAME),
         );
 
         assert_eq!(

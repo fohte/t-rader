@@ -15,7 +15,8 @@
 //! - 1 Pod 1 container (sidecar なし)
 //! - `runAsNonRoot` + `readOnlyRootFilesystem` + `allowPrivilegeEscalation: false`
 //!   + `capabilities.drop: ["ALL"]` + `seccompProfile: RuntimeDefault`
-//! - 永続マウントなし。`/tmp` は ephemeral-storage 上限付き `emptyDir`
+//! - 永続マウントなし。小さい JSON は memory-backed 16 MiB `emptyDir`、ファイル転送は
+//!   ephemeral-storage 上限付き `emptyDir`
 //! - secret 注入なし。小さい JSON は env、ファイル評価は attach stream で渡す
 //!
 //! # infra 側で必要になる設定
