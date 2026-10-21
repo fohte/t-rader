@@ -18,6 +18,7 @@ export default defineConfig({
       '@base-ui/react/button',
       '@base-ui/react/dialog',
       '@base-ui/react/input',
+      '@base-ui/react/popover',
       '@base-ui/react/select',
       '@base-ui/react/tooltip',
     ],
