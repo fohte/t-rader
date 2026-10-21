@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 
 const STRATEGY_LIST_TAB_IDS = ['list', 'runs'] as const
 
-export type StrategyListTab = (typeof STRATEGY_LIST_TAB_IDS)[number]
-export type LegacyStrategyListTab = Extract<StrategyListTab, 'runs'>
+type StrategyListTab = (typeof STRATEGY_LIST_TAB_IDS)[number]
+type LegacyStrategyListTab = Extract<StrategyListTab, 'runs'>
 
 function parseStrategyListTab(value: unknown) {
   return STRATEGY_LIST_TAB_IDS.find((tab) => tab === value)

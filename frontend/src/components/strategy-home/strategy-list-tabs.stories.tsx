@@ -1,10 +1,10 @@
 import { TabsPanel } from '@fohte/ui/tabs'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { ComponentProps } from 'react'
 
-import {
-  type StrategyListTab,
-  StrategyListTabs,
-} from '#components/strategy-home/strategy-list-tabs'
+import { StrategyListTabs } from '#components/strategy-home/strategy-list-tabs'
+
+type StrategyListTab = ComponentProps<typeof StrategyListTabs>['activeTab']
 
 function renderTabs(activeTab: StrategyListTab) {
   return (

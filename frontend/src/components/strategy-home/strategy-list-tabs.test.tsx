@@ -1,14 +1,16 @@
 import { TabsPanel } from '@fohte/ui/tabs'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
-  type StrategyListTab,
   StrategyListTabs,
   validateStrategyListSearch,
 } from '#components/strategy-home/strategy-list-tabs'
+
+type StrategyListTab = ComponentProps<typeof StrategyListTabs>['activeTab']
 
 afterEach(cleanup)
 
