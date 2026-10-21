@@ -564,6 +564,18 @@ mod tests {
         is_compressed: bool,
     }
 
+    #[derive(Clone, Copy)]
+    enum UnchangedBarCase {
+        DailyUncompressed,
+        MinuteCompressed,
+    }
+
+    impl UnchangedBarCase {
+        fn is_compressed(self) -> bool {
+            matches!(self, Self::MinuteCompressed)
+        }
+    }
+
     async fn find_bar_update_counts(db: &impl ConnectionTrait) -> BarUpdateCounts {
         let row = db
             .query_one_raw(Statement::from_sql_and_values(
@@ -612,37 +624,56 @@ mod tests {
             .is_compressed
     }
 
+    async fn prepare_unchanged_bar_case(
+        db: &gateway_postgres::DatabaseHandle,
+        instrument_id: &str,
+        now: DateTime<Utc>,
+        case: UnchangedBarCase,
+    ) -> Bar {
+        let bar = match case {
+            UnchangedBarCase::DailyUncompressed => make_test_bar(
+                instrument_id,
+                NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date"),
+                100,
+            ),
+            UnchangedBarCase::MinuteCompressed => {
+                let timestamp = truncate_to_microsecond_precision(now - ChronoDuration::days(90));
+                make_test_minute_bar(instrument_id, timestamp, 100)
+            }
+        };
+        upsert_bars(db, vec![bar.clone()])
+            .await
+            .expect("insert bar");
+
+        match case {
+            UnchangedBarCase::DailyUncompressed => {}
+            UnchangedBarCase::MinuteCompressed => {
+                crate::PostgresBarsRepository::new(db.clone())
+                    .compress_bars_older_than_policy(now)
+                    .await
+                    .expect("compress old bar chunk");
+            }
+        }
+
+        bar
+    }
+
+    fn truncate_to_microsecond_precision(timestamp: DateTime<Utc>) -> DateTime<Utc> {
+        timestamp
+            .with_nanosecond(timestamp.timestamp_subsec_micros() * 1_000)
+            .expect("valid bar timestamp")
+    }
+
     #[rstest::rstest]
-    #[case::daily_uncompressed(false)]
-    #[case::minute_compressed(true)]
+    #[case::daily_uncompressed(UnchangedBarCase::DailyUncompressed)]
+    #[case::minute_compressed(UnchangedBarCase::MinuteCompressed)]
     #[tokio::test]
-    async fn upsert_bars_skips_unchanged_bar_and_coverage_updates(#[case] compressed: bool) {
+    async fn upsert_bars_skips_unchanged_bar_and_coverage_updates(#[case] case: UnchangedBarCase) {
         let db = crate::test_support::create_test_transaction().await;
         let instrument_id = "DEMO-BAR-UNCHANGED";
         insert_test_instrument(&db, instrument_id).await;
         let now = Utc::now();
-        let bar = if compressed {
-            let timestamp = (now - ChronoDuration::days(90))
-                .with_nanosecond((now.timestamp_subsec_micros()) * 1_000)
-                .expect("valid bar timestamp");
-            make_test_minute_bar(instrument_id, timestamp, 100)
-        } else {
-            make_test_bar(
-                instrument_id,
-                NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date"),
-                100,
-            )
-        };
-        upsert_bars(&db, vec![bar.clone()])
-            .await
-            .expect("insert bar");
-
-        if compressed {
-            crate::PostgresBarsRepository::new(db.clone())
-                .compress_bars_older_than_policy(now)
-                .await
-                .expect("compress old bar chunk");
-        }
+        let bar = prepare_unchanged_bar_case(&db, instrument_id, now, case).await;
 
         let compressed_before = find_bar_chunk_compression_status(&db, bar.timestamp).await;
 
@@ -676,7 +707,12 @@ mod tests {
                 compressed_before,
                 compressed_after,
             ),
-            (update_counts_before, vec![bar], compressed, compressed,),
+            (
+                update_counts_before,
+                vec![bar],
+                case.is_compressed(),
+                case.is_compressed(),
+            ),
         );
     }
 
