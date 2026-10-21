@@ -31,11 +31,11 @@ import {
   type ChartIndicatorConfig,
 } from '#lib/chart-indicator-settings'
 import {
+  getAnnotationSelectionColor,
   getChartThemeColors,
   getChartThemeOptions,
   observeChartResize,
   observeChartTheme,
-  resolveChartCssColor,
 } from '#lib/chart-theme'
 import {
   type ChartCurrency,
@@ -187,7 +187,7 @@ export function CandlestickChart({
     tradeMarkersRef.current = createSeriesMarkers(candlestickSeries)
 
     const annotationPriceSeries = chart.addSeries(LineSeries, {
-      color: resolveChartCssColor('--muted-foreground', colors.textColor),
+      color: getAnnotationSelectionColor(isDark),
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       priceScaleId: 'right',

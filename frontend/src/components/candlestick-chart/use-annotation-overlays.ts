@@ -23,9 +23,8 @@ import {
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
-  getChartThemeColors,
+  getAnnotationSelectionColor,
   observeChartTheme,
-  resolveChartCssColor,
 } from '#lib/chart-theme'
 import {
   getChartBarDate,
@@ -60,15 +59,12 @@ interface ChartRef<T> {
   current: T | null
 }
 
-function getAnnotationSelectionColor(): string {
+function getCurrentAnnotationSelectionColor(): string {
   const isDark =
     typeof document !== 'undefined' &&
     document.documentElement.classList.contains('dark')
 
-  return resolveChartCssColor(
-    '--muted-foreground',
-    getChartThemeColors(isDark).textColor,
-  )
+  return getAnnotationSelectionColor(isDark)
 }
 
 export function useAnnotationOverlays({
@@ -108,7 +104,7 @@ export function useAnnotationOverlays({
   )
   const [bandPeriods, setBandPeriods] = useState<AnnotationBandPeriod[]>([])
   const [selectionColor, setSelectionColor] = useState(
-    getAnnotationSelectionColor,
+    getCurrentAnnotationSelectionColor,
   )
   const bandAnnotations = useMemo(() => {
     const allAnnotations = annotations ?? []
@@ -145,7 +141,7 @@ export function useAnnotationOverlays({
 
   useEffect(() => {
     const updateSelectionColor = () => {
-      setSelectionColor(getAnnotationSelectionColor())
+      setSelectionColor(getCurrentAnnotationSelectionColor())
     }
     updateSelectionColor()
     return observeChartTheme(updateSelectionColor)
