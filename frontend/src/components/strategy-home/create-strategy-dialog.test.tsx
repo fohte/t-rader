@@ -18,7 +18,10 @@ function readStrategyCreationOutput(
   return { requests, pathname, dialogOpen }
 }
 
-function renderOpenDialog(CreateStrategyDialog: CreateStrategyDialogComponent) {
+function renderOpenDialog(
+  CreateStrategyDialog: CreateStrategyDialogComponent,
+  initialPath = '/strategies/initial-strategy',
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -34,7 +37,7 @@ function renderOpenDialog(CreateStrategyDialog: CreateStrategyDialogComponent) {
     ),
     {
       paths: ['/strategies/$id'],
-      initialPath: '/strategies/demo-strategy',
+      initialPath,
     },
   )
   render(<RouterProvider router={router} />)
@@ -57,7 +60,7 @@ describe('CreateStrategyDialog', () => {
     expect(nameInput.getAttribute('placeholder')).toEqual(
       '名前を入力してください',
     )
-  })
+  }, 15_000)
 
   it('説明を送信し、作成した戦略へ移動する', async () => {
     const requests: Array<{

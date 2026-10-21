@@ -6,6 +6,11 @@ import {
   SelectValue,
 } from '@fohte/ui/select'
 
+import {
+  decodePrefixedSelectValue,
+  encodePrefixedSelectValue,
+} from '#components/strategy-home/prefixed-select-value'
+
 const ALL_TAGS_VALUE = '__all-tags__'
 const TAG_VALUE_PREFIX = 'tag:'
 
@@ -24,13 +29,13 @@ export function NoteTagFilterSelect({
 }: NoteTagFilterSelectProps) {
   return (
     <Select
-      value={value == null ? ALL_TAGS_VALUE : `${TAG_VALUE_PREFIX}${value}`}
+      value={encodePrefixedSelectValue(value, TAG_VALUE_PREFIX, ALL_TAGS_VALUE)}
       defaultOpen={defaultOpen}
       onValueChange={(selectedValue) => {
         onChange(
-          selectedValue === ALL_TAGS_VALUE
-            ? undefined
-            : (selectedValue?.slice(TAG_VALUE_PREFIX.length) ?? undefined),
+          decodePrefixedSelectValue(selectedValue, TAG_VALUE_PREFIX, [
+            ALL_TAGS_VALUE,
+          ]),
         )
       }}
     >
@@ -40,7 +45,14 @@ export function NoteTagFilterSelect({
       <SelectContent>
         <SelectItem value={ALL_TAGS_VALUE}>すべてのタグ</SelectItem>
         {tags.map((tag) => (
-          <SelectItem key={tag} value={`${TAG_VALUE_PREFIX}${tag}`}>
+          <SelectItem
+            key={tag}
+            value={encodePrefixedSelectValue(
+              tag,
+              TAG_VALUE_PREFIX,
+              ALL_TAGS_VALUE,
+            )}
+          >
             {tag}
           </SelectItem>
         ))}

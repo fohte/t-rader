@@ -10,6 +10,10 @@ import {
 import { Textarea } from '@fohte/ui/textarea'
 
 import {
+  decodePrefixedSelectValue,
+  encodePrefixedSelectValue,
+} from '#components/strategy-home/prefixed-select-value'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -126,19 +130,18 @@ export function CreateNoteDialogView({
                 種別
               </label>
               <Select
-                value={
-                  kind !== ''
-                    ? `${KIND_VALUE_PREFIX}${kind}`
-                    : noteKindsPending
-                      ? LOADING_KIND_VALUE
-                      : NO_KIND_VALUE
-                }
+                value={encodePrefixedSelectValue(
+                  kind,
+                  KIND_VALUE_PREFIX,
+                  noteKindsPending ? LOADING_KIND_VALUE : NO_KIND_VALUE,
+                )}
                 defaultOpen={kindSelectDefaultOpen}
                 onValueChange={(value) => {
                   onKindChange(
-                    value === NO_KIND_VALUE || value === LOADING_KIND_VALUE
-                      ? ''
-                      : (value?.slice(KIND_VALUE_PREFIX.length) ?? ''),
+                    decodePrefixedSelectValue(value, KIND_VALUE_PREFIX, [
+                      NO_KIND_VALUE,
+                      LOADING_KIND_VALUE,
+                    ]) ?? '',
                   )
                 }}
               >
@@ -161,7 +164,11 @@ export function CreateNoteDialogView({
                   {noteKinds.map((noteKind) => (
                     <SelectItem
                       key={noteKind.key}
-                      value={`${KIND_VALUE_PREFIX}${noteKind.key}`}
+                      value={encodePrefixedSelectValue(
+                        noteKind.key,
+                        KIND_VALUE_PREFIX,
+                        NO_KIND_VALUE,
+                      )}
                     >
                       {noteKind.display_name}
                     </SelectItem>

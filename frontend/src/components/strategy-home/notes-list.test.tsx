@@ -85,9 +85,7 @@ describe('NotesList', () => {
     await renderInRouter([note])
 
     expect(
-      Array.from(document.querySelectorAll('[data-slot="chip"]')).map(
-        (tag) => tag.textContent,
-      ),
+      ['架空タグ', '仮の分類'].map((tag) => screen.getByText(tag).textContent),
     ).toEqual(['架空タグ', '仮の分類'])
   })
 

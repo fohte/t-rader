@@ -223,38 +223,37 @@ function TreeRow({
     <Button
       type="button"
       variant="ghost"
+      size="sm"
       onClick={onToggle}
       aria-expanded={selected}
-      className="h-auto w-full justify-start"
+      className="h-auto w-full flex-col items-stretch justify-start text-left"
     >
-      <span className="flex w-full flex-col gap-0.5 py-1 text-left font-mono text-xs font-normal">
-        <span className="flex items-baseline gap-2">
-          <span
-            className={cn(
-              STATUS_COLOR[step.status],
-              step.status === 'running' && 'animate-pulse',
-            )}
-          >
-            {prefix}●
-          </span>
-          <span className="flex-1 truncate">{label}</span>
-          <span className="text-2xs text-muted-foreground">{step.model}</span>
-          <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
-            {badgeText}
-          </span>
-          {duration != null && (
-            <span className="text-2xs text-muted-foreground">{duration}</span>
+      <span className="flex w-full items-baseline gap-2">
+        <span
+          className={cn(
+            STATUS_COLOR[step.status],
+            step.status === 'running' && 'animate-pulse',
           )}
+        >
+          {prefix}●
         </span>
-        {subtitle != null && (
-          <span
-            data-testid="step-subtitle"
-            className="truncate pl-5 text-2xs text-muted-foreground"
-          >
-            {subtitle}
-          </span>
+        <span className="flex-1 truncate">{label}</span>
+        <span className="text-2xs text-muted-foreground">{step.model}</span>
+        <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
+          {badgeText}
+        </span>
+        {duration != null && (
+          <span className="text-2xs text-muted-foreground">{duration}</span>
         )}
       </span>
+      {subtitle != null && (
+        <span
+          data-testid="step-subtitle"
+          className="truncate pl-5 text-2xs text-muted-foreground"
+        >
+          {subtitle}
+        </span>
+      )}
     </Button>
   )
 }

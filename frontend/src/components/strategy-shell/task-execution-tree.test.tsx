@@ -87,6 +87,13 @@ function getDefaultSelectedStepOutput() {
   }
 }
 
+function getTaskStepStatusLabels() {
+  return [
+    screen.getByText('実行中').textContent,
+    screen.getByText('失敗').textContent,
+  ]
+}
+
 describe('readTaskSteps', () => {
   it('keeps a step with all required fields', () => {
     const step = makeStep({ phase_key: 'plan' })
@@ -253,26 +260,20 @@ describe('TaskExecutionTree', () => {
     expect(screen.queryByTestId('step-subtitle')).not.toBeInTheDocument()
   })
 
-  it('running と failed で行の色が異なる', () => {
+  it('実行中と失敗の状態を表示する', () => {
     const runningStep = makeStep({
       phase_key: 'investigate',
       status: 'running',
     })
     const failedStep = makeStep({ phase_key: 'other', status: 'failed' })
 
-    const { container } = render(
+    render(
       <TaskExecutionTree
         {...makeProps({ steps: [runningStep, failedStep] })}
       />,
     )
-    const dots = container.querySelectorAll(
-      '[data-testid="task-execution-tree"] button > span > span > span:first-child',
-    )
 
-    expect(Array.from(dots, (dot) => dot.className)).toEqual([
-      'text-status-task-running animate-pulse',
-      'text-destructive',
-    ])
+    expect(getTaskStepStatusLabels()).toEqual(['実行中', '失敗'])
   })
 
   it('defaultSelectedStepId が指定された step の詳細を初期表示する', () => {

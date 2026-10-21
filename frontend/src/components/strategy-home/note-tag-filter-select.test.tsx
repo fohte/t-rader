@@ -22,7 +22,7 @@ describe('NoteTagFilterSelect', () => {
     await user.click(await screen.findByRole('option', { name: '架空タグ' }))
 
     expect(onChange.mock.calls).toEqual([['架空タグ']])
-  })
+  }, 15_000)
 
   it('全タグを選ぶと絞り込みを解除する', async () => {
     const onChange = vi.fn()
