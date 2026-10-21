@@ -12,22 +12,22 @@ type Story = StoryObj<typeof meta>
 
 const SAMPLE_PROMPT = 'sample prompt\n\n[[group:sample-axis/group-a]]'
 
-export const Default: Story = {
-  name: 'shows a prompt with a prefixed internal reference.',
-  args: { value: SAMPLE_PROMPT, onChange: () => {} },
-  render: (args) => (
+function renderField(args: Story['args']) {
+  return (
     <div className="grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
       <PromptField {...args} />
     </div>
-  ),
+  )
+}
+
+export const Default: Story = {
+  name: 'shows a prompt with a prefixed internal reference.',
+  args: { value: SAMPLE_PROMPT, onChange: () => {} },
+  render: renderField,
 }
 
 export const Empty: Story = {
   name: 'shows an empty prompt field.',
   args: { value: '', onChange: () => {} },
-  render: (args) => (
-    <div className="grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
-      <PromptField {...args} />
-    </div>
-  ),
+  render: renderField,
 }

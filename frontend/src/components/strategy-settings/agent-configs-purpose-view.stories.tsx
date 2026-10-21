@@ -1,10 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 
-import {
-  AgentConfigPurposeView,
-  type AgentConfigTab,
-} from '#components/strategy-settings/agent-configs-purpose-view'
+import { AgentConfigPurposeView } from '#components/strategy-settings/agent-configs-purpose-view'
 import { createStoryRouter } from '#storybook/story-router'
 
 const meta = {
@@ -15,28 +12,8 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function renderPurposeView(
-  state: 'loading' | 'not-found' | 'ready',
-  tab: AgentConfigTab = 'agents-md',
-) {
-  function PurposeView() {
-    if (state !== 'ready') {
-      return <AgentConfigPurposeView state={state} />
-    }
-
-    return (
-      <AgentConfigPurposeView
-        state="ready"
-        purpose="sample-purpose"
-        tab={tab}
-        onTabChange={() => {}}
-      >
-        <div className="h-48 border border-border" />
-      </AgentConfigPurposeView>
-    )
-  }
-
-  const router = createStoryRouter(() => <PurposeView />, {
+function renderPurposeView(args: Story['args']) {
+  const router = createStoryRouter(() => <AgentConfigPurposeView {...args} />, {
     paths: ['/settings/agent-configs', '/settings/agent-configs/$purpose'],
     initialPath: '/settings/agent-configs/sample-purpose',
   })
@@ -46,13 +23,13 @@ function renderPurposeView(
 export const Loading: Story = {
   name: 'shows a loading placeholder while a purpose is fetched.',
   args: { state: 'loading' },
-  render: () => renderPurposeView('loading'),
+  render: renderPurposeView,
 }
 
 export const NotFound: Story = {
   name: 'shows a message when the requested purpose is missing.',
   args: { state: 'not-found' },
-  render: () => renderPurposeView('not-found'),
+  render: renderPurposeView,
 }
 
 export const AgentGraphSelected: Story = {
@@ -64,5 +41,5 @@ export const AgentGraphSelected: Story = {
     onTabChange: () => {},
     children: <div className="h-48 border border-border" />,
   },
-  render: () => renderPurposeView('ready', 'agent-graph'),
+  render: renderPurposeView,
 }

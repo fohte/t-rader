@@ -57,6 +57,7 @@ export const WithArrayOption: Story = {
     phases: [ALPHA, BETA],
     index: 1,
     value: undefined,
+    selectDefaultOpen: true,
     onChange: () => {},
   },
   render: renderField,
