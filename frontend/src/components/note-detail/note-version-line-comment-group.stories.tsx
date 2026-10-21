@@ -83,6 +83,26 @@ export const ReplyFormOpen: Story = {
   args: { replyingCommentId: comment.id },
 }
 
+export const NewCommentSubmitting: Story = {
+  name: 'disables the new comment action while the request is pending.',
+  args: { activeCommentKey: 'new:4', isCreating: true },
+}
+
+export const NewCommentError: Story = {
+  name: 'shows an error after a new comment request fails.',
+  args: { activeCommentKey: 'new:4', hasCreateError: true },
+}
+
+export const ReplySubmitting: Story = {
+  name: 'disables reply submission while the request is pending.',
+  args: { replyingCommentId: comment.id, isReplying: true },
+}
+
+export const ReplyError: Story = {
+  name: 'shows an error after a reply request fails.',
+  args: { replyingCommentId: comment.id, hasReplyError: true },
+}
+
 export const ThreadWithoutAnchor: Story = {
   name: 'shows a comment thread without a line anchor.',
   args: {

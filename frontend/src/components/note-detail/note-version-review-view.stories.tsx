@@ -85,6 +85,21 @@ export const CommentAllowsEmptyReason: Story = {
   args: { lineCommentCount: 1 },
 }
 
+export const CommentsLoading: Story = {
+  name: 'disables the review actions while line comments are loading.',
+  args: { lineCommentCount: 1, isCommentsPending: true },
+}
+
+export const ReviewPending: Story = {
+  name: 'shows disabled decision actions while a review is pending.',
+  args: { lineCommentCount: 1, isApproving: true },
+}
+
+export const ReviewError: Story = {
+  name: 'shows an error when the review state cannot be updated.',
+  args: { lineCommentCount: 1, hasError: true },
+}
+
 export const RestoringApprovedVersion: Story = {
   name: 'shows the action for making an older approved version current.',
   args: {

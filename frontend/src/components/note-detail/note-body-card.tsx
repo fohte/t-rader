@@ -1,19 +1,13 @@
 import type { ReactNode } from 'react'
 
-const NOTE_BODY_GUTTER_CARD_PADDING_REM = 2.25
-
 interface NoteBodyCardProps {
   children: ReactNode
 }
 
 export function NoteBodyCard({ children }: NoteBodyCardProps) {
+  // Markdown のガター位置とカード内側を揃える。
   return (
-    <article
-      className="space-y-4 border border-border bg-card px-5 py-5 text-foreground"
-      style={{
-        paddingLeft: `${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem`,
-      }}
-    >
+    <article className="space-y-4 border border-border bg-card py-5 pr-5 pl-9 text-foreground">
       {children}
     </article>
   )

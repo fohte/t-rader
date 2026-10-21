@@ -1,5 +1,10 @@
+import { Button } from '@fohte/ui/button'
+import { Chip } from '@fohte/ui/chip'
+import { Textarea } from '@fohte/ui/textarea'
+
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NoteVersion } from '#lib/api/note-version-types'
+import { cn } from '#lib/utils'
 
 export type NoteVersionReviewResult = 'approved' | 'rejected'
 
@@ -59,11 +64,7 @@ export function NoteVersionReviewView({
             行コメント {String(lineCommentCount)} 件
             {isCommentsPending && ' · 読み込み中'}
           </span>
-          {version.is_current && (
-            <span className="border border-primary px-1.5 py-0.5 text-2xs text-primary">
-              現行
-            </span>
-          )}
+          {version.is_current && <Chip>現行</Chip>}
         </div>
         {recentlyReviewedStatus != null && (
           <p
@@ -83,13 +84,11 @@ export function NoteVersionReviewView({
           <>
             <label className="block space-y-1 text-2xs text-muted-foreground-strong">
               <span>却下理由{needsReason ? ' (必須)' : ' (任意)'}</span>
-              <textarea
+              <Textarea
                 value={reason}
                 onChange={(event) => {
                   onReasonChange(event.target.value)
                 }}
-                rows={2}
-                className="w-full border border-border bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-muted-foreground"
                 placeholder={
                   needsReason
                     ? '行コメントがないため理由を入力してください'
@@ -98,41 +97,49 @@ export function NoteVersionReviewView({
               />
             </label>
             <div
-              className={`flex gap-2 ${pinDecisionActionsOnMobile ? 'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-between max-lg:border-t max-lg:border-border max-lg:bg-card max-lg:px-4 max-lg:py-3 max-lg:shadow-lg' : ''}`}
+              className={cn(
+                'flex gap-2',
+                pinDecisionActionsOnMobile &&
+                  'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-between max-lg:border-t max-lg:border-border max-lg:bg-card max-lg:px-4 max-lg:py-3 max-lg:shadow-lg',
+              )}
             >
-              <button
+              <Button
                 type="button"
+                variant="destructive"
+                size="lg"
                 disabled={pending || isCommentsPending || !canReject}
                 onClick={onReject}
-                className="flex-1 border border-border px-2.5 py-2 text-muted-foreground-strong hover:border-status-rejected hover:text-status-rejected disabled:opacity-50"
+                className="flex-1"
               >
-                ✕ 却下
-              </button>
-              <button
+                {isRejecting ? '却下中…' : '✕ 却下'}
+              </Button>
+              <Button
                 type="button"
+                size="lg"
                 disabled={pending || isCommentsPending}
                 onClick={onApprove}
-                className="flex-1 border border-status-approved px-2.5 py-2 text-status-approved hover:bg-status-approved/10 disabled:opacity-50"
+                className="flex-1"
               >
-                ✓ 承認
-              </button>
+                {isApproving ? '承認中…' : '✓ 承認'}
+              </Button>
             </div>
           </>
         )}
         {version.status === 'approved' && !version.is_current && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             disabled={pending}
             onClick={onMakeCurrent}
-            className="border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-primary hover:text-primary disabled:opacity-50"
           >
             {isMakingCurrent
               ? '現行に戻しています…'
               : 'このバージョンを現行に戻す'}
-          </button>
+          </Button>
         )}
         {hasError && (
-          <p className="text-2xs text-primary">
+          <p className="text-2xs text-destructive">
             レビュー状態を更新できませんでした
           </p>
         )}

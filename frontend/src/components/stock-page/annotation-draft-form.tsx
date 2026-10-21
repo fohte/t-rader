@@ -1,4 +1,6 @@
 import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
+import { Textarea } from '@fohte/ui/textarea'
 import type { ReactNode, SyntheticEvent } from 'react'
 import { useId, useState } from 'react'
 
@@ -53,10 +55,9 @@ export function AnnotationDraftForm({
       {header}
       <label className="grid gap-1 font-mono text-xs text-muted-foreground">
         種別キー
-        <input
+        <Input
           aria-label="種別キー"
           autoComplete="off"
-          className="h-9 min-w-0 border border-border bg-background px-2 text-foreground outline-none focus:border-primary"
           list={targetKindsId}
           required
           value={targetKind}
@@ -72,9 +73,8 @@ export function AnnotationDraftForm({
       </label>
       <label className="grid gap-1 font-mono text-xs text-muted-foreground">
         メモ
-        <textarea
+        <Textarea
           aria-label="メモ"
-          className="min-h-20 resize-y border border-border bg-background p-2 font-sans text-sm text-foreground outline-none focus:border-primary"
           required
           value={text}
           onChange={(event) => {

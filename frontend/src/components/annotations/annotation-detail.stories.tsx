@@ -320,6 +320,11 @@ export const CommentError: Story = {
   args: { commentError: new Error('sample failure') },
 }
 
+export const CommentPending: Story = {
+  name: 'shows disabled comment submission while the request is pending.',
+  args: { commentDraft: 'サンプルコメント', isCommentPending: true },
+}
+
 export const CommentDraftEntered: Story = {
   name: 'enables comment submission after text is entered.',
   args: { commentDraft: 'サンプルコメント' },

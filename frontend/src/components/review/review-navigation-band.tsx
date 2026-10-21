@@ -24,7 +24,7 @@ function ReviewQueueItemLink({
   const key = reviewQueueItemKey(item)
   const reviewQueue = { snapshot, currentItemKey: key }
   const linkClassName =
-    'whitespace-nowrap border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-primary hover:text-primary'
+    'whitespace-nowrap border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-border-strong hover:text-foreground'
 
   return item.kind === 'note' ? (
     <Link
@@ -80,7 +80,7 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
         <span>未読はありません · </span>
         <Link
           to="/review"
-          className="whitespace-nowrap text-primary hover:underline"
+          className="whitespace-nowrap text-foreground hover:underline"
         >
           レビューへ
         </Link>
