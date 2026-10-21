@@ -67,9 +67,14 @@ export const TradeReflectionDraft: Story = {
       '2099-02-10 売 10 株 @¥1,000',
       '実現損益 +¥2,200',
       '',
-      '[[stock:FIC-01]]',
+      '[[stock:US:DEMO-A]]',
     ].join('\n'),
   },
+}
+
+export const KindOptionsOpen: Story = {
+  name: 'shows the available note kinds in the selector.',
+  args: { ...args, kindSelectDefaultOpen: true },
 }
 
 export const LoadingKinds: Story = {

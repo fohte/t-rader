@@ -76,6 +76,17 @@ function makeProps(
   }
 }
 
+function getDefaultSelectedStepOutput() {
+  return {
+    expanded: screen
+      .getByRole('button', { name: /項目確認/ })
+      .getAttribute('aria-expanded'),
+    detailSections: screen
+      .getAllByText(/^(input|output)$/)
+      .map((element) => element.textContent),
+  }
+}
+
 describe('readTaskSteps', () => {
   it('keeps a step with all required fields', () => {
     const step = makeStep({ phase_key: 'plan' })
@@ -255,11 +266,34 @@ describe('TaskExecutionTree', () => {
       />,
     )
     const dots = container.querySelectorAll(
-      '[data-testid="task-execution-tree"] button span > span:first-child',
+      '[data-testid="task-execution-tree"] button > span > span > span:first-child',
     )
 
-    expect(dots[0]?.className).toBe('text-status-task-running animate-pulse')
-    expect(dots[1]?.className).toBe('text-primary')
+    expect(Array.from(dots, (dot) => dot.className)).toEqual([
+      'text-status-task-running animate-pulse',
+      'text-destructive',
+    ])
+  })
+
+  it('defaultSelectedStepId が指定された step の詳細を初期表示する', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      execution_step_id: 'sample-step-001',
+      item: { value: 'sample-input' },
+      output: { value: 'sample-output' },
+    })
+
+    render(
+      <TaskExecutionTree
+        {...makeProps({ steps: [step] })}
+        defaultSelectedStepId="sample-step-001"
+      />,
+    )
+
+    expect(getDefaultSelectedStepOutput()).toEqual({
+      expanded: 'true',
+      detailSections: ['input', 'output'],
+    })
   })
 
   it('ノードをクリックすると item/output の詳細が開閉する', async () => {

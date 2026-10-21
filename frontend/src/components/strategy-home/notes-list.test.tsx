@@ -5,13 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { NotesList } from '#components/strategy-home/notes-list'
@@ -91,9 +85,9 @@ describe('NotesList', () => {
     await renderInRouter([note])
 
     expect(
-      within(screen.getByRole('list', { name: 'タグ' }))
-        .getAllByRole('listitem')
-        .map((tag) => tag.textContent),
+      Array.from(document.querySelectorAll('[data-slot="chip"]')).map(
+        (tag) => tag.textContent,
+      ),
     ).toEqual(['架空タグ', '仮の分類'])
   })
 

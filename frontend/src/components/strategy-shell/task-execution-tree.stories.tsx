@@ -1,7 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 
-import { TaskExecutionTree } from '#components/strategy-shell/task-execution-tree'
+import {
+  TaskExecutionTree,
+  type TaskStep,
+} from '#components/strategy-shell/task-execution-tree'
 import {
   CONFIG_PHASES,
   inspectStep,
@@ -31,6 +34,21 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+const EXPANDED_STEP: TaskStep = {
+  phase_key: 'sample-phase',
+  execution_step_id: 'sample-step-001',
+  label: 'サンプル処理',
+  model: 'simulated-model-cobalt',
+  status: 'completed',
+  item: { record: 'sample-row' },
+  item_label: 'サンプル項目',
+  output: { state: 'sample-result', note_id: 'sample-note-001' },
+  started_at: '2026-08-15T09:00:00.000Z',
+  finished_at: '2026-08-15T09:00:08.000Z',
+  trace_id: 'sample-trace-001',
+  span_id: 'sample-span-001',
+}
 
 // 結果整理フェーズには step を渡さないので、常に「未着手」ノードとして描画される
 export const Running: Story = {
@@ -179,6 +197,27 @@ export const WithFailure: Story = {
           }),
         ]}
         configPhases={CONFIG_PHASES}
+      />
+    </Frame>
+  ),
+}
+
+export const Expanded: Story = {
+  name: 'the selected step shows its details.',
+  render: () => (
+    <Frame>
+      <TaskExecutionTree
+        steps={[EXPANDED_STEP]}
+        configPhases={[
+          {
+            key: 'sample-phase',
+            label: 'サンプル処理',
+            model: 'simulated-model-cobalt',
+            output: { state: { enum: ['sample-result'] } },
+          },
+        ]}
+        defaultSelectedStepId={EXPANDED_STEP.execution_step_id}
+        traceUrlTemplate="https://example.test/trace/{trace_id}?span={span_id}"
       />
     </Frame>
   ),
