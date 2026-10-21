@@ -8,10 +8,7 @@ use core_application::widget::{
 use sea_orm::{DatabaseBackend, FromQueryResult, Statement};
 
 use super::{PostgresWidgetQuerySource, query_error, timeout::query_all_with_timeout};
-use sql::{
-    COUNT_CANDIDATES_SQL, INDICATOR_SERIES_SQL, STOCK_SERIES_NO_CHANGE_SQL, STOCK_SERIES_SQL,
-    STOCK_SERIES_VALUATION_SQL,
-};
+use sql::{COUNT_CANDIDATES_SQL, INDICATOR_SERIES_SQL, STOCK_SERIES_SQL};
 
 #[derive(Debug, FromQueryResult)]
 struct CandidateCountRow {
@@ -91,63 +88,24 @@ pub(super) async fn query_series(
         ),
         Some(WidgetAggregation::Count) | None => false,
     } && definition.by != WidgetBy::Stock;
-    let statement = if definition.metric == WidgetMetric::Change {
-        Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            STOCK_SERIES_SQL.as_str(),
-            [
-                by.into(),
-                axis.into(),
-                universe_axis.into(),
-                universe_key.into(),
-                stock_ids.into(),
-                range.query_from.into(),
-                range.from.into(),
-                range.to.into(),
-                definition.metric.as_str().into(),
-                period.into(),
-                aggregation.map(str::to_string).into(),
-                requires_currency_consistency.into(),
-            ],
-        )
-    } else if matches!(
-        definition.metric,
-        WidgetMetric::MktCap | WidgetMetric::Per | WidgetMetric::Pbr
-    ) {
-        Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            STOCK_SERIES_VALUATION_SQL.as_str(),
-            [
-                by.into(),
-                axis.into(),
-                universe_axis.into(),
-                universe_key.into(),
-                stock_ids.into(),
-                range.from.into(),
-                range.to.into(),
-                definition.metric.as_str().into(),
-                aggregation.map(str::to_string).into(),
-                requires_currency_consistency.into(),
-            ],
-        )
-    } else {
-        Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            STOCK_SERIES_NO_CHANGE_SQL.as_str(),
-            [
-                by.into(),
-                axis.into(),
-                universe_axis.into(),
-                universe_key.into(),
-                stock_ids.into(),
-                range.from.into(),
-                range.to.into(),
-                definition.metric.as_str().into(),
-                aggregation.map(str::to_string).into(),
-                requires_currency_consistency.into(),
-            ],
-        )
-    };
+    let statement = Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        STOCK_SERIES_SQL.as_str(),
+        [
+            by.into(),
+            axis.into(),
+            universe_axis.into(),
+            universe_key.into(),
+            stock_ids.into(),
+            range.query_from.into(),
+            range.from.into(),
+            range.to.into(),
+            definition.metric.as_str().into(),
+            period.into(),
+            aggregation.map(str::to_string).into(),
+            requires_currency_consistency.into(),
+        ],
+    );
     let rows = query_all_with_timeout(&source.db, statement).await?;
     let rows = rows
         .iter()

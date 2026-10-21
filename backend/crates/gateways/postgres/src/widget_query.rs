@@ -790,6 +790,70 @@ mod tests {
 
         assert_eq!(result, expected);
 
+        let metric_query = |metric| WidgetQuery {
+            metric,
+            period: None,
+            by: WidgetBy::None,
+            axis: None,
+            indicator: None,
+            universe: query.universe.clone(),
+            agg: Some(WidgetAggregation::Mean),
+        };
+        let close_result = source
+            .query_series(range, &metric_query(WidgetMetric::Close))
+            .await
+            .expect("query close series");
+        let expected_close = dates
+            .iter()
+            .enumerate()
+            .map(|(index, date)| WidgetSeriesQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                date: *date,
+                value: Some(Decimal::from(if index == dates.len() - 1 {
+                    125
+                } else {
+                    100
+                })),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(close_result, expected_close);
+
+        let turnover_result = source
+            .query_series(range, &metric_query(WidgetMetric::Turnover))
+            .await
+            .expect("query turnover series");
+        let expected_turnover = dates
+            .iter()
+            .enumerate()
+            .map(|(index, date)| WidgetSeriesQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                date: *date,
+                value: Some(Decimal::from(if index == dates.len() - 1 {
+                    12_500
+                } else {
+                    10_000
+                })),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(turnover_result, expected_turnover);
+
+        let mkt_cap_result = source
+            .query_series(range, &metric_query(WidgetMetric::MktCap))
+            .await
+            .expect("query market-cap series");
+        let expected_mkt_cap = dates
+            .iter()
+            .map(|date| WidgetSeriesQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                date: *date,
+                value: Some(Decimal::from(2_000)),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(mkt_cap_result, expected_mkt_cap);
+
         let warmup_range = WidgetTimeRange::Dates {
             from: dates[60],
             to: dates[60],
@@ -898,6 +962,78 @@ mod tests {
                     value: Some(Decimal::from(19)),
                 },
             ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn sixty_day_change_spans_winter_market_closures(db: DatabaseHandle) {
+        let range_from = NaiveDate::from_ymd_opt(2098, 3, 5).expect("valid range start");
+        let synthetic_closures = [
+            (2097, 12, 24),
+            (2097, 12, 25),
+            (2097, 12, 26),
+            (2097, 12, 29),
+            (2097, 12, 30),
+            (2097, 12, 31),
+            (2098, 1, 1),
+            (2098, 1, 2),
+            (2098, 1, 5),
+            (2098, 1, 12),
+            (2098, 1, 26),
+            (2098, 2, 11),
+            (2098, 2, 23),
+            (2098, 2, 24),
+        ]
+        .map(|(year, month, day)| {
+            NaiveDate::from_ymd_opt(year, month, day).expect("valid synthetic closure")
+        });
+        let prior_dates = std::iter::successors(range_from.pred_opt(), |date| date.pred_opt())
+            .filter(|date| {
+                !matches!(date.weekday(), Weekday::Sat | Weekday::Sun)
+                    && !synthetic_closures.contains(date)
+            })
+            .take(60)
+            .collect::<Vec<_>>();
+        let mut bars = prior_dates
+            .iter()
+            .rev()
+            .map(|date| (*date, 100))
+            .collect::<Vec<_>>();
+        bars.push((range_from, 120));
+
+        insert_stock(&db, "D023", "Demo Stock").await;
+        insert_bars_on_dates(&db, "D023", &bars).await;
+
+        let query = WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::SixtyDays),
+            by: WidgetBy::Stock,
+            axis: None,
+            indicator: None,
+            universe: Some(WidgetUniverse::Stocks {
+                stocks: vec!["D023".to_string()],
+            }),
+            agg: None,
+        };
+        let range = WidgetTimeRange::Dates {
+            from: range_from,
+            to: range_from,
+        }
+        .resolve(range_from, Some(WidgetPeriod::SixtyDays))
+        .expect("resolve winter range");
+        let result = PostgresWidgetQuerySource::new(db)
+            .query_series(range, &query)
+            .await
+            .expect("query 60-day change after winter closures");
+
+        assert_eq!(
+            result,
+            vec![WidgetSeriesQueryRow {
+                key: WidgetRowKey::Stock("D023".to_string()),
+                name: "Demo Stock".to_string(),
+                date: range_from,
+                value: Some(Decimal::new(2, 1)),
+            }],
         );
     }
 

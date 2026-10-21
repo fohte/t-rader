@@ -8,15 +8,6 @@ const REQUESTED_AXES_SQL: &str = r#"
     SELECT $3::text AS axis_key WHERE $3::text IS NOT NULL
 "#;
 
-const CHANGE_RATE_EXPRESSION: &str = r#"CASE
-                                   WHEN $9::text = 'change' THEN daily_bars.close / NULLIF(
-                                       LAG(daily_bars.close, $10::integer) OVER (
-                                           ORDER BY daily_bars.timestamp
-                                       ),
-                                       0
-                                   ) - 1
-                               END"#;
-
 const CANDIDATE_STOCKS_CTE: &str = r#"
     candidate_stocks AS MATERIALIZED (
         SELECT stock.id,
@@ -159,7 +150,7 @@ pub(super) static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
     with_shared_market_ctes(
         REQUESTED_AXES_SQL,
         CANDIDATE_STOCKS_CTE,
-        &r#"
+        r#"
             stock_bar_series AS (
                 SELECT candidate_stocks.id AS stock_id,
                        candidate_stocks.name AS stock_name,
@@ -235,7 +226,14 @@ pub(super) static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
                         SELECT (daily_bars.timestamp AT TIME ZONE 'UTC')::date AS date,
                                daily_bars.close,
                                daily_bars.volume,
-                               __CHANGE_RATE_EXPRESSION__ AS change_rate
+                               CASE
+                                   WHEN $9::text = 'change' THEN daily_bars.close / NULLIF(
+                                       LAG(daily_bars.close, $10::integer) OVER (
+                                           ORDER BY daily_bars.timestamp
+                                       ),
+                                       0
+                                   ) - 1
+                               END AS change_rate
                         FROM (
                             SELECT warmup_bars.timestamp,
                                    warmup_bars.close,
@@ -354,55 +352,10 @@ pub(super) static STOCK_SERIES_SQL: LazyLock<String> = LazyLock::new(|| {
                     FROM series_result
                 ) AS stock_series ON TRUE
             )
-        "#
-        .replace("__CHANGE_RATE_EXPRESSION__", CHANGE_RATE_EXPRESSION),
+        "#,
         STOCK_SERIES_AGGREGATION_SQL,
     )
 });
-
-fn renumber_no_change_parameters(mut sql: String) -> String {
-    for parameter in (1..=12).rev() {
-        sql = sql.replace(
-            &format!("${parameter}"),
-            &format!("__widget_parameter_{parameter}__"),
-        );
-    }
-    for (source, target) in [
-        (1, 1),
-        (2, 2),
-        (3, 3),
-        (4, 4),
-        (5, 5),
-        (7, 6),
-        (8, 7),
-        (9, 8),
-        (11, 9),
-        (12, 10),
-    ] {
-        sql = sql.replace(
-            &format!("__widget_parameter_{source}__"),
-            &format!("${target}"),
-        );
-    }
-    sql
-}
-
-pub(super) static STOCK_SERIES_NO_CHANGE_SQL: LazyLock<String> = LazyLock::new(|| {
-    let sql = STOCK_SERIES_SQL
-        .replace(CHANGE_RATE_EXPRESSION, "NULL::numeric")
-        .replace(
-            "LIMIT CASE\n                                    WHEN $9::text = 'change' THEN $10::integer\n                                    ELSE 0\n                                END",
-            "LIMIT 0",
-        )
-        .replace(
-            "($6::date::timestamp) AT TIME ZONE 'UTC'",
-            "($7::date::timestamp) AT TIME ZONE 'UTC'",
-        );
-    renumber_no_change_parameters(sql)
-});
-
-pub(super) static STOCK_SERIES_VALUATION_SQL: LazyLock<String> =
-    LazyLock::new(|| STOCK_SERIES_NO_CHANGE_SQL.as_str().to_string());
 
 pub(super) const INDICATOR_SERIES_SQL: &str = r#"
     SELECT 'market'::text AS row_key,

@@ -72,7 +72,7 @@ impl WidgetTimeRange {
             }
         };
         let warmup_days = period
-            .map(|period| (period.trading_days() + period.trading_days() / 4 + 21) as u64)
+            .map(|period| (period.trading_days() * 2 + 14) as u64)
             .unwrap_or_default();
         let query_from = from
             .checked_sub_days(Days::new(warmup_days))
@@ -131,11 +131,11 @@ mod tests {
     #[rstest]
     #[case::sixty_day_warmup(
         WidgetPeriod::SixtyDays,
-        NaiveDate::from_ymd_opt(2097, 10, 1).expect("valid date")
+        NaiveDate::from_ymd_opt(2097, 8, 24).expect("valid date")
     )]
     #[case::one_day_warmup(
         WidgetPeriod::OneDay,
-        NaiveDate::from_ymd_opt(2097, 12, 14).expect("valid date")
+        NaiveDate::from_ymd_opt(2097, 12, 20).expect("valid date")
     )]
     fn resolves_range_with_calendar_warmup(
         #[case] period: WidgetPeriod,
