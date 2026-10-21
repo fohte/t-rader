@@ -471,7 +471,7 @@ BEGIN
         'passed',
         clock_timestamp(),
         profile_current.metrics,
-        profile_current.profile_metrics
+        profile_metrics
     FROM query_perf_profile_current AS profile_current
     ON CONFLICT (profile_id) DO UPDATE SET
         schema_id = EXCLUDED.schema_id,
