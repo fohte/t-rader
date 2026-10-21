@@ -30,3 +30,12 @@ export const EmptyInitial: Story = {
     initial: 0,
   },
 }
+
+export const InvalidInput: Story = {
+  name: 'disables saving while the amount field is empty.',
+  args: {
+    open: true,
+    initial: 250000,
+    initialInputValue: '',
+  },
+}

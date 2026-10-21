@@ -19,7 +19,8 @@ export function DashboardListPageView({
     <main className="space-y-5 font-sans text-foreground">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold leading-tight tracking-tight">
-          <span className="font-mono text-primary">&gt;</span> ダッシュボード
+          <span className="font-mono text-muted-foreground">&gt;</span>{' '}
+          ダッシュボード
         </h1>
         <p className="text-sm text-muted-foreground">
           保存されたダッシュボードを表示します。

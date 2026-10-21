@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 import {
   allocationTotal,
   positiveAllocationValue,
@@ -11,13 +13,27 @@ export interface AllocationSegment {
   kind: 'position' | 'cash'
 }
 
-const POSITION_HUES = [350, 200, 35, 280, 140, 25, 220]
-const CASH_BG = 'hsl(0, 0%, 35%)'
+type AllocationStyle = CSSProperties & {
+  '--allocation-weight': number
+  '--allocation-color': string
+}
 
-function segmentBg(seg: AllocationSegment, idx: number): string {
-  if (seg.kind === 'cash') return CASH_BG
-  const hue = POSITION_HUES[idx % POSITION_HUES.length] ?? 200
-  return `hsl(${String(hue)}, 55%, 45%)`
+type AllocationColorStyle = CSSProperties & {
+  '--allocation-color': string
+}
+
+const POSITION_COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+]
+const CASH_COLOR = 'var(--color-muted-foreground)'
+
+function segmentColor(segment: AllocationSegment, index: number): string {
+  if (segment.kind === 'cash') return CASH_COLOR
+  return POSITION_COLORS[index % POSITION_COLORS.length] ?? 'var(--chart-1)'
 }
 
 export function AllocationBar({
@@ -37,10 +53,15 @@ export function AllocationBar({
           {segments.map((segment, index) => {
             const value = positiveAllocationValue(segment.value)
             if (value === 0) return null
+            const style: AllocationStyle = {
+              '--allocation-weight': value,
+              '--allocation-color': segmentColor(segment, index),
+            }
             return (
               <div
                 key={segment.key}
-                style={{ flex: value, background: segmentBg(segment, index) }}
+                className="h-full flex-(--allocation-weight) bg-(--allocation-color)"
+                style={style}
                 title={`${segment.label} ${formatYen(value)}`}
               />
             )
@@ -62,14 +83,17 @@ export function AllocationBar({
                 : positiveAllocationValue(segment.value)
             const percentage =
               value == null || total <= 0 ? null : (value / total) * 100
+            const style: AllocationColorStyle = {
+              '--allocation-color': segmentColor(segment, index),
+            }
             return (
               <li
                 key={segment.key}
                 className="flex items-center gap-2 text-muted-foreground-strong"
               >
                 <span
-                  className="inline-block h-2.5 w-2.5 border border-border"
-                  style={{ background: segmentBg(segment, index) }}
+                  className="inline-block h-2.5 w-2.5 border border-border bg-(--allocation-color)"
+                  style={style}
                 />
                 <span className="min-w-0 flex-1 truncate text-foreground">
                   {segment.label}

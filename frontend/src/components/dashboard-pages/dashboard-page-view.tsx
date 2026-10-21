@@ -1,3 +1,5 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import { Link } from '@tanstack/react-router'
 
 import type { DashboardConfigIssue } from '#components/dashboard-pages/dashboard-config'
@@ -61,7 +63,7 @@ function PageHeading({
           </Link>
         ) : null}
         <h1 className="text-2xl font-bold leading-tight tracking-tight">
-          <span className="font-mono text-primary">&gt;</span> {title}
+          <span className="font-mono text-muted-foreground">&gt;</span> {title}
         </h1>
       </div>
     </header>
@@ -218,10 +220,9 @@ export function DashboardPageView({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground-strong">
-            基準日
-            <input
+            <span>基準日</span>
+            <Input
               aria-label="基準日"
-              className="border border-border bg-background px-2 py-1 text-foreground focus-visible:outline-2 focus-visible:outline-ring"
               onChange={(event) => {
                 state.onAsOfChange(event.currentTarget.value)
               }}
@@ -229,16 +230,16 @@ export function DashboardPageView({
               value={state.asOf ?? ''}
             />
           </label>
-          <button
+          <Button
             aria-pressed={state.asOf === ''}
-            className="border border-border px-2 py-1 font-mono text-xs text-muted-foreground-strong hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-muted aria-pressed:text-foreground"
             onClick={() => {
               state.onAsOfChange('')
             }}
             type="button"
+            variant="plain"
           >
             最新
-          </button>
+          </Button>
         </div>
       </div>
 

@@ -55,10 +55,44 @@ describe('GroupRatioEditor', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('分類軸'), 'example-axis-a')
+    await user.click(screen.getByRole('combobox', { name: '分類軸' }))
+    await user.click(
+      await screen.findByRole('option', { name: 'Example dimension A' }),
+    )
 
     expect(onRowsChange).toHaveBeenLastCalledWith([
       { axis: 'example-axis-a', ratioPercent: '25' },
     ])
-  })
+  }, 10_000)
+
+  it('disables classification axes already assigned to another row', async () => {
+    const user = userEvent.setup()
+    render(
+      <GroupRatioEditor
+        axes={axes}
+        rows={[
+          { axis: 'example-axis-a', ratioPercent: '25' },
+          { axis: '', ratioPercent: '40' },
+        ]}
+        errors={[]}
+        isLoading={false}
+        loadError={false}
+        isSaving={false}
+        saveError={null}
+        onRowsChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    const secondSelect = screen
+      .getAllByRole('combobox', { name: '分類軸' })
+      .at(1)
+    if (secondSelect == null) throw new Error('2 つ目の分類軸がありません')
+    await user.click(secondSelect)
+    const usedAxis = await screen.findByRole('option', {
+      name: 'Example dimension A',
+    })
+
+    expect(usedAxis.getAttribute('aria-disabled')).toEqual('true')
+  }, 10_000)
 })

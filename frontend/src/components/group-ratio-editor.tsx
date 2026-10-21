@@ -1,5 +1,12 @@
 import { Button } from '@fohte/ui/button'
 import { Input } from '@fohte/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
 
 import { Skeleton } from '#components/ui/skeleton'
 import type {
@@ -7,20 +14,19 @@ import type {
   GroupRatioDraftErrors,
 } from '#lib/group-ratio-policy'
 
-export type { GroupRatioDraft } from '#lib/group-ratio-policy'
-
 interface GroupRatioAxisOption {
   key: string
   name: string
 }
 
-export interface GroupRatioEditorProps {
+interface GroupRatioEditorProps {
   axes: GroupRatioAxisOption[]
   rows: GroupRatioDraft[]
   errors: Array<GroupRatioDraftErrors | null>
   isLoading: boolean
   loadError: boolean
   isSaving: boolean
+  axisSelectDefaultOpen?: boolean
   saveError: string | null
   onRowsChange: (rows: GroupRatioDraft[]) => void
   onSave: () => void
@@ -33,6 +39,7 @@ export function GroupRatioEditor({
   isLoading,
   loadError,
   isSaving,
+  axisSelectDefaultOpen,
   saveError,
   onRowsChange,
   onSave,
@@ -40,7 +47,7 @@ export function GroupRatioEditor({
   if (isLoading) return <Skeleton className="h-48 w-full max-w-xl" />
   if (loadError) {
     return (
-      <p className="font-mono text-xs text-primary">
+      <p className="font-mono text-xs text-destructive">
         リスク上限の読み込みに失敗しました
       </p>
     )
@@ -78,40 +85,69 @@ export function GroupRatioEditor({
                 >
                   分類軸
                 </label>
-                <select
-                  id={`group-ratio-axis-${String(index)}`}
-                  value={row.axis}
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    updateRow(index, { axis: event.target.value })
+                <Select
+                  items={[
+                    { value: null, label: '分類軸を選択' },
+                    ...(row.axis !== '' &&
+                    !axes.some((axis) => axis.key === row.axis)
+                      ? [
+                          {
+                            value: row.axis,
+                            label: `${row.axis} (現在利用できません)`,
+                          },
+                        ]
+                      : []),
+                    ...axes.map((axis) => ({
+                      value: axis.key,
+                      label: axis.name,
+                      disabled: rows.some(
+                        (otherRow, otherIndex) =>
+                          otherIndex !== index && otherRow.axis === axis.key,
+                      ),
+                    })),
+                  ]}
+                  value={row.axis === '' ? null : row.axis}
+                  onValueChange={(value) => {
+                    updateRow(index, { axis: value ?? '' })
                   }}
-                  className="h-9 w-full border border-border bg-background px-2 text-sm text-foreground outline-none disabled:opacity-60"
+                  disabled={isSaving}
+                  defaultOpen={axisSelectDefaultOpen}
                 >
-                  <option value="">分類軸を選択</option>
-                  {row.axis !== '' &&
-                    !axes.some((axis) => axis.key === row.axis) && (
-                      <option value={row.axis}>
-                        {row.axis} (現在利用できません)
-                      </option>
-                    )}
-                  {axes.map((axis) => {
-                    const isUsedElsewhere = rows.some(
-                      (otherRow, otherIndex) =>
-                        otherIndex !== index && otherRow.axis === axis.key,
-                    )
-                    return (
-                      <option
-                        key={axis.key}
-                        value={axis.key}
-                        disabled={isUsedElsewhere}
-                      >
-                        {axis.name}
-                      </option>
-                    )
-                  })}
-                </select>
+                  <SelectTrigger
+                    id={`group-ratio-axis-${String(index)}`}
+                    aria-label="分類軸"
+                    aria-invalid={errors[index]?.axis != null}
+                    className="w-full"
+                  >
+                    <SelectValue placeholder="分類軸を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>分類軸を選択</SelectItem>
+                    {row.axis !== '' &&
+                      !axes.some((axis) => axis.key === row.axis) && (
+                        <SelectItem value={row.axis}>
+                          {row.axis} (現在利用できません)
+                        </SelectItem>
+                      )}
+                    {axes.map((axis) => {
+                      const isUsedElsewhere = rows.some(
+                        (otherRow, otherIndex) =>
+                          otherIndex !== index && otherRow.axis === axis.key,
+                      )
+                      return (
+                        <SelectItem
+                          key={axis.key}
+                          value={axis.key}
+                          disabled={isUsedElsewhere}
+                        >
+                          {axis.name}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
                 {errors[index]?.axis != null && (
-                  <p className="font-mono text-2xs text-primary">
+                  <p className="font-mono text-2xs text-destructive">
                     {errors[index].axis}
                   </p>
                 )}
@@ -140,14 +176,14 @@ export function GroupRatioEditor({
                   </span>
                 </div>
                 {errors[index]?.ratioPercent != null && (
-                  <p className="font-mono text-2xs text-primary">
+                  <p className="font-mono text-2xs text-destructive">
                     {errors[index].ratioPercent}
                   </p>
                 )}
               </div>
               <Button
                 type="button"
-                variant="outline"
+                variant="plain"
                 disabled={isSaving}
                 onClick={() => {
                   onRowsChange(rows.filter((_, rowIndex) => rowIndex !== index))
@@ -176,7 +212,7 @@ export function GroupRatioEditor({
         {saveError != null && (
           <span
             data-testid="save-error"
-            className="font-mono text-xs text-primary"
+            className="font-mono text-xs text-destructive"
           >
             {saveError}
           </span>

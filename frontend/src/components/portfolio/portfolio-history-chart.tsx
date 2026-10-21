@@ -1,3 +1,4 @@
+import { SegmentedControl } from '@fohte/ui/segmented-control'
 import {
   AreaSeries,
   createChart,
@@ -7,6 +8,7 @@ import {
   LineStyle,
   type Time,
 } from 'lightweight-charts'
+import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { formatYen, pnlColorClass } from '#components/trades/format'
@@ -25,6 +27,7 @@ import {
 } from '#lib/portfolio-history'
 
 type HistoryStatus = 'loading' | 'empty' | 'error' | 'ready'
+type LegendColorStyle = CSSProperties & { '--legend-color': string }
 
 interface PortfolioHistoryChartProps {
   data: PortfolioHistoryPoint[]
@@ -42,15 +45,38 @@ const periods: { value: PortfolioHistoryPeriod; label: string }[] = [
   { value: 'year', label: '年' },
 ]
 
-const seriesColors = {
-  stock: '#60a5fa',
-  stockFillTop: 'rgba(59, 130, 246, 0.5)',
-  stockFillBottom: 'rgba(59, 130, 246, 0.24)',
-  cash: '#4ade80',
-  cashFillTop: 'rgba(74, 222, 128, 0.32)',
-  cashFillBottom: 'rgba(74, 222, 128, 0.08)',
-  total: '#e5e7eb',
-  investable: '#fbbf24',
+const legendColors = {
+  stock: 'var(--chart-1)',
+  cash: 'var(--chart-2)',
+  total: 'var(--foreground)',
+  investable: 'var(--chart-3)',
+}
+
+function readThemeColor(name: string): string {
+  // Lightweight Charts の Canvas は CSS 変数を直接扱えないため RGB に解決する。
+  const colorProbe = document.createElement('span')
+  colorProbe.style.display = 'none'
+  document.body.appendChild(colorProbe)
+  colorProbe.style.color = `var(${name})`
+  const color = window.getComputedStyle(colorProbe).color
+  colorProbe.remove()
+  return color
+}
+
+function getPortfolioSeriesColors() {
+  const stock = readThemeColor('--chart-1')
+  const cash = readThemeColor('--chart-2')
+
+  return {
+    stock,
+    stockFillTop: `color-mix(in srgb, ${stock} 50%, transparent)`,
+    stockFillBottom: `color-mix(in srgb, ${stock} 24%, transparent)`,
+    cash,
+    cashFillTop: `color-mix(in srgb, ${cash} 32%, transparent)`,
+    cashFillBottom: `color-mix(in srgb, ${cash} 8%, transparent)`,
+    total: readThemeColor('--foreground'),
+    investable: readThemeColor('--chart-3'),
+  }
 }
 
 function timeToDateKey(time: Time | undefined): string | undefined {
@@ -75,15 +101,21 @@ function LegendItem({
   color: string
   kind: 'line' | 'area' | 'dashed'
 }) {
+  const style: LegendColorStyle = { '--legend-color': color }
+
   return (
     <span className="inline-flex items-center gap-1.5 font-mono text-2xs text-muted-foreground-strong">
       {kind === 'area' ? (
-        <span className="size-2.5" style={{ backgroundColor: color }} />
+        <span className="size-2.5 bg-(--legend-color)" style={style} />
       ) : (
         <span
           aria-hidden="true"
-          className={`w-3 ${kind === 'dashed' ? 'border-t border-dashed' : 'border-t-2'}`}
-          style={{ borderColor: color }}
+          className={
+            kind === 'dashed'
+              ? 'w-3 border-t border-dashed border-(--legend-color)'
+              : 'w-3 border-t-2 border-(--legend-color)'
+          }
+          style={style}
         />
       )}
       {label}
@@ -109,28 +141,15 @@ export function PortfolioHistoryChart({
     <section className="border border-border bg-card">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3.5 py-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
-          <span className="mr-2 text-primary">&gt;</span>
+          <span className="mr-2 text-muted-foreground">&gt;</span>
           資産推移
         </h2>
-        <div role="group" aria-label="表示単位" className="flex gap-1">
-          {periods.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={period === value}
-              onClick={() => {
-                onPeriodChange(value)
-              }}
-              className={`min-w-7 border px-2 py-1 font-mono text-2xs transition-colors ${
-                period === value
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border text-muted-foreground-strong hover:text-foreground'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-label="表示単位"
+          options={periods}
+          value={period}
+          onValueChange={onPeriodChange}
+        />
       </header>
 
       <div className="px-3.5 py-3">
@@ -159,16 +178,16 @@ export function PortfolioHistoryChart({
             aria-label="凡例"
             className="mt-2 flex flex-wrap gap-x-4 gap-y-2"
           >
-            <LegendItem label="総資産" color={seriesColors.total} kind="line" />
+            <LegendItem label="総資産" color={legendColors.total} kind="line" />
             <LegendItem
               label="株式 (時価)"
-              color={seriesColors.stock}
+              color={legendColors.stock}
               kind="area"
             />
-            <LegendItem label="現金" color={seriesColors.cash} kind="area" />
+            <LegendItem label="現金" color={legendColors.cash} kind="area" />
             <LegendItem
               label="元手"
-              color={seriesColors.investable}
+              color={legendColors.investable}
               kind="dashed"
             />
           </div>
@@ -246,6 +265,7 @@ function PortfolioHistoryPlot({
       formatter: (price: number) => compactYen.format(price),
     }
 
+    const seriesColors = getPortfolioSeriesColors()
     const totalSeries = chart.addSeries(AreaSeries, {
       lineColor: seriesColors.total,
       topColor: seriesColors.cashFillTop,
@@ -289,6 +309,18 @@ function PortfolioHistoryPlot({
         document.documentElement.classList.contains('dark'),
       )
       chart.applyOptions(getChartThemeOptions(colors))
+      const seriesColors = getPortfolioSeriesColors()
+      totalSeries.applyOptions({
+        lineColor: seriesColors.total,
+        topColor: seriesColors.cashFillTop,
+        bottomColor: seriesColors.cashFillBottom,
+      })
+      stockSeries.applyOptions({
+        lineColor: seriesColors.stock,
+        topColor: seriesColors.stockFillTop,
+        bottomColor: seriesColors.stockFillBottom,
+      })
+      investableSeries.applyOptions({ color: seriesColors.investable })
     })
 
     const handleCrosshairMove = (param: { time?: Time }) => {

@@ -1,5 +1,5 @@
 import { RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -40,6 +40,28 @@ function readTableOutput(table: HTMLElement) {
 }
 
 describe('DashboardPageView', () => {
+  it('指定した基準日を通知する', async () => {
+    const onAsOfChange = vi.fn<(date: string) => void>()
+    const state: DashboardPageState = {
+      status: 'ready',
+      title: 'サンプル',
+      asOf: '',
+      onAsOfChange,
+      widgets: [],
+    }
+    const router = createStoryRouter(
+      () => <DashboardPageView state={state} />,
+      { paths: ['/dashboards'] },
+    )
+
+    render(<RouterProvider router={router} />)
+    fireEvent.change(await screen.findByLabelText('基準日'), {
+      target: { value: '2099-02-03' },
+    })
+
+    expect(onAsOfChange.mock.calls).toEqual([['2099-02-03']])
+  })
+
   it('日付指定時に最新を選ぶと空文字で通知する', async () => {
     const user = userEvent.setup()
     const onAsOfChange = vi.fn<(date: string) => void>()
