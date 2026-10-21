@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::custom_indicator::CustomIndicator;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
@@ -102,6 +103,7 @@ pub struct PayloadManifest {
     pub source_locator: Option<JsonValue>,
     pub source_metadata: JsonValue,
     pub schema: JsonValue,
+    pub capture_metadata: Option<PayloadCaptureMetadata>,
     pub root_is_array: bool,
     pub chunk_count: u64,
     pub item_count: u64,
@@ -111,6 +113,16 @@ pub struct PayloadManifest {
     pub incomplete_reason: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub sealed_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayloadCaptureMetadata {
+    pub captured_at: DateTime<FixedOffset>,
+    pub expected_count: Option<u64>,
+    /// 対象 revision から受信した総件数。保存を拒否した page の件数も含む。
+    pub received_count: u64,
+    pub missing_count: Option<u64>,
+    pub unretrieved_count: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -181,6 +193,10 @@ pub struct DatasetSnapshot {
     pub source_locator: Option<JsonValue>,
     pub source_metadata: JsonValue,
     pub schema: JsonValue,
+    /// provider が固定した取得対象の時点。
+    pub captured_at: DateTime<FixedOffset>,
+    /// provider が開始時に把握している総件数。把握できない場合は `None`。
+    pub expected_count: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -188,6 +204,30 @@ pub struct DatasetPage {
     pub source_revision: String,
     pub items: Vec<JsonValue>,
     pub next_cursor: Option<String>,
+    pub completion: DatasetPageCompletion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatasetCaptureReport {
+    /// 完了時に provider が把握している総件数。把握できない場合は `None`。
+    pub expected_count: Option<u64>,
+    /// 対象 revision から provider が返した総件数。保存 item 数との一致が必要。
+    pub received_count: u64,
+    /// 対象に含まれるが取得元に存在しなかった件数。把握できない場合は `None`。
+    pub missing_count: Option<u64>,
+    /// provider が取得を終えられず未取得となった件数。把握できない場合は `None`。
+    pub unretrieved_count: Option<u64>,
+}
+
+/// `Complete` のみ seal でき、`Incomplete` は返却済み item を保存して未完了にする。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DatasetPageCompletion {
+    /// 続きの page があり、`next_cursor` が必要。
+    More,
+    /// 全 page の取得を完了した。`next_cursor` はなく、未取得件数は `Some(0)` が必要。
+    Complete(DatasetCaptureReport),
+    /// provider が取得の打切りを報告した。`next_cursor` の有無に関わらず seal しない。
+    Incomplete(DatasetCaptureReport),
 }
 
 #[async_trait]

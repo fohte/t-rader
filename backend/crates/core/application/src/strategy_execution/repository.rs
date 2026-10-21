@@ -6,7 +6,9 @@ use uuid::Uuid;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 use super::error::StrategyExecutionRepositoryError;
-use super::types::{DefinitionSnapshot, PayloadChunk, PayloadManifest, PayloadSeal};
+use super::types::{
+    DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk, PayloadManifest, PayloadSeal,
+};
 
 #[async_trait]
 pub trait StrategyExecutionRepository: Send + Sync {
@@ -48,6 +50,14 @@ pub trait StrategyExecutionRepository: Send + Sync {
         task_id: Uuid,
         chunk: PayloadChunk,
     ) -> Result<PayloadManifest, StrategyExecutionRepositoryError>;
+
+    async fn update_payload_capture_metadata(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        task_id: Uuid,
+        payload_id: Uuid,
+        metadata: PayloadCaptureMetadata,
+    ) -> Result<(), StrategyExecutionRepositoryError>;
 
     async fn mark_payload_sealed(
         &self,

@@ -4,8 +4,7 @@ use core_application::{
     custom_indicator::CustomIndicator,
     kata_exec::{ExecRequest, ExecResult},
     strategy_execution::{
-        MAX_PAYLOAD_PAGE_ITEMS, PayloadDefinition, PayloadKind, ReadPayloadQuery,
-        StrategyExecutionUseCaseError,
+        PayloadDefinition, PayloadKind, ReadPayloadQuery, StrategyExecutionUseCaseError,
     },
     strategy_scope::StrategyScope,
 };
@@ -14,7 +13,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::dto::{
-    ExecuteOperationParams, ExecuteOperationResult, ExecutionPayloadRefDto,
+    ExecuteOperationParams, ExecuteOperationResult, ExecutionPayloadRefDto, NumericProjectionError,
     ReadExecutionPayloadParams, ReadExecutionPayloadResult,
 };
 use super::eval_indicator::{
@@ -106,28 +105,30 @@ impl StrategyServer {
             .await
             .map_err(strategy_execution_error)?;
 
-        let evaluation_id = if output.is_some() {
-            Some(
-                self.dependencies
-                    .strategy_executions
-                    .record_numeric_projection(
-                        &access,
-                        output_payload.id,
-                        &indicator,
-                        args,
-                        params.numeric_pointers,
-                    )
-                    .await
-                    .map_err(strategy_execution_error)?,
-            )
-        } else {
-            None
+        let (evaluation_id, projection_error) = match (output.is_some(), params.numeric_pointers) {
+            (true, Some(pointers)) => match self
+                .dependencies
+                .strategy_executions
+                .record_numeric_projection(&access, output_payload.id, &indicator, args, pointers)
+                .await
+            {
+                Ok(evaluation_id) => (Some(evaluation_id), None),
+                Err(StrategyExecutionUseCaseError::InvalidNumericProjection) => {
+                    (None, Some(NumericProjectionError::InvalidProjection))
+                }
+                Err(error) => {
+                    tracing::error!(error = %error, "failed to record numeric operation projection");
+                    (None, Some(NumericProjectionError::RecordingFailed))
+                }
+            },
+            _ => (None, None),
         };
 
         Ok(ExecuteOperationResult {
             input_payload: input_payload.into(),
             output_payload: Some(output_payload.into()),
             evaluation_id,
+            projection_error,
             exit_code: result.exit_code,
             stderr: result.stderr,
         })
@@ -199,17 +200,6 @@ fn validate_execute_operation_params(
 ) -> Result<(), McpError> {
     if name.is_empty() {
         return Err(invalid_params("name must not be empty"));
-    }
-    if params.numeric_pointers.is_empty()
-        || params.numeric_pointers.len() > MAX_PAYLOAD_PAGE_ITEMS
-        || params
-            .numeric_pointers
-            .keys()
-            .any(|key| key.trim().is_empty())
-    {
-        return Err(invalid_params(
-            "numeric_pointers must contain bounded non-empty names",
-        ));
     }
     check_exec_upper_bound("timeout_secs", params.timeout_secs, EXEC_MAX_TIMEOUT_SECS)?;
     check_exec_upper_bound(

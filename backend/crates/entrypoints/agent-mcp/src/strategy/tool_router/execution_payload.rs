@@ -16,7 +16,7 @@ impl StrategyServer {
     /// 保存済み定義を task に紐付けて実行し、入力・出力 payload の参照を返す
     #[tool(
         name = "execute_operation",
-        description = "Execute a saved custom indicator within the current task. The definition is pinned on first use, the complete input and output are sealed as task-scoped payloads, and numeric_pointers selects values for the existing evaluation citation. Pointers address the output payload's value field. Use read_execution_payload to read sealed data in bounded pages."
+        description = "Execute a saved custom indicator within the current task. The definition and complete input/output are saved as task-scoped payloads; read them in bounded pages with read_execution_payload. Set numeric_pointers only when numeric values should be available for note citations. Pointers must select numbers under the output payload's value field; omitting them still returns the payload reference."
     )]
     async fn execute_operation(
         &self,

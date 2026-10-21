@@ -14,7 +14,6 @@ use super::{
 };
 
 mod dataset_capture;
-
 impl StrategyExecutionUseCases {
     pub async fn begin_payload(
         &self,
@@ -33,6 +32,7 @@ impl StrategyExecutionUseCases {
             source_locator: definition.source_locator,
             source_metadata: definition.source_metadata,
             schema: definition.schema,
+            capture_metadata: None,
             root_is_array,
             chunk_count: 0,
             item_count: 0,
@@ -142,6 +142,27 @@ impl StrategyExecutionUseCases {
             return Err(StrategyExecutionUseCaseError::Repository(
                 StrategyExecutionRepositoryError::InvalidPayloadState,
             ));
+        }
+        if manifest.capture_metadata.as_ref().is_some_and(|metadata| {
+            metadata.received_count != manifest.item_count
+                || !dataset_capture::is_consistent_capture_count(
+                    metadata.expected_count,
+                    metadata.received_count,
+                    metadata.missing_count,
+                    metadata.unretrieved_count,
+                    true,
+                )
+        }) {
+            self.repository
+                .mark_payload_incomplete(
+                    &transaction,
+                    access.task_id,
+                    payload_id,
+                    "invalid_provider_completion".to_string(),
+                )
+                .await?;
+            self.unit_of_work.commit(transaction).await?;
+            return Err(StrategyExecutionUseCaseError::InvalidDatasetCompletion);
         }
         let chunks = self
             .repository

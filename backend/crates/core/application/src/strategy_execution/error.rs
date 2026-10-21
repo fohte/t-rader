@@ -72,6 +72,10 @@ pub enum StrategyExecutionUseCaseError {
     SourceRevisionChanged,
     #[error("dataset provider returned an invalid cursor")]
     InvalidDatasetCursor,
+    #[error("dataset provider returned inconsistent completion counts")]
+    InvalidDatasetCompletion,
+    #[error("dataset provider reported an incomplete capture")]
+    DatasetCaptureIncomplete,
     #[error(transparent)]
     DatasetProvider(#[from] DatasetProviderError),
     #[error("numeric projection is invalid")]

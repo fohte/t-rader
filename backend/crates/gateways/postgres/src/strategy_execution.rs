@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use core_application::{
     strategy_execution::{
-        DefinitionSnapshot, PayloadChunk, PayloadKind, PayloadManifest, PayloadSeal, PayloadStatus,
-        StrategyExecutionRepository, StrategyExecutionRepositoryError,
+        DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk, PayloadKind, PayloadManifest,
+        PayloadSeal, PayloadStatus, StrategyExecutionRepository, StrategyExecutionRepositoryError,
     },
     unit_of_work::UnitOfWorkTransaction,
 };
@@ -108,6 +108,11 @@ impl StrategyExecutionRepository for PostgresStrategyExecutionRepository {
             source_locator: Set(payload.source_locator),
             source_metadata: Set(payload.source_metadata),
             schema: Set(payload.schema),
+            capture_metadata: Set(payload
+                .capture_metadata
+                .map(serde_json::to_value)
+                .transpose()
+                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?),
             root_is_array: Set(payload.root_is_array),
             chunk_count: Set(0),
             item_count: Set(0),
@@ -228,6 +233,37 @@ impl StrategyExecutionRepository for PostgresStrategyExecutionRepository {
         .await
         .map_err(database_error)?;
         updated.try_into()
+    }
+
+    async fn update_payload_capture_metadata(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        task_id: Uuid,
+        payload_id: Uuid,
+        metadata: PayloadCaptureMetadata,
+    ) -> Result<(), StrategyExecutionRepositoryError> {
+        let transaction = transaction_ref(transaction)
+            .ok_or(StrategyExecutionRepositoryError::InvalidTransaction)?;
+        let mut active = task_execution_payload::Entity::find_by_id(payload_id)
+            .filter(task_execution_payload::Column::TaskId.eq(task_id))
+            .lock(LockType::Update)
+            .one(transaction)
+            .await
+            .map_err(database_error)?
+            .ok_or(StrategyExecutionRepositoryError::InconsistentPayload)?
+            .into_active_model();
+        if active.status.as_ref() != PayloadStatus::Staging.as_str() {
+            return Err(StrategyExecutionRepositoryError::InvalidPayloadState);
+        }
+        active.capture_metadata =
+            Set(Some(serde_json::to_value(metadata).map_err(|_| {
+                StrategyExecutionRepositoryError::InconsistentPayload
+            })?));
+        active
+            .update(transaction)
+            .await
+            .map(|_| ())
+            .map_err(database_error)
     }
 
     async fn mark_payload_sealed(
@@ -414,6 +450,11 @@ impl TryFrom<task_execution_payload::Model> for PayloadManifest {
             source_locator: model.source_locator,
             source_metadata: model.source_metadata,
             schema: model.schema,
+            capture_metadata: model
+                .capture_metadata
+                .map(serde_json::from_value::<PayloadCaptureMetadata>)
+                .transpose()
+                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
             root_is_array: model.root_is_array,
             chunk_count: u64::try_from(model.chunk_count)
                 .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,

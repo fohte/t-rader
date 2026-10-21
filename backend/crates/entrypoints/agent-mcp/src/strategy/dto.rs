@@ -317,8 +317,9 @@ pub struct ExecuteOperationParams {
     /// 定義の input_schema に従う JSON 入力。
     #[schemars(schema_with = "any_json_schema")]
     pub args: serde_json::Value,
-    /// sealed payload 内の数値を既存 evaluation へ保存する出力名と JSON Pointer。
-    pub numeric_pointers: BTreeMap<String, String>,
+    /// 指定した場合、出力内の数値を既存 evaluation へ保存する出力名と JSON Pointer。
+    #[serde(default)]
+    pub numeric_pointers: Option<BTreeMap<String, String>>,
     /// wall-clock 上限 (秒)。MCP 層の上限値を超える指定は拒否する。
     pub timeout_secs: Option<u32>,
     /// stdout + stderr の合計バイト数の上限。
@@ -346,9 +347,20 @@ pub struct ExecutionPayloadRefDto {
 pub struct ExecuteOperationResult {
     pub input_payload: ExecutionPayloadRefDto,
     pub output_payload: Option<ExecutionPayloadRefDto>,
+    /// 数値 projection の記録に成功した場合の評価 ID。
     pub evaluation_id: Option<Uuid>,
+    /// projection を要求して失敗した場合の理由。未要求時は null。
+    pub projection_error: Option<NumericProjectionError>,
     pub exit_code: i32,
     pub stderr: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(test, derive(Deserialize))]
+pub enum NumericProjectionError {
+    InvalidProjection,
+    RecordingFailed,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

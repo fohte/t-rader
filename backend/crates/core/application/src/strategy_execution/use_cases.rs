@@ -162,14 +162,22 @@ impl StrategyExecutionUseCases {
             .list_payload_chunks(access.task_id, payload_id)
             .await?;
         let root = assemble_payload(&manifest, &chunks)?;
+        let result = root
+            .pointer("/value")
+            .ok_or(StrategyExecutionUseCaseError::InvalidNumericProjection)?;
+        crate::json_schema::validate_instance(&indicator.output_schema, result)
+            .map_err(|_| StrategyExecutionUseCaseError::InvalidNumericProjection)?;
         let mut output = Map::new();
         let mut pointer_map = Map::new();
         for (key, pointer) in pointers {
-            if key.is_empty() {
+            if key.trim().is_empty() || (pointer != "/value" && !pointer.starts_with("/value/")) {
                 return Err(StrategyExecutionUseCaseError::InvalidNumericProjection);
             }
-            let value = root
-                .pointer(&pointer)
+            let result_pointer = pointer
+                .strip_prefix("/value")
+                .ok_or(StrategyExecutionUseCaseError::InvalidNumericProjection)?;
+            let value = result
+                .pointer(result_pointer)
                 .filter(|value| value.is_number())
                 .ok_or(StrategyExecutionUseCaseError::InvalidNumericProjection)?;
             output.insert(key.clone(), value.clone());

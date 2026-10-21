@@ -409,6 +409,7 @@ comments:
       source_locator: '取得元の revision に対応する locator。'
       source_metadata: '取得元が返す補足情報。'
       schema: 'seal 前に payload 全体へ適用する JSON Schema。'
+      capture_metadata: '取得時点と provider が把握する期待、取得、欠損、未取得の件数。'
       root_is_array: 'payload の root が配列かどうか。'
       chunk_count: '保存した順序付き chunk 数。'
       item_count: 'payload に含まれる配列要素数。'

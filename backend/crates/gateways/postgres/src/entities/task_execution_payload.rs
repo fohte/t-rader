@@ -34,6 +34,8 @@ pub struct Model {
     pub incomplete_reason: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub sealed_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub capture_metadata: Option<Json>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
