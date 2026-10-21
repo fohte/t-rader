@@ -449,7 +449,8 @@ pub async fn find_latest_bar_on_or_before(
 mod tests {
     use super::*;
     use crate::entities::instruments;
-    use chrono::{NaiveDate, TimeZone, Utc};
+    use chrono::{Duration as ChronoDuration, NaiveDate, TimeZone, Timelike, Utc};
+    use core_application::bars::BarsRepository;
     use core_domain::bar::Timeframe;
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
@@ -558,6 +559,11 @@ mod tests {
         coverage: i64,
     }
 
+    #[derive(Debug, Eq, PartialEq, FromQueryResult)]
+    struct BarChunkCompressionStatus {
+        is_compressed: bool,
+    }
+
     async fn find_bar_update_counts(db: &impl ConnectionTrait) -> BarUpdateCounts {
         let row = db
             .query_one_raw(Statement::from_sql_and_values(
@@ -585,30 +591,93 @@ mod tests {
         BarUpdateCounts::from_query_result(&row, "").expect("decode update counts")
     }
 
-    #[backend_test_macros::database_test]
-    async fn upsert_bars_skips_unchanged_bar_and_coverage_updates(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
+    async fn find_bar_chunk_compression_status(
+        db: &impl ConnectionTrait,
+        timestamp: DateTime<chrono::Utc>,
+    ) -> bool {
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT is_compressed \
+                FROM timescaledb_information.chunks \
+                WHERE hypertable_schema = 'public' AND hypertable_name = 'bars' \
+                  AND range_start <= $1 AND range_end > $1",
+                [timestamp.fixed_offset().into()],
+            ))
+            .await
+            .expect("read chunk compression status")
+            .expect("chunk compression status exists");
+        BarChunkCompressionStatus::from_query_result(&row, "")
+            .expect("decode chunk compression status")
+            .is_compressed
+    }
+
+    #[rstest::rstest]
+    #[case::daily_uncompressed(false)]
+    #[case::minute_compressed(true)]
+    #[tokio::test]
+    async fn upsert_bars_skips_unchanged_bar_and_coverage_updates(#[case] compressed: bool) {
+        let db = crate::test_support::create_test_transaction().await;
         let instrument_id = "DEMO-BAR-UNCHANGED";
         insert_test_instrument(&db, instrument_id).await;
-        let bar = make_test_bar(
-            instrument_id,
-            NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date"),
-            100,
-        );
+        let now = Utc::now();
+        let bar = if compressed {
+            let timestamp = (now - ChronoDuration::days(90))
+                .with_nanosecond((now.timestamp_subsec_micros()) * 1_000)
+                .expect("valid bar timestamp");
+            make_test_minute_bar(instrument_id, timestamp, 100)
+        } else {
+            make_test_bar(
+                instrument_id,
+                NaiveDate::from_ymd_opt(2040, 1, 2).expect("valid fixture date"),
+                100,
+            )
+        };
         upsert_bars(&db, vec![bar.clone()])
             .await
             .expect("insert bar");
 
+        if compressed {
+            crate::PostgresBarsRepository::new(db.clone())
+                .compress_bars_older_than_policy(now)
+                .await
+                .expect("compress old bar chunk");
+        }
+
+        let compressed_before = find_bar_chunk_compression_status(&db, bar.timestamp).await;
+
         let update_counts_before = find_bar_update_counts(&db).await;
 
-        upsert_bars(&db, vec![bar])
+        upsert_bars(&db, vec![bar.clone()])
             .await
             .expect("upsert unchanged bar");
 
         let update_counts_after = find_bar_update_counts(&db).await;
+        let compressed_after = find_bar_chunk_compression_status(&db, bar.timestamp).await;
+        let actual = find_bars(
+            &db,
+            BarsQuery {
+                instrument_id: instrument_id.to_owned(),
+                timeframe: bar.timeframe.to_string(),
+                from: Some(bar.timestamp.fixed_offset()),
+                to: Some(bar.timestamp.fixed_offset()),
+            },
+        )
+        .await
+        .expect("find bar")
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<Bar>>();
 
-        assert_eq!(update_counts_after, update_counts_before);
+        assert_eq!(
+            (
+                update_counts_after,
+                actual,
+                compressed_before,
+                compressed_after,
+            ),
+            (update_counts_before, vec![bar], compressed, compressed,),
+        );
     }
 
     fn make_test_minute_bar(
