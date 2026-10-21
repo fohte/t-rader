@@ -29,6 +29,7 @@ impl KataExecutor for FakeKataExecutor {
                 stdout: String::new(),
                 stderr: String::new(),
                 exit_code: 0,
+                files: Vec::new(),
             }),
         }
     }

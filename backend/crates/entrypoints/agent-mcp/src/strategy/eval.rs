@@ -57,6 +57,7 @@ impl StrategyServer {
             stdin: params.stdin,
             timeout: params.timeout_secs.map(|s| Duration::from_secs(s.into())),
             max_output_bytes: params.max_output_bytes.map(|m| m as usize),
+            input_files: None,
         };
 
         tracing::info!(

@@ -774,6 +774,9 @@ jobs:
             +@connection +select +@scripting +get +set +pttl +time
           docker exec "$REDIS_CONTAINER_ID" redis-cli ACL SETUSER default reset off
 
+      - name: Test Python exec wrapper
+        run: python3 -m unittest backend/docker/python-exec/test_entrypoint.py
+
       - name: Run tests with coverage
         working-directory: backend
         env:

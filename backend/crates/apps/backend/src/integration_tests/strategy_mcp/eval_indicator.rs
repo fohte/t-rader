@@ -96,6 +96,7 @@ async fn eval_indicator_resolves_and_runs(db: gateway_postgres::DatabaseHandle) 
             stdout: "42\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: Vec::new(),
         }))
         .await;
     let (server, _shared) = build_server(db.clone(), executor.clone());
@@ -144,6 +145,7 @@ async fn eval_indicator_resolves_and_runs(db: gateway_postgres::DatabaseHandle) 
                 stdin: Some(r#"{"args":{"period":14}}"#.into()),
                 timeout: None,
                 max_output_bytes: None,
+                input_files: None,
             }],
         )
     );
@@ -179,6 +181,7 @@ async fn eval_indicator_prefers_strategy_scope(db: gateway_postgres::DatabaseHan
             stdout: "{\"from\": \"strategy\"}\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: Vec::new(),
         }))
         .await;
     let (server, _shared) = build_server(db, executor.clone());
@@ -294,6 +297,7 @@ async fn eval_indicator_passes_through_sandbox_rejection(db: gateway_postgres::D
             stdout: String::new(),
             stderr: "PermissionError: network access denied".into(),
             exit_code: 1,
+            files: Vec::new(),
         }))
         .await;
     let (server, _shared) = build_server(db.clone(), executor.clone());
@@ -344,6 +348,7 @@ async fn eval_indicator_rejects_invalid_output(db: gateway_postgres::DatabaseHan
             stdout: "not-json\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: Vec::new(),
         }))
         .await;
     let (server, _shared) = build_server(db, executor.clone());
@@ -382,6 +387,7 @@ async fn eval_indicator_rejects_output_schema_mismatch(db: gateway_postgres::Dat
             stdout: "{}\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: Vec::new(),
         }))
         .await;
     let (server, _shared) = build_server(db.clone(), executor.clone());

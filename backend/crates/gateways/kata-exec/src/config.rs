@@ -3,6 +3,11 @@ use std::time::Duration;
 pub(crate) const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 pub(crate) const DEFAULT_WALL_CLOCK_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) const DEFAULT_MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+pub(crate) const DEFAULT_MAX_FILE_COUNT: usize = 128;
+pub(crate) const DEFAULT_MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const DEFAULT_MAX_TOTAL_FILE_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const DEFAULT_FILE_CHUNK_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_FILE_TRANSFER_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
 pub(crate) const DEFAULT_CPU_LIMIT: &str = "500m";
 pub(crate) const DEFAULT_MEMORY_LIMIT: &str = "256Mi";
 pub(crate) const DEFAULT_EPHEMERAL_STORAGE_LIMIT: &str = "64Mi";
@@ -45,10 +50,30 @@ pub struct KataExecutorConfig {
     pub default_timeout: Duration,
     /// デフォルトの出力サイズ上限
     pub default_max_output_bytes: usize,
+    pub(crate) file_transfer_limits: FileTransferLimits,
     /// Pod の resource limits
     pub resource_limits: PodResourceLimits,
     /// Pod の status を polling する間隔
     pub poll_interval: Duration,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FileTransferLimits {
+    pub(crate) max_files: usize,
+    pub(crate) max_file_bytes: usize,
+    pub(crate) max_total_bytes: usize,
+    pub(crate) chunk_bytes: usize,
+}
+
+impl Default for FileTransferLimits {
+    fn default() -> Self {
+        Self {
+            max_files: DEFAULT_MAX_FILE_COUNT,
+            max_file_bytes: DEFAULT_MAX_FILE_BYTES,
+            max_total_bytes: DEFAULT_MAX_TOTAL_FILE_BYTES,
+            chunk_bytes: DEFAULT_FILE_CHUNK_BYTES,
+        }
+    }
 }
 
 impl KataExecutorConfig {
@@ -84,6 +109,15 @@ impl KataExecutorConfig {
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_MAX_OUTPUT_BYTES);
+        let file_transfer_limits = FileTransferLimits {
+            max_files: read_usize_env("KATA_EXEC_MAX_FILE_COUNT", DEFAULT_MAX_FILE_COUNT),
+            max_file_bytes: read_usize_env("KATA_EXEC_MAX_FILE_BYTES", DEFAULT_MAX_FILE_BYTES),
+            max_total_bytes: read_usize_env(
+                "KATA_EXEC_MAX_TOTAL_FILE_BYTES",
+                DEFAULT_MAX_TOTAL_FILE_BYTES,
+            ),
+            chunk_bytes: read_usize_env("KATA_EXEC_FILE_CHUNK_BYTES", DEFAULT_FILE_CHUNK_BYTES),
+        };
 
         Some(Self {
             api_base_url,
@@ -94,8 +128,16 @@ impl KataExecutorConfig {
             insecure_tls,
             default_timeout,
             default_max_output_bytes,
+            file_transfer_limits,
             resource_limits: PodResourceLimits::default(),
             poll_interval: DEFAULT_POLL_INTERVAL,
         })
     }
+}
+
+fn read_usize_env(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(default)
 }

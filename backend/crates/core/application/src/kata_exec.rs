@@ -5,7 +5,7 @@ mod types;
 mod fake;
 
 pub use error::KataExecError;
-pub use types::{ExecRequest, ExecResult, KataExecutor, SharedKataExecutor};
+pub use types::{ExecFile, ExecRequest, ExecResult, KataExecutor, SharedKataExecutor};
 
 #[cfg(feature = "test-support")]
 pub use fake::FakeKataExecutor;
