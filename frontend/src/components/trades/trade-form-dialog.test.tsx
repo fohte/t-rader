@@ -23,9 +23,25 @@ const strategy: Strategy = {
   created_at: '2099-01-01T00:00:00Z',
   updated_at: '2099-01-01T00:00:00Z',
 }
+const selectedStrategy: Strategy = {
+  id: '00000000-0000-0000-0000-000000000002',
+  name: '架空戦略 B',
+  description: null,
+  sort_order: 1,
+  created_at: '2099-01-01T00:00:00Z',
+  updated_at: '2099-01-01T00:00:00Z',
+}
 const stock: Stock = {
   id: 'DEMO-A',
   name: '架空商事',
+  market: null,
+  sector_id: null,
+  created_at: '2099-01-01T00:00:00Z',
+  updated_at: '2099-01-01T00:00:00Z',
+}
+const selectedStock: Stock = {
+  id: 'DEMO-B',
+  name: '架空工業',
   market: null,
   sector_id: null,
   created_at: '2099-01-01T00:00:00Z',
@@ -68,16 +84,23 @@ describe('TradeFormDialog', () => {
           open
           onOpenChange={() => {}}
           initial={null}
-          strategies={[strategy]}
-          stocks={[stock]}
+          defaultDate="2099-01-03"
+          strategies={[strategy, selectedStrategy]}
+          stocks={[stock, selectedStock]}
         />
       </QueryClientProvider>,
     )
     const user = userEvent.setup()
 
-    fireEvent.change(screen.getByLabelText('約定日'), {
-      target: { value: '2099-01-03' },
-    })
+    await user.click(screen.getByRole('combobox', { name: '銘柄' }))
+    await user.click(
+      await screen.findByRole('option', { name: '架空工業 (DEMO-B)' }),
+    )
+    await user.click(screen.getByRole('combobox', { name: '戦略' }))
+    await user.click(await screen.findByRole('option', { name: '架空戦略 B' }))
+    await user.click(screen.getByRole('combobox', { name: '入力ソース' }))
+    await user.click(await screen.findByRole('option', { name: 'CSV 取込' }))
+
     fireEvent.change(screen.getByLabelText('数量 (株)'), {
       target: { value: '20' },
     })
@@ -93,14 +116,14 @@ describe('TradeFormDialog', () => {
           method: 'POST',
           path: '/api/trades',
           body: {
-            strategy_id: strategy.id,
-            symbol: stock.id,
+            strategy_id: selectedStrategy.id,
+            symbol: selectedStock.id,
             side: 'sell',
             qty: 20,
             price: 1200,
             fee: 0,
             date: '2099-01-03',
-            source: 'manual',
+            source: 'csv',
             note: null,
           },
         },

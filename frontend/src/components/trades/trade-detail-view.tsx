@@ -2,7 +2,7 @@ import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 
 import { StockNameLink } from '#components/stocks/stock-name-link'
-import { formatYen } from '#components/trades/format'
+import { formatYen, pnlTone } from '#components/trades/format'
 import { TradeDetailChartView } from '#components/trades/trade-detail-chart-view'
 import type { TradeDetailChartState } from '#components/trades/trade-detail-model'
 import {
@@ -113,11 +113,7 @@ export function TradeDetailView(props: TradeDetailViewProps) {
               valueTone={
                 trade.realized_pnl == null
                   ? undefined
-                  : trade.realized_pnl > 0
-                    ? 'positive'
-                    : trade.realized_pnl < 0
-                      ? 'negative'
-                      : 'muted'
+                  : pnlTone(trade.realized_pnl)
               }
             />
           )}

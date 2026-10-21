@@ -51,7 +51,11 @@ function todayJst(): string {
   return todayFormatter.format(new Date()).replace(/\//g, '-')
 }
 
-function emptyForm(strategies: Strategy[], stocks: Stock[]): FormState {
+function emptyForm(
+  strategies: Strategy[],
+  stocks: Stock[],
+  defaultDate?: string,
+): FormState {
   return {
     strategyId: strategies[0]?.id ?? '',
     symbol: stocks[0]?.id ?? '',
@@ -59,7 +63,7 @@ function emptyForm(strategies: Strategy[], stocks: Stock[]): FormState {
     qty: '',
     price: '',
     fee: '',
-    date: todayJst(),
+    date: defaultDate ?? todayJst(),
     source: 'manual',
     note: '',
   }
@@ -89,6 +93,7 @@ export function TradeFormDialog({
   strategies,
   stocks,
   defaultStrategyId,
+  defaultDate,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
@@ -96,10 +101,11 @@ export function TradeFormDialog({
   strategies: Strategy[]
   stocks: Stock[]
   defaultStrategyId?: string
+  defaultDate?: string
 }) {
   const invalidateTrades = useInvalidateTrades()
   const [form, setForm] = useState<FormState>(() =>
-    emptyForm(strategies, stocks),
+    emptyForm(strategies, stocks, defaultDate),
   )
   const [error, setError] = useState<string | null>(null)
 
@@ -111,6 +117,8 @@ export function TradeFormDialog({
   stocksRef.current = stocks
   const defaultStrategyIdRef = useRef(defaultStrategyId)
   defaultStrategyIdRef.current = defaultStrategyId
+  const defaultDateRef = useRef(defaultDate)
+  defaultDateRef.current = defaultDate
 
   useEffect(() => {
     if (!open) return
@@ -118,7 +126,11 @@ export function TradeFormDialog({
     if (initial != null) {
       setForm(fromTrade(initial))
     } else {
-      const base = emptyForm(strategiesRef.current, stocksRef.current)
+      const base = emptyForm(
+        strategiesRef.current,
+        stocksRef.current,
+        defaultDateRef.current,
+      )
       setForm({
         ...base,
         strategyId: defaultStrategyIdRef.current ?? base.strategyId,

@@ -68,3 +68,8 @@ type Story = StoryObj<typeof meta>
 export const EditingTrade: Story = {
   name: 'shows an existing trade in the edit form.',
 }
+
+export const AddingTrade: Story = {
+  name: 'shows the fields for adding a new trade.',
+  args: { initial: null, defaultDate: '2099-01-03' },
+}

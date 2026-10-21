@@ -1,4 +1,4 @@
-import { formatYen } from '#components/trades/format'
+import { formatYen, pnlTone } from '#components/trades/format'
 
 interface Stat {
   label: string
@@ -17,13 +17,11 @@ export function TradeStats({
   tradeCount: number
   openPositions: number
 }) {
-  const realizedPnlTone =
-    realizedPnl > 0 ? 'positive' : realizedPnl < 0 ? 'negative' : 'muted'
   const stats: Stat[] = [
     {
       label: '実現損益 (累計)',
       value: formatYen(realizedPnl, true),
-      tone: realizedPnlTone,
+      tone: pnlTone(realizedPnl),
     },
     {
       label: '手数料 (累計)',

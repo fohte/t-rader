@@ -1,10 +1,25 @@
+import '#components/trades/trade-detail-chart-view.css'
+
+import type { CSSProperties } from 'react'
+
 import { CandlestickChart } from '#components/candlestick-chart'
 import type { TradeDetailChartState } from '#components/trades/trade-detail-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import type { ChartCurrency } from '#lib/chart-utils'
+import { type ChartCurrency, TRADE_MARKER_COLORS } from '#lib/chart-utils'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
+type TradeMarkerColorStyle = CSSProperties & {
+  '--trade-marker-color': string
+}
+
+function markerColorStyle(
+  side: keyof typeof TRADE_MARKER_COLORS,
+): TradeMarkerColorStyle {
+  return {
+    '--trade-marker-color': TRADE_MARKER_COLORS[side],
+  } satisfies TradeMarkerColorStyle
+}
 
 export function TradeDetailChartView({
   trade,
@@ -48,8 +63,18 @@ export function TradeDetailChartView({
             className="flex gap-3 font-mono text-2xs"
             role="group"
           >
-            <span className="text-chart-2">▲買</span>{' '}
-            <span className="text-up">▼売</span>
+            <span
+              className="trade-detail-chart-marker-color"
+              style={markerColorStyle('buy')}
+            >
+              ▲買
+            </span>{' '}
+            <span
+              className="trade-detail-chart-marker-color"
+              style={markerColorStyle('sell')}
+            >
+              ▼売
+            </span>
           </p>
         </>
       ) : state.status === 'loading' ? (
