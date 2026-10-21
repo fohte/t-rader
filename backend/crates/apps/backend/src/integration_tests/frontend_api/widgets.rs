@@ -2,7 +2,8 @@ use chrono::{NaiveDate, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::{
-    group_axis, instruments, stock, stock_group, stock_group_member, valuation,
+    group_axis, indicator, indicator_observation, instruments, stock, stock_group,
+    stock_group_member, valuation,
 };
 use gateway_postgres::repositories::bars::upsert_bars;
 use rust_decimal::Decimal;
@@ -64,6 +65,17 @@ async fn insert_bar(db: &DatabaseHandle, id: &str, day: u32, close: i64) {
 }
 
 async fn insert_valuation(db: &DatabaseHandle, id: &str, day: u32, mkt_cap: i64) {
+    insert_valuation_values(db, id, day, None, None, Some(mkt_cap)).await;
+}
+
+async fn insert_valuation_values(
+    db: &DatabaseHandle,
+    id: &str,
+    day: u32,
+    per: Option<i64>,
+    pbr: Option<i64>,
+    mkt_cap: Option<i64>,
+) {
     valuation::ActiveModel {
         code: Set(format!("{id}0")),
         date: Set(date(day)),
@@ -72,14 +84,36 @@ async fn insert_valuation(db: &DatabaseHandle, id: &str, day: u32, mkt_cap: i64)
         bps: Set(None),
         roe: Set(None),
         fwd_roe: Set(None),
-        per: Set(None),
+        per: Set(per.map(Decimal::from)),
         fwd_per: Set(None),
-        pbr: Set(None),
-        mkt_cap: Set(Some(Decimal::from(mkt_cap))),
+        pbr: Set(pbr.map(Decimal::from)),
+        mkt_cap: Set(mkt_cap.map(Decimal::from)),
     }
     .insert(db)
     .await
     .expect("insert widget valuation");
+}
+
+async fn insert_indicator(db: &DatabaseHandle, id: &str, name: &str) {
+    indicator::ActiveModel {
+        id: Set(id.to_string()),
+        name: Set(name.to_string()),
+        kind: Set("sample-kind".to_string()),
+    }
+    .insert(db)
+    .await
+    .expect("insert widget indicator");
+}
+
+async fn insert_indicator_observation(db: &DatabaseHandle, id: &str, day: u32, value: i64) {
+    indicator_observation::ActiveModel {
+        indicator_id: Set(id.to_string()),
+        date: Set(date(day)),
+        value: Set(Decimal::from(value)),
+    }
+    .insert(db)
+    .await
+    .expect("insert widget indicator observation");
 }
 
 async fn insert_group_axis(db: &DatabaseHandle, key: &str) -> Uuid {
@@ -334,6 +368,95 @@ async fn query_widget_rejects_multiple_hierarchy_group_memberships(db: DatabaseH
             axum::http::StatusCode::BAD_REQUEST,
             json!({
                 "error": "viz.hierarchy.axis: stock `DEMO` belongs to multiple groups in axis `demo-axis`"
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn query_widget_returns_snapshot_metrics_and_table_columns(db: DatabaseHandle) {
+    insert_stock(&db, "DEMO", "Demo Stock").await;
+    insert_bar(&db, "DEMO", 1, 100).await;
+    insert_bar(&db, "DEMO", 2, 110).await;
+    insert_bar(&db, "DEMO", 4, 999).await;
+    insert_valuation_values(&db, "DEMO", 1, Some(10), Some(1), Some(1_000)).await;
+    insert_valuation_values(&db, "DEMO", 2, None, Some(2), None).await;
+    insert_valuation_values(&db, "DEMO", 4, Some(99), Some(99), Some(9_000)).await;
+    insert_indicator(&db, "demo-indicator", "Demo Indicator").await;
+    insert_indicator_observation(&db, "demo-indicator", 1, 7).await;
+    insert_indicator_observation(&db, "demo-indicator", 4, 99).await;
+
+    let server = create_test_server(db).await;
+    let response = server
+        .post("/api/widgets/query")
+        .json(&json!({
+            "queries": {
+                "close": {"metric": "close", "by": "stock"},
+                "turnover": {"metric": "turnover", "by": "stock"},
+                "per": {"metric": "per", "by": "stock"},
+                "pbr": {"metric": "pbr", "by": "stock"},
+                "indicator_value": {"metric": "indicator", "by": "none", "indicator": "demo-indicator"},
+                "unused_cap": {"metric": "mkt_cap", "by": "stock"}
+            },
+            "formulas": {"double_close": "close * 2"},
+            "viz": {"type": "table", "columns": ["double_close", "close", "turnover", "per", "pbr", "indicator_value"]},
+            "time": {"as_of": "2098-01-02"}
+        }))
+        .await;
+    let body = response.json::<Value>();
+
+    assert_eq!(
+        (response.status_code(), body),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "as_of": "2098-01-02",
+                "rows": [{
+                    "key": "stock:DEMO",
+                    "name": "Demo Stock",
+                    "values": {
+                        "close": 110,
+                        "double_close": 220,
+                        "indicator_value": 7,
+                        "pbr": 2,
+                        "per": 10,
+                        "turnover": 11000
+                    }
+                }]
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn query_widget_rejects_amount_aggregation_across_country_partitions(db: DatabaseHandle) {
+    for (id, name) in [
+        ("US:DEMO-A", "Demo Foreign A"),
+        ("CA:TEST-B", "Demo Foreign B"),
+    ] {
+        insert_stock(&db, id, name).await;
+        insert_bar(&db, id, 2, 100).await;
+    }
+
+    let server = create_test_server(db).await;
+    let response = server
+        .post("/api/widgets/query")
+        .json(&json!({
+            "queries": {
+                "close": {"metric": "close", "by": "none", "agg": "sum"}
+            },
+            "viz": {"type": "table", "columns": ["close"]},
+            "time": {"as_of": "2098-01-02"}
+        }))
+        .await;
+    let body = response.json::<Value>();
+
+    assert_eq!(
+        (response.status_code(), body),
+        (
+            axum::http::StatusCode::BAD_REQUEST,
+            json!({
+                "error": "amount aggregations across different currencies are not supported"
             }),
         ),
     );

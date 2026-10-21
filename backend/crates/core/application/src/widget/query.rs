@@ -75,6 +75,8 @@ pub enum WidgetQueryError {
     Database(#[from] PersistenceError),
     #[error(transparent)]
     StockGroups(#[from] StockGroupUseCaseError),
+    #[error("amount aggregations across different currencies are not supported")]
+    IncompatibleCurrencies,
 }
 
 #[async_trait]
@@ -83,6 +85,14 @@ pub trait WidgetQuerySource: Send + Sync {
         &self,
         requested: Option<NaiveDate>,
     ) -> Result<Option<NaiveDate>, WidgetQueryError>;
+
+    async fn resolve_as_of_for_queries(
+        &self,
+        requested: Option<NaiveDate>,
+        _queries: &[WidgetQuery],
+    ) -> Result<Option<NaiveDate>, WidgetQueryError> {
+        self.resolve_as_of(requested).await
+    }
 
     async fn query(
         &self,
@@ -121,7 +131,7 @@ pub type SharedWidgetGroupMembershipSource = Arc<dyn WidgetGroupMembershipSource
 pub enum WidgetUseCaseError {
     #[error("{0}")]
     Validation(#[from] WidgetValidationErrors),
-    #[error("no daily bar data is available on or before the requested date")]
+    #[error("no widget data is available on or before the requested date")]
     NoData,
     #[error(transparent)]
     Query(#[from] WidgetQueryError),
@@ -149,9 +159,10 @@ impl WidgetUseCases {
         definition: WidgetDefinition,
     ) -> Result<WidgetQueryResponse, WidgetUseCaseError> {
         let parsed_formulas = validate_widget(&definition)?;
+        let queries = definition.queries.values().cloned().collect::<Vec<_>>();
         let as_of = self
             .query_source
-            .resolve_as_of(definition.time.as_of)
+            .resolve_as_of_for_queries(definition.time.as_of, &queries)
             .await?
             .ok_or(WidgetUseCaseError::NoData)?;
 
@@ -185,8 +196,30 @@ impl WidgetUseCases {
             &mut result_rows,
         );
 
-        let mut rows =
-            project_visualization_rows(result_rows.into_values().collect(), &definition.viz);
+        let table_has_non_market_columns = match &definition.viz {
+            WidgetVisualization::Table { columns } => columns.iter().any(|column| {
+                definition
+                    .queries
+                    .get(column)
+                    .is_some_and(|query| query.by != WidgetBy::None)
+                    || parsed_formulas.get(column.as_str()).is_some_and(|formula| {
+                        formula.references().iter().any(|reference| {
+                            definition
+                                .queries
+                                .get(*reference)
+                                .is_some_and(|query| query.by != WidgetBy::None)
+                        })
+                    })
+            }),
+            WidgetVisualization::Treemap { .. }
+            | WidgetVisualization::Toplist { .. }
+            | WidgetVisualization::Line { .. } => false,
+        };
+        let mut rows = project_visualization_rows(
+            result_rows.into_values().collect(),
+            &definition.viz,
+            table_has_non_market_columns,
+        );
 
         if let WidgetVisualization::Treemap {
             hierarchy: Some(hierarchy),
@@ -338,6 +371,7 @@ fn evaluate_formulas<'a>(
 fn project_visualization_rows(
     mut rows: Vec<WidgetValueRow>,
     visualization: &WidgetVisualization,
+    table_has_non_market_columns: bool,
 ) -> Vec<WidgetValueRow> {
     match visualization {
         WidgetVisualization::Treemap { size, color, .. } => rows
@@ -369,7 +403,17 @@ fn project_visualization_rows(
             rows.truncate(*limit as usize);
             rows
         }
-        WidgetVisualization::Table { .. } | WidgetVisualization::Line { .. } => Vec::new(),
+        WidgetVisualization::Table { columns } => {
+            rows.retain_mut(|row| {
+                if table_has_non_market_columns && row.key == WidgetRowKey::Market {
+                    return false;
+                }
+                row.values.retain(|name, _| columns.contains(name));
+                columns.iter().any(|name| row.values.contains_key(name))
+            });
+            rows
+        }
+        WidgetVisualization::Line { .. } => Vec::new(),
     }
 }
 
@@ -655,6 +699,72 @@ mod tests {
                         key: WidgetRowKey::Stock("DEMO-C".to_string()),
                         name: "Demo Stock C".to_string(),
                         values: BTreeMap::from([("change".to_string(), Some(Decimal::new(1, 2)))]),
+                        classification: None,
+                    },
+                ],
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn table_keeps_requested_values_and_formula_nulls() {
+        let definition = WidgetDefinition {
+            queries: BTreeMap::from([("change".to_string(), change_query(WidgetBy::Stock, None))]),
+            formulas: BTreeMap::from([
+                ("double".to_string(), "change * 2".to_string()),
+                ("zero".to_string(), "change / 0".to_string()),
+            ]),
+            display: BTreeMap::new(),
+            viz: WidgetVisualization::Table {
+                columns: vec![
+                    "zero".to_string(),
+                    "double".to_string(),
+                    "change".to_string(),
+                ],
+            },
+            time: WidgetTime::default(),
+        };
+        let result = WidgetUseCases::new(
+            Arc::new(FakeWidgetQuerySource) as SharedWidgetQuerySource,
+            fake_memberships(Vec::new()),
+        )
+        .query(definition)
+        .await
+        .expect("calculate table widget");
+
+        assert_eq!(
+            result,
+            WidgetQueryResponse {
+                as_of: NaiveDate::from_ymd_opt(2098, 1, 5).expect("valid date"),
+                rows: vec![
+                    WidgetValueRow {
+                        key: WidgetRowKey::Stock("DEMO-A".to_string()),
+                        name: "Demo Stock A".to_string(),
+                        values: BTreeMap::from([
+                            ("change".to_string(), Some(Decimal::new(3, 2))),
+                            ("double".to_string(), Some(Decimal::new(6, 2))),
+                            ("zero".to_string(), None),
+                        ]),
+                        classification: None,
+                    },
+                    WidgetValueRow {
+                        key: WidgetRowKey::Stock("DEMO-B".to_string()),
+                        name: "Demo Stock B".to_string(),
+                        values: BTreeMap::from([
+                            ("change".to_string(), Some(Decimal::new(-4, 2))),
+                            ("double".to_string(), Some(Decimal::new(-8, 2))),
+                            ("zero".to_string(), None),
+                        ]),
+                        classification: None,
+                    },
+                    WidgetValueRow {
+                        key: WidgetRowKey::Stock("DEMO-C".to_string()),
+                        name: "Demo Stock C".to_string(),
+                        values: BTreeMap::from([
+                            ("change".to_string(), Some(Decimal::new(1, 2))),
+                            ("double".to_string(), Some(Decimal::new(2, 2))),
+                            ("zero".to_string(), None),
+                        ]),
                         classification: None,
                     },
                 ],

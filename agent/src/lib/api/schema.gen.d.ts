@@ -3160,7 +3160,7 @@ export interface components {
       axis: string
     }
     /**
-     * @description スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。
+     * @description `change`, `close`, `turnover`, `mkt_cap`, `per`, `pbr`, `indicator` に対応します。indicator は by=none、indicator ID 必須、集計なしで指定します。
      * @enum {string}
      */
     WidgetMetricRequest:
@@ -3236,7 +3236,7 @@ export interface components {
     WidgetValueFormatRequest: 'number' | 'percent'
     /** @enum {string} */
     WidgetVisualizationOrderRequest: 'asc' | 'desc'
-    /** @description スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。 */
+    /** @description `treemap`, `toplist`, `table` に対応します。table は断面表示で、columns に query または formula の名前を指定します。line は予約済みです。 */
     WidgetVisualizationRequest:
       | {
           color: string

@@ -10,7 +10,7 @@ use super::super::dto::{QueryWidgetParams, QueryWidgetResult};
 impl StrategyServer {
     #[tool(
         name = "query_widget",
-        description = "Evaluate a widget definition and return its values as table rows. Pass the YAML content for a widget fenced block; omit the fence. The query resolves the latest available date when time.as_of is omitted; include time.as_of in the note block to keep its values fixed.",
+        description = "Evaluate a widget definition and return its values as rows. Supported metrics are change, close, turnover, mkt_cap, per, pbr, and indicator; indicator requires by=none, an indicator ID, and no aggregation. Supported visualizations are treemap, toplist, and cross-sectional table. Pass the widget YAML without a fenced block. When time.as_of is omitted, the latest available date is resolved for the requested data; include time.as_of to keep values fixed.",
         annotations(read_only_hint = true)
     )]
     async fn query_widget(

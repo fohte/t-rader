@@ -231,7 +231,7 @@ async fn preview_continues_after_a_widget_has_no_data(db: gateway_postgres::Data
         json!({
             "errors": [{
                 "path": "widgets[0].time.as_of",
-                "message": "no daily bar data is available on or before the requested date",
+                "message": "no widget data is available on or before the requested date",
             }],
             "preview_url": "<preview_url>",
             "widgets": [{

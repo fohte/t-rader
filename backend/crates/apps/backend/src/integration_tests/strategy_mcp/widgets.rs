@@ -1,7 +1,7 @@
 use chrono::{NaiveDate, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::{instruments, stock, valuation};
+use gateway_postgres::entities::{indicator, indicator_observation, instruments, stock, valuation};
 use gateway_postgres::repositories::bars::upsert_bars;
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
@@ -11,6 +11,32 @@ use super::tests_common::{build_server, insert_strategy};
 
 fn as_of() -> NaiveDate {
     NaiveDate::from_ymd_opt(2099, 1, 5).expect("valid test date")
+}
+
+fn date(day: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(2099, 1, day).expect("valid test date")
+}
+
+async fn insert_indicator(db: &DatabaseHandle, id: &str, name: &str) {
+    indicator::ActiveModel {
+        id: Set(id.to_string()),
+        name: Set(name.to_string()),
+        kind: Set("sample-kind".to_string()),
+    }
+    .insert(db)
+    .await
+    .expect("insert widget indicator");
+}
+
+async fn insert_indicator_observation(db: &DatabaseHandle, id: &str, day: u32, value: i64) {
+    indicator_observation::ActiveModel {
+        indicator_id: Set(id.to_string()),
+        date: Set(date(day)),
+        value: Set(Decimal::from(value)),
+    }
+    .insert(db)
+    .await
+    .expect("insert widget indicator observation");
 }
 
 async fn insert_stock(db: &DatabaseHandle) {
@@ -144,8 +170,45 @@ async fn query_widget_rejects_when_no_daily_bar_date_can_be_resolved(db: Databas
     assert_eq!(
         error,
         rmcp::ErrorData::invalid_params(
-            "no daily bar data is available on or before the requested date".to_string(),
+            "no widget data is available on or before the requested date".to_string(),
             None,
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn query_widget_returns_indicator_table_without_daily_bars(db: DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "widget-indicator").await;
+    insert_indicator(&db, "demo-indicator", "Demo Indicator").await;
+    insert_indicator_observation(&db, "demo-indicator", 1, 7).await;
+    insert_indicator_observation(&db, "demo-indicator", 3, 13).await;
+    let server = build_server(db);
+    let definition_yaml = indoc::indoc! {"
+        queries:
+          metric:
+            metric: indicator
+            by: none
+            indicator: demo-indicator
+        viz:
+          type: table
+          columns:
+            - metric
+    "};
+
+    let result = server
+        .query_widget(strategy_id, definition_yaml)
+        .await
+        .expect("query indicator widget without daily bars");
+
+    assert_eq!(
+        result.as_json().clone(),
+        json!({
+            "as_of": "2099-01-03",
+            "rows": [{
+                "key": "market",
+                "name": "Demo Indicator",
+                "values": {"metric": 13}
+            }]
+        }),
     );
 }
