@@ -429,7 +429,7 @@ async fn query_widget_returns_snapshot_metrics_and_table_columns(db: DatabaseHan
 }
 
 #[backend_test_macros::database_test]
-async fn query_widget_rejects_amount_aggregation_across_country_partitions(db: DatabaseHandle) {
+async fn query_widget_rejects_amount_aggregation_with_unconfirmed_currency(db: DatabaseHandle) {
     for (id, name) in [
         ("US:DEMO-A", "Demo Foreign A"),
         ("CA:TEST-B", "Demo Foreign B"),
@@ -456,7 +456,7 @@ async fn query_widget_rejects_amount_aggregation_across_country_partitions(db: D
         (
             axum::http::StatusCode::BAD_REQUEST,
             json!({
-                "error": "amount aggregations across different currencies are not supported"
+                "error": "amount aggregation across multiple stocks requires confirmed currencies"
             }),
         ),
     );

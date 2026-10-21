@@ -78,7 +78,7 @@ pub enum WidgetQueryError {
     Database(#[from] PersistenceError),
     #[error(transparent)]
     StockGroups(#[from] StockGroupUseCaseError),
-    #[error("amount aggregations across different currencies are not supported")]
+    #[error("amount aggregation across multiple stocks requires confirmed currencies")]
     IncompatibleCurrencies,
 }
 

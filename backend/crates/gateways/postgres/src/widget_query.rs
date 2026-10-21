@@ -202,7 +202,14 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                        END AS row_name,
                        stock_values.value,
                        stock_values.mkt_cap,
-                       stock_values.currency_code
+                       stock_values.currency_code,
+                       (
+                           stock_values.value IS NOT NULL
+                           AND (
+                               $5::text IS DISTINCT FROM 'mkt_cap_weighted'
+                               OR stock_values.mkt_cap IS NOT NULL
+                           )
+                       ) AS contributes_to_aggregate
                 FROM stock_values
                 LEFT JOIN group_members AS query_group
                   ON query_group.stock_id = stock_values.id
@@ -222,32 +229,11 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                                    / NULLIF(SUM(mkt_cap) FILTER (WHERE value IS NOT NULL), 0)
                        END AS value,
                        $10::boolean
-                           AND (
-                               COUNT(DISTINCT currency_code) FILTER (
-                                   WHERE value IS NOT NULL
-                                     AND (
-                                         $5::text <> 'mkt_cap_weighted'
-                                         OR mkt_cap IS NOT NULL
-                                     )
-                               ) > 1
-                               OR (
-                                   COUNT(*) FILTER (
-                                       WHERE value IS NOT NULL
-                                         AND (
-                                             $5::text <> 'mkt_cap_weighted'
-                                             OR mkt_cap IS NOT NULL
-                                         )
-                                         AND currency_code IS NULL
-                                   ) > 0
-                                   AND COUNT(*) FILTER (
-                                       WHERE value IS NOT NULL
-                                         AND (
-                                             $5::text <> 'mkt_cap_weighted'
-                                             OR mkt_cap IS NOT NULL
-                                         )
-                                   ) > 1
-                               )
-                           ) AS incompatible_currencies
+                           AND COUNT(*) FILTER (WHERE contributes_to_aggregate) > 1
+                           AND COUNT(*) FILTER (
+                               WHERE contributes_to_aggregate
+                                 AND currency_code IS NULL
+                           ) > 0 AS incompatible_currencies
                 FROM grouped_values
                 GROUP BY row_key, row_name
             )
@@ -973,13 +959,16 @@ mod tests {
                     value: Decimal::from(200),
                 }]),
                 Err(
-                    "amount aggregations across different currencies are not supported".to_string()
+                    "amount aggregation across multiple stocks requires confirmed currencies"
+                        .to_string()
                 ),
                 Err(
-                    "amount aggregations across different currencies are not supported".to_string()
+                    "amount aggregation across multiple stocks requires confirmed currencies"
+                        .to_string()
                 ),
                 Err(
-                    "amount aggregations across different currencies are not supported".to_string()
+                    "amount aggregation across multiple stocks requires confirmed currencies"
+                        .to_string()
                 ),
             ),
         );
@@ -1008,6 +997,32 @@ mod tests {
                 key: WidgetRowKey::Market,
                 name: "全体".to_string(),
                 value: Decimal::new(-5, 2),
+            }]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn amount_aggregation_accepts_a_single_foreign_stock_with_unknown_currency(
+        db: DatabaseHandle,
+    ) {
+        insert_amount_aggregation_fixture(&db).await;
+        let source = PostgresWidgetQuerySource::new(db);
+        let mut query = market_query(WidgetMetric::Close, None, WidgetAggregation::Sum);
+        query.universe = Some(WidgetUniverse::Stocks {
+            stocks: vec!["US:DEMO-A".to_string()],
+        });
+
+        let result = source
+            .query(date(2), &query)
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            result,
+            Ok(vec![WidgetQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                value: Decimal::from(110),
             }]),
         );
     }

@@ -87,12 +87,12 @@ impl MgmtServer {
                     message: "no widget data is available on or before the requested date"
                         .to_owned(),
                 }),
-                Err(WidgetUseCaseError::Query(WidgetQueryError::IncompatibleCurrencies)) => {
+                Err(WidgetUseCaseError::Query(
+                    error @ WidgetQueryError::IncompatibleCurrencies,
+                )) => {
                     errors.push(DashboardConfigIssue {
                         path: format!("widgets[{index}].queries"),
-                        message:
-                            "amount aggregations across different currencies are not supported"
-                                .to_owned(),
+                        message: error.to_string(),
                     });
                 }
                 Err(WidgetUseCaseError::Query(error)) => {

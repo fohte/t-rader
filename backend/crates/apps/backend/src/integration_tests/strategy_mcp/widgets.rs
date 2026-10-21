@@ -220,7 +220,7 @@ async fn query_widget_returns_indicator_table_without_daily_bars(db: DatabaseHan
 }
 
 #[backend_test_macros::database_test]
-async fn query_widget_rejects_amount_aggregation_across_currency_partitions(
+async fn query_widget_rejects_amount_aggregation_with_unconfirmed_currency(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = insert_strategy(&db, "widget-currency-error").await;
@@ -245,12 +245,12 @@ async fn query_widget_rejects_amount_aggregation_across_currency_partitions(
     let error = server
         .query_widget(strategy_id, definition_yaml)
         .await
-        .expect_err("query amount aggregation across currency partitions");
+        .expect_err("query amount aggregation with unconfirmed currency");
 
     assert_eq!(
         error,
         rmcp::ErrorData::invalid_params(
-            "amount aggregations across different currencies are not supported".to_string(),
+            "amount aggregation across multiple stocks requires confirmed currencies".to_string(),
             None,
         ),
     );

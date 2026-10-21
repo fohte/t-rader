@@ -20,8 +20,8 @@ fn widget_use_case_to_mcp(error: WidgetUseCaseError) -> McpError {
             tracing::error!(error = %error, "strategy mcp widget stock group membership query failed");
             internal_error(format!("stock group membership query failed: {error}"))
         }
-        WidgetUseCaseError::Query(WidgetQueryError::IncompatibleCurrencies) => {
-            invalid_params("amount aggregations across different currencies are not supported")
+        WidgetUseCaseError::Query(error @ WidgetQueryError::IncompatibleCurrencies) => {
+            invalid_params(error.to_string())
         }
     }
 }

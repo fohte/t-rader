@@ -309,7 +309,7 @@ async fn preview_continues_after_a_widget_has_incompatible_currencies(
         json!({
             "errors": [{
                 "path": "widgets[0].queries",
-                "message": "amount aggregations across different currencies are not supported",
+                "message": "amount aggregation across multiple stocks requires confirmed currencies",
             }],
             "preview_url": "<preview_url>",
             "widgets": [{

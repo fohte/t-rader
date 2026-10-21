@@ -23,10 +23,8 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
         WidgetUseCaseError::Query(WidgetQueryError::StockGroups(error)) => {
             AppError::Internal(error.to_string())
         }
-        WidgetUseCaseError::Query(WidgetQueryError::IncompatibleCurrencies) => {
-            AppError::Validation(
-                "amount aggregations across different currencies are not supported".to_string(),
-            )
+        WidgetUseCaseError::Query(error @ WidgetQueryError::IncompatibleCurrencies) => {
+            AppError::Validation(error.to_string())
         }
     }
 }
