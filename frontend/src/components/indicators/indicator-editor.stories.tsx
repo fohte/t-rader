@@ -15,23 +15,14 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 const INITIAL: IndicatorEditorValue = {
-  name: 'rsi',
+  name: 'demo-indicator',
   code: `import json, sys
 
 args = json.load(sys.stdin)["args"]
-period = args.get("period", 14)
-print(json.dumps({"value": period * 2}))
+value = args.get("value", 0)
+print(json.dumps({"result": value}))
 `,
   inputSchema: JSON.stringify(
-    {
-      type: 'object',
-      properties: { period: { type: 'integer' } },
-      required: ['period'],
-    },
-    null,
-    2,
-  ),
-  outputSchema: JSON.stringify(
     {
       type: 'object',
       properties: { value: { type: 'number' } },
@@ -40,7 +31,16 @@ print(json.dumps({"value": period * 2}))
     null,
     2,
   ),
-  description: 'RSI 風サンプル',
+  outputSchema: JSON.stringify(
+    {
+      type: 'object',
+      properties: { result: { type: 'number' } },
+      required: ['result'],
+    },
+    null,
+    2,
+  ),
+  description: '表示確認用の架空指標です。',
 }
 
 const QUIET: PreviewState = { isRunning: false, error: null, result: null }
@@ -80,8 +80,8 @@ export const PreviewSuccess: Story = {
       isRunning: false,
       error: null,
       result: {
-        output: { value: 28 },
-        stdout: '{"value": 28}\n',
+        output: { result: 7 },
+        stdout: '{"result": 7}\n',
         stderr: '',
         exit_code: 0,
       },

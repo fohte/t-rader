@@ -37,7 +37,7 @@ export function StockPageHoldings({
     <section className="border border-border bg-card" aria-label="保有">
       <div className="flex items-center justify-between border-b border-border px-3.5 py-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
-          <span className="mr-2 text-primary">&gt;</span>
+          <span className="mr-2 text-muted-foreground">&gt;</span>
           保有
         </h2>
         <span className="font-mono text-2xs text-muted-foreground">現在</span>
@@ -64,7 +64,10 @@ export function StockPageHoldings({
                 {item.label}
               </dt>
               <dd
-                className={`truncate font-mono text-sm tabular-nums ${item.className ?? ''}`}
+                className={cn(
+                  'truncate font-mono text-sm tabular-nums',
+                  item.className,
+                )}
               >
                 {item.value}
               </dd>

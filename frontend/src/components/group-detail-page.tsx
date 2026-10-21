@@ -1,3 +1,5 @@
+import { Chip } from '@fohte/ui/chip'
+
 import { ReferenceDetailState } from '#components/reference-detail-state'
 import { RelatedNotes } from '#components/related-notes'
 import { StockNameLink } from '#components/stocks/stock-name-link'
@@ -59,7 +61,7 @@ export function GroupDetailPage(props: GroupDetailPageProps) {
               id="group-stocks-title"
               className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
             >
-              <span className="mr-2 text-primary">&gt;</span>
+              <span className="mr-2 text-muted-foreground">&gt;</span>
               銘柄
             </h2>
             <span className="shrink-0 font-mono text-2xs text-muted-foreground">
@@ -107,9 +109,9 @@ export function GroupDetailPage(props: GroupDetailPageProps) {
                           {!props.isHoldingsLoading &&
                             !props.isHoldingsError &&
                             heldStockIds.has(stock.id) && (
-                              <span className="border border-primary/50 px-1.5 py-0.5 font-mono text-2xs text-primary">
+                              <Chip size="md" tone="strong">
                                 保有
-                              </span>
+                              </Chip>
                             )}
                         </div>
                       </td>

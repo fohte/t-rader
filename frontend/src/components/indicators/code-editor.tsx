@@ -1,6 +1,7 @@
 import '#components/indicators/monaco-setup'
 
 import Editor from '@monaco-editor/react'
+import type { CSSProperties } from 'react'
 
 interface CodeEditorProps {
   language: 'python' | 'json' | 'yaml'
@@ -22,11 +23,15 @@ export function CodeEditor({
   ariaLabel,
   readOnly = false,
 }: CodeEditorProps) {
+  const editorStyle: CSSProperties & { '--editor-height': string } = {
+    '--editor-height': `${String(height)}px`,
+  }
+
   return (
     <div
       data-testid={testId}
-      className="border border-border bg-bg-secondary"
-      style={{ height: `${String(height)}px` }}
+      className="h-(--editor-height) border border-border bg-bg-secondary"
+      style={editorStyle}
     >
       <Editor
         height="100%"
