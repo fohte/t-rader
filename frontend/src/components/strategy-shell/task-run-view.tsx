@@ -29,8 +29,6 @@ import {
 } from '#components/strategy-shell/task-run-payload-panel'
 import { Skeleton } from '#components/ui/skeleton'
 
-export type { TaskRunDefinitionSnapshot } from '#components/strategy-shell/task-run-definition-snapshot-panel'
-
 export interface TaskRunViewProps {
   strategyId: string
   task: {

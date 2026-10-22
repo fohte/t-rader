@@ -5,7 +5,7 @@
  * `for_each` の有無で実行回数が決まり、`runs` は実行時に読み捨てられるため、
  * フォームの型としても前提にしない。
  */
-export interface AgentGraphPhaseBaseForm {
+interface AgentGraphPhaseBaseForm {
   key: string
   label: string
   forEach?: string
@@ -16,7 +16,7 @@ export interface AgentGraphPhaseBaseForm {
   output: Record<string, unknown>
 }
 
-export interface LlmAgentGraphPhaseForm extends AgentGraphPhaseBaseForm {
+interface LlmAgentGraphPhaseForm extends AgentGraphPhaseBaseForm {
   kind?: 'llm'
   model: string
   prompt: string
@@ -25,7 +25,7 @@ export interface LlmAgentGraphPhaseForm extends AgentGraphPhaseBaseForm {
   tools?: string[]
 }
 
-export interface OperationAgentGraphPhaseForm extends AgentGraphPhaseBaseForm {
+interface OperationAgentGraphPhaseForm extends AgentGraphPhaseBaseForm {
   kind: 'operation'
   model?: null
   prompt?: never

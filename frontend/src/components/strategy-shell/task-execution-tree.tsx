@@ -5,7 +5,6 @@ export type {
   TaskStep,
 } from '#components/strategy-shell/task-execution-tree/model'
 export {
-  listStepPayloadReferences,
   parseAgentGraphPhases,
   readTaskStartAgentGraph,
   readTaskSteps,
