@@ -231,6 +231,7 @@ export const PreviewLineAndTable: Story = {
     state: {
       ...readyState,
       title: '期間推移のプレビュー',
+      asOf: '2099-01-19',
       widgets: [groupLineWidget, tableWidget],
     },
     showDashboardListLink: false,
