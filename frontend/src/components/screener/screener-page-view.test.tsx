@@ -241,8 +241,7 @@ describe('ScreenerPageView', () => {
       'spinbutton',
       { name: 'PER 上限' },
     )
-    await user.clear(perUpperBound)
-    await user.type(perUpperBound, '10')
+    fireEvent.change(perUpperBound, { target: { value: '10' } })
     await user.click(
       within(
         within(dialog).getByRole('group', { name: '条件の操作' }),
@@ -300,13 +299,13 @@ describe('ScreenerPageView', () => {
 
     render(<ScreenerPageView {...args} />)
     const dialog = screen.getByRole('dialog')
-    await user.type(
+    fireEvent.change(
       within(dialog).getByRole('spinbutton', { name: 'PER 下限' }),
-      '20',
+      { target: { value: '20' } },
     )
-    await user.type(
+    fireEvent.change(
       within(dialog).getByRole('spinbutton', { name: 'PER 上限' }),
-      '8',
+      { target: { value: '8' } },
     )
     await user.click(
       within(dialog).getByRole('button', {
