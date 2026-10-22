@@ -221,14 +221,24 @@ impl BarsRepository for PostgresBarsRepository {
         transaction: &UnitOfWorkTransaction,
         rows: u64,
         max_rows_per_hour: u64,
+        paced_at: DateTime<Utc>,
+        pacing_millis: u64,
     ) -> Result<bool, BarsRepositoryError> {
         PostgresBarsRepository::reserve_us_stock_sip_refetch_rows(
             self,
             transaction,
             rows,
             max_rows_per_hour,
+            paced_at,
+            pacing_millis,
         )
         .await
+    }
+
+    async fn find_us_stock_sip_refetch_next_allowed_at(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+        PostgresBarsRepository::find_us_stock_sip_refetch_next_allowed_at(self).await
     }
 
     async fn find_earliest_us_stock_minute_bar_before(
@@ -1746,6 +1756,7 @@ mod tests {
         let write_lock: SharedUsStockBarsWriteLock = Arc::new(TestWriteLock);
         let result = UsStockBarsIngestUseCases::new(
             BarsUseCases::new(unit_of_work, repository.clone()),
+            write_lock.clone(),
             write_lock,
         )
         .downsample_old_us_stock_minute_bars(now)

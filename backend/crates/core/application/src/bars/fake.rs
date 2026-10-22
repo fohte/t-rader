@@ -28,6 +28,8 @@ pub struct FakeBarsRepository {
     pub us_stock_sip_refetch_skipped: Mutex<HashMap<String, String>>,
     pub us_stock_sip_refetch_cursors: Mutex<HashMap<String, UsStockSipBarRefetchCursor>>,
     pub us_stock_sip_refetch_rows_reserved: Mutex<u64>,
+    pub us_stock_sip_refetch_next_allowed_at: Mutex<Option<DateTime<Utc>>>,
+    pub us_stock_sip_refetch_pacing_millis: Mutex<Vec<u64>>,
     pub us_stock_minute_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub bar_compression_times: Mutex<Vec<DateTime<Utc>>>,
@@ -457,6 +459,8 @@ impl BarsRepository for FakeBarsRepository {
         transaction: &UnitOfWorkTransaction,
         rows: u64,
         max_rows_per_hour: u64,
+        paced_at: DateTime<Utc>,
+        pacing_millis: u64,
     ) -> Result<bool, BarsRepositoryError> {
         self.record_transaction(transaction).await?;
         let mut reserved = self.us_stock_sip_refetch_rows_reserved.lock().await;
@@ -464,7 +468,22 @@ impl BarsRepository for FakeBarsRepository {
             return Ok(false);
         }
         *reserved += rows;
+        self.us_stock_sip_refetch_pacing_millis
+            .lock()
+            .await
+            .push(pacing_millis);
+        let pacing_duration =
+            chrono::Duration::milliseconds(i64::try_from(pacing_millis).unwrap_or(i64::MAX));
+        let mut next_allowed_at = self.us_stock_sip_refetch_next_allowed_at.lock().await;
+        let pacing_base = (*next_allowed_at).map_or(paced_at, |stored| stored.max(paced_at));
+        *next_allowed_at = pacing_base.checked_add_signed(pacing_duration);
         Ok(true)
+    }
+
+    async fn find_us_stock_sip_refetch_next_allowed_at(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+        Ok(*self.us_stock_sip_refetch_next_allowed_at.lock().await)
     }
 
     async fn mark_us_stock_hourly_bar_history_completed(

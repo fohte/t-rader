@@ -16,7 +16,8 @@ impl UseCases {
     pub fn us_stock_bars_ingest(
         &self,
         write_lock: SharedUsStockBarsWriteLock,
+        sip_refetch_lease: SharedUsStockBarsWriteLock,
     ) -> UsStockBarsIngestUseCases {
-        UsStockBarsIngestUseCases::new(self.bars(), write_lock)
+        UsStockBarsIngestUseCases::new(self.bars(), write_lock, sip_refetch_lease)
     }
 }

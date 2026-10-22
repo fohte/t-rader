@@ -94,7 +94,13 @@ pub trait BarsRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         rows: u64,
         max_rows_per_hour: u64,
+        paced_at: DateTime<Utc>,
+        pacing_millis: u64,
     ) -> Result<bool, BarsRepositoryError>;
+
+    async fn find_us_stock_sip_refetch_next_allowed_at(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
 
     async fn mark_us_stock_hourly_bar_history_completed(
         &self,

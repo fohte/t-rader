@@ -216,7 +216,11 @@ mod tests {
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
         let bars_use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
         let shared_write_lock: SharedUsStockBarsWriteLock = write_lock.clone();
-        let use_cases = UsStockBarsIngestUseCases::new(bars_use_cases, shared_write_lock);
+        let use_cases = UsStockBarsIngestUseCases::new(
+            bars_use_cases,
+            shared_write_lock.clone(),
+            shared_write_lock,
+        );
         DownsampleFixture {
             use_cases,
             unit_of_work,

@@ -67,6 +67,7 @@ pub trait UsStockBarSource: Send + Sync {
     async fn fetch_page(
         &self,
         query: &UsStockBarQuery,
+        max_rows: Option<u32>,
         deadline: Instant,
     ) -> Result<UsStockBarPage, UsStockBarSourceError>;
 
