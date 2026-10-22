@@ -29,6 +29,8 @@ pub enum SubmitTaskError {
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]
     AgentTask(#[from] crate::agent_task_client::AgentTaskError),
+    #[error(transparent)]
+    ExecutionSnapshot(#[from] crate::strategy_execution::StrategyExecutionUseCaseError),
 }
 
 #[derive(Debug, Error)]

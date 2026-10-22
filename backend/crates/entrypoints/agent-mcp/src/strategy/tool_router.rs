@@ -4,6 +4,7 @@
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
 
 mod calendar;
+mod execution_payload;
 mod movers;
 mod news;
 mod paper_trade;
@@ -516,6 +517,7 @@ impl StrategyServer {
             + Self::paper_trade_tool_router()
             + Self::news_tool_router()
             + Self::widget_tool_router()
+            + Self::execution_payload_tool_router()
     }
 
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
@@ -604,6 +606,7 @@ mod tests {
                 ("create_stock_group", None),
                 ("eval_indicator", None),
                 ("eval_python", None),
+                ("execute_operation", None),
                 ("get_news_content", Some(true)),
                 ("list_earnings_targets", Some(true)),
                 ("list_note_kinds", Some(true)),
@@ -620,6 +623,7 @@ mod tests {
                 ("read_annotations", Some(true)),
                 ("read_calendar", Some(true)),
                 ("read_comments", Some(true)),
+                ("read_execution_payload", Some(true)),
                 ("read_fin_summary", Some(true)),
                 ("read_macro_indicator", Some(true)),
                 ("read_margin", Some(true)),

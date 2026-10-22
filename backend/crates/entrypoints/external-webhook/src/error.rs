@@ -90,6 +90,10 @@ pub(crate) fn map_submit_error(error: SubmitTaskError) -> AppError {
         SubmitTaskError::AgentTask(agent_error) => {
             AppError::Config(format!("agent task error: {agent_error}"))
         }
+        SubmitTaskError::ExecutionSnapshot(error) => {
+            tracing::error!(error = %error, "failed to capture task execution definitions");
+            AppError::Internal("failed to capture task execution definitions".into())
+        }
     }
 }
 

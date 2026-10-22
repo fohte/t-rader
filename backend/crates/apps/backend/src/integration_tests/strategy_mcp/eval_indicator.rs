@@ -139,6 +139,9 @@ async fn eval_indicator_resolves_and_runs(db: gateway_postgres::DatabaseHandle) 
                 args: json!({"period": 14}),
                 output: json!(42),
                 evaluated_at: ts_sentinel(),
+                payload_id: None,
+                payload_pointers: None,
+                execution_step_id: None,
             },
             vec![ExecRequest {
                 code: "print('42')".into(),

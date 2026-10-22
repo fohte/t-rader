@@ -33,6 +33,7 @@ impl UseCases {
             self.unit_of_work.clone(),
             Arc::new(PostgresStrategyTaskRepository::new(self.db.clone())),
         )
+        .with_task_start_snapshotter(Arc::new(self.strategy_executions()))
     }
 }
 

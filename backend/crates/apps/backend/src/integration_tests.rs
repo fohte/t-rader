@@ -35,7 +35,7 @@ use core_application::agent_task_client::{
 use core_application::strategy_task::DEFAULT_PURPOSE;
 use entrypoint_control_plane_mcp::MgmtServer;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-use gateway_postgres::entities::strategy_task;
+use gateway_postgres::entities::{strategy_task, task_execution_definition_snapshot};
 
 #[backend_test_macros::database_test]
 async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
@@ -188,6 +188,32 @@ async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
             review_prompt,
         ],
     );
+
+    let submitted_tasks = strategy_task::Entity::find()
+        .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+        .filter(strategy_task::Column::Source.ne("sample"))
+        .all(&db)
+        .await
+        .expect("query submitted tasks");
+    let submitted_task_ids = submitted_tasks
+        .iter()
+        .map(|task| task.task_id)
+        .collect::<std::collections::HashSet<_>>();
+    let snapshot_task_ids = task_execution_definition_snapshot::Entity::find()
+        .filter(task_execution_definition_snapshot::Column::DefinitionKey.eq("task_start"))
+        .all(&db)
+        .await
+        .expect("query task start snapshots")
+        .into_iter()
+        .filter(|snapshot| submitted_task_ids.contains(&snapshot.task_id))
+        .map(|snapshot| snapshot.task_id)
+        .collect::<std::collections::HashSet<_>>();
+    let missing_snapshots = submitted_tasks
+        .into_iter()
+        .filter(|task| !snapshot_task_ids.contains(&task.task_id))
+        .map(|task| (task.source, task.task_id))
+        .collect::<Vec<_>>();
+    assert_eq!(missing_snapshots, Vec::new());
 }
 
 #[backend_test_macros::database_test]

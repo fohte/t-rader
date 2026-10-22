@@ -478,6 +478,9 @@ mod tests {
             code: "return 1".into(),
             args: json!({}),
             output,
+            payload_id: None,
+            payload_pointers: None,
+            execution_step_id: None,
             evaluated_at: Utc::now().fixed_offset(),
         }
     }
@@ -1347,6 +1350,10 @@ mod tests {
         let valuations =
             ValuationUseCases::new(valuation_repository.clone(), bars_repository.clone());
         let indicator_observations = IndicatorObservationUseCases::new(indicator_repository);
+        let mut evaluation = custom_indicator_evaluation(json!({ "result": 256.75 }));
+        evaluation.payload_id = Some(Uuid::from_u128(0x103));
+        evaluation.payload_pointers = Some(json!({"result": "/value/result"}));
+        evaluation.execution_step_id = Some(EXECUTION_STEP_ID);
         let (use_cases, _) = make_note_use_cases_with_all_services(
             source_version(),
             source_version(),
@@ -1354,9 +1361,7 @@ mod tests {
             bars_repository.clone(),
             valuations,
             indicator_observations,
-            custom_indicator_evaluation_use_cases([custom_indicator_evaluation(
-                json!({ "result": 256.75 }),
-            )]),
+            custom_indicator_evaluation_use_cases([evaluation]),
             MarkdownLintService::default(),
         );
         let body = concat!(

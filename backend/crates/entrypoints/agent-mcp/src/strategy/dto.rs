@@ -6,6 +6,7 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use super::graph_dto::GraphDef;
@@ -307,6 +308,87 @@ pub struct EvalIndicatorParams {
     /// stdout + stderr の合計バイト数の上限。MCP 層の上限値を超える指定は
     /// invalid_params で拒否する。
     pub max_output_bytes: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ExecuteOperationParams {
+    /// 実行する保存済み定義の name。
+    pub name: String,
+    /// 定義の input_schema に従う JSON 入力。
+    #[schemars(schema_with = "any_json_schema")]
+    pub args: serde_json::Value,
+    /// 指定した場合、出力内の数値を既存 evaluation へ保存する出力名と JSON Pointer。
+    #[serde(default)]
+    pub numeric_pointers: Option<BTreeMap<String, String>>,
+    /// wall-clock 上限 (秒)。MCP 層の上限値を超える指定は拒否する。
+    pub timeout_secs: Option<u32>,
+    /// stdout + stderr の合計バイト数の上限。
+    pub max_output_bytes: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(test, derive(Deserialize))]
+pub struct ExecutionPayloadRefDto {
+    pub id: Uuid,
+    pub task_id: Uuid,
+    pub kind: String,
+    pub digest: String,
+    pub item_count: u64,
+    pub byte_count: u64,
+    pub source_revision: Option<String>,
+    #[schemars(schema_with = "any_json_schema")]
+    pub source_locator: Option<serde_json::Value>,
+    #[schemars(schema_with = "any_json_schema")]
+    pub source_metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(test, derive(Deserialize))]
+pub struct ExecuteOperationResult {
+    pub input_payload: ExecutionPayloadRefDto,
+    pub output_payload: Option<ExecutionPayloadRefDto>,
+    /// 数値 projection の記録に成功した場合の評価 ID。
+    pub evaluation_id: Option<Uuid>,
+    /// projection を要求して失敗した場合の理由。未要求時は null。
+    pub projection_error: Option<NumericProjectionError>,
+    pub exit_code: i32,
+    pub stderr: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(test, derive(Deserialize))]
+pub enum NumericProjectionError {
+    InvalidProjection,
+    RecordingFailed,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ReadExecutionPayloadParams {
+    pub payload_id: Uuid,
+    #[serde(default)]
+    pub pointer: String,
+    #[serde(default)]
+    pub cursor: u64,
+    #[serde(default = "default_payload_page_limit")]
+    pub limit: usize,
+}
+
+fn default_payload_page_limit() -> usize {
+    100
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(test, derive(Deserialize))]
+pub struct ReadExecutionPayloadResult {
+    pub payload_id: Uuid,
+    pub pointer: String,
+    #[schemars(schema_with = "any_json_schema")]
+    pub data: serde_json::Value,
+    pub cursor: u64,
+    pub next_cursor: Option<u64>,
+    pub total_count: u64,
+    pub digest: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

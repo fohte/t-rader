@@ -117,6 +117,15 @@ impl StrategyTaskUseCases {
         self.repository
             .insert(transaction, prepared.task.clone())
             .await?;
+        if let Some(snapshotter) = &self.task_start_snapshotter {
+            snapshotter
+                .capture_task_start(
+                    transaction,
+                    prepared.task.task_id,
+                    prepared.task.purpose.as_deref().unwrap_or(DEFAULT_PURPOSE),
+                )
+                .await?;
+        }
         Ok(())
     }
 

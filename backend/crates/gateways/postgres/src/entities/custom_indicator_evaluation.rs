@@ -18,9 +18,28 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary")]
     pub output: Json,
     pub evaluated_at: DateTimeWithTimeZone,
+    pub payload_id: Option<Uuid>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub payload_pointers: Option<Json>,
+    pub execution_step_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::task_execution_payload::Entity",
+        from = "Column::PayloadId",
+        to = "super::task_execution_payload::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Restrict"
+    )]
+    TaskExecutionPayload,
+}
+
+impl Related<super::task_execution_payload::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TaskExecutionPayload.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

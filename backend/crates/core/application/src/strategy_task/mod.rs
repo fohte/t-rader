@@ -44,6 +44,7 @@ pub use types::{
 use crate::agent_config::graph::parse_agent_graph;
 use crate::event::SharedEventRepository;
 use crate::event_dispatch_job::EventDispatchJobUseCases;
+use crate::strategy_execution::SharedTaskStartSnapshotter;
 use crate::unit_of_work::SharedUnitOfWork;
 
 const DEFAULT_DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
@@ -67,6 +68,7 @@ pub struct StrategyTaskUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) repository: SharedStrategyTaskRepository,
     completion_events: Option<CompletionEventDependencies>,
+    task_start_snapshotter: Option<SharedTaskStartSnapshotter>,
 }
 
 #[derive(Clone)]
@@ -81,7 +83,13 @@ impl StrategyTaskUseCases {
             unit_of_work,
             repository,
             completion_events: None,
+            task_start_snapshotter: None,
         }
+    }
+
+    pub fn with_task_start_snapshotter(mut self, snapshotter: SharedTaskStartSnapshotter) -> Self {
+        self.task_start_snapshotter = Some(snapshotter);
+        self
     }
 
     pub fn with_completion_events(

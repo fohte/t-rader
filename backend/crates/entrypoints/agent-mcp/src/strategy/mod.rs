@@ -13,6 +13,7 @@ pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
+pub(super) mod execution_payload;
 pub(super) mod fin_summary;
 mod graph_dto;
 pub(super) mod holdings;
