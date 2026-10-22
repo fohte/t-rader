@@ -169,6 +169,7 @@ mod note_predictions;
 mod note_versions;
 mod notes;
 mod notes_display;
+mod notes_overview;
 mod paper_accounts;
 mod refs;
 mod risk_policy;
