@@ -112,7 +112,7 @@ docker compose exec db psql -U t_rader -d t_rader_backend_dev \
 
 - DB は backend とは別の論理 DB (`t_rader_agent_dev` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ。`mise run db:up` が作成する
 - マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
-- internal API: `POST /internal/tasks` (`{strategy_id, prompt}` -> `{task_id}`) / `GET /internal/tasks/{task_id}` (-> `{task_id, state, result_text?, error_message?, error_kind?}`)
+- internal API: `POST /internal/v2/tasks` (`{task_id, strategy_id, prompt}` -> `{task_id}`) / `GET /internal/tasks/{task_id}` (-> `{task_id, state, result_text?, error_message?, error_kind?}`)
 
 ```bash
 # agent 単体でテスト実行 (`agent/.mise.toml` が TEST_DATABASE_URL を設定する)

@@ -277,14 +277,18 @@ async fn replays_a_completed_mcp_request_and_rejects_changed_arguments(
         .await
         .expect("record synthetic LLM requests")
         .len();
-
-    assert!(
-        concurrent_outcomes == vec!["completed", "in_flight"]
-            || concurrent_outcomes == vec!["completed", "completed"]
-    );
     assert_eq!(
-        (replay, changed, request_count),
         (
+            matches!(
+                concurrent_outcomes.as_slice(),
+                ["completed", "in_flight"] | ["completed", "completed"]
+            ),
+            replay,
+            changed,
+            request_count,
+        ),
+        (
+            true,
             Ok(json!({"text": "synthetic response"})),
             Err((
                 rmcp::model::ErrorCode::INVALID_PARAMS,

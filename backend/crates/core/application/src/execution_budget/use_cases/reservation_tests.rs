@@ -13,6 +13,7 @@ use crate::{
         BudgetReservation, BudgetReservationCommand, BudgetReservationResult,
         BudgetReservationState, BudgetReservationTransition, BudgetResource, BudgetScopeLimit,
         ExecutionBudgetRepository, ExecutionBudgetRepositoryError, ExecutionBudgetUseCases,
+        SubagentExecutionIdentity,
     },
     strategy_execution::{
         AuthorizedExecution, DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk,
@@ -67,20 +68,22 @@ async fn reservation_uses_start_snapshot_and_shared_budget_port(#[case] case: Re
                     fingerprint(case),
                     &STEP_ID.to_string(),
                     None,
-                    None,
                 )
                 .await
                 .expect("reserve parent model call");
         }
         ReservationCase::SubagentModelCall => {
+            let execution_id = STEP_ID.to_string();
             use_cases
                 .reserve_model_call(
                     &access,
                     call_id(case),
                     fingerprint(case),
                     &STEP_ID.to_string(),
-                    Some(DEFINITION_KEY),
-                    Some(&STEP_ID.to_string()),
+                    Some(SubagentExecutionIdentity {
+                        execution_id: &execution_id,
+                        definition_key: DEFINITION_KEY,
+                    }),
                 )
                 .await
                 .expect("reserve subagent model call");
@@ -107,7 +110,10 @@ async fn reservation_uses_start_snapshot_and_shared_budget_port(#[case] case: Re
                     fingerprint(case),
                     TOOL_NAME,
                     Some(8),
-                    Some((&execution_id, DEFINITION_KEY)),
+                    Some(SubagentExecutionIdentity {
+                        execution_id: &execution_id,
+                        definition_key: DEFINITION_KEY,
+                    }),
                 )
                 .await
                 .expect("reserve subagent tool call");

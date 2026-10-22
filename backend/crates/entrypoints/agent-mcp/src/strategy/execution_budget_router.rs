@@ -1,4 +1,4 @@
-use std::{fmt::Write as _, future::Future};
+use std::fmt::Write as _;
 
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::tool::ToolCallContext;
@@ -52,9 +52,12 @@ impl StrategyServer {
                     fingerprint,
                     request.name.as_ref(),
                     default_limit,
-                    subagent
-                        .as_ref()
-                        .map(|(id, key)| (id.as_str(), key.as_str())),
+                    subagent.as_ref().map(|(id, key)| {
+                        core_application::execution_budget::SubagentExecutionIdentity {
+                            execution_id: id,
+                            definition_key: key,
+                        }
+                    }),
                 )
                 .await
                 .map_err(execution_budget_error_to_mcp)?;
@@ -65,41 +68,8 @@ impl StrategyServer {
 
         match reserved_call {
             Some((access, call_id, reservation)) => {
-                dispatch_reserved_tool(
-                    reservation,
-                    || async {
-                        self.dependencies
-                        .execution_budgets
-                        .transition_call(
-                            &access,
-                            &call_id,
-                            core_application::execution_budget::BudgetReservationState::Consumed,
-                        )
-                        .await
-                        .map(|transition| transition.transitioned)
-                        .map_err(execution_budget_error_to_mcp)
-                    },
-                    || async {
-                        Self::tool_router()
-                            .call(ToolCallContext::new(self, request, context))
-                            .await
-                    },
-                    |response| async {
-                        if let Err(error) = self
-                            .dependencies
-                            .execution_budgets
-                            .complete_call(&access, &call_id, response)
-                            .await
-                        {
-                            tracing::error!(
-                                error = %error,
-                                call_id,
-                                "failed to persist strategy mcp tool response",
-                            );
-                        }
-                    },
-                )
-                .await
+                self.dispatch_reserved_tool(access, call_id, request, context, reservation)
+                    .await
             }
             None => {
                 Self::tool_router()
@@ -107,6 +77,73 @@ impl StrategyServer {
                     .await
             }
         }
+    }
+
+    async fn dispatch_reserved_tool(
+        &self,
+        access: core_application::strategy_execution::AuthorizedExecution,
+        call_id: String,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+        reservation: core_application::execution_budget::BudgetReservationResult,
+    ) -> Result<CallToolResponse, McpError> {
+        if let Some(response) = reservation.completed_response {
+            return serde_json::from_value(response)
+                .map(CallToolResponse::Complete)
+                .map_err(|error| {
+                    internal_error(format!("cached strategy tool response is invalid: {error}"))
+                });
+        }
+        if reservation.reservations.is_empty()
+            || reservation.reservations.iter().any(|reservation| {
+                reservation.state
+                    != core_application::execution_budget::BudgetReservationState::Reserved
+            })
+        {
+            return Err(invalid_params(
+                "tool call is already dispatched and its result is unavailable",
+            ));
+        }
+        let transition = self
+            .dependencies
+            .execution_budgets
+            .transition_call(
+                &access,
+                &call_id,
+                core_application::execution_budget::BudgetReservationState::Consumed,
+            )
+            .await
+            .map_err(execution_budget_error_to_mcp)?;
+        if !transition.transitioned {
+            return Err(invalid_params("tool call dispatch is already claimed"));
+        }
+
+        let response = Self::tool_router()
+            .call(ToolCallContext::new(self, request, context))
+            .await?;
+        if let CallToolResponse::Complete(result) = &response {
+            match serde_json::to_value(result) {
+                Ok(serialized) => {
+                    if let Err(error) = self
+                        .dependencies
+                        .execution_budgets
+                        .complete_call(&access, &call_id, serialized)
+                        .await
+                    {
+                        tracing::error!(
+                            error = %error,
+                            call_id,
+                            "failed to persist strategy mcp tool response",
+                        );
+                    }
+                }
+                Err(error) => tracing::error!(
+                    error = %error,
+                    "failed to serialize strategy mcp tool response",
+                ),
+            }
+        }
+        Ok(response)
     }
 
     async fn authorize_budget_execution(
@@ -171,8 +208,12 @@ impl StrategyServer {
                         call_id.to_string(),
                         fingerprint,
                         &execution_step_id.to_string(),
-                        subagent.as_ref().map(|(_, key)| key.as_str()),
-                        subagent.as_ref().map(|(id, _)| id.as_str()),
+                        subagent.as_ref().map(|(id, key)| {
+                            core_application::execution_budget::SubagentExecutionIdentity {
+                                execution_id: id,
+                                definition_key: key,
+                            }
+                        }),
                     )
                     .await
                     .map_err(execution_budget_error_to_mcp)?;
@@ -219,63 +260,6 @@ impl StrategyServer {
             }
             _ => Err(invalid_params("budget operation is invalid")),
         }
-    }
-}
-
-async fn dispatch_reserved_tool<
-    Claim,
-    ClaimFuture,
-    Dispatch,
-    DispatchFuture,
-    Complete,
-    CompleteFuture,
->(
-    reservation: core_application::execution_budget::BudgetReservationResult,
-    claim: Claim,
-    dispatch: Dispatch,
-    complete: Complete,
-) -> Result<CallToolResponse, McpError>
-where
-    Claim: FnOnce() -> ClaimFuture,
-    ClaimFuture: Future<Output = Result<bool, McpError>>,
-    Dispatch: FnOnce() -> DispatchFuture,
-    DispatchFuture: Future<Output = Result<CallToolResponse, McpError>>,
-    Complete: FnOnce(serde_json::Value) -> CompleteFuture,
-    CompleteFuture: Future<Output = ()>,
-{
-    if let Some(response) = reservation.completed_response {
-        return serde_json::from_value(response)
-            .map(CallToolResponse::Complete)
-            .map_err(|error| {
-                internal_error(format!("cached strategy tool response is invalid: {error}"))
-            });
-    }
-    if reservation.reservations.is_empty()
-        || reservation.reservations.iter().any(|reservation| {
-            reservation.state
-                != core_application::execution_budget::BudgetReservationState::Reserved
-        })
-    {
-        return Err(invalid_params(
-            "tool call is already dispatched and its result is unavailable",
-        ));
-    }
-    if !claim().await? {
-        return Err(invalid_params("tool call dispatch is already claimed"));
-    }
-
-    match dispatch().await? {
-        CallToolResponse::Complete(response) => {
-            match serde_json::to_value(&response) {
-                Ok(serialized) => complete(serialized).await,
-                Err(error) => tracing::error!(
-                    error = %error,
-                    "failed to serialize strategy mcp tool response",
-                ),
-            }
-            Ok(CallToolResponse::Complete(response))
-        }
-        response => Ok(response),
     }
 }
 

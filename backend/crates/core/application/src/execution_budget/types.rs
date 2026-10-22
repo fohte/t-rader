@@ -65,6 +65,12 @@ pub struct BudgetScopeLimit {
     pub limit: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubagentExecutionIdentity<'a> {
+    pub execution_id: &'a str,
+    pub definition_key: &'a str,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetReservationCommand {
     pub task_id: Uuid,

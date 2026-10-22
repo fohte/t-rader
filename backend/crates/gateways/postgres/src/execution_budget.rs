@@ -13,6 +13,8 @@ use uuid::Uuid;
 
 use crate::{persistence::persistence_error, transaction::transaction_ref};
 
+const RESERVATION_COLUMNS: &str = "reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at";
+
 #[derive(Clone, Default)]
 pub struct PostgresExecutionBudgetRepository;
 
@@ -99,8 +101,7 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let existing = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at \
-                 FROM execution_reservation WHERE task_id = $1 AND call_id = $2 ORDER BY resource_key, scope_key",
+                reservation_query(false),
                 [command.task_id.into(), command.call_id.clone().into()],
             ))
             .await
@@ -218,8 +219,7 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at \
-                 FROM execution_reservation WHERE task_id = $1 AND call_id = $2 ORDER BY resource_key, scope_key FOR UPDATE",
+                reservation_query(true),
                 [task_id.into(), call_id.to_string().into()],
             ))
             .await
@@ -296,8 +296,7 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at \
-                 FROM execution_reservation WHERE task_id = $1 AND call_id = $2 ORDER BY resource_key, scope_key FOR UPDATE",
+                reservation_query(true),
                 [task_id.into(), call_id.to_string().into()],
             ))
             .await
@@ -337,6 +336,14 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         }
         Ok(())
     }
+}
+
+fn reservation_query(lock_rows: bool) -> String {
+    format!(
+        "SELECT {RESERVATION_COLUMNS} FROM execution_reservation \
+         WHERE task_id = $1 AND call_id = $2 ORDER BY resource_key, scope_key{}",
+        if lock_rows { " FOR UPDATE" } else { "" },
+    )
 }
 
 fn common_amount(

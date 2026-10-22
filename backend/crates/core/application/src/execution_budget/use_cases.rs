@@ -15,7 +15,7 @@ use crate::{
 use super::{
     BudgetReservationCommand, BudgetReservationResult, BudgetReservationState,
     BudgetReservationTransition, BudgetResource, BudgetScopeLimit, ExecutionBudgetRepository,
-    ExecutionBudgetUseCaseError,
+    ExecutionBudgetUseCaseError, SubagentExecutionIdentity,
 };
 
 const DEFAULT_MODEL_CALLS_PER_STEP: u64 = 15;
@@ -61,8 +61,7 @@ impl ExecutionBudgetUseCases {
         call_id: String,
         request_fingerprint: String,
         execution_step_id: &str,
-        subagent_definition_key: Option<&str>,
-        subagent_execution_id: Option<&str>,
+        subagent: Option<SubagentExecutionIdentity<'_>>,
     ) -> Result<BudgetReservationResult, ExecutionBudgetUseCaseError> {
         let execution_step_id = Uuid::parse_str(execution_step_id)
             .ok()
@@ -75,29 +74,27 @@ impl ExecutionBudgetUseCases {
             .and_then(|graph| graph.execution_limits.as_ref())
             .and_then(|limits| limits.max_model_calls)
             .map(u64::from);
-        let (resource_key, scope_key, local_limit) =
-            match (subagent_definition_key, subagent_execution_id) {
-                (Some(definition_key), Some(subagent_execution_id)) => {
-                    let subagent_execution_id =
-                        matching_execution_id(subagent_execution_id, execution_step_id)?;
-                    let definition = find_subagent(&snapshot.definition, definition_key)?;
-                    let model_limit = definition
-                        .get("max_model_calls")
-                        .and_then(Value::as_u64)
-                        .ok_or(ExecutionBudgetUseCaseError::InvalidTaskStartSnapshot)?;
-                    (
-                        format!("subagent:{definition_key}"),
-                        format!("subagent_run:{subagent_execution_id}"),
-                        Some(model_limit),
-                    )
-                }
-                (None, None) => (
-                    "model_call".to_string(),
-                    format!("step:{execution_step_id}"),
-                    Some(DEFAULT_MODEL_CALLS_PER_STEP),
-                ),
-                _ => return Err(ExecutionBudgetUseCaseError::InvalidRequest),
-            };
+        let (resource_key, scope_key, local_limit) = match subagent {
+            Some(identity) => {
+                let subagent_execution_id =
+                    matching_execution_id(identity.execution_id, execution_step_id)?;
+                let definition = find_subagent(&snapshot.definition, identity.definition_key)?;
+                let model_limit = definition
+                    .get("max_model_calls")
+                    .and_then(Value::as_u64)
+                    .ok_or(ExecutionBudgetUseCaseError::InvalidTaskStartSnapshot)?;
+                (
+                    format!("subagent:{}", identity.definition_key),
+                    format!("subagent_run:{subagent_execution_id}"),
+                    Some(model_limit),
+                )
+            }
+            None => (
+                "model_call".to_string(),
+                format!("step:{execution_step_id}"),
+                Some(DEFAULT_MODEL_CALLS_PER_STEP),
+            ),
+        };
         let mut charges = vec![BudgetScopeLimit {
             resource_key,
             scope_key,
@@ -129,7 +126,7 @@ impl ExecutionBudgetUseCases {
         request_fingerprint: String,
         tool_name: &str,
         default_task_limit: Option<u64>,
-        subagent: Option<(&str, &str)>,
+        subagent: Option<SubagentExecutionIdentity<'_>>,
     ) -> Result<BudgetReservationResult, ExecutionBudgetUseCaseError> {
         let snapshot = self.task_start_snapshot(access.task_id()).await?;
         let graph = task_graph(&snapshot.definition)?;
@@ -141,12 +138,13 @@ impl ExecutionBudgetUseCases {
             .as_ref()
             .and_then(|graph| graph.execution_limits.as_ref());
         let subagent_identity = match subagent {
-            Some((execution_id, definition_key)) => {
+            Some(identity) => {
                 let current_execution_id = access
                     .execution_step_id()
                     .ok_or(ExecutionBudgetUseCaseError::InvalidRequest)?;
-                let execution_id = matching_execution_id(execution_id, current_execution_id)?;
-                Some((execution_id, definition_key))
+                let execution_id =
+                    matching_execution_id(identity.execution_id, current_execution_id)?;
+                Some((execution_id, identity.definition_key))
             }
             None => None,
         };
