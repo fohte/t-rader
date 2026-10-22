@@ -101,13 +101,52 @@ async function withMobileViewport<T>(
   }
 }
 
+function readFrameMetrics(frame: Element | null) {
+  if (
+    frame == null ||
+    !('offsetWidth' in frame) ||
+    !('offsetHeight' in frame) ||
+    !('clientLeft' in frame) ||
+    !('clientTop' in frame)
+  ) {
+    return undefined
+  }
+
+  const { offsetWidth, offsetHeight, clientLeft, clientTop } = frame
+  if (
+    typeof offsetWidth !== 'number' ||
+    typeof offsetHeight !== 'number' ||
+    typeof clientLeft !== 'number' ||
+    typeof clientTop !== 'number'
+  ) {
+    return undefined
+  }
+
+  return { offsetWidth, offsetHeight, clientLeft, clientTop }
+}
+
 function getMainFramePoint(element: HTMLElement) {
   const frame = window.frameElement
   const frameBounds = frame?.getBoundingClientRect()
+  const frameMetrics = readFrameMetrics(frame)
+  const scaleX =
+    frameBounds && frameMetrics && frameMetrics.offsetWidth > 0
+      ? frameBounds.width / frameMetrics.offsetWidth
+      : 1
+  const scaleY =
+    frameBounds && frameMetrics && frameMetrics.offsetHeight > 0
+      ? frameBounds.height / frameMetrics.offsetHeight
+      : 1
   const bounds = element.getBoundingClientRect()
   return {
-    x: (frameBounds?.left ?? 0) + bounds.left + bounds.width / 2,
-    y: (frameBounds?.top ?? 0) + bounds.top + bounds.height / 2,
+    x:
+      (frameBounds?.left ?? 0) +
+      (frameMetrics?.clientLeft ?? 0) * scaleX +
+      (bounds.left + bounds.width / 2) * scaleX,
+    y:
+      (frameBounds?.top ?? 0) +
+      (frameMetrics?.clientTop ?? 0) * scaleY +
+      (bounds.top + bounds.height / 2) * scaleY,
   }
 }
 
