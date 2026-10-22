@@ -1,3 +1,4 @@
+import { Chip } from '@fohte/ui/chip'
 import { Link } from '@tanstack/react-router'
 
 import { StatusPill } from '#components/strategy-home/status-pill'
@@ -38,9 +39,7 @@ export function AnnotationsList({
                 {buildSnippet(annotation.text)}
               </span>
               <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
-                <span className="border border-border bg-surface-strong px-1 text-2xs uppercase text-muted-foreground-strong">
-                  {annotation.target_symbol}
-                </span>
+                <Chip tone="strong">{annotation.target_symbol}</Chip>
                 <StatusPill status={annotation.status} />
                 <span className="ml-auto text-muted-foreground">
                   {formatRelative(annotation.updated_at)}

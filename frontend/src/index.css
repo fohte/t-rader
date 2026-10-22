@@ -122,8 +122,10 @@
   [data-source-block='true'].note-body-list-range-block:hover:not(
       :has([data-source-block='true']:hover)
     )
+    > div
     > button[data-source-gutter-button='true']
+    > span
     > span[data-source-gutter-marker='true'] {
-    @apply opacity-100 text-primary;
+    @apply opacity-100;
   }
 }

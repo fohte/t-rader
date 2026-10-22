@@ -15,8 +15,9 @@
 //! - 1 Pod 1 container (sidecar なし)
 //! - `runAsNonRoot` + `readOnlyRootFilesystem` + `allowPrivilegeEscalation: false`
 //!   + `capabilities.drop: ["ALL"]` + `seccompProfile: RuntimeDefault`
-//! - 永続マウントなし。`/tmp` は in-memory な `emptyDir` で sizeLimit 付き
-//! - secret 注入なし。コードと入力データのみ env 経由で渡す
+//! - 永続マウントなし。小さい JSON は memory-backed 16 MiB `emptyDir`、ファイル転送は
+//!   ephemeral-storage 上限付き `emptyDir`
+//! - secret 注入なし。小さい JSON は env、ファイル評価は attach stream で渡す
 //!
 //! # infra 側で必要になる設定
 //!
@@ -36,6 +37,9 @@
 //!   - apiGroups: [""]
 //!     resources: ["pods/log"]
 //!     verbs: ["get"]
+//!   - apiGroups: [""]
+//!     resources: ["pods/attach"]
+//!     verbs: ["create", "get"]
 //! ```
 //!
 //! NetworkPolicy で `t-rader-exec` namespace の egress を全 deny、PSA は
@@ -46,6 +50,7 @@ mod config;
 mod executor;
 mod manifest;
 mod pod_api;
+mod stream;
 
 pub use config::{KataExecutorConfig, PodResourceLimits};
 pub use executor::HttpKataExecutor;

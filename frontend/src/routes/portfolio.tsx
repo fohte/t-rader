@@ -2,19 +2,11 @@ import { useQueries } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 
-import { AssetTabs } from '#components/assets/asset-tabs'
 import { getTokyoDate } from '#components/calendar/calendar-date'
-import {
-  AllocationBar,
-  type AllocationSegment,
-} from '#components/portfolio/allocation-bar'
-import { AllocationRatios } from '#components/portfolio/allocation-ratios'
-import { PortfolioHistoryChart } from '#components/portfolio/portfolio-history-chart'
+import type { AllocationSegment } from '#components/portfolio/allocation-bar'
+import { PortfolioPageView } from '#components/portfolio/portfolio-page-view'
 import { calculatePortfolioValuation } from '#components/portfolio/portfolio-valuation'
 import { sortPositionsByMarketValue } from '#components/portfolio/position-sorting'
-import { PositionsTable } from '#components/portfolio/positions-table'
-import { StatRow } from '#components/portfolio/stat-row'
-import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import {
   getPortfolioHistoryStartDate,
@@ -135,78 +127,23 @@ function PortfolioPage() {
   }, [openPositions, stockNameById, valuation.cash])
 
   return (
-    <div className="space-y-5 font-sans text-foreground">
-      <AssetTabs activeTab="holdings" />
-
-      <header>
-        <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-          ポートフォリオ
-        </h1>
-        <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
-          戦略横断の全体ビュー。現金比率・全保有・全体損益を把握します。LLM
-          もこのコンテキストを参照します。
-        </p>
-      </header>
-
-      {summaryPending ? (
-        <Skeleton className="h-22 w-full" />
-      ) : (
-        <StatRow stats={valuation.stats} />
-      )}
-
-      <PortfolioHistoryChart
-        data={portfolioHistory}
-        period={historyPeriod}
-        status={historyViewState.status}
-        errorMessage={
+    <PortfolioPageView
+      summaryPending={summaryPending}
+      valuation={valuation}
+      history={{
+        data: portfolioHistory,
+        period: historyPeriod,
+        status: historyViewState.status,
+        errorMessage:
           historyViewState.status === 'error'
             ? historyViewState.errorMessage
-            : undefined
-        }
-        onPeriodChange={setHistoryPeriod}
-      />
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-portfolio-layout)">
-        <section className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-              <span className="mr-2 text-primary">&gt;</span>
-              保有銘柄
-            </h2>
-            <span className="font-mono text-2xs text-muted-foreground">
-              {openPositions.length} 銘柄
-            </span>
-          </div>
-          {summaryPending ? (
-            <Skeleton className="h-40 w-full" />
-          ) : (
-            <PositionsTable
-              positions={openPositions}
-              stocks={stocks}
-              displayMarketValue
-            />
-          )}
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-              <span className="mr-2 text-primary">&gt;</span>
-              アロケーション
-            </h2>
-            <AllocationRatios
-              cashRatio={valuation.cashRatio}
-              investedRatio={valuation.investedRatio}
-            />
-          </div>
-          <div className="border border-border bg-card p-4">
-            <AllocationBar
-              segments={allocation}
-              priceObservedAt={summary?.price_observed_at ?? null}
-            />
-          </div>
-        </section>
-      </div>
-    </div>
+            : undefined,
+      }}
+      onHistoryPeriodChange={setHistoryPeriod}
+      positions={openPositions}
+      stocks={stocks}
+      allocation={allocation}
+      priceObservedAt={summary?.price_observed_at ?? null}
+    />
   )
 }

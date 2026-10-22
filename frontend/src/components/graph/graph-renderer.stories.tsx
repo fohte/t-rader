@@ -21,7 +21,7 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <div style={{ width: '100%', height: '500px' }}>
+        <div className="h-125 w-full">
           <Story />
         </div>
       </QueryClientProvider>

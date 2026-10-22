@@ -1,3 +1,5 @@
+import { Chip } from '@fohte/ui/chip'
+
 import { StockPageGroups } from '#components/stock-page/stock-page-groups'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
@@ -77,9 +79,9 @@ export function StockPageHeader({
             </span>
           )}
           {isHolding && (
-            <span className="border border-primary/50 px-1.5 py-0.5 font-mono text-2xs text-primary">
+            <Chip size="md" tone="strong">
               保有
-            </span>
+            </Chip>
           )}
         </div>
         <StockPageGroups

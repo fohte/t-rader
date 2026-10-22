@@ -21,7 +21,7 @@ const meta = {
   component: ChartIndicatorLegend,
   decorators: [
     (Story) => (
-      <div className="relative h-full w-full" style={{ height: '380px' }}>
+      <div className="relative h-96 w-full">
         <Story />
       </div>
     ),

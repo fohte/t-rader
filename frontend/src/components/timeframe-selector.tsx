@@ -1,4 +1,6 @@
 import { Button } from '@fohte/ui/button'
+import { List, ListItem } from '@fohte/ui/list'
+import { SegmentedControl } from '@fohte/ui/segmented-control'
 import { useState } from 'react'
 
 import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
@@ -51,15 +53,13 @@ export function TimeframeSelector({
   )
 
   return (
-    <div className={cn('inline-flex gap-1', className)}>
-      {timeframes.map((timeframe) => (
-        <TimeframeButton
-          key={timeframe.value}
-          timeframe={timeframe}
-          isSelected={timeframe.value === value}
-          onChange={onChange}
-        />
-      ))}
+    <div className={cn('inline-flex items-center gap-1', className)}>
+      <SegmentedControl
+        aria-label="時間足"
+        value={value}
+        options={timeframes}
+        onValueChange={onChange}
+      />
       {variant === 'compact' && (
         <Popover open={moreTimeframesOpen} onOpenChange={setMoreTimeframesOpen}>
           <PopoverTrigger
@@ -74,54 +74,24 @@ export function TimeframeSelector({
               </Button>
             }
           />
-          <PopoverContent align="end" className="w-24 p-1">
-            <div
-              role="group"
-              aria-label="その他の時間足"
-              className="flex flex-col gap-1"
-            >
+          <PopoverContent align="end" padding="none" className="w-24">
+            <List role="listbox" aria-label="その他の時間足">
               {OTHER_TIMEFRAMES.map((timeframe) => (
-                <TimeframeButton
+                <ListItem
                   key={timeframe.value}
-                  timeframe={timeframe}
-                  isSelected={timeframe.value === value}
-                  onChange={(nextValue) => {
-                    onChange(nextValue)
+                  selected={timeframe.value === value}
+                  onSelect={() => {
+                    onChange(timeframe.value)
                     setMoreTimeframesOpen(false)
                   }}
-                  className="w-full justify-start"
-                />
+                >
+                  {timeframe.label}
+                </ListItem>
               ))}
-            </div>
+            </List>
           </PopoverContent>
         </Popover>
       )}
     </div>
-  )
-}
-
-function TimeframeButton({
-  timeframe,
-  isSelected,
-  onChange,
-  className,
-}: {
-  timeframe: (typeof TIMEFRAMES)[number]
-  isSelected: boolean
-  onChange: (value: Timeframe) => void
-  className?: string
-}) {
-  return (
-    <Button
-      variant={isSelected ? 'default' : 'outline'}
-      size="xs"
-      onClick={() => {
-        onChange(timeframe.value)
-      }}
-      aria-pressed={isSelected}
-      className={className}
-    >
-      {timeframe.label}
-    </Button>
   )
 }

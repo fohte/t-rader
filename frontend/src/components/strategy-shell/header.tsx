@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Menu as MenuIcon } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
@@ -11,7 +12,6 @@ import { QuickSwitcher } from '#components/strategy-shell/quick-switcher'
 import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
-import { cn } from '#lib/utils'
 
 const MENU_LINK_INACTIVE =
   'flex items-center border border-border px-2.5 py-1.5 font-mono text-xs text-muted-foreground-strong hover:border-muted-foreground hover:bg-surface-strong hover:text-foreground'
@@ -112,43 +112,40 @@ function HeaderMenu({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger
         render={
-          <button
+          <Button
+            variant={isActive ? 'default' : 'secondary'}
+            size="sm"
             type="button"
             aria-label="メニュー"
             title="メニュー"
             aria-current={isActive ? 'page' : undefined}
-            className={cn(
-              isActive ? NAV_PILL_ACTIVE : NAV_PILL_INACTIVE,
-              'h-7 w-7 justify-center px-0 md:h-auto md:w-auto md:px-2.5',
-            )}
           >
             <MenuIcon aria-hidden="true" className="size-3.5" />
             <span className="hidden md:inline">メニュー</span>
-          </button>
+          </Button>
         }
       />
-      <PopoverContent
-        align="end"
-        sideOffset={8}
-        className="w-56 space-y-2 p-2"
-        style={{ maxWidth: 'calc(100vw - 1.5rem)' }}
-      >
-        <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          <span className="mr-1 text-primary">&gt;</span>
-          ページ
-        </h2>
-        <nav aria-label="その他のページ" className="flex flex-col gap-1">
-          {MENU_ITEMS.map((item) => (
-            <MenuLink
-              key={item.to}
-              to={item.to}
-              label={item.label}
-              active={item.matches.some((path) => isPathWithin(pathname, path))}
-              strategyId={strategyId}
-              onOpenChange={onOpenChange}
-            />
-          ))}
-        </nav>
+      <PopoverContent align="end" sideOffset={8} padding="sm" className="w-56">
+        <div className="space-y-2">
+          <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+            <span className="mr-1 text-foreground">&gt;</span>
+            ページ
+          </h2>
+          <nav aria-label="その他のページ" className="flex flex-col gap-1">
+            {MENU_ITEMS.map((item) => (
+              <MenuLink
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                active={item.matches.some((path) =>
+                  isPathWithin(pathname, path),
+                )}
+                strategyId={strategyId}
+                onOpenChange={onOpenChange}
+              />
+            ))}
+          </nav>
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -191,7 +188,7 @@ export function Header({
           title="ダッシュボードへ"
           aria-label="ダッシュボードへ"
         >
-          <span className="text-xl font-bold text-primary">&gt;</span>
+          <span className="text-xl font-bold text-foreground">&gt;</span>
           <span className="hidden text-lg font-medium tracking-tight text-foreground md:inline">
             t-rader
           </span>

@@ -31,7 +31,7 @@ export function NoteLinksPanelView({
           <Skeleton className="h-4 w-3/4" />
         </div>
       ) : isError ? (
-        <p className="px-3.5 py-3 font-mono text-xs text-primary">
+        <p className="px-3.5 py-3 font-mono text-xs text-destructive">
           ノートリンクを読み込めませんでした
         </p>
       ) : (
@@ -75,7 +75,7 @@ function LinkList({
                 to="/notes/$noteId"
                 params={{ noteId: item.note_id }}
                 search={{ version_id: item.version_id ?? undefined }}
-                className="min-w-0 truncate text-xs text-foreground hover:text-primary hover:underline"
+                className="min-w-0 truncate text-xs text-foreground hover:underline"
               >
                 {item.title ?? 'タイトルなし'}
               </Link>

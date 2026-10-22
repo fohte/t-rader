@@ -49,6 +49,25 @@ const toplistQueries: WidgetQueryDefinitions = {
 const treemapQueries: WidgetQueryDefinitions = {
   change: { metric: 'change', by: 'group' },
 }
+const tableQueries: WidgetQueryDefinitions = {
+  metric_a: { metric: 'close', by: 'stock' },
+  metric_b: { metric: 'mkt_cap', by: 'stock' },
+}
+const tableResult: WidgetQueryResponse = {
+  as_of: '2099-01-05',
+  rows: [
+    {
+      key: 'stock:DEMO-A',
+      name: 'サンプル対象 A',
+      values: { metric_a: 1240, metric_b: 24 },
+    },
+    {
+      key: 'stock:DEMO-B',
+      name: 'サンプル対象 B',
+      values: { metric_a: null, metric_b: 18 },
+    },
+  ],
+}
 
 function withGroupRouter(Story: ComponentType) {
   return (
@@ -93,6 +112,25 @@ export const Treemap: Story = {
       queries: treemapQueries,
       result: treemapResult,
       viz: { type: 'treemap', size: 'size', color: 'change' },
+    },
+  },
+}
+
+export const Table: Story = {
+  name: '基準日とともに指定順のサンプル値を表示する。',
+  args: {
+    state: {
+      kind: 'ready',
+      queries: tableQueries,
+      display: {
+        metric_a: { label: '指標 A', format: 'number' },
+        metric_b: { label: '指標 B', format: 'number' },
+      },
+      result: tableResult,
+      viz: {
+        type: 'table',
+        columns: ['metric_b', 'metric_a'],
+      },
     },
   },
 }
@@ -142,6 +180,18 @@ export const Empty: Story = {
       queries: toplistQueries,
       result: { as_of: '2099-01-05', rows: [] },
       viz: { type: 'toplist', value: 'daily', order: 'desc', limit: 5 },
+    },
+  },
+}
+
+export const EmptyTable: Story = {
+  name: '値のない table widget の状態を表示する。',
+  args: {
+    state: {
+      kind: 'ready',
+      queries: tableQueries,
+      result: { as_of: '2099-01-05', rows: [] },
+      viz: { type: 'table', columns: ['metric_b', 'metric_a'] },
     },
   },
 }

@@ -94,7 +94,7 @@ export const WithContext: Story = {
       router={createFloatingChatRouter(
         makeProps(
           { kind: 'idle' },
-          { context: { kind: 'stock', id: 'FIC-01', label: '架空銘柄' } },
+          { context: { kind: 'stock', id: 'demo-code', label: '架空銘柄' } },
         ),
       )}
     />
@@ -108,7 +108,7 @@ export const ContextWithoutLabel: Story = {
       router={createFloatingChatRouter(
         makeProps(
           { kind: 'idle' },
-          { context: { kind: 'stock', id: 'FIC-01' } },
+          { context: { kind: 'stock', id: 'demo-code' } },
         ),
       )}
     />
@@ -184,7 +184,7 @@ export const Polling: Story = {
           { kind: 'polling', phase: 'running' },
           {
             input: '',
-            submittedPrompt: '架空銘柄の足元評価',
+            submittedPrompt: '架空の依頼文',
           },
         ),
       )}
@@ -201,7 +201,7 @@ export const PollingWithRunLink: Story = {
           { kind: 'polling', phase: 'running' },
           {
             input: '',
-            submittedPrompt: '架空銘柄の足元評価',
+            submittedPrompt: '架空の依頼文',
             currentTaskId: 'example-task',
             taskStrategyId: 'example-strategy-a',
           },
@@ -220,18 +220,17 @@ export const Completed: Story = {
           { kind: 'completed' },
           {
             taskStrategyId: 'example-strategy-a',
-            submittedPrompt: '架空銘柄の直近の変化をまとめて',
-            resultText:
-              '前回より受注が増えています。\n\n**次の決算で確認します。**',
+            submittedPrompt: '架空の依頼文',
+            resultText: '架空の回答です。\n\n**表示例です。**',
             notes: [
               {
                 id: 'example-note-a',
-                title: '架空企業の受注メモ',
+                title: '架空ノート A',
                 updated_at: '2026-06-26T07:00:00Z',
               },
               {
                 id: 'example-note-b',
-                title: '需給の変化をまとめたメモ',
+                title: '架空ノート B',
                 updated_at: '2026-06-25T04:00:00Z',
               },
             ],
@@ -251,8 +250,8 @@ export const CompletedWithoutNotes: Story = {
           { kind: 'completed' },
           {
             taskStrategyId: 'example-strategy-a',
-            submittedPrompt: '架空銘柄の見立てを教えて',
-            resultText: '分析結果の本文です。',
+            submittedPrompt: '架空の依頼文',
+            resultText: '架空の回答です。',
           },
         ),
       )}
@@ -269,7 +268,7 @@ export const CompletedWithoutReply: Story = {
           { kind: 'completed' },
           {
             taskStrategyId: 'example-strategy-a',
-            submittedPrompt: '架空銘柄の見立てを教えて',
+            submittedPrompt: '架空の依頼文',
             resultText: '',
           },
         ),

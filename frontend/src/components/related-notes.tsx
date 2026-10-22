@@ -26,7 +26,7 @@ export function RelatedNotes({ notes, isError }: RelatedNotesProps) {
           id="related-notes-title"
           className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
         >
-          <span className="mr-2 text-primary">&gt;</span>
+          <span className="mr-2 text-muted-foreground">&gt;</span>
           関連ノート
         </h2>
         <span className="shrink-0 font-mono text-2xs text-muted-foreground">

@@ -1,6 +1,7 @@
 import { Button } from '@fohte/ui/button'
 import { DialogTrigger } from '@fohte/ui/dialog'
-import { useState, useSyncExternalStore } from 'react'
+import { Input } from '@fohte/ui/input'
+import { type CSSProperties, useState, useSyncExternalStore } from 'react'
 
 import {
   Dialog,
@@ -20,6 +21,7 @@ import {
   isValidChartIndicatorPeriod,
   MAX_CHART_INDICATOR_PERIOD,
 } from '#lib/chart-indicator-settings'
+import { cn } from '#lib/utils'
 
 type ChartIndicatorControlProps = {
   indicators: ChartIndicatorConfig[]
@@ -35,7 +37,7 @@ type ChartIndicatorControlProps = {
   open?: boolean
   defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
-  layout?: 'responsive' | 'popover' | 'sheet'
+  layout?: 'responsive' | 'popover' | 'dialog'
 }
 
 const MOBILE_QUERY = '(max-width: 639px)'
@@ -76,18 +78,16 @@ function IndicatorPeriodInput({
   value,
   onCommit,
   isValid = isValidChartIndicatorPeriod,
-  compact = false,
 }: {
   label: string
   value: number
   onCommit: (period: number) => void
   isValid?: (period: number) => boolean
-  compact?: boolean
 }) {
   return (
-    <input
+    <Input
       aria-label={label}
-      className={`h-7 ${compact ? 'w-12' : 'w-16'} rounded border border-input bg-background px-2 text-right`}
+      className="w-16 text-right"
       defaultValue={value}
       max={MAX_CHART_INDICATOR_PERIOD}
       min={1}
@@ -123,7 +123,8 @@ export function ChartIndicatorControl({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen)
   const isOpen = controlledOpen ?? uncontrolledOpen
   const isMobile = useIsMobileViewport()
-  const useSheet = layout === 'sheet' || (layout === 'responsive' && isMobile)
+  const hasMacd = indicators.some((indicator) => indicator.kind === 'macd')
+  const useDialog = layout === 'dialog' || (layout === 'responsive' && isMobile)
   const setOpen = (nextOpen: boolean) => {
     if (controlledOpen === undefined) setUncontrolledOpen(nextOpen)
     onOpenChange?.(nextOpen)
@@ -151,12 +152,17 @@ export function ChartIndicatorControl({
     />
   )
 
-  if (useSheet) {
+  if (useDialog) {
     return (
       <Dialog open={isOpen} onOpenChange={setOpen}>
         <DialogTrigger render={trigger} />
-        <DialogContent className="fixed inset-x-0 bottom-0 top-auto flex max-h-screen w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto rounded-b-none rounded-t-lg p-4">
-          <DialogHeader className="pb-3">
+        <DialogContent
+          className={cn(
+            'max-h-screen overflow-y-auto',
+            hasMacd && 'sm:max-w-md',
+          )}
+        >
+          <DialogHeader>
             <DialogTitle>指標</DialogTitle>
           </DialogHeader>
           {menu}
@@ -168,7 +174,11 @@ export function ChartIndicatorControl({
   return (
     <Popover open={isOpen} onOpenChange={setOpen}>
       <PopoverTrigger render={trigger} />
-      <PopoverContent align="end" className="max-h-96 w-80 overflow-y-auto p-3">
+      <PopoverContent
+        align="end"
+        padding="md"
+        className={cn('max-h-96 overflow-y-auto', hasMacd ? 'w-96' : 'w-80')}
+      >
         {menu}
       </PopoverContent>
     </Popover>
@@ -202,6 +212,11 @@ function ChartIndicatorMenu({
             {indicators.map((indicator) => {
               const name = getChartIndicatorName(indicator)
               const label = getChartIndicatorLabel(indicator)
+              const indicatorColorStyle: CSSProperties & {
+                '--indicator-color': string
+              } = {
+                '--indicator-color': indicator.color,
+              }
 
               return (
                 <li
@@ -210,8 +225,8 @@ function ChartIndicatorMenu({
                 >
                   <span
                     aria-hidden="true"
-                    className="h-0.5 w-3 shrink-0"
-                    style={{ backgroundColor: indicator.color }}
+                    className="h-0.5 w-3 shrink-0 bg-(--indicator-color)"
+                    style={indicatorColorStyle}
                   />
                   <span className="shrink-0">{name}</span>
                   {indicator.kind === 'macd' ? (
@@ -236,7 +251,6 @@ function ChartIndicatorMenu({
                         onCommit={(period) => {
                           onUpdateMacdPeriod(indicator.id, 'fastPeriod', period)
                         }}
-                        compact
                       />
                       <span
                         aria-hidden="true"
@@ -258,7 +272,6 @@ function ChartIndicatorMenu({
                         onCommit={(period) => {
                           onUpdateMacdPeriod(indicator.id, 'slowPeriod', period)
                         }}
-                        compact
                       />
                       <span
                         aria-hidden="true"
@@ -277,7 +290,6 @@ function ChartIndicatorMenu({
                             period,
                           )
                         }}
-                        compact
                       />
                     </div>
                   ) : (
@@ -292,9 +304,9 @@ function ChartIndicatorMenu({
                   )}
                   {indicator.kind === 'bollinger' && (
                     <>
-                      <input
+                      <Input
                         aria-label={`${label}の標準偏差`}
-                        className="h-7 w-14 rounded border border-input bg-background px-2 text-right"
+                        className="w-14 text-right"
                         defaultValue={indicator.deviation}
                         key={`${indicator.id}-deviation`}
                         min={0.1}
@@ -318,16 +330,17 @@ function ChartIndicatorMenu({
                       <span className="text-muted-foreground">σ</span>
                     </>
                   )}
-                  <button
+                  <Button
                     aria-label={`${label}を削除`}
-                    className="ml-auto shrink-0 px-1 text-muted-foreground hover:text-foreground"
+                    className="ml-auto"
                     onClick={() => {
                       onRemove(indicator.id)
                     }}
                     type="button"
+                    variant="plain"
                   >
                     ×
-                  </button>
+                  </Button>
                 </li>
               )
             })}
@@ -338,8 +351,7 @@ function ChartIndicatorMenu({
         <h3 className="text-muted-foreground">追加する</h3>
         <div className="flex flex-wrap gap-2">
           <Button
-            variant="outline"
-            size="xs"
+            variant="plain"
             onClick={() => {
               onAdd('sma')
             }}
@@ -348,8 +360,7 @@ function ChartIndicatorMenu({
             + SMA
           </Button>
           <Button
-            variant="outline"
-            size="xs"
+            variant="plain"
             onClick={() => {
               onAdd('ema')
             }}
@@ -358,8 +369,7 @@ function ChartIndicatorMenu({
             + EMA
           </Button>
           <Button
-            variant="outline"
-            size="xs"
+            variant="plain"
             onClick={() => {
               onAdd('bollinger')
             }}
@@ -368,8 +378,7 @@ function ChartIndicatorMenu({
             + ボリンジャー
           </Button>
           <Button
-            variant="outline"
-            size="xs"
+            variant="plain"
             onClick={() => {
               onAdd('rsi')
             }}
@@ -378,8 +387,7 @@ function ChartIndicatorMenu({
             + RSI
           </Button>
           <Button
-            variant="outline"
-            size="xs"
+            variant="plain"
             onClick={() => {
               onAdd('macd')
             }}

@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
 
 import { ChipList } from '#components/strategy-settings/agent-graph/fields/chip-list'
 
@@ -10,30 +9,6 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
-
-function Interactive({
-  initial,
-  options,
-}: {
-  initial: string[]
-  options: string[]
-}) {
-  const [values, setValues] = useState(initial)
-  return (
-    <ChipList
-      values={values}
-      options={options}
-      onAdd={(name) => {
-        setValues([...values, name])
-      }}
-      onRemove={(name) => {
-        setValues(values.filter((v) => v !== name))
-      }}
-      removeAriaLabel={(name) => `"${name}" を外す`}
-      addAriaLabel="追加"
-    />
-  )
-}
 
 const OPTIONS = ['alpha', 'beta', 'gamma', 'delta']
 
@@ -47,7 +22,6 @@ export const Selected: Story = {
     removeAriaLabel: (name) => `"${name}" を外す`,
     addAriaLabel: '追加',
   },
-  render: () => <Interactive initial={['alpha', 'beta']} options={OPTIONS} />,
 }
 
 export const NoCandidates: Story = {
@@ -60,10 +34,8 @@ export const NoCandidates: Story = {
     removeAriaLabel: (name) => `"${name}" を外す`,
     addAriaLabel: '追加',
   },
-  render: () => <Interactive initial={OPTIONS} options={OPTIONS} />,
 }
 
-// options に無い値 (API 未取得・削除済みなど) も chip としてそのまま表示され続ける
 export const ValueNotInOptions: Story = {
   name: 'keeps a selected item when it is missing from the available choices.',
   args: {
@@ -74,5 +46,17 @@ export const ValueNotInOptions: Story = {
     removeAriaLabel: (name) => `"${name}" を外す`,
     addAriaLabel: '追加',
   },
-  render: () => <Interactive initial={['legacy-value']} options={OPTIONS} />,
+}
+
+export const CandidatesOpen: Story = {
+  name: 'shows the remaining choices in the open popup.',
+  args: {
+    values: ['alpha'],
+    options: OPTIONS,
+    defaultOpen: true,
+    onAdd: () => {},
+    onRemove: () => {},
+    removeAriaLabel: (name) => `"${name}" を外す`,
+    addAriaLabel: '追加',
+  },
 }

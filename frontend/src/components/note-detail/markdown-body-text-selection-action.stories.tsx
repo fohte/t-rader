@@ -10,7 +10,7 @@ const meta = {
     selection: {
       text: '選択された本文',
       range: { startLine: 3, endLine: 4 },
-      position: { top: 64, left: 180 },
+      position: { top: 72, left: 276 },
     },
     onStartComment: () => {},
   },
@@ -21,4 +21,12 @@ type Story = StoryObj<typeof meta>
 
 export const SelectionIsReady: Story = {
   name: 'shows a comment action above the selected text.',
+  render: (args) => (
+    <div className="min-h-screen bg-background p-5 text-foreground">
+      <p className="mt-24 ml-64 max-w-md text-sm leading-relaxed">
+        <span className="bg-muted-foreground/20">{args.selection?.text}</span>
+      </p>
+      <MarkdownBodyTextSelectionAction {...args} />
+    </div>
+  ),
 }

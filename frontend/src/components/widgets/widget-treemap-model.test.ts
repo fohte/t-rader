@@ -4,6 +4,7 @@ import {
   createWidgetTreemapModel,
   createWidgetTreemapOption,
   getTreemapFillColor,
+  getTreemapTextColor,
 } from '#components/widgets/widget-treemap-model'
 import type { components } from '#lib/api/schema.gen'
 import type { EChartsPalette } from '#lib/echarts/use-echarts-chart'
@@ -74,6 +75,34 @@ const result: WidgetQueryResponse = {
     },
   ],
 }
+
+describe('getTreemapTextColor', () => {
+  it('データ色に対する文字色を ECharts palette の明暗から選ぶ', () => {
+    const darkThemePalette: EChartsPalette = {
+      ...palette,
+      background: '#0a0a0a',
+      foreground: '#fafafa',
+    }
+
+    function readTextColorOutput() {
+      return {
+        lightTheme: [
+          getTreemapTextColor('#1a1a1a', palette),
+          getTreemapTextColor('#fafafa', palette),
+        ],
+        darkTheme: [
+          getTreemapTextColor('#1a1a1a', darkThemePalette),
+          getTreemapTextColor('#fafafa', darkThemePalette),
+        ],
+      }
+    }
+
+    expect(readTextColorOutput()).toEqual({
+      lightTheme: ['#fafafa', '#0a0a0a'],
+      darkTheme: ['#fafafa', '#0a0a0a'],
+    })
+  })
+})
 
 function makeModel(input = result) {
   return createWidgetTreemapModel({ display, queries, result: input, viz })

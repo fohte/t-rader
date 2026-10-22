@@ -52,9 +52,7 @@ function getGroupDetailPageOutput() {
     stockRows: Array.from(document.querySelectorAll('tbody tr')).map((row) => {
       const cell = row.querySelector('td')
       const stockLink = cell?.querySelector('a[href^="/stocks/"]')
-      const holdingBadge = Array.from(
-        cell?.querySelectorAll('span') ?? [],
-      ).find((span) => span.textContent === '保有')
+      const holdingBadge = cell?.querySelector('[data-slot="chip"]')
 
       return {
         name: stockLink?.textContent ?? null,

@@ -1,3 +1,14 @@
+import { Button } from '@fohte/ui/button'
+import { Checkbox } from '@fohte/ui/checkbox'
+import { Chip } from '@fohte/ui/chip'
+import { SegmentedControl } from '@fohte/ui/segmented-control'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
 import { Link } from '@tanstack/react-router'
 
 import {
@@ -12,6 +23,7 @@ import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 import { resolveNoteKindLabel } from '#lib/note-kind-label'
 import { formatRelative } from '#lib/note-utils'
+import { cn } from '#lib/utils'
 
 type NoteKind = components['schemas']['NoteKind']
 
@@ -31,6 +43,7 @@ export interface ReviewPageViewProps {
   onToggleItem: (itemKey: string, checked: boolean) => void
   onToggleVisibleItems: (itemKeys: string[], checked: boolean) => void
   onApproveSelected: () => void
+  noteKindFilterOpen?: boolean
 }
 
 function formatAnnotationDate(value: string): string {
@@ -95,6 +108,7 @@ export function ReviewPageView({
   onToggleItem,
   onToggleVisibleItems,
   onApproveSelected,
+  noteKindFilterOpen = false,
 }: ReviewPageViewProps) {
   const {
     visibleItems,
@@ -109,24 +123,34 @@ export function ReviewPageView({
     selectedItemIds,
   })
   const selectedKeys = new Set(selectedItemIds)
-  const bottomPaddingClass = selectedCount > 0 ? 'pb-16 md:pb-0' : ''
+  const noteKindItems = [
+    { value: 'all', label: 'すべて' },
+    ...noteKindKeys.map((kind) => ({
+      value: reviewQueueModel.noteKindFilterKey(kind),
+      label: resolveNoteKindLabel(kind, knownNoteKinds) ?? '種別なし',
+    })),
+  ]
 
-  function renderApprovalButton(className: string) {
+  function renderApprovalButton(className: string, mobile = false) {
     return (
-      <button
+      <Button
         type="button"
+        size={mobile ? 'lg' : 'sm'}
         disabled={selectedCount === 0 || isApproving}
         onClick={onApproveSelected}
         className={className}
       >
         {isApproving ? '承認中…' : `選択した ${String(selectedCount)} 件を承認`}
-      </button>
+      </Button>
     )
   }
 
   return (
     <section
-      className={`space-y-4 font-sans text-foreground ${bottomPaddingClass}`}
+      className={cn(
+        'space-y-4 font-sans text-foreground',
+        selectedCount > 0 && 'pb-16 md:pb-0',
+      )}
     >
       <header>
         <h1 className="text-2xl font-bold tracking-tight">レビュー</h1>
@@ -136,80 +160,69 @@ export function ReviewPageView({
       </header>
 
       <div className="flex flex-wrap items-end gap-3 border-b border-border">
-        <div role="tablist" aria-label="レビュー項目の種類" className="flex">
-          {(
-            [
-              ['all', 'すべて', data?.counts.total ?? 0],
-              ['note', 'ノート', data?.counts.notes ?? 0],
-              ['annotation', 'アノテーション', data?.counts.annotations ?? 0],
-            ] as const
-          ).map(([filter, label, count]) => (
-            <button
-              key={filter}
-              type="button"
-              role="tab"
-              aria-selected={typeFilter === filter}
-              onClick={() => {
-                onTypeFilterChange(filter)
-              }}
-              className={`border-b-2 px-3 py-2 text-sm ${
-                typeFilter === filter
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {label}{' '}
-              <span className="font-mono text-2xs">{String(count)}</span>
-            </button>
-          ))}
-        </div>
-        <label className="mb-1 ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-          ノート種別
-          <select
-            aria-label="ノート種別で絞り込む"
+        <SegmentedControl
+          aria-label="レビュー項目の種類"
+          value={typeFilter}
+          options={[
+            {
+              value: 'all',
+              label: `すべて ${String(data?.counts.total ?? 0)}`,
+            },
+            {
+              value: 'note',
+              label: `ノート ${String(data?.counts.notes ?? 0)}`,
+            },
+            {
+              value: 'annotation',
+              label: `アノテーション ${String(data?.counts.annotations ?? 0)}`,
+            },
+          ]}
+          onValueChange={onTypeFilterChange}
+        />
+        <label className="mb-1 ml-auto flex items-center gap-2 font-mono text-xs text-muted-foreground">
+          <span>ノート種別</span>
+          <Select
+            items={noteKindItems}
             value={noteKindFilter}
             disabled={typeFilter === 'annotation'}
-            onChange={(event) => {
-              onNoteKindFilterChange(event.currentTarget.value)
+            defaultOpen={noteKindFilterOpen}
+            onValueChange={(value) => {
+              if (value != null) onNoteKindFilterChange(value)
             }}
-            className="border border-border bg-card px-2 py-1 text-foreground disabled:opacity-50"
           >
-            <option value="all">すべて</option>
-            {noteKindKeys.map((kind) => {
-              const value = reviewQueueModel.noteKindFilterKey(kind)
-              return (
-                <option key={value} value={value}>
-                  {resolveNoteKindLabel(kind, knownNoteKinds) ?? '種別なし'}
-                </option>
-              )
-            })}
-          </select>
+            <SelectTrigger aria-label="ノート種別で絞り込む">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {noteKindItems.map(({ value, label }) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
       </div>
 
       <div className="flex items-center gap-3 text-xs">
         <label className="inline-flex items-center gap-2 text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
             aria-label="表示中の項目をすべて選択"
             checked={allVisibleSelected}
             disabled={visibleKeys.length === 0 || isApproving}
-            onChange={(event) => {
-              onToggleVisibleItems(visibleKeys, event.currentTarget.checked)
+            onCheckedChange={(checked) => {
+              onToggleVisibleItems(visibleKeys, checked)
             }}
-            className="accent-primary"
           />
           すべて選択
         </label>
-        {renderApprovalButton(
-          'ml-auto hidden border border-primary px-3 py-1.5 text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50 md:inline-flex',
-        )}
+        {renderApprovalButton('ml-auto hidden md:inline-flex')}
       </div>
 
       {hasApprovalError && (
         <p
           role="alert"
-          className="border border-primary px-3 py-2 text-sm text-primary"
+          className="border border-destructive px-3 py-2 text-sm text-destructive"
         >
           一部の項目を承認できませんでした。未読一覧を更新しました。
         </p>
@@ -223,7 +236,7 @@ export function ReviewPageView({
             <Skeleton className="h-12 w-full" />
           </div>
         ) : isError ? (
-          <p className="px-4 py-5 text-sm text-primary">
+          <p className="px-4 py-5 text-sm text-destructive">
             レビュー項目を読み込めませんでした。
           </p>
         ) : data == null || data.items.length === 0 ? (
@@ -251,9 +264,9 @@ export function ReviewPageView({
               const linkContent = (
                 <>
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="border border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground-strong">
+                    <Chip size="md" tone="muted">
                       {getReviewItemTypeLabel(item)}
-                    </span>
+                    </Chip>
                     <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
                       {item.title}
                     </span>
@@ -305,15 +318,14 @@ export function ReviewPageView({
                   key={key}
                   className="flex items-start gap-2 border-t border-border px-3 py-2.5 first:border-t-0"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label={`レビュー項目を選択: ${item.title}`}
                     checked={selectedKeys.has(key)}
                     disabled={isApproving}
-                    onChange={(event) => {
-                      onToggleItem(key, event.currentTarget.checked)
+                    className="mt-2"
+                    onCheckedChange={(checked) => {
+                      onToggleItem(key, checked)
                     }}
-                    className="mt-2 accent-primary"
                   />
                   {itemLink}
                 </div>
@@ -323,10 +335,11 @@ export function ReviewPageView({
         )}
       </div>
 
-      {selectedCount > 0 &&
-        renderApprovalButton(
-          'fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background px-4 py-3 text-center text-sm text-primary disabled:cursor-not-allowed disabled:opacity-50 md:hidden',
-        )}
+      {selectedCount > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background px-4 py-3 md:hidden">
+          {renderApprovalButton('w-full text-center', true)}
+        </div>
+      )}
     </section>
   )
 }

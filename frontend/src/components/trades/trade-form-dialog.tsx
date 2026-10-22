@@ -1,5 +1,13 @@
 import { Button } from '@fohte/ui/button'
 import { Input } from '@fohte/ui/input'
+import { SegmentedControl } from '@fohte/ui/segmented-control'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
 import { useEffect, useRef, useState } from 'react'
 
 import { formatYen } from '#components/trades/format'
@@ -43,7 +51,11 @@ function todayJst(): string {
   return todayFormatter.format(new Date()).replace(/\//g, '-')
 }
 
-function emptyForm(strategies: Strategy[], stocks: Stock[]): FormState {
+function emptyForm(
+  strategies: Strategy[],
+  stocks: Stock[],
+  defaultDate?: string,
+): FormState {
   return {
     strategyId: strategies[0]?.id ?? '',
     symbol: stocks[0]?.id ?? '',
@@ -51,7 +63,7 @@ function emptyForm(strategies: Strategy[], stocks: Stock[]): FormState {
     qty: '',
     price: '',
     fee: '',
-    date: todayJst(),
+    date: defaultDate ?? todayJst(),
     source: 'manual',
     note: '',
   }
@@ -81,6 +93,7 @@ export function TradeFormDialog({
   strategies,
   stocks,
   defaultStrategyId,
+  defaultDate,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
@@ -88,10 +101,11 @@ export function TradeFormDialog({
   strategies: Strategy[]
   stocks: Stock[]
   defaultStrategyId?: string
+  defaultDate?: string
 }) {
   const invalidateTrades = useInvalidateTrades()
   const [form, setForm] = useState<FormState>(() =>
-    emptyForm(strategies, stocks),
+    emptyForm(strategies, stocks, defaultDate),
   )
   const [error, setError] = useState<string | null>(null)
 
@@ -103,6 +117,8 @@ export function TradeFormDialog({
   stocksRef.current = stocks
   const defaultStrategyIdRef = useRef(defaultStrategyId)
   defaultStrategyIdRef.current = defaultStrategyId
+  const defaultDateRef = useRef(defaultDate)
+  defaultDateRef.current = defaultDate
 
   useEffect(() => {
     if (!open) return
@@ -110,7 +126,11 @@ export function TradeFormDialog({
     if (initial != null) {
       setForm(fromTrade(initial))
     } else {
-      const base = emptyForm(strategiesRef.current, stocksRef.current)
+      const base = emptyForm(
+        strategiesRef.current,
+        stocksRef.current,
+        defaultDateRef.current,
+      )
       setForm({
         ...base,
         strategyId: defaultStrategyIdRef.current ?? base.strategyId,
@@ -235,7 +255,8 @@ export function TradeFormDialog({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="銘柄 *">
-              <SelectNative
+              <SelectField
+                ariaLabel="銘柄"
                 value={form.symbol}
                 onChange={(v) => {
                   set('symbol', v)
@@ -247,7 +268,8 @@ export function TradeFormDialog({
               />
             </Field>
             <Field label="戦略 *">
-              <SelectNative
+              <SelectField
+                ariaLabel="戦略"
                 value={form.strategyId}
                 onChange={(v) => {
                   set('strategyId', v)
@@ -260,25 +282,21 @@ export function TradeFormDialog({
             </Field>
 
             <Field label="売買 *">
-              <div className="flex gap-1">
-                <SideButton
-                  side="buy"
-                  active={form.side === 'buy'}
-                  onClick={() => {
-                    set('side', 'buy')
-                  }}
-                />
-                <SideButton
-                  side="sell"
-                  active={form.side === 'sell'}
-                  onClick={() => {
-                    set('side', 'sell')
-                  }}
-                />
-              </div>
+              <SegmentedControl
+                aria-label="売買"
+                value={form.side}
+                options={[
+                  { value: 'buy', label: '買い' },
+                  { value: 'sell', label: '売り' },
+                ]}
+                onValueChange={(side) => {
+                  set('side', side)
+                }}
+              />
             </Field>
             <Field label="約定日 *">
               <Input
+                aria-label="約定日"
                 type="date"
                 value={form.date}
                 onChange={(e) => {
@@ -289,6 +307,7 @@ export function TradeFormDialog({
 
             <Field label="数量 (株) *">
               <Input
+                aria-label="数量 (株)"
                 type="number"
                 inputMode="numeric"
                 min={0}
@@ -302,6 +321,7 @@ export function TradeFormDialog({
             </Field>
             <Field label="単価 (¥) *">
               <Input
+                aria-label="単価 (¥)"
                 type="number"
                 inputMode="decimal"
                 min={0}
@@ -316,6 +336,7 @@ export function TradeFormDialog({
 
             <Field label="手数料 (¥)">
               <Input
+                aria-label="手数料 (¥)"
                 type="number"
                 inputMode="numeric"
                 min={0}
@@ -328,7 +349,8 @@ export function TradeFormDialog({
               />
             </Field>
             <Field label="入力ソース">
-              <SelectNative
+              <SelectField
+                ariaLabel="入力ソース"
                 value={form.source}
                 onChange={(v) => {
                   if (v === 'manual' || v === 'csv' || v === 'api') {
@@ -343,16 +365,19 @@ export function TradeFormDialog({
               />
             </Field>
 
-            <Field label="メモ" className="sm:col-span-2">
-              <Input
-                type="text"
-                placeholder="エントリー根拠など"
-                value={form.note}
-                onChange={(e) => {
-                  set('note', e.target.value)
-                }}
-              />
-            </Field>
+            <div className="sm:col-span-2">
+              <Field label="メモ">
+                <Input
+                  aria-label="メモ"
+                  type="text"
+                  placeholder="取引のメモ"
+                  value={form.note}
+                  onChange={(e) => {
+                    set('note', e.target.value)
+                  }}
+                />
+              </Field>
+            </div>
           </div>
 
           {valid && (
@@ -389,69 +414,48 @@ export function TradeFormDialog({
 function Field({
   label,
   children,
-  className,
 }: {
   label: string
   children: React.ReactNode
-  className?: string
 }) {
   return (
-    <label className={`flex flex-col gap-1 ${className ?? ''}`}>
+    <div className="flex flex-col gap-1">
       <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       {children}
-    </label>
+    </div>
   )
 }
 
-function SelectNative({
+function SelectField({
+  ariaLabel,
   value,
   onChange,
   options,
 }: {
+  ariaLabel: string
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
 }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => {
-        onChange(e.target.value)
+    <Select
+      value={value === '' ? null : value}
+      onValueChange={(next) => {
+        onChange(next ?? '')
       }}
-      className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-function SideButton({
-  side,
-  active,
-  onClick,
-}: {
-  side: 'buy' | 'sell'
-  active: boolean
-  onClick: () => void
-}) {
-  const baseColor =
-    side === 'buy' ? 'border-up text-up' : 'border-down text-down'
-  const activeBg = side === 'buy' ? 'bg-up-dim' : 'bg-down-dim'
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 border px-3 py-1.5 font-mono text-xs ${baseColor} ${
-        active ? activeBg : 'bg-transparent opacity-60 hover:opacity-100'
-      }`}
-    >
-      {side === 'buy' ? '買い' : '売り'}
-    </button>
+      <SelectTrigger aria-label={ariaLabel} className="w-full">
+        <SelectValue placeholder="選択してください" />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

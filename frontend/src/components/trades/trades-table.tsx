@@ -119,8 +119,7 @@ export function TradesTable({
                     <span>{t.note_count} 件</span>
                   ) : (
                     <Button
-                      size="sm"
-                      variant={t.note_count === 0 ? 'outline' : 'ghost'}
+                      variant="plain"
                       aria-label={`判断ノート ${String(t.note_count)} 件を管理`}
                       onClick={() => {
                         onManageNotes(t)
@@ -137,8 +136,7 @@ export function TradesTable({
                 <td className="px-3 py-2 text-right">
                   <div className="inline-flex gap-1">
                     <Button
-                      size="icon-xs"
-                      variant="ghost"
+                      variant="plain"
                       title="編集"
                       onClick={() => {
                         onEdit(t)
@@ -147,8 +145,7 @@ export function TradesTable({
                       <Pencil />
                     </Button>
                     <Button
-                      size="icon-xs"
-                      variant="ghost"
+                      variant="plain"
                       title="削除"
                       onClick={() => {
                         onDelete(t)
@@ -169,10 +166,10 @@ export function TradesTable({
 
 function SideBadge({ side }: { side: string }) {
   const isBuy = side === 'buy'
-  const cls = isBuy ? 'border-up text-up' : 'border-down text-down'
   return (
     <span
-      className={`inline-grid h-5 min-w-6 place-items-center border px-1 text-2xs ${cls}`}
+      data-side={isBuy ? 'buy' : 'sell'}
+      className="inline-grid h-5 min-w-6 place-items-center border px-1 text-2xs data-[side=buy]:border-up data-[side=buy]:text-up data-[side=sell]:border-down data-[side=sell]:text-down"
     >
       {isBuy ? '買' : '売'}
     </span>

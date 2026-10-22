@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use chrono::NaiveDate;
 use core_application::widget::{
     WidgetAggregation, WidgetBy, WidgetDefinition, WidgetHierarchy, WidgetMetric, WidgetPeriod,
-    WidgetQuery, WidgetScale, WidgetTime, WidgetUniverse, WidgetValueDisplay, WidgetValueFormat,
-    WidgetVisualization, WidgetVisualizationOrder,
+    WidgetQuery, WidgetScale, WidgetSeries, WidgetSeriesPoint, WidgetSeriesTarget, WidgetTime,
+    WidgetUniverse, WidgetValueDisplay, WidgetValueFormat, WidgetVisualization,
+    WidgetVisualizationOrder,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -141,7 +142,7 @@ impl From<WidgetQueryRequestDefinition> for WidgetQuery {
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[schema(
-    description = "スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。"
+    description = "`change`, `close`, `turnover`, `mkt_cap`, `per`, `pbr`, `indicator` に対応します。indicator は by=none、indicator ID 必須、集計なしで指定します。"
 )]
 pub enum WidgetMetricRequest {
     Change,
@@ -265,7 +266,7 @@ impl From<WidgetAggregationRequest> for WidgetAggregation {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 #[schema(
-    description = "スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。"
+    description = "`treemap`, `toplist`, `table` に対応します。table は断面表示で、columns に query または formula の名前を指定します。line は予約済みです。"
 )]
 pub enum WidgetVisualizationRequest {
     Treemap {
@@ -342,7 +343,7 @@ impl From<WidgetVisualizationOrderRequest> for WidgetVisualizationOrder {
 #[serde(deny_unknown_fields)]
 pub struct WidgetTimeRequest {
     pub as_of: Option<NaiveDate>,
-    /// 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。
+    /// `line` では `3m`、`1y`、または両端を含む `YYYY-MM-DD..YYYY-MM-DD` を指定します。
     pub range: Option<String>,
 }
 
@@ -359,6 +360,8 @@ impl From<WidgetTimeRequest> for WidgetTime {
 pub struct WidgetQueryResponse {
     pub as_of: NaiveDate,
     pub rows: Vec<WidgetQueryResultRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<Vec<WidgetSeriesDto>>,
 }
 
 impl From<core_application::widget::WidgetQueryResponse> for WidgetQueryResponse {
@@ -370,6 +373,65 @@ impl From<core_application::widget::WidgetQueryResponse> for WidgetQueryResponse
                 .into_iter()
                 .map(WidgetQueryResultRow::from)
                 .collect(),
+            series: response
+                .series
+                .map(|series| series.into_iter().map(WidgetSeriesDto::from).collect()),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetSeriesDto {
+    pub key: String,
+    pub query: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<WidgetSeriesTargetDto>,
+    pub points: Vec<WidgetSeriesPointDto>,
+}
+
+impl From<WidgetSeries> for WidgetSeriesDto {
+    fn from(series: WidgetSeries) -> Self {
+        Self {
+            key: series.key,
+            query: series.query,
+            name: series.name,
+            target: series.target.map(WidgetSeriesTargetDto::from),
+            points: series
+                .points
+                .into_iter()
+                .map(WidgetSeriesPointDto::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetSeriesTargetDto {
+    pub key: String,
+    pub name: String,
+}
+
+impl From<WidgetSeriesTarget> for WidgetSeriesTargetDto {
+    fn from(target: WidgetSeriesTarget) -> Self {
+        Self {
+            key: target.key,
+            name: target.name,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WidgetSeriesPointDto {
+    pub date: NaiveDate,
+    pub value: Option<Decimal>,
+}
+
+impl From<WidgetSeriesPoint> for WidgetSeriesPointDto {
+    fn from(point: WidgetSeriesPoint) -> Self {
+        Self {
+            date: point.date,
+            value: point.value.map(|value| value.normalize()),
         }
     }
 }

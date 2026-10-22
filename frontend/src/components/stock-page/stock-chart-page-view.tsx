@@ -7,7 +7,7 @@ import {
 } from '@fohte/ui/tooltip'
 import { Link } from '@tanstack/react-router'
 import { Columns2Icon } from 'lucide-react'
-import { useEffect } from 'react'
+import { type CSSProperties, useEffect } from 'react'
 
 import { ChartAnnotationList } from '#components/annotations/chart-annotation-list'
 import { CandlestickChart } from '#components/candlestick-chart'
@@ -123,10 +123,10 @@ export function StockChartPageView({
   const savedIndicators = useChartIndicators()
   const indicators = configuredIndicators ?? savedIndicators
   const lowerPaneCount = getChartIndicatorPaneCount(indicators)
-  const chartHeightStyle = {
-    height: `calc(600px + ${(
-      lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT
-    ).toString()}px)`,
+  const chartHeightStyle: CSSProperties & {
+    '--stock-chart-height': string
+  } = {
+    '--stock-chart-height': `calc(600px + ${(lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT).toString()}px)`,
   }
   const targetKinds = [
     ...new Set(annotations.map((annotation) => annotation.target_kind)),
@@ -205,8 +205,7 @@ export function StockChartPageView({
           />
           <Button
             variant={horizontalLineDrawingEnabled ? 'default' : 'outline'}
-            size="icon-sm"
-            className="sm:w-auto sm:gap-1 sm:px-2.5"
+            size="sm"
             aria-label="水平線"
             aria-pressed={horizontalLineDrawingEnabled}
             disabled={pendingHorizontalLine != null || pendingTrendLine != null}
@@ -222,8 +221,7 @@ export function StockChartPageView({
           </Button>
           <Button
             variant={trendLineDrawingEnabled ? 'default' : 'outline'}
-            size="icon-sm"
-            className="sm:w-auto sm:gap-1 sm:px-2.5"
+            size="sm"
             aria-label="トレンドライン"
             aria-pressed={trendLineDrawingEnabled}
             disabled={pendingHorizontalLine != null || pendingTrendLine != null}
@@ -259,10 +257,13 @@ export function StockChartPageView({
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
         {isLoading ? (
-          <Skeleton className="w-full" style={chartHeightStyle} />
+          <Skeleton
+            className="h-(--stock-chart-height) w-full"
+            style={chartHeightStyle}
+          />
         ) : hasError ? (
           <p
-            className="flex flex-1 items-center text-destructive"
+            className="flex h-(--stock-chart-height) flex-1 items-center text-destructive"
             style={chartHeightStyle}
           >
             データの取得に失敗しました
@@ -285,11 +286,11 @@ export function StockChartPageView({
               onPlaceTrendLinePoint={onPlaceTrendLinePoint}
               currency={currency}
               intraday={timeframe !== '1d' && timeframe !== '1w'}
-              className="min-w-0 flex-1"
+              className="h-(--stock-chart-height) min-w-0 flex-1"
               style={chartHeightStyle}
             />
             <div
-              className="flex min-h-0 w-full flex-col gap-3 sm:w-72 sm:shrink-0"
+              className="flex h-(--stock-chart-height) min-h-0 w-full flex-col gap-3 sm:w-72 sm:shrink-0"
               style={chartHeightStyle}
             >
               {pendingHorizontalLine != null && (

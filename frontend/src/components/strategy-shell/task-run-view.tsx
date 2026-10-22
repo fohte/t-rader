@@ -100,14 +100,16 @@ export function TaskRunView({
       <Link
         to="/strategies/$id/runs"
         params={{ id: strategyId }}
-        className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
+        className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
       >
         &lt; 実行一覧に戻る
       </Link>
 
       {task == null && taskLoadError ? (
         <p className="flex items-baseline gap-2 font-mono text-xs">
-          <span className="uppercase tracking-wider text-primary">error</span>
+          <span className="uppercase tracking-wider text-destructive">
+            error
+          </span>
           <span className="text-muted-foreground-strong">
             タスクの取得に失敗しました。
           </span>
@@ -137,7 +139,7 @@ export function TaskRunView({
                 {
                   label: 'PHASE',
                   value: task.phase.toUpperCase(),
-                  cls: task.phase === 'failed' ? 'text-primary' : undefined,
+                  cls: task.phase === 'failed' ? 'text-destructive' : undefined,
                 },
                 {
                   label: 'ステップ',

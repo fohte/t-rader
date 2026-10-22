@@ -17,18 +17,18 @@ export const Default: Story = {
   },
 }
 
-export const Circle: Story = {
-  name: 'shows a circular loading placeholder.',
+export const Square: Story = {
+  name: 'shows a square loading placeholder at avatar size.',
   args: {
-    className: 'size-12 rounded-full',
+    className: 'size-12',
   },
 }
 
 export const Card: Story = {
-  name: 'shows avatar and text placeholders for a loading card.',
+  name: 'shows square avatar and text placeholders in a loading card.',
   render: () => (
     <div className="flex items-center gap-4">
-      <Skeleton className="size-12 rounded-full" />
+      <Skeleton className="size-12" />
       <div className="space-y-2">
         <Skeleton className="h-4 w-48" />
         <Skeleton className="h-4 w-32" />

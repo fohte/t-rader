@@ -1,3 +1,6 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
+import { Textarea } from '@fohte/ui/textarea'
 import { useState } from 'react'
 
 import { NoteVersionCommentBody } from '#components/note-detail/note-version-comment-body'
@@ -111,53 +114,54 @@ export function LineCommentGroup({
           ))}
           {replyingCommentId === comment.id ? (
             <div className="flex flex-wrap gap-2">
-              <input
+              <Input
                 autoFocus
                 aria-label="返信"
                 value={replyDraft}
                 onChange={(event) => {
                   setReplyDraft(event.target.value)
                 }}
-                className="min-w-0 flex-1 border border-border bg-background px-2 py-1 font-mono text-2xs text-foreground outline-none focus:border-muted-foreground"
+                className="flex-1"
                 placeholder="返信を入力"
               />
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 disabled={replyDraft.trim() === '' || isReplying}
                 onClick={() => {
                   const body = replyDraft.trim()
                   if (body === '') return
                   onReply(comment.id, body)
                 }}
-                className="border border-border px-2 py-1 font-mono text-2xs text-foreground hover:border-primary hover:text-primary disabled:opacity-50"
               >
-                送信
-              </button>
-              <button
+                {isReplying ? '送信中…' : '送信'}
+              </Button>
+              <Button
                 type="button"
+                variant="plain"
                 onClick={() => {
                   setReplyDraft('')
                   onCancelReply()
                 }}
-                className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-foreground"
               >
                 キャンセル
-              </button>
+              </Button>
             </div>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="plain"
               onClick={() => {
                 setReplyDraft('')
                 onStartReply(comment.id)
               }}
-              className="font-mono text-2xs text-muted-foreground hover:text-primary"
             >
               返信
-            </button>
+            </Button>
           )}
           {hasReplyError && replyingCommentId === comment.id && (
-            <p className="font-mono text-2xs text-primary">
+            <p className="font-mono text-2xs text-destructive">
               返信に失敗しました
             </p>
           )}
@@ -165,53 +169,52 @@ export function LineCommentGroup({
       ))}
       {anchorKey !== null && activeCommentKey === anchorKey ? (
         <div className="space-y-2">
-          <textarea
+          <Textarea
             aria-label={composerLabel}
             value={commentDraft}
             onChange={(event) => {
               setCommentDraft(event.target.value)
             }}
-            rows={2}
-            className="w-full border border-border bg-background px-2 py-1.5 font-mono text-2xs text-foreground outline-none focus:border-muted-foreground"
             placeholder={composerPlaceholder}
           />
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               disabled={commentDraft.trim() === '' || isCreating}
               onClick={submit}
-              className="border border-border px-2 py-1 font-mono text-2xs text-foreground hover:border-primary hover:text-primary disabled:opacity-50"
             >
-              送信
-            </button>
-            <button
+              {isCreating ? '送信中…' : '送信'}
+            </Button>
+            <Button
               type="button"
+              variant="plain"
               onClick={() => {
                 setCommentDraft('')
                 onCancelComment()
               }}
-              className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-foreground"
             >
               キャンセル
-            </button>
+            </Button>
           </div>
           {hasCreateError && (
-            <p className="font-mono text-2xs text-primary">
+            <p className="font-mono text-2xs text-destructive">
               コメントを送信できませんでした
             </p>
           )}
         </div>
       ) : anchor !== null && allowNewComment ? (
-        <button
+        <Button
           type="button"
+          variant="plain"
           onClick={() => {
             setCommentDraft('')
             onStartComment(anchor)
           }}
-          className="font-mono text-2xs text-muted-foreground hover:text-primary"
         >
           + 行コメント
-        </button>
+        </Button>
       ) : null}
     </div>
   )

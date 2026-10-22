@@ -45,10 +45,10 @@ export const AutoFocusInput: Story = {
         <DialogHeader>
           <DialogTitle>入力欄への初期フォーカス</DialogTitle>
           <DialogDescription>
-            開いた直後、input の初期値が全選択される
+            開いた直後、input の初期値が全選択されます。
           </DialogDescription>
         </DialogHeader>
-        <Input autoFocus defaultValue="1000000" />
+        <Input autoFocus defaultValue="sample-input" />
         <DialogFooter showCloseButton />
       </DialogContent>
     </Dialog>
@@ -64,10 +64,10 @@ export const InitialFocusDisabled: Story = {
         <DialogHeader>
           <DialogTitle>初期フォーカスなし</DialogTitle>
           <DialogDescription>
-            input にフォーカスも文字選択も発生しない
+            input にフォーカスも文字選択も発生しません。
           </DialogDescription>
         </DialogHeader>
-        <Input defaultValue="1000000" />
+        <Input defaultValue="sample-input" />
         <DialogFooter showCloseButton />
       </DialogContent>
     </Dialog>

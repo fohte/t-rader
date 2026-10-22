@@ -10,22 +10,22 @@ describe('extractPhaseKeyFromSaveError', () => {
       'agent_graph is not valid YAML: mapping values are not allowed here',
       null,
     ],
-    ['phase key "plan" is duplicated', 'plan'],
+    ['phase key "alpha" is duplicated', 'alpha'],
     [
-      'phase "investigate": for_each must be in the form "<phase_key>.<field>", got "plan"',
-      'investigate',
+      'phase "beta": for_each must be in the form "<phase_key>.<field>", got "alpha"',
+      'beta',
     ],
     [
-      'phase "investigate": for_each references unknown phase "missing" (must be an earlier phase)',
-      'investigate',
+      'phase "beta": for_each references unknown phase "missing" (must be an earlier phase)',
+      'beta',
     ],
     [
-      'phase "investigate": for_each references field "missing_field" which is not defined in phase "plan"\'s output',
-      'investigate',
+      'phase "beta": for_each references field "missing_field" which is not defined in phase "alpha"\'s output',
+      'beta',
     ],
     [
-      'phase "investigate": for_each references field "hypotheses" in phase "plan", which is not an array',
-      'investigate',
+      'phase "beta": for_each references field "sample_field" in phase "alpha", which is not an array',
+      'beta',
     ],
   ])('%s -> %s', (message, expected) => {
     expect(extractPhaseKeyFromSaveError(message)).toBe(expected)

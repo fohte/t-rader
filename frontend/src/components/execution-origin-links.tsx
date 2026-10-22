@@ -16,7 +16,7 @@ export function ExecutionOriginLinks({ origin }: { origin: ExecutionOrigin }) {
       <Link
         to="/strategies/$id/runs/$taskId"
         params={{ id: origin.strategyId, taskId: origin.taskId }}
-        className="text-primary hover:underline"
+        className="text-muted-foreground-strong hover:text-foreground hover:underline"
       >
         実行詳細 →
       </Link>

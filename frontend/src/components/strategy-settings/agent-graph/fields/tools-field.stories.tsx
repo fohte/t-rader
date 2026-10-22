@@ -1,17 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
 
 import { ToolsField } from '#components/strategy-settings/agent-graph/fields/tools-field'
 import type { components } from '#lib/api/schema.gen'
 
 type AgentTool = components['schemas']['AgentTool']
 
-// backend/crates/entrypoints/frontend-api/src/handlers/agent_options.rs に実在する登録済み tool 名
 const TOOLS: AgentTool[] = [
-  { name: 'list_notes', description: null },
-  { name: 'query_data', description: null },
-  { name: 'read_annotations', description: null },
-  { name: 'write_note', description: null },
+  { name: 'tool_alpha', description: null },
+  { name: 'tool_beta', description: null },
+  { name: 'tool_gamma', description: null },
+  { name: 'tool_delta', description: null },
 ]
 
 const meta = {
@@ -22,11 +20,10 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function Interactive({ initial }: { initial: string[] | undefined }) {
-  const [value, setValue] = useState(initial)
+function renderField(args: Story['args']) {
   return (
     <div className="grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
-      <ToolsField value={value} onChange={setValue} options={TOOLS} />
+      <ToolsField {...args} />
     </div>
   )
 }
@@ -34,28 +31,27 @@ function Interactive({ initial }: { initial: string[] | undefined }) {
 export const AllToolsAllowed: Story = {
   name: 'allows every available tool.',
   args: { value: undefined, onChange: () => {}, options: TOOLS },
-  render: () => <Interactive initial={undefined} />,
+  render: renderField,
 }
 
 export const Restricted: Story = {
   name: 'allows only a selected subset of tools.',
   args: {
-    value: ['list_notes', 'query_data'],
+    value: ['tool_alpha', 'tool_beta'],
     onChange: () => {},
     options: TOOLS,
   },
-  render: () => <Interactive initial={['list_notes', 'query_data']} />,
+  render: renderField,
 }
 
 export const RestrictedToNone: Story = {
   name: 'allows no tools.',
   args: { value: [], onChange: () => {}, options: TOOLS },
-  render: () => <Interactive initial={[]} />,
+  render: renderField,
 }
 
-// options に無い値 (未登録・削除済みなど) も消えずに表示される
 export const ValueNotInOptions: Story = {
   name: 'preserves a selected tool that is missing from the available options.',
   args: { value: ['legacy_tool'], onChange: () => {}, options: TOOLS },
-  render: () => <Interactive initial={['legacy_tool']} />,
+  render: renderField,
 }

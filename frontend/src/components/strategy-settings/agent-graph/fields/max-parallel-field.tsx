@@ -1,3 +1,4 @@
+import { Chip } from '@fohte/ui/chip'
 import { Input } from '@fohte/ui/input'
 
 interface MaxParallelFieldProps {
@@ -8,21 +9,20 @@ interface MaxParallelFieldProps {
 export function MaxParallelField({ value, onChange }: MaxParallelFieldProps) {
   return (
     <>
-      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
-        並列上限
-      </span>
-      <Input
-        aria-label="並列上限"
-        type="number"
-        min={1}
-        value={value ?? ''}
-        onChange={(e) => {
-          const next =
-            e.target.value === '' ? undefined : Number(e.target.value)
-          onChange(next == null || Number.isNaN(next) ? undefined : next)
-        }}
-        className="h-auto w-20 rounded-none border-border bg-background py-1 font-mono text-xs text-foreground"
-      />
+      <Chip>並列上限</Chip>
+      <div className="w-20 font-mono">
+        <Input
+          aria-label="並列上限"
+          type="number"
+          min={1}
+          value={value ?? ''}
+          onChange={(e) => {
+            const next =
+              e.target.value === '' ? undefined : Number(e.target.value)
+            onChange(next == null || Number.isNaN(next) ? undefined : next)
+          }}
+        />
+      </div>
     </>
   )
 }

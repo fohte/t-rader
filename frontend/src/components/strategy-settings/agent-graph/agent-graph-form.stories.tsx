@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Middleware } from 'openapi-fetch'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
 import { fetchClient } from '#lib/api/client'
@@ -15,32 +15,32 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 const SINGLE_PHASE = `phases:
-  - key: plan
-    label: 見出し案
+  - key: alpha
+    label: サンプル
     model: fictional-model-orbit
-    prompt: 与えられたテーマを読みやすい見出しに分ける。
-    tools: [find_reference]
+    prompt: sample prompt
+    tools: [tool_alpha]
 `
 
 const MULTI_PHASE_WITH_FOR_EACH = `phases:
-  - key: plan
-    label: 見出し案
+  - key: alpha
+    label: サンプル
     model: fictional-model-orbit
-    prompt: 与えられたテーマを 2-4 個の見出しに分ける。
-    tools: [find_reference, read_reference]
-    skills: [outline_guide]
+    prompt: sample prompt
+    tools: [tool_alpha, tool_beta]
+    skills: [skill_alpha]
     output:
-      sections:
+      records:
         type: array
         items:
-          title: { type: string }
-          description: { type: string }
-  - key: compose
-    label: 節の作成
+          name: { type: string }
+          value: { type: string }
+  - key: beta
+    label: 次の段階
     model: fictional-model-lantern
-    for_each: plan.sections
-    label_field: title
-    prompt: 割り当てられた見出しに沿って、説明文を作成する。
+    for_each: alpha.records
+    label_field: name
+    prompt: sample prompt
 `
 
 const MODELS = [
@@ -60,13 +60,13 @@ const MODELS = [
   },
 ]
 const TOOLS = [
-  { name: 'find_reference', description: null },
-  { name: 'read_reference', description: null },
-  { name: 'save_draft', description: null },
+  { name: 'tool_alpha', description: null },
+  { name: 'tool_beta', description: null },
+  { name: 'tool_gamma', description: null },
 ]
 const SKILLS = {
-  outline_guide: '# outline_guide\n',
-  style_guide: '# style_guide\n',
+  skill_alpha: '# skill_alpha\n',
+  skill_beta: '# skill_beta\n',
 }
 
 // Storybook にはグローバルな QueryClientProvider が無いため、$api.useQuery を使う
@@ -104,18 +104,7 @@ function installMiddleware() {
   }
 }
 
-function Interactive({
-  initial,
-  errorPhaseKey = null,
-}: {
-  initial: string
-  errorPhaseKey?: string | null
-}) {
-  const [value, setValue] = useState(initial)
-  const lastEnabledValueRef = useRef(value)
-  useEffect(() => {
-    if (value.trim() !== '') lastEnabledValueRef.current = value
-  }, [value])
+function StoryRenderer(args: Story['args']) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   )
@@ -125,13 +114,7 @@ function Interactive({
   useEffect(() => eject, [eject])
   return (
     <QueryClientProvider client={client}>
-      <AgentGraphForm
-        purpose="explore"
-        value={value}
-        onChange={setValue}
-        errorPhaseKey={errorPhaseKey}
-        lastEnabledValueRef={lastEnabledValueRef}
-      />
+      <AgentGraphForm {...args} />
     </QueryClientProvider>
   )
 }
@@ -139,46 +122,44 @@ function Interactive({
 export const ToggleOff: Story = {
   name: 'shows the graph editor switched off with no configured phases.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     value: '',
     onChange: () => {},
     lastEnabledValueRef: { current: '' },
   },
-  render: () => <Interactive initial="" />,
+  render: (args) => <StoryRenderer {...args} />,
 }
 
 export const ToggleOn: Story = {
   name: 'shows the graph editor switched on with one configured phase.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     value: SINGLE_PHASE,
     onChange: () => {},
     lastEnabledValueRef: { current: SINGLE_PHASE },
   },
-  render: () => <Interactive initial={SINGLE_PHASE} />,
+  render: (args) => <StoryRenderer {...args} />,
 }
 
 export const MultiPhaseWithForEach: Story = {
-  name: 'shows a multi-phase graph that composes each generated section.',
+  name: 'shows a later phase referencing an earlier array field.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     value: MULTI_PHASE_WITH_FOR_EACH,
     onChange: () => {},
     lastEnabledValueRef: { current: MULTI_PHASE_WITH_FOR_EACH },
   },
-  render: () => <Interactive initial={MULTI_PHASE_WITH_FOR_EACH} />,
+  render: (args) => <StoryRenderer {...args} />,
 }
 
 export const WithError: Story = {
   name: 'highlights a phase with a configuration error.',
   args: {
-    purpose: 'explore',
+    purpose: 'sample-purpose',
     value: MULTI_PHASE_WITH_FOR_EACH,
     onChange: () => {},
-    errorPhaseKey: 'compose',
+    errorPhaseKey: 'beta',
     lastEnabledValueRef: { current: MULTI_PHASE_WITH_FOR_EACH },
   },
-  render: () => (
-    <Interactive initial={MULTI_PHASE_WITH_FOR_EACH} errorPhaseKey="compose" />
-  ),
+  render: (args) => <StoryRenderer {...args} />,
 }

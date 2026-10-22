@@ -133,6 +133,15 @@ export const NoteKindFilter: Story = {
   },
 }
 
+export const NoteKindFilterOpen: Story = {
+  name: 'the note-kind filter displays its available options.',
+  args: {
+    typeFilter: 'note',
+    noteKindFilterOpen: true,
+    selectedItemIds: [],
+  },
+}
+
 export const FilteredEmpty: Story = {
   name: 'the annotation tab shows an empty result when no annotations match.',
   args: {

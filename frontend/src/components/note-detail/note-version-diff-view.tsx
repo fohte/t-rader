@@ -1,4 +1,4 @@
-import { Columns2, Diff } from 'lucide-react'
+import { SegmentedControl } from '@fohte/ui/segmented-control'
 
 import {
   commentsForThreads,
@@ -8,6 +8,7 @@ import {
 } from '#components/note-detail/note-version-line-comment-group'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { NoteVersionDiffRow } from '#lib/note-version-diff'
+import { cn } from '#lib/utils'
 
 export type DiffColumnMode = 'one-column' | 'two-column'
 
@@ -67,32 +68,15 @@ export function NoteVersionDiffView({
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           バージョン差分
         </h2>
-        <div role="group" aria-label="差分表示" className="flex gap-1">
-          <button
-            type="button"
-            aria-label="統合差分"
-            title="統合差分"
-            aria-pressed={mode === 'one-column'}
-            onClick={() => {
-              onModeChange('one-column')
-            }}
-            className={`inline-flex size-7 items-center justify-center border ${mode === 'one-column' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
-          >
-            <Diff className="size-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            aria-label="分割差分"
-            title="分割差分"
-            aria-pressed={mode === 'two-column'}
-            onClick={() => {
-              onModeChange('two-column')
-            }}
-            className={`inline-flex size-7 items-center justify-center border ${mode === 'two-column' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
-          >
-            <Columns2 className="size-4" aria-hidden="true" />
-          </button>
-        </div>
+        <SegmentedControl
+          aria-label="差分表示"
+          value={mode}
+          options={[
+            { value: 'one-column', label: '統合' },
+            { value: 'two-column', label: '分割' },
+          ]}
+          onValueChange={onModeChange}
+        />
       </header>
       {isCommentsPending && (
         <p className="border-b border-border px-3.5 py-2 font-mono text-2xs text-muted-foreground">
@@ -100,7 +84,7 @@ export function NoteVersionDiffView({
         </p>
       )}
       {hasCommentsError && (
-        <p className="border-b border-border px-3.5 py-2 font-mono text-2xs text-primary">
+        <p className="border-b border-border px-3.5 py-2 font-mono text-2xs text-destructive">
           コメントを読み込めませんでした
         </p>
       )}
@@ -262,15 +246,15 @@ function DiffCell({
   }
 
   const changeColor =
-    kind === 'removed'
-      ? 'border-l-status-rejected bg-status-rejected/10'
-      : kind === 'added'
-        ? 'border-l-status-approved bg-status-approved/10'
-        : kind === 'changed' && side === 'old'
-          ? 'border-l-status-rejected bg-status-rejected/10'
-          : kind === 'changed'
-            ? 'border-l-status-approved bg-status-approved/10'
-            : 'border-l-transparent'
+    kind === 'changed'
+      ? side === 'old'
+        ? 'border-l-status-rejected bg-status-rejected/10'
+        : 'border-l-status-approved bg-status-approved/10'
+      : {
+          added: 'border-l-status-approved bg-status-approved/10',
+          removed: 'border-l-status-rejected bg-status-rejected/10',
+          unchanged: 'border-l-transparent',
+        }[kind]
   const relevantTopLevel = commentsCoveringLine(comments, side, lineNumber)
   const relevantAtEnd = relevantTopLevel.filter(
     (comment) => (comment.end_line ?? comment.start_line) === lineNumber,
@@ -291,7 +275,11 @@ function DiffCell({
 
   return (
     <div
-      className={`border-l-2 ${changeColor} ${hasCommentRange ? 'ring-1 ring-inset ring-primary/50' : ''}`}
+      className={cn(
+        'border-l-2',
+        changeColor,
+        hasCommentRange && 'ring-1 ring-inset ring-primary/50',
+      )}
     >
       <div className="flex min-h-8 items-start gap-2 px-2 py-1">
         <span className="w-8 shrink-0 select-none text-right text-muted-foreground">

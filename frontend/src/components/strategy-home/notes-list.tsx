@@ -1,3 +1,4 @@
+import { Chip } from '@fohte/ui/chip'
 import { Link } from '@tanstack/react-router'
 
 import { StatusPill } from '#components/strategy-home/status-pill'
@@ -39,27 +40,11 @@ export function NotesList({ notes }: NotesListProps) {
               </span>
               <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
                 {n.kind != null && n.kind !== '' && (
-                  <span className="border border-border bg-surface-strong px-1 text-2xs uppercase text-muted-foreground-strong">
-                    {n.kind}
-                  </span>
+                  <Chip tone="strong">{n.kind}</Chip>
                 )}
-                {n.tags.length > 0 && (
-                  <span
-                    role="list"
-                    aria-label="タグ"
-                    className="inline-flex flex-wrap items-center gap-1"
-                  >
-                    {n.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        role="listitem"
-                        className="border border-border px-1 text-muted-foreground-strong"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </span>
-                )}
+                {n.tags.map((tag) => (
+                  <Chip key={tag}>{tag}</Chip>
+                ))}
                 <StatusPill status={n.status} />
                 <span className="ml-auto text-muted-foreground">
                   {formatRelative(n.updated_at)}

@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import type { FallbackProps } from 'react-error-boundary'
 
 export function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
@@ -12,13 +13,9 @@ export function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
             ? error.message
             : '予期しないエラーが発生しました'}
         </p>
-        <button
-          type="button"
-          onClick={resetErrorBoundary}
-          className="mt-4 rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
-        >
+        <Button type="button" onClick={resetErrorBoundary} className="mt-4">
           再試行
-        </button>
+        </Button>
       </div>
     </div>
   )

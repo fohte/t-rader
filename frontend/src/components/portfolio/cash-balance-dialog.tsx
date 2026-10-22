@@ -14,19 +14,22 @@ import {
 export function CashBalanceDialog({
   open,
   initial,
+  initialInputValue,
   onOpenChange,
   onSave,
 }: {
   open: boolean
   initial: number
+  initialInputValue?: string
   onOpenChange: (v: boolean) => void
   onSave: (cash: number) => void
 }) {
-  const [value, setValue] = useState<string>(String(initial))
+  const resolvedInitialInputValue = initialInputValue ?? String(initial)
+  const [value, setValue] = useState<string>(resolvedInitialInputValue)
 
   useEffect(() => {
-    if (open) setValue(String(initial))
-  }, [open, initial])
+    if (open) setValue(resolvedInitialInputValue)
+  }, [open, resolvedInitialInputValue])
 
   const trimmed = value.trim()
   const numeric = Number(trimmed)

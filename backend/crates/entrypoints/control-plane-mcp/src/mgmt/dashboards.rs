@@ -1,12 +1,13 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use core_application::dashboard::{DashboardConfig, DashboardConfigError, DashboardWidgetWidth};
-use core_application::widget::WidgetUseCaseError;
+use core_application::widget::{WidgetQueryError, WidgetUseCaseError};
 use rmcp::ErrorData as McpError;
 
 use super::dto::{
     DashboardConfigIssue, DashboardWidgetPreview, DashboardWidgetRowPreview,
-    DashboardWidgetWidthPreview, PreviewDashboardParams, PreviewDashboardResult,
+    DashboardWidgetSeriesPreview, DashboardWidgetWidthPreview, PreviewDashboardParams,
+    PreviewDashboardResult,
 };
 use super::{MgmtServer, internal_failure};
 
@@ -70,6 +71,12 @@ impl MgmtServer {
                         .into_iter()
                         .map(DashboardWidgetRowPreview::from)
                         .collect(),
+                    series: result.series.map(|series| {
+                        series
+                            .into_iter()
+                            .map(DashboardWidgetSeriesPreview::from)
+                            .collect()
+                    }),
                 }),
                 Err(WidgetUseCaseError::Validation(widget_errors)) => {
                     errors.extend(
@@ -84,11 +91,23 @@ impl MgmtServer {
                 }
                 Err(WidgetUseCaseError::NoData) => errors.push(DashboardConfigIssue {
                     path: format!("widgets[{index}].time.as_of"),
-                    message: "no daily bar data is available on or before the requested date"
+                    message: "no widget data is available on or before the requested date"
                         .to_owned(),
                 }),
+                Err(WidgetUseCaseError::Query(
+                    error @ (WidgetQueryError::IncompatibleCurrencies
+                    | WidgetQueryError::InputLimitExceeded { .. }),
+                )) => {
+                    errors.push(DashboardConfigIssue {
+                        path: format!("widgets[{index}].queries"),
+                        message: error.to_string(),
+                    });
+                }
                 Err(WidgetUseCaseError::Query(error)) => {
                     return Err(internal_failure(&error.to_string()));
+                }
+                Err(WidgetUseCaseError::Timeout) => {
+                    return Err(internal_failure("widget query exceeded its time limit"));
                 }
             }
         }

@@ -1,7 +1,10 @@
 import { Handle, type NodeProps } from '@xyflow/react'
 
 import { CiteBadge } from '#components/graph/cite-badge'
-import type { GraphFlowNode } from '#components/graph/flow-types'
+import type {
+  GraphFlowNode,
+  GraphNodeStyle,
+} from '#components/graph/flow-types'
 import { getGraphHighlightClass } from '#components/graph/graph-highlight'
 import { useGraphRenderContext } from '#components/graph/graph-render-context'
 import {
@@ -10,6 +13,7 @@ import {
   nodeWidth,
 } from '#components/graph/graph-utils'
 import { RefChip } from '#components/strategy-shell/ref-chip'
+import { cn } from '#lib/utils'
 
 const CHAIN_BAR_MAX_HEIGHT = 64
 const CHAIN_BAR_MIN_HEIGHT = 4
@@ -25,31 +29,44 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
 
   const showBar =
     layout === 'chain' && typeof data.value === 'number' && maxNodeValue > 0
-  const highlightClass = getGraphHighlightClass(id, highlightedNodeIds)
   const dagreHeight =
     layout === 'flow' || layout === 'tree' ? nodeHeight(data) : undefined
+  // 値の大小を棒の高さで比較するため、計算結果を CSS 変数に渡す。
+  const chainBarHeight = showBar
+    ? Math.max(
+        CHAIN_BAR_MIN_HEIGHT,
+        ((data.value ?? 0) / maxNodeValue) * CHAIN_BAR_MAX_HEIGHT,
+      )
+    : undefined
 
   // graph-utils.ts の nodeHeight は、この要素の padding / gap / font size を見積もる
+  // Dagre の配置と React Flow の測定が同じ寸法を使うよう、計算値を CSS 変数に渡す。
   return (
     <div
       data-slot="graph-node"
-      className={`border-border bg-card text-card-foreground relative flex flex-col gap-1.5 rounded-md border px-3 py-2 text-sm ${highlightClass}`}
-      style={{
-        width: nodeWidth(data),
-        ...(dagreHeight == null ? {} : { minHeight: dagreHeight }),
-      }}
+      className={cn(
+        'border-border bg-card text-card-foreground relative flex w-(--graph-node-width) min-h-(--graph-node-min-height) flex-col gap-1.5 border px-3 py-2 text-sm',
+        getGraphHighlightClass(id, highlightedNodeIds),
+      )}
+      style={
+        {
+          '--graph-node-width': `${String(nodeWidth(data))}px`,
+          '--graph-node-min-height':
+            dagreHeight == null ? 'auto' : `${String(dagreHeight)}px`,
+        } as GraphNodeStyle
+      }
     >
       <Handle
         type="target"
         position={handlePosition.target}
-        style={{ opacity: 0, pointerEvents: 'none' }}
+        className="pointer-events-none opacity-0"
       />
 
       {citeNumber != null && data.cite != null && (
         <CiteBadge
           number={citeNumber}
           cite={data.cite}
-          className="absolute -top-2 -right-2"
+          className="absolute -top-4 -right-4"
         />
       )}
 
@@ -57,23 +74,22 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
       {data.ref != null && (
         <RefChip token={data.ref} pill onOpenRef={onOpenRef} />
       )}
-      {showBar && typeof data.value === 'number' && (
+      {chainBarHeight != null && (
         <div
-          className="bg-primary"
-          style={{
-            width: 8,
-            height: Math.max(
-              CHAIN_BAR_MIN_HEIGHT,
-              (data.value / maxNodeValue) * CHAIN_BAR_MAX_HEIGHT,
-            ),
-          }}
+          data-slot="graph-node-value-bar"
+          className="bg-muted-foreground h-(--graph-node-bar-height) w-2"
+          style={
+            {
+              '--graph-node-bar-height': `${String(chainBarHeight)}px`,
+            } as GraphNodeStyle
+          }
         />
       )}
 
       <Handle
         type="source"
         position={handlePosition.source}
-        style={{ opacity: 0, pointerEvents: 'none' }}
+        className="pointer-events-none opacity-0"
       />
     </div>
   )

@@ -1,41 +1,37 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import { fn } from 'storybook/test'
 
 import { FilterBar, type FilterOption } from '#components/runs/filter-bar'
 
 const options: FilterOption[] = [
-  { id: 'long-term', label: '長期投資', count: 12 },
-  { id: 'mid-term', label: '中期投資', count: 5 },
-  { id: 'swing', label: '集中スイング', count: 3 },
+  { id: 'sample-strategy-a', label: '架空戦略 A', count: 12 },
+  { id: 'sample-strategy-b', label: '架空戦略 B', count: 5 },
+  { id: 'sample-strategy-c', label: '架空戦略 C', count: 3 },
 ]
-
-function Interactive({ initial }: { initial: string }) {
-  const [value, setValue] = useState(initial)
-  return (
-    <FilterBar
-      options={options}
-      value={value}
-      onChange={setValue}
-      allLabel="すべて"
-      allCount={20}
-    />
-  )
-}
 
 const meta = {
   title: 'Runs/FilterBar',
+  component: FilterBar,
   parameters: { layout: 'padded' },
-} satisfies Meta
+  args: {
+    options,
+    value: 'all',
+    onChange: fn(),
+    allLabel: 'すべて',
+    allCount: 20,
+  },
+} satisfies Meta<typeof FilterBar>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const All: Story = {
   name: 'shows run counts with every strategy included.',
-  render: () => <Interactive initial="all" />,
 }
 
 export const OptionActive: Story = {
   name: 'shows the run filter with a single strategy selected.',
-  render: () => <Interactive initial="mid-term" />,
+  args: {
+    value: 'sample-strategy-b',
+  },
 }

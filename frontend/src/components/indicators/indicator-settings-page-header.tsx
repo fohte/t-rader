@@ -9,7 +9,7 @@ export function IndicatorSettingsPageHeader({
     return (
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2">
         <p className="font-mono text-sm text-muted-foreground-strong">
-          <span className="mr-1 text-primary">&gt;</span>
+          <span className="mr-1 text-muted-foreground">&gt;</span>
           この戦略だけの指標
         </p>
         <Link

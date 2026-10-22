@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 type ReviewStatus = string
 
 const STATUS_LABEL: Record<string, string> = {
@@ -16,19 +18,20 @@ const STATUS_COLOR: Record<string, string> = {
 
 interface StatusPillProps {
   status: ReviewStatus
-  className?: string
 }
 
-export function StatusPill({ status, className = '' }: StatusPillProps) {
+export function StatusPill({ status }: StatusPillProps) {
   const label = STATUS_LABEL[status] ?? status
   const color = STATUS_COLOR[status] ?? 'var(--muted-foreground)'
+  const dotStyle: CSSProperties & { '--status-dot-color': string } = {
+    '--status-dot-color': color,
+  }
+
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 border border-border px-1.5 py-px font-mono text-2xs text-muted-foreground-strong ${className}`}
-    >
+    <span className="inline-flex items-center gap-1.5 border border-border px-1.5 py-px font-mono text-2xs text-muted-foreground-strong">
       <span
-        className="inline-block size-1.5 rounded-full"
-        style={{ background: color }}
+        className="inline-block size-1.5 rounded-full bg-(--status-dot-color)"
+        style={dotStyle}
       />
       {label}
     </span>

@@ -4,16 +4,21 @@ import userEvent from '@testing-library/user-event'
 import type { ECElementEvent } from 'echarts/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { WidgetTreemap } from '#components/widgets'
+import { WidgetTreemap } from '#components/widgets/widget-treemap'
 import type { components } from '#lib/api/schema.gen'
 import type { EChartsOptionFactory } from '#lib/echarts/use-echarts-chart'
 import type { WidgetQueryDefinitions } from '#lib/widget-value-format'
 import { createStoryRouter } from '#storybook/story-router'
 
 type ChartClickHandler = (event: ECElementEvent) => void
+type LabelLayoutCallback = (params: {
+  dataIndex: number
+  rect: { x: number; y: number; width: number; height: number }
+}) => unknown
 
 const chartHarness = vi.hoisted(() => ({
   clickHandler: null as ChartClickHandler | null,
+  renderedHandler: null as (() => void) | null,
   actions: [] as unknown[],
   options: [] as unknown[],
 }))
@@ -26,11 +31,14 @@ vi.mock('#lib/echarts/use-echarts-chart', async () => {
     useEChartsChart: ({
       createOption,
       onClick,
+      onRendered,
     }: {
       createOption: EChartsOptionFactory
       onClick: ChartClickHandler
+      onRendered?: () => void
     }) => {
       chartHarness.clickHandler = onClick
+      chartHarness.renderedHandler = onRendered ?? null
       React.useEffect(() => {
         chartHarness.options.push(createOption(testEChartsPalette))
       }, [createOption])
@@ -99,6 +107,7 @@ const hierarchyResult: WidgetQueryResponse = {
 
 function resetChartHarness() {
   chartHarness.clickHandler = null
+  chartHarness.renderedHandler = null
   chartHarness.actions = []
   chartHarness.options = []
 }
@@ -150,10 +159,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function emitLabelLayout(
+  dataIndex: number,
+  rect: { x: number; y: number; width: number; height: number },
+) {
+  const option = chartHarness.options.at(-1)
+  if (!isRecord(option)) return
+  const series = Array.isArray(option.series) ? option.series[0] : option.series
+  if (!isRecord(series) || !isLabelLayoutCallback(series.labelLayout)) return
+
+  series.labelLayout({ dataIndex, rect })
+  chartHarness.renderedHandler?.()
+}
+
+function isLabelLayoutCallback(value: unknown): value is LabelLayoutCallback {
+  return typeof value === 'function'
+}
+
 function renderWidget(
   result: WidgetQueryResponse,
   widgetViz: WidgetTreemapDefinition = viz,
-  props: { initialFocusGroupKey?: string; initialSelectedRowKey?: string } = {},
+  props: {
+    initialFocusGroupKey?: string
+    initialSelectedRowKey?: string
+    initialListExpanded?: boolean
+  } = {},
 ) {
   const router = createStoryRouter(
     () => (
@@ -259,6 +289,81 @@ describe('WidgetTreemap', () => {
       title: '架空銘柄 A',
       size: '9',
       href: '/stocks/DEMO-A',
+    })
+  })
+
+  it('ECharts の label rect と実行時 palette を overlay に反映する', async () => {
+    const rendered = await renderWidget(hierarchyResult, hierarchyViz)
+
+    act(() => {
+      emitLabelLayout(2, { x: 12, y: 18, width: 120, height: 42 })
+    })
+
+    const label = rendered.container.querySelector<HTMLElement>(
+      '[style*="--widget-treemap-label-left"]',
+    )
+    function readLabelOutput() {
+      return {
+        text: label?.textContent,
+        rect: {
+          left: label?.style.getPropertyValue('--widget-treemap-label-left'),
+          top: label?.style.getPropertyValue('--widget-treemap-label-top'),
+          width: label?.style.getPropertyValue('--widget-treemap-label-width'),
+          height: label?.style.getPropertyValue(
+            '--widget-treemap-label-height',
+          ),
+        },
+        color: label?.style.getPropertyValue('--widget-treemap-label-color'),
+      }
+    }
+
+    expect(readLabelOutput()).toEqual({
+      text: '架空銘柄 A+1.50%',
+      rect: {
+        left: '12px',
+        top: '18px',
+        width: '120px',
+        height: '42px',
+      },
+      color: '#fafafa',
+    })
+  })
+
+  it('全件一覧を開閉できる', async () => {
+    const user = userEvent.setup()
+    await renderWidget(hierarchyResult, hierarchyViz)
+
+    const toggle = screen.getByRole('button', { name: /全件一覧/ })
+    function readListState() {
+      return {
+        expanded: toggle.getAttribute('aria-expanded'),
+        rows: screen
+          .queryAllByRole('button', { name: /詳細を表示/ })
+          .map((row) => row.getAttribute('aria-label')),
+      }
+    }
+
+    const closed = readListState()
+    await user.click(toggle)
+    const opened = readListState()
+    await user.click(toggle)
+    const collapsed = readListState()
+
+    function readInteractionOutput() {
+      return { closed, opened, collapsed }
+    }
+
+    expect(readInteractionOutput()).toEqual({
+      closed: { expanded: 'false', rows: [] },
+      opened: {
+        expanded: 'true',
+        rows: [
+          '架空銘柄 A, change: +1.50%, 詳細を表示',
+          '架空銘柄 B, change: -0.80%, 詳細を表示',
+          '架空銘柄 C, change: 0.00%, 詳細を表示',
+        ],
+      },
+      collapsed: { expanded: 'false', rows: [] },
     })
   })
 

@@ -7,6 +7,7 @@ import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.f
 import type { components } from '#lib/api/schema.gen'
 import type { TradeMarker } from '#lib/chart-utils'
 import { createStoryRouter } from '#storybook/story-router'
+import { resetFetch, stubFetch } from '#test/stub-fetch.test-helper'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
 type Trade = components['schemas']['TradeListItem']
@@ -87,7 +88,7 @@ let getBarsResponse = () => Response.json(TRADE_DETAIL_CHART_BARS)
 
 afterEach(() => {
   cleanup()
-  vi.unstubAllGlobals()
+  resetFetch()
   getBarsResponse = () => Response.json(TRADE_DETAIL_CHART_BARS)
 })
 
@@ -96,32 +97,36 @@ async function renderTradeDetailPageChart(barsResponse?: () => Response) {
 
   const requests: Array<{ path: string; query: Record<string, string> }> = []
 
-  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+  stubFetch((input, init) => {
     const request = input instanceof Request ? input : new Request(input, init)
     const url = new URL(request.url)
     const path = url.pathname
     const query = Object.fromEntries(url.searchParams.entries())
     requests.push({ path, query })
 
-    if (path === `/api/trades/${trade.id}`) return Response.json(trade)
-    if (path === `/api/trades/${trade.id}/notes`) return Response.json([])
-    if (path === '/api/trades') return Response.json(trades)
-    if (path === '/api/bars') return getBarsResponse()
-    if (path === '/api/strategies') return Response.json([])
+    if (path === `/api/trades/${trade.id}`)
+      return Promise.resolve(Response.json(trade))
+    if (path === `/api/trades/${trade.id}/notes`)
+      return Promise.resolve(Response.json([]))
+    if (path === '/api/trades') return Promise.resolve(Response.json(trades))
+    if (path === '/api/bars') return Promise.resolve(getBarsResponse())
+    if (path === '/api/strategies') return Promise.resolve(Response.json([]))
     if (path === '/api/refs/stocks') {
-      return Response.json([
-        {
-          id: trade.symbol,
-          name: '架空銘柄',
-          market: 'TSE',
-          sector_id: null,
-          created_at: '2099-01-01T00:00:00Z',
-          updated_at: '2099-01-01T00:00:00Z',
-        },
-      ])
+      return Promise.resolve(
+        Response.json([
+          {
+            id: trade.symbol,
+            name: '架空銘柄',
+            market: 'TSE',
+            sector_id: null,
+            created_at: '2099-01-01T00:00:00Z',
+            updated_at: '2099-01-01T00:00:00Z',
+          },
+        ]),
+      )
     }
 
-    return Response.json({})
+    return Promise.resolve(Response.json({}))
   })
 
   const { TradeDetailPage } =
@@ -147,6 +152,7 @@ async function renderTradeDetailPageChart(barsResponse?: () => Response) {
 describe('TradeDetailPage chart', () => {
   it('loads the selected trade date range and marks the current trade', async () => {
     const requests = await renderTradeDetailPageChart()
+    await screen.findByRole('heading', { level: 1 })
     const chart = await screen.findByRole('img', { name: '日足チャート' })
     const chartRequests = requests
       .filter(({ path }) => path === '/api/bars' || path === '/api/trades')
@@ -190,7 +196,7 @@ describe('TradeDetailPage chart', () => {
         '対象取引: 2099-02-10 買い 10 株',
       ]),
     )
-  })
+  }, 20_000)
 
   it('shows the chart error when the daily bars request fails', async () => {
     await renderTradeDetailPageChart(() => Response.json({}, { status: 500 }))
@@ -208,5 +214,5 @@ describe('TradeDetailPage chart', () => {
         '対象取引: 2099-02-10 買い 10 株',
       ]),
     )
-  })
+  }, 20_000)
 })

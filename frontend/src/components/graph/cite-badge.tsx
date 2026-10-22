@@ -1,3 +1,5 @@
+import { Button } from '@fohte/ui/button'
+
 import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
 import { cn } from '#lib/utils'
 
@@ -5,35 +7,40 @@ interface CiteBadgeProps {
   number: number
   cite: string
   className?: string
+  defaultOpen?: boolean
 }
 
-export function CiteBadge({ number, cite, className }: CiteBadgeProps) {
+export function CiteBadge({
+  number,
+  cite,
+  className,
+  defaultOpen,
+}: CiteBadgeProps) {
   return (
-    <Popover>
+    <Popover defaultOpen={defaultOpen}>
       <PopoverTrigger
         render={
-          <button
-            type="button"
+          <Button
+            variant="plain"
+            aria-label={`出典 ${String(number)} を表示`}
             onClick={(e) => {
               // 親ノードのクリック/ドラッグに伝播させない (ref-chip.tsx の onOpen と同じ理由)
               e.stopPropagation()
             }}
-            className={cn(
-              'border-border bg-surface-strong text-muted-foreground-strong hover:text-foreground hover:border-primary flex size-4 items-center justify-center rounded-full border font-mono text-2xs leading-none',
-              className,
-            )}
+            className={cn('size-8', className)}
           >
-            {number}
-          </button>
+            <span className="font-mono text-xs">{number}</span>
+          </Button>
         }
       />
       <PopoverContent
-        className="w-64 text-xs"
+        padding="md"
+        className="w-64"
         onClick={(e) => {
           e.stopPropagation()
         }}
       >
-        {cite}
+        <div className="text-sm">{cite}</div>
       </PopoverContent>
     </Popover>
   )

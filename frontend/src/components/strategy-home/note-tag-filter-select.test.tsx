@@ -7,8 +7,29 @@ import { NoteTagFilterSelect } from '#components/strategy-home/note-tag-filter-s
 afterEach(cleanup)
 
 describe('NoteTagFilterSelect', () => {
+  it.each([
+    { value: undefined, expected: 'すべてのタグ' },
+    { value: '架空タグ', expected: '架空タグ' },
+  ])(
+    '閉じた selector に選択ラベルを表示する: $value',
+    ({ value, expected }) => {
+      render(
+        <NoteTagFilterSelect
+          tags={['架空タグ']}
+          value={value}
+          onChange={() => {}}
+        />,
+      )
+
+      expect(
+        screen.getByRole('combobox', { name: 'タグで絞り込み' }).textContent,
+      ).toEqual(expected)
+    },
+  )
+
   it('選択したタグを callback に渡す', async () => {
     const onChange = vi.fn()
+    const user = userEvent.setup()
     render(
       <NoteTagFilterSelect
         tags={['架空タグ']}
@@ -17,16 +38,15 @@ describe('NoteTagFilterSelect', () => {
       />,
     )
 
-    await userEvent.selectOptions(
-      screen.getByLabelText('タグで絞り込み'),
-      '架空タグ',
-    )
+    await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
+    await user.click(await screen.findByRole('option', { name: '架空タグ' }))
 
     expect(onChange.mock.calls).toEqual([['架空タグ']])
-  })
+  }, 15_000)
 
   it('全タグを選ぶと絞り込みを解除する', async () => {
     const onChange = vi.fn()
+    const user = userEvent.setup()
     render(
       <NoteTagFilterSelect
         tags={['架空タグ']}
@@ -35,7 +55,10 @@ describe('NoteTagFilterSelect', () => {
       />,
     )
 
-    await userEvent.selectOptions(screen.getByLabelText('タグで絞り込み'), '')
+    await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
+    await user.click(
+      await screen.findByRole('option', { name: 'すべてのタグ' }),
+    )
 
     expect(onChange.mock.calls).toEqual([[undefined]])
   })

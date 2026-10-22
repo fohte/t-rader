@@ -81,14 +81,8 @@ export function TradeRequestedAnalyses({
                 </p>
                 <div className="flex flex-wrap items-center gap-x-3 font-mono text-2xs text-muted-foreground">
                   <span
-                    className={
-                      analysis.phase === 'failed'
-                        ? 'text-primary'
-                        : analysis.phase === 'running' ||
-                            analysis.phase === 'pending'
-                          ? 'text-amber-500'
-                          : ''
-                    }
+                    data-phase={analysis.phase}
+                    className="data-[phase=failed]:text-primary data-[phase=running]:text-status-task-running data-[phase=pending]:text-status-task-running"
                   >
                     {taskPhaseLabel(analysis.phase)}
                   </span>

@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, btree_map::Entry},
     sync::Arc,
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -13,10 +14,15 @@ use crate::stock_group::{StockGroupMembership, StockGroupUseCaseError, StockGrou
 
 use super::{
     formula::FormulaExpression,
+    range::WidgetTimeRange,
+    series::{WidgetSeries, WidgetSeriesQueryRow, query_line},
     types::{
         WidgetBy, WidgetDefinition, WidgetQuery, WidgetVisualization, WidgetVisualizationOrder,
     },
-    validation::{WidgetValidationError, WidgetValidationErrors, validate_widget},
+    validation::{
+        QueryDimension, WidgetValidationError, WidgetValidationErrors, query_dimension,
+        validate_widget,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -67,6 +73,7 @@ pub struct WidgetGroup {
 pub struct WidgetQueryResponse {
     pub as_of: NaiveDate,
     pub rows: Vec<WidgetValueRow>,
+    pub series: Option<Vec<WidgetSeries>>,
 }
 
 #[derive(Debug, Error)]
@@ -75,6 +82,14 @@ pub enum WidgetQueryError {
     Database(#[from] PersistenceError),
     #[error(transparent)]
     StockGroups(#[from] StockGroupUseCaseError),
+    #[error("amount aggregation across multiple stocks requires confirmed currencies")]
+    IncompatibleCurrencies,
+    #[error("widget query input exceeds {limit} daily values")]
+    InputLimitExceeded { limit: u64 },
+    #[error("widget query exceeded its time limit")]
+    Timeout,
+    #[error("series queries are not supported by this source")]
+    SeriesUnsupported,
 }
 
 #[async_trait]
@@ -84,11 +99,27 @@ pub trait WidgetQuerySource: Send + Sync {
         requested: Option<NaiveDate>,
     ) -> Result<Option<NaiveDate>, WidgetQueryError>;
 
+    async fn resolve_as_of_for_queries(
+        &self,
+        requested: Option<NaiveDate>,
+        _queries: &[WidgetQuery],
+    ) -> Result<Option<NaiveDate>, WidgetQueryError> {
+        self.resolve_as_of(requested).await
+    }
+
     async fn query(
         &self,
         as_of: NaiveDate,
         definition: &WidgetQuery,
     ) -> Result<Vec<WidgetQueryRow>, WidgetQueryError>;
+
+    async fn query_series(
+        &self,
+        _range: super::range::ResolvedWidgetTimeRange,
+        _definition: &WidgetQuery,
+    ) -> Result<Vec<WidgetSeriesQueryRow>, WidgetQueryError> {
+        Err(WidgetQueryError::SeriesUnsupported)
+    }
 }
 
 #[async_trait]
@@ -121,10 +152,12 @@ pub type SharedWidgetGroupMembershipSource = Arc<dyn WidgetGroupMembershipSource
 pub enum WidgetUseCaseError {
     #[error("{0}")]
     Validation(#[from] WidgetValidationErrors),
-    #[error("no daily bar data is available on or before the requested date")]
+    #[error("no widget data is available on or before the requested date")]
     NoData,
     #[error(transparent)]
     Query(#[from] WidgetQueryError),
+    #[error("widget query exceeded its time limit")]
+    Timeout,
 }
 
 #[derive(Clone)]
@@ -148,10 +181,58 @@ impl WidgetUseCases {
         &self,
         definition: WidgetDefinition,
     ) -> Result<WidgetQueryResponse, WidgetUseCaseError> {
+        tokio::time::timeout(
+            Duration::from_secs(15),
+            self.query_within_deadline(definition),
+        )
+        .await
+        .map_err(|_| WidgetUseCaseError::Timeout)?
+    }
+
+    async fn query_within_deadline(
+        &self,
+        definition: WidgetDefinition,
+    ) -> Result<WidgetQueryResponse, WidgetUseCaseError> {
         let parsed_formulas = validate_widget(&definition)?;
+        let queries = definition.queries.values().cloned().collect::<Vec<_>>();
+        if let WidgetVisualization::Line { .. } = &definition.viz {
+            let time_range =
+                WidgetTimeRange::parse(definition.time.range.as_deref().unwrap_or_default())
+                    .map_err(|message| {
+                        WidgetUseCaseError::Validation(WidgetValidationErrors(vec![
+                            WidgetValidationError {
+                                path: "time.range".to_string(),
+                                message,
+                            },
+                        ]))
+                    })?;
+            let range_end = match (time_range, definition.time.as_of) {
+                (WidgetTimeRange::Dates { to, .. }, _) => to,
+                (WidgetTimeRange::ThreeMonths | WidgetTimeRange::OneYear, Some(as_of)) => as_of,
+                (WidgetTimeRange::ThreeMonths | WidgetTimeRange::OneYear, None) => self
+                    .query_source
+                    .resolve_as_of_for_queries(None, &queries)
+                    .await?
+                    .ok_or(WidgetUseCaseError::NoData)?,
+            };
+            let as_of = definition.time.as_of.unwrap_or(range_end);
+            let series = query_line(
+                self.query_source.as_ref(),
+                &definition,
+                &parsed_formulas,
+                time_range,
+                range_end,
+            )
+            .await?;
+            return Ok(WidgetQueryResponse {
+                as_of,
+                rows: Vec::new(),
+                series: Some(series),
+            });
+        }
         let as_of = self
             .query_source
-            .resolve_as_of(definition.time.as_of)
+            .resolve_as_of_for_queries(definition.time.as_of, &queries)
             .await?
             .ok_or(WidgetUseCaseError::NoData)?;
 
@@ -185,8 +266,11 @@ impl WidgetUseCases {
             &mut result_rows,
         );
 
-        let mut rows =
-            project_visualization_rows(result_rows.into_values().collect(), &definition.viz);
+        let mut rows = project_visualization_rows(
+            result_rows.into_values().collect(),
+            &definition.viz,
+            table_has_non_market_columns(&definition, &parsed_formulas),
+        );
 
         if let WidgetVisualization::Treemap {
             hierarchy: Some(hierarchy),
@@ -204,7 +288,11 @@ impl WidgetUseCases {
                 .await?;
         }
 
-        Ok(WidgetQueryResponse { as_of, rows })
+        Ok(WidgetQueryResponse {
+            as_of,
+            rows,
+            series: None,
+        })
     }
 
     async fn attach_classifications(
@@ -256,6 +344,20 @@ impl WidgetUseCases {
 }
 
 type QueryValues<'a> = BTreeMap<&'a str, BTreeMap<WidgetRowKey, (String, Decimal)>>;
+
+fn table_has_non_market_columns(
+    definition: &WidgetDefinition,
+    parsed_formulas: &BTreeMap<&str, FormulaExpression>,
+) -> bool {
+    let WidgetVisualization::Table { columns } = &definition.viz else {
+        return false;
+    };
+
+    columns.iter().any(|column| {
+        query_dimension(column, definition, parsed_formulas)
+            .is_some_and(|dimension| !matches!(dimension, QueryDimension::Market))
+    })
+}
 
 fn broadcast_market_values(
     definition: &WidgetDefinition,
@@ -338,6 +440,7 @@ fn evaluate_formulas<'a>(
 fn project_visualization_rows(
     mut rows: Vec<WidgetValueRow>,
     visualization: &WidgetVisualization,
+    table_has_non_market_columns: bool,
 ) -> Vec<WidgetValueRow> {
     match visualization {
         WidgetVisualization::Treemap { size, color, .. } => rows
@@ -369,7 +472,17 @@ fn project_visualization_rows(
             rows.truncate(*limit as usize);
             rows
         }
-        WidgetVisualization::Table { .. } | WidgetVisualization::Line { .. } => Vec::new(),
+        WidgetVisualization::Table { columns } => {
+            rows.retain_mut(|row| {
+                if table_has_non_market_columns && row.key == WidgetRowKey::Market {
+                    return false;
+                }
+                row.values.retain(|name, _| columns.contains(name));
+                columns.iter().any(|name| row.values.contains_key(name))
+            });
+            rows
+        }
+        WidgetVisualization::Line { .. } => Vec::new(),
     }
 }
 
@@ -614,6 +727,7 @@ mod tests {
                         classification: None,
                     },
                 ],
+                series: None,
             },
         );
     }
@@ -658,6 +772,74 @@ mod tests {
                         classification: None,
                     },
                 ],
+                series: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn table_keeps_requested_values_and_formula_nulls() {
+        let definition = WidgetDefinition {
+            queries: BTreeMap::from([("change".to_string(), change_query(WidgetBy::Stock, None))]),
+            formulas: BTreeMap::from([
+                ("double".to_string(), "change * 2".to_string()),
+                ("zero".to_string(), "change / 0".to_string()),
+            ]),
+            display: BTreeMap::new(),
+            viz: WidgetVisualization::Table {
+                columns: vec![
+                    "zero".to_string(),
+                    "double".to_string(),
+                    "change".to_string(),
+                ],
+            },
+            time: WidgetTime::default(),
+        };
+        let result = WidgetUseCases::new(
+            Arc::new(FakeWidgetQuerySource) as SharedWidgetQuerySource,
+            fake_memberships(Vec::new()),
+        )
+        .query(definition)
+        .await
+        .expect("calculate table widget");
+
+        assert_eq!(
+            result,
+            WidgetQueryResponse {
+                as_of: NaiveDate::from_ymd_opt(2098, 1, 5).expect("valid date"),
+                rows: vec![
+                    WidgetValueRow {
+                        key: WidgetRowKey::Stock("DEMO-A".to_string()),
+                        name: "Demo Stock A".to_string(),
+                        values: BTreeMap::from([
+                            ("change".to_string(), Some(Decimal::new(3, 2))),
+                            ("double".to_string(), Some(Decimal::new(6, 2))),
+                            ("zero".to_string(), None),
+                        ]),
+                        classification: None,
+                    },
+                    WidgetValueRow {
+                        key: WidgetRowKey::Stock("DEMO-B".to_string()),
+                        name: "Demo Stock B".to_string(),
+                        values: BTreeMap::from([
+                            ("change".to_string(), Some(Decimal::new(-4, 2))),
+                            ("double".to_string(), Some(Decimal::new(-8, 2))),
+                            ("zero".to_string(), None),
+                        ]),
+                        classification: None,
+                    },
+                    WidgetValueRow {
+                        key: WidgetRowKey::Stock("DEMO-C".to_string()),
+                        name: "Demo Stock C".to_string(),
+                        values: BTreeMap::from([
+                            ("change".to_string(), Some(Decimal::new(1, 2))),
+                            ("double".to_string(), Some(Decimal::new(2, 2))),
+                            ("zero".to_string(), None),
+                        ]),
+                        classification: None,
+                    },
+                ],
+                series: None,
             },
         );
     }
@@ -764,6 +946,7 @@ mod tests {
                         }),
                     },
                 ],
+                series: None,
             },
         );
     }

@@ -47,6 +47,7 @@ type ReactFlowStyle = CSSProperties & {
   '--xy-attribution-background-color': string
 }
 
+// React Flow は帰属表記の背景色を CSS 変数で受け取る。
 const reactFlowStyle: ReactFlowStyle = {
   '--xy-attribution-background-color': 'transparent',
 }

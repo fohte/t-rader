@@ -1,9 +1,17 @@
+import { Tabs, TabsList, TabsTab } from '@fohte/ui/tabs'
+
 export type NoteVersionContentTab = 'changes' | 'full'
 
 export function resolveNoteVersionContentTab(
   selectedTab: NoteVersionContentTab | null,
 ): NoteVersionContentTab {
   return selectedTab ?? 'changes'
+}
+
+function isNoteVersionContentTab(
+  value: unknown,
+): value is NoteVersionContentTab {
+  return value === 'changes' || value === 'full'
 }
 
 interface NoteVersionContentTabsProps {
@@ -16,33 +24,16 @@ export function NoteVersionContentTabs({
   onChange,
 }: NoteVersionContentTabsProps) {
   return (
-    <div
-      role="tablist"
-      aria-label="ノート本文の表示"
-      className="flex border-b border-border font-mono text-xs"
+    <Tabs
+      value={activeTab}
+      onValueChange={(value: unknown) => {
+        if (isNoteVersionContentTab(value)) onChange(value)
+      }}
     >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={activeTab === 'changes'}
-        onClick={() => {
-          onChange('changes')
-        }}
-        className={`border-b-2 px-3 py-2 ${activeTab === 'changes' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-      >
-        変更点
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={activeTab === 'full'}
-        onClick={() => {
-          onChange('full')
-        }}
-        className={`border-b-2 px-3 py-2 ${activeTab === 'full' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-      >
-        全文
-      </button>
-    </div>
+      <TabsList aria-label="ノート本文の表示">
+        <TabsTab value="changes">変更点</TabsTab>
+        <TabsTab value="full">全文</TabsTab>
+      </TabsList>
+    </Tabs>
   )
 }

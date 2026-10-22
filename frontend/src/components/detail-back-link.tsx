@@ -12,7 +12,7 @@ export function DetailBackLink({ label, tab }: DetailBackLinkProps) {
     <Link
       to="/notes"
       search={notesTabSearch(tab ?? 'notes')}
-      className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
+      className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
     >
       &lt; {label}
     </Link>

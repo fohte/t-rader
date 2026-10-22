@@ -81,6 +81,10 @@ function installWidgetQueryCapture() {
   }
 }
 
+function readTableQueryOutput(requests: unknown[], widgets: unknown[]) {
+  return { requests, widgets }
+}
+
 let activeMiddleware: ReturnType<typeof installWidgetQueryCapture> | null = null
 
 afterEach(() => {
@@ -138,6 +142,65 @@ describe('useDashboardPageData', () => {
       },
       { movement: { label: 'Movement', format: 'percent' } },
     ])
+  })
+
+  it('table widget の列順と query 定義を API と表示 state に渡す', async () => {
+    activeMiddleware = installWidgetQueryCapture()
+    const tableConfig: DashboardConfig = {
+      title: 'サンプル表',
+      widgets: [
+        {
+          title: '値の比較',
+          width: 'full',
+          definition: {
+            queries: {
+              metric_a: { metric: 'close', by: 'stock' },
+              metric_b: { metric: 'mkt_cap', by: 'stock' },
+            },
+            display: {
+              metric_a: { label: '指標 A', format: 'number' },
+              metric_b: { label: '指標 B', format: 'number' },
+            },
+            viz: {
+              type: 'table',
+              columns: ['metric_b', 'metric_a'],
+            },
+          },
+        },
+      ],
+    }
+    const hook = renderHook(
+      () => useDashboardPageData(tableConfig, 'sample-market'),
+      { wrapper: createQueryClientWrapper() },
+    )
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 1) {
+        throw new Error('widget request is not complete')
+      }
+    })
+
+    const queries = {
+      metric_a: { metric: 'close', by: 'stock' },
+      metric_b: { metric: 'mkt_cap', by: 'stock' },
+    }
+    const display = {
+      metric_a: { label: '指標 A', format: 'number' },
+      metric_b: { label: '指標 B', format: 'number' },
+    }
+    const viz = {
+      type: 'table',
+      columns: ['metric_b', 'metric_a'],
+    }
+    expect(
+      readTableQueryOutput(
+        activeMiddleware.requests,
+        hook.result.current.widgets.map((widget) => widget.definition),
+      ),
+    ).toEqual({
+      requests: [{ queries, display, viz }],
+      widgets: [{ queries, display, viz }],
+    })
   })
 
   it('初期表示では最新を使い、日付指定後に最新へ戻せる', async () => {

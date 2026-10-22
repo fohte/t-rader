@@ -69,6 +69,7 @@ pub async fn run_preview(
         stdin: Some(stdin),
         timeout: input.timeout_secs.map(|s| Duration::from_secs(s.into())),
         max_output_bytes: input.max_output_bytes.map(|m| m as usize),
+        input_files: None,
     };
 
     let result = executor.run(request).await.map_err(kata_to_app_err)?;
@@ -163,6 +164,7 @@ fn kata_to_app_err(err: KataExecError) -> AppError {
         | KataExecError::Api { message: msg, .. }
         | KataExecError::Network(msg)
         | KataExecError::Parse(msg)
+        | KataExecError::FileTransfer(msg)
         | KataExecError::Init(msg) => {
             tracing::error!("kata exec error: {msg}");
             AppError::ServiceUnavailable("indicator runtime is currently unavailable".into())

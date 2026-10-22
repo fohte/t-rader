@@ -1,3 +1,5 @@
+import { Button } from '@fohte/ui/button'
+
 export function MobileScreenerFilterActions({
   validationError,
   onAskAgent,
@@ -16,23 +18,21 @@ export function MobileScreenerFilterActions({
           {validationError}
         </p>
       )}
-      <button
-        type="submit"
-        className="w-full border border-primary bg-primary px-3 py-3 font-semibold text-primary-foreground hover:opacity-90"
-      >
+      <Button type="submit" className="w-full">
         この条件で絞り込む
-      </button>
+      </Button>
       {onAskAgent != null && (
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={onAskAgent}
-          className="flex w-full items-center justify-center gap-1 border border-primary bg-background px-3 py-3 font-semibold text-primary hover:bg-primary/10"
+          className="w-full"
         >
           <span aria-hidden="true" className="font-bold">
             &gt;_
           </span>
           この条件でエージェントに頼む
-        </button>
+        </Button>
       )}
     </div>
   )

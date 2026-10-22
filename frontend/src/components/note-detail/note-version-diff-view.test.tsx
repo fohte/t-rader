@@ -1,5 +1,5 @@
-import { cleanup, render } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   NoteVersionDiffView,
@@ -67,6 +67,13 @@ function getRangeCommentOutput(container: HTMLElement) {
   return { rangeLines, threadLines }
 }
 
+function getModeChangeOutput(
+  modeChanges: readonly unknown[][],
+  selectedModes: Array<string | null>,
+) {
+  return { modeChanges, selectedModes }
+}
+
 describe('NoteVersionDiffView', () => {
   it('marks all lines in a range and renders its thread only below the last line', () => {
     const { container } = render(<NoteVersionDiffView {...props} />)
@@ -75,4 +82,32 @@ describe('NoteVersionDiffView', () => {
       threadLines: ['5'],
     })
   })
+
+  it('changes the diff layout through the shared segmented control', () => {
+    const onModeChange = vi.fn()
+    const { rerender } = render(
+      <NoteVersionDiffView {...props} onModeChange={onModeChange} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '分割' }))
+    rerender(
+      <NoteVersionDiffView
+        {...props}
+        mode="two-column"
+        onModeChange={onModeChange}
+      />,
+    )
+
+    expect(
+      getModeChangeOutput(
+        onModeChange.mock.calls,
+        ['統合', '分割'].map((name) =>
+          screen.getByRole('button', { name }).getAttribute('aria-pressed'),
+        ),
+      ),
+    ).toEqual({
+      modeChanges: [['two-column']],
+      selectedModes: ['false', 'true'],
+    })
+  }, 15_000)
 })

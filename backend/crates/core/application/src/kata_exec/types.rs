@@ -17,6 +17,8 @@ pub struct ExecRequest {
     pub timeout: Option<Duration>,
     /// stdout + stderr の合計バイト数の上限。超えた場合 `OutputTooLarge` を返す。
     pub max_output_bytes: Option<usize>,
+    /// attach stream で渡すファイル。`None` は既存の JSON 評価経路を使う。
+    pub input_files: Option<Vec<ExecFile>>,
 }
 
 impl ExecRequest {
@@ -26,8 +28,21 @@ impl ExecRequest {
             stdin: None,
             timeout: None,
             max_output_bytes: None,
+            input_files: None,
         }
     }
+
+    pub fn with_files(mut self, files: Vec<ExecFile>) -> Self {
+        self.input_files = Some(files);
+        self
+    }
+}
+
+/// attach stream で転送するファイル。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
 }
 
 /// Pod の実行結果
@@ -36,6 +51,7 @@ pub struct ExecResult {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: i32,
+    pub files: Vec<ExecFile>,
 }
 
 #[async_trait]

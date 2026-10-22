@@ -23,6 +23,19 @@ export const WithPosition: Story = {
   name: '保有数量と損益を 4 つの指標で表示する。',
 }
 
+export const WithRealizedLoss: Story = {
+  name: '実現損益がマイナスの状態を down 色で表示する。',
+  args: {
+    position: {
+      symbol: 'demo-code',
+      qty: 100,
+      avg_cost: 3200,
+      cost_basis: 320000,
+      realized_pnl: -4800,
+    },
+  },
+}
+
 export const Loading: Story = {
   name: '保有情報の読み込み中を表示する。',
   args: { position: null, isLoading: true },

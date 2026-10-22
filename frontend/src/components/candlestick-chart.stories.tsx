@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { CSSProperties } from 'react'
 
 import { CandlestickChart } from '#components/candlestick-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
@@ -127,16 +128,19 @@ const meta = {
   decorators: [
     (Story, { args }) => {
       const paneCount = getChartIndicatorPaneCount(args.indicators ?? [])
+      const chartContainerStyle: CSSProperties & {
+        '--chart-container-height': string
+      } = {
+        '--chart-container-height': `${(
+          600 +
+          paneCount * CHART_INDICATOR_PANE_HEIGHT
+        ).toString()}px`,
+      }
 
       return (
         <div
-          style={{
-            width: '100%',
-            height: `${(
-              600 +
-              paneCount * CHART_INDICATOR_PANE_HEIGHT
-            ).toString()}px`,
-          }}
+          className="h-(--chart-container-height) w-full"
+          style={chartContainerStyle}
         >
           <Story />
         </div>

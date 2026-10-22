@@ -13,6 +13,18 @@ CREATE TABLE query_perf_profile_validation (
 );
 \endif
 
+CREATE TEMP TABLE query_perf_expected_valuation_days ON COMMIT PRESERVE ROWS AS
+SELECT day::date AS bar_date
+FROM query_perf_seed_metadata AS metadata
+CROSS JOIN LATERAL generate_series(
+    (metadata.reference_date - INTERVAL '12 years')::timestamp,
+    metadata.reference_date::timestamp,
+    INTERVAL '1 day'
+) AS days(day)
+WHERE extract(isodow FROM day) BETWEEN 1 AND 5
+ORDER BY day DESC
+LIMIT 150;
+
 CREATE TEMP TABLE query_perf_profile_current ON COMMIT PRESERVE ROWS AS
 WITH seed AS (
     SELECT
@@ -68,13 +80,30 @@ expected_minute AS (
 ),
 expected_valuation_days AS (
     SELECT bar_date
-    FROM expected_daily_dates
-    ORDER BY bar_date DESC
-    LIMIT 150
+    FROM query_perf_expected_valuation_days
 ),
-expected_valuation AS (
+expected_valuation_history_dates AS (
+    SELECT DISTINCT ON (date_trunc('month', expected_daily_dates.bar_date)) expected_daily_dates.bar_date
+    FROM expected_daily_dates
+    CROSS JOIN seed
+    WHERE expected_daily_dates.bar_date >= seed.reference_date - INTERVAL '2 years'
+      AND expected_daily_dates.bar_date < seed.reference_date - INTERVAL '30 days'
+    ORDER BY date_trunc('month', expected_daily_dates.bar_date), expected_daily_dates.bar_date
+),
+expected_valuation_history AS (
+    SELECT MIN(bar_date) AS first_date
+    FROM expected_valuation_history_dates
+),
+expected_recent_valuation AS (
     SELECT MIN(bar_date) AS first_date, MAX(bar_date) AS last_date, COUNT(*)::bigint AS trading_days
     FROM expected_valuation_days
+),
+expected_valuation AS (
+    SELECT expected_valuation_history.first_date,
+           expected_recent_valuation.last_date,
+           expected_recent_valuation.trading_days
+    FROM expected_valuation_history
+    CROSS JOIN expected_recent_valuation
 ),
 schema_metrics AS (
     SELECT
@@ -358,6 +387,9 @@ DECLARE
     valuation_rows bigint;
     valuation_codes bigint;
     valuation_dates bigint;
+    recent_valuation_rows bigint;
+    recent_valuation_codes bigint;
+    recent_valuation_dates bigint;
     profile_metrics jsonb;
 BEGIN
     SELECT profile_current.metrics
@@ -424,10 +456,17 @@ BEGIN
     SELECT COUNT(*)::bigint, COUNT(DISTINCT code)::bigint, COUNT(DISTINCT date)::bigint
     INTO valuation_rows, valuation_codes, valuation_dates
     FROM valuation;
-    IF valuation_codes <> 15000 OR valuation_dates <> expected_valuation_rows
-        OR valuation_rows <> valuation_codes * valuation_dates THEN
-        RAISE EXCEPTION 'valuation history must cover each synthetic code on every expected date: rows=%, codes=%, dates=%',
-            valuation_rows, valuation_codes, valuation_dates;
+    SELECT COUNT(*)::bigint, COUNT(DISTINCT code)::bigint, COUNT(DISTINCT date)::bigint
+    INTO recent_valuation_rows, recent_valuation_codes, recent_valuation_dates
+    FROM valuation
+    WHERE date IN (SELECT bar_date FROM query_perf_expected_valuation_days);
+    IF valuation_codes <> 15000 OR valuation_rows < 2000000
+        OR recent_valuation_codes <> valuation_codes
+        OR recent_valuation_dates <> expected_valuation_rows
+        OR recent_valuation_rows <> valuation_codes * expected_valuation_rows THEN
+        RAISE EXCEPTION 'valuation history must contain at least two million rows and every code on all 150 recent trading days: rows=%, codes=%, dates=%, recent_rows=%, recent_codes=%, recent_dates=%',
+            valuation_rows, valuation_codes, valuation_dates,
+            recent_valuation_rows, recent_valuation_codes, recent_valuation_dates;
     END IF;
 
     SELECT jsonb_build_object(
@@ -451,7 +490,10 @@ BEGIN
         ),
         'valuation_code_count', valuation_codes,
         'valuation_date_count', valuation_dates,
-        'valuation_row_count', valuation_rows
+        'valuation_row_count', valuation_rows,
+        'recent_valuation_code_count', recent_valuation_codes,
+        'recent_valuation_date_count', recent_valuation_dates,
+        'recent_valuation_row_count', recent_valuation_rows
     )
     INTO profile_metrics;
 
@@ -509,7 +551,13 @@ BEGIN
         RAISE EXCEPTION 'live synthetic profile metrics differ from the saved validation result';
     END IF;
     IF saved.build_metrics->>'coverage_mismatch_count' IS DISTINCT FROM '0'
-        OR saved.build_metrics->>'bar_profile_row_count' IS DISTINCT FROM '18300' THEN
+        OR saved.build_metrics->>'bar_profile_row_count' IS DISTINCT FROM '18300'
+        OR saved.build_metrics->>'valuation_code_count' IS DISTINCT FROM '15000'
+        OR (saved.build_metrics->>'valuation_row_count')::bigint < 2000000
+        OR saved.build_metrics->>'recent_valuation_code_count' IS DISTINCT FROM '15000'
+        OR saved.build_metrics->>'recent_valuation_date_count' IS DISTINCT FROM metrics->>'expected_valuation_trading_days'
+        OR (saved.build_metrics->>'recent_valuation_row_count')::bigint <>
+            15000 * (metrics->>'expected_valuation_trading_days')::bigint THEN
         RAISE EXCEPTION 'saved synthetic profile build validation result is incomplete';
     END IF;
 END

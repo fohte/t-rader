@@ -47,13 +47,13 @@ export function StepDetail({
         <JsonBlock label="output" value={step.output} />
       )}
       {step.status === 'failed' && step.error != null && step.error !== '' && (
-        <pre className="whitespace-pre-wrap">{step.error}</pre>
+        <pre className="whitespace-pre-wrap text-destructive">{step.error}</pre>
       )}
       {noteId != null && (
         <Link
           to="/notes/$noteId"
           params={{ noteId }}
-          className="block text-primary hover:underline"
+          className="block text-foreground hover:underline"
         >
           → ノートを開く
         </Link>
@@ -63,7 +63,7 @@ export function StepDetail({
           href={traceUrl}
           target="_blank"
           rel="noreferrer"
-          className="block text-primary hover:underline"
+          className="block text-foreground hover:underline"
         >
           → トレースを開く
         </a>

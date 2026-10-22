@@ -77,6 +77,44 @@ const queries: WidgetQueryDefinitions = {
 const groupQueries: WidgetQueryDefinitions = {
   movement: { metric: 'change', by: 'group' },
 }
+const tableQueries: WidgetQueryDefinitions = {
+  metric_a: { metric: 'close', by: 'stock' },
+  metric_b: { metric: 'mkt_cap', by: 'stock' },
+}
+
+const tableWidget: DashboardWidgetPageState = {
+  key: 'sample-table',
+  title: 'サンプル表',
+  width: 'full',
+  definition: {
+    queries: tableQueries,
+    display: {
+      metric_a: { label: '指標 A', format: 'number' },
+      metric_b: { label: '指標 B', format: 'number' },
+    },
+    viz: {
+      type: 'table',
+      columns: ['metric_b', 'metric_a'],
+    },
+  },
+  isPending: false,
+  errorMessage: null,
+  result: {
+    as_of: '2099-01-05',
+    rows: [
+      {
+        key: 'stock:DEMO-A',
+        name: 'サンプル対象 A',
+        values: { metric_a: 1240, metric_b: 24 },
+      },
+      {
+        key: 'stock:DEMO-B',
+        name: 'サンプル対象 B',
+        values: { metric_a: null, metric_b: 18 },
+      },
+    ],
+  },
+}
 
 const movementList: DashboardWidgetPageState = {
   key: 'movement-list',
@@ -98,6 +136,7 @@ const readyState: ReadyDashboardPageState = {
   onAsOfChange: () => undefined,
   widgets: [
     movementList,
+    tableWidget,
     {
       key: 'group-map',
       title: '分類ごとの動き',
@@ -121,11 +160,6 @@ export const Widgets: Story = {
 export const Latest: Story = {
   name: '最新のデータを表示します。',
   args: { state: { ...readyState, asOf: '' } },
-}
-
-export const ConfiguredDate: Story = {
-  name: 'ウィジェット設定の日付を初期値として表示します。',
-  args: { state: { ...readyState, asOf: null } },
 }
 
 export const Preview: Story = {
@@ -163,7 +197,8 @@ export const InvalidConfig: Story = {
       issues: [
         {
           path: 'widgets[0].viz',
-          message: 'viz.type は treemap または toplist を指定してください。',
+          message:
+            'viz.type は treemap、toplist または table を指定してください。',
         },
       ],
     },

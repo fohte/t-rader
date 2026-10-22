@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # 純粋関数評価のための Kata exec ランタイム image。backend が動的に作る Pod が
-# pull して 1 回だけ実行し、`EXEC_CODE_B64` / `EXEC_STDIN_B64` 環境変数から
-# コードと標準入力を受け取り、JSON envelope を最終行に印字して終了する。
+# pull して 1 回だけ実行する。小さい JSON 評価は従来の環境変数と JSON envelope を使い、
+# ファイル評価は Pod attach stream の manifest / chunk を受け取って終了する。
 #
 # 同梱ライブラリは数値計算系のホワイトリストに絞る。requests / urllib3 等の
 # I/O 系は同梱しないことで通信意図のコードを image レベルで早期に弾く。
