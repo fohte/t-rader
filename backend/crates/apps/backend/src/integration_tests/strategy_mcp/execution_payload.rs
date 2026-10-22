@@ -14,14 +14,14 @@ use core_application::{
     strategy_scope::StrategyScope,
 };
 use gateway_postgres::entities::{
-    custom_indicator, custom_indicator_evaluation, strategy_task,
-    task_execution_definition_snapshot, task_execution_payload,
+    custom_indicator, custom_indicator_evaluation, execution_reservation, strategy_task,
+    task_execution_definition_snapshot, task_execution_payload, task_execution_state,
 };
 use indoc::indoc;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
-    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -435,7 +435,9 @@ async fn task_only_mcp_reads_authorize_snapshot_and_sealed_payload_with_fixed_de
 }
 
 #[backend_test_macros::database_test]
-async fn operation_mcp_call_consumes_the_task_tool_budget(db: gateway_postgres::DatabaseHandle) {
+async fn operation_mcp_call_respects_zero_task_tool_budget_without_dispatch(
+    db: gateway_postgres::DatabaseHandle,
+) {
     let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
     let task = tests_common::create_test_execution_task(
         &db,
@@ -448,7 +450,7 @@ async fn operation_mcp_call_consumes_the_task_tool_budget(db: gateway_postgres::
     )
     .await;
     let execution_id = format!("{}:{}", task.a2a_task_id, Uuid::from_u128(712));
-    let result = tests_common::build_server(db)
+    let result = tests_common::build_server(db.clone())
         .invoke::<_, Value>(
             "execute_operation",
             strategy_id,
@@ -463,10 +465,32 @@ async fn operation_mcp_call_consumes_the_task_tool_budget(db: gateway_postgres::
         .await
         .map(|_| ())
         .map_err(|error| error.message.to_string());
+    let state = task_execution_state::Entity::find_by_id(task.task_id)
+        .one(&db)
+        .await
+        .expect("query task execution budget state")
+        .expect("task execution budget state exists");
+    let reservation_count = execution_reservation::Entity::find()
+        .filter(execution_reservation::Column::TaskId.eq(task.task_id))
+        .count(&db)
+        .await
+        .expect("count task execution reservations");
 
     assert_eq!(
-        result,
-        Err("execution budget limit was exceeded for __task_total".into()),
+        (
+            result,
+            state.model_calls_used,
+            state.tool_calls_used,
+            state.subagent_runs_used,
+            reservation_count,
+        ),
+        (
+            Err("execution budget limit was exceeded for __task_total".into()),
+            0,
+            0,
+            0,
+            0,
+        ),
     );
 }
 

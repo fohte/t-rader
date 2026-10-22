@@ -311,7 +311,6 @@ impl ExecutionBudgetUseCases {
                     || charge.resource_key.len() > 128
                     || charge.scope_key.len() > 128
                     || charge.amount == 0
-                    || charge.limit.is_some_and(|limit| charge.amount > limit)
             })
         {
             return Err(ExecutionBudgetUseCaseError::InvalidRequest);
