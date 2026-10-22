@@ -161,6 +161,7 @@ mod comments;
 mod config;
 mod custom_indicators;
 mod dashboards;
+mod execution_artifacts;
 mod group_axes;
 mod history;
 mod ingest_status;

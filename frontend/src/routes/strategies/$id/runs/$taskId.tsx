@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
+  type ExecutionPayloadReference,
   parseAgentGraphPhases,
   readTaskSteps,
 } from '#components/strategy-shell/task-execution-tree'
@@ -9,9 +10,20 @@ import { TaskRunView } from '#components/strategy-shell/task-run-view'
 import { $api } from '#lib/api/client'
 
 const POLL_INTERVAL_MS = 2000
+const PAYLOAD_PAGE_LIMIT = 100
 
 function isTaskActive(phase: string | undefined): boolean {
   return phase === 'pending' || phase === 'running'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readTaskStartAgentGraph(snapshot: unknown): string | null {
+  if (!isRecord(snapshot) || !isRecord(snapshot['agent_config'])) return null
+  const agentGraph = snapshot['agent_config']['agent_graph']
+  return typeof agentGraph === 'string' ? agentGraph : null
 }
 
 export const Route = createFileRoute('/strategies/$id/runs/$taskId')({
@@ -34,20 +46,97 @@ function TaskRunPage() {
   )
   const task = taskQuery.data
   const taskPhase = task?.phase
-  const purpose = task?.purpose ?? null
 
-  const purposeAgentGraphQuery = $api.useQuery(
+  const artifactsQuery = $api.useQuery(
     'get',
-    '/api/agent-configs/{purpose}/agent-graph',
-    { params: { path: { purpose: purpose ?? '' } } },
-    { enabled: purpose != null },
+    '/api/strategies/{id}/tasks/{task_id}/execution-artifacts',
+    { params: { path: { id, task_id: taskId } } },
+    {
+      enabled: task != null,
+      refetchInterval: () =>
+        isTaskActive(taskPhase) ? POLL_INTERVAL_MS : false,
+    },
   )
-  const agentGraphContent = purposeAgentGraphQuery.data?.content
   const configQuery = $api.useQuery('get', '/api/config')
+  const [selectedPayload, setSelectedPayload] =
+    useState<ExecutionPayloadReference | null>(null)
+  const payloadQuery = $api.useQuery(
+    'get',
+    '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}',
+    {
+      params: {
+        path: {
+          id,
+          task_id: taskId,
+          payload_id: selectedPayload?.payloadId ?? '',
+        },
+        query: {
+          pointer: selectedPayload?.pointer ?? '',
+          cursor: selectedPayload?.cursor ?? 0,
+          limit: selectedPayload?.limit ?? PAYLOAD_PAGE_LIMIT,
+        },
+      },
+    },
+    {
+      enabled: selectedPayload != null,
+      refetchInterval: () =>
+        selectedPayload != null && isTaskActive(taskPhase)
+          ? POLL_INTERVAL_MS
+          : false,
+    },
+  )
+  const artifacts = artifactsQuery.data
+  const taskStartSnapshot = artifacts?.definition_snapshots.find(
+    (snapshot) => snapshot.definition_key === 'task_start',
+  )
+  const agentGraphContent = readTaskStartAgentGraph(
+    taskStartSnapshot?.definition,
+  )
   const configPhases = useMemo(
     () => parseAgentGraphPhases(agentGraphContent ?? ''),
     [agentGraphContent],
   )
+  const payload = payloadQuery.data
+  const executionDefinition =
+    taskStartSnapshot == null
+      ? {
+          status: artifactsQuery.isPending
+            ? ('loading' as const)
+            : artifactsQuery.isError
+              ? ('error' as const)
+              : ('missing' as const),
+        }
+      : {
+          status: 'ready' as const,
+          digest: taskStartSnapshot.digest,
+          createdAt: taskStartSnapshot.created_at,
+          definition: taskStartSnapshot.definition,
+        }
+  const payloadRead =
+    selectedPayload == null
+      ? undefined
+      : payload == null
+        ? {
+            status: payloadQuery.isError
+              ? ('error' as const)
+              : ('loading' as const),
+          }
+        : {
+            status: 'ready' as const,
+            manifest: {
+              status: payload.manifest.status,
+              itemCount: payload.manifest.item_count,
+              incompleteReason: payload.manifest.incomplete_reason ?? null,
+            },
+            page:
+              payload.page == null
+                ? null
+                : {
+                    data: payload.page.data,
+                    totalCount: payload.page.total_count,
+                    nextCursor: payload.page.next_cursor ?? null,
+                  },
+          }
 
   const steps = readTaskSteps(task?.steps)
 
@@ -84,6 +173,24 @@ function TaskRunPage() {
       }
       steps={steps}
       configPhases={configPhases}
+      executionDefinition={executionDefinition}
+      selectedPayload={selectedPayload}
+      payloadRead={payloadRead}
+      onSelectPayload={(reference) => {
+        setSelectedPayload({
+          ...reference,
+          cursor: reference.cursor ?? 0,
+          limit: Math.max(
+            1,
+            Math.min(reference.limit ?? PAYLOAD_PAGE_LIMIT, 1000),
+          ),
+        })
+      }}
+      onNextPayloadPage={(cursor) => {
+        setSelectedPayload((current) =>
+          current == null ? current : { ...current, cursor },
+        )
+      }}
       notes={notesQuery.data ?? []}
       notesState={
         notesQuery.isPending

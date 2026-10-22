@@ -23,6 +23,7 @@ import {
   findEnumBadge,
   formatDuration,
   listEnumEntries,
+  listStepPayloadReferences,
   stepSubtitle,
 } from '#components/strategy-shell/task-execution-tree/model'
 
@@ -619,6 +620,77 @@ describe('StepDetail', () => {
       screen.queryByRole('link', { name: '→ ノートを開く' }),
     ).not.toBeInTheDocument()
   })
+
+  it('operation の null model と固定定義、payload 参照を表示する', async () => {
+    const user = userEvent.setup()
+    const step = makeStep({
+      phase_key: 'calculate',
+      kind: 'operation',
+      model: null,
+      input_ref: {
+        payload_inputs: [
+          {
+            field: 'source',
+            payload_id: '00000000-0000-4000-8000-000000000001',
+            pointer: '/records',
+            cursor: 0,
+            limit: 20,
+          },
+        ],
+      },
+      output_ref: { id: '00000000-0000-4000-8000-000000000002' },
+      output: {
+        payloadRef: { id: '00000000-0000-4000-8000-000000000002' },
+        pointer: '/value',
+      },
+    })
+    const onSelectPayload = vi.fn()
+    render(
+      <StepDetail
+        step={step}
+        phaseDefinition={{
+          key: 'calculate',
+          kind: 'operation',
+          operation: 'evaluate_saved_code',
+          code_id: 'sample-code',
+        }}
+        onSelectPayload={onSelectPayload}
+      />,
+    )
+
+    const payloadReferences = listStepPayloadReferences(step)
+    await user.click(
+      screen.getByRole('button', { name: '→ input: sourceを開く' }),
+    )
+    expect(screen.getByText('evaluate_saved_code').textContent).toBe(
+      'evaluate_saved_code',
+    )
+    expect(screen.getByText('—').textContent).toBe('—')
+    expect(screen.getByText('固定したフェーズ定義').textContent).toBe(
+      '固定したフェーズ定義',
+    )
+    expect(payloadReferences).toEqual([
+      {
+        payloadId: '00000000-0000-4000-8000-000000000001',
+        label: 'input: source',
+        pointer: '/records',
+        cursor: 0,
+        limit: 20,
+      },
+      {
+        payloadId: '00000000-0000-4000-8000-000000000002',
+        label: '出力',
+        pointer: '/value',
+      },
+    ])
+    expect(onSelectPayload.mock.lastCall?.[0]).toEqual({
+      payloadId: '00000000-0000-4000-8000-000000000001',
+      label: 'input: source',
+      pointer: '/records',
+      cursor: 0,
+      limit: 20,
+    })
+  })
 })
 
 describe('findEnumBadge', () => {
@@ -743,12 +815,29 @@ describe('parseAgentGraphPhases', () => {
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
+      {
+        key: 'plan',
+        label: '準備一覧',
+        model: 'simulated-model-amber',
+        definition: {
+          key: 'plan',
+          label: '準備一覧',
+          model: 'simulated-model-amber',
+          prompt: '項目の形式を確認する',
+        },
+      },
       {
         key: 'investigate',
         label: '確認',
         model: 'simulated-model-teal',
         forEach: 'plan.items',
+        definition: {
+          key: 'investigate',
+          label: '確認',
+          model: 'simulated-model-teal',
+          prompt: '項目の形式を確認する',
+          for_each: 'plan.items',
+        },
       },
     ])
   })
@@ -775,6 +864,15 @@ describe('parseAgentGraphPhases', () => {
           result: { enum: ['consistent', 'needs_review'] },
           details: { type: 'string' },
         },
+        definition: {
+          key: 'investigate',
+          label: '確認',
+          model: 'simulated-model-teal',
+          output: {
+            result: { enum: ['consistent', 'needs_review'] },
+            details: { type: 'string' },
+          },
+        },
       },
     ])
   })
@@ -794,6 +892,12 @@ describe('parseAgentGraphPhases', () => {
         label: '確認',
         model: 'simulated-model-teal',
         forEach: 'source.entries',
+        definition: {
+          key: 'inspect',
+          label: '確認',
+          model: 'simulated-model-teal',
+          for_each: 'source.entries',
+        },
       },
     ])
   })
@@ -807,6 +911,49 @@ describe('parseAgentGraphPhases', () => {
     expect(parseAgentGraphPhases('phases: 1')).toEqual([])
   })
 
+  it('extracts operation order and nullable model from a fixed graph', () => {
+    const yaml = [
+      'phases:',
+      '  - key: calculate',
+      '    label: 計算',
+      '    kind: operation',
+      '    operation: evaluate_saved_code',
+      '    code_id: sample-code',
+      '    model: null',
+      '    input:',
+      '      source:',
+      '        prior_output: { phase: prepare, pointer: /records, limit: 20 }',
+    ].join('\n')
+
+    expect(parseAgentGraphPhases(yaml)).toEqual([
+      {
+        key: 'calculate',
+        label: '計算',
+        kind: 'operation',
+        operation: 'evaluate_saved_code',
+        codeId: 'sample-code',
+        model: null,
+        definition: {
+          key: 'calculate',
+          label: '計算',
+          kind: 'operation',
+          operation: 'evaluate_saved_code',
+          code_id: 'sample-code',
+          model: null,
+          input: {
+            source: {
+              prior_output: {
+                phase: 'prepare',
+                pointer: '/records',
+                limit: 20,
+              },
+            },
+          },
+        },
+      },
+    ])
+  })
+
   it('skips phase entries missing required string fields', () => {
     const yaml = [
       'phases:',
@@ -818,7 +965,16 @@ describe('parseAgentGraphPhases', () => {
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
+      {
+        key: 'plan',
+        label: '準備一覧',
+        model: 'simulated-model-amber',
+        definition: {
+          key: 'plan',
+          label: '準備一覧',
+          model: 'simulated-model-amber',
+        },
+      },
     ])
   })
 })

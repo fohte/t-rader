@@ -1,9 +1,11 @@
 export type {
   AgentGraphOutputSchema,
   AgentGraphPhaseSummary,
+  ExecutionPayloadReference,
   TaskStep,
 } from '#components/strategy-shell/task-execution-tree/model'
 export {
+  listStepPayloadReferences,
   parseAgentGraphPhases,
   readTaskSteps,
 } from '#components/strategy-shell/task-execution-tree/model'

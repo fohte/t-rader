@@ -332,6 +332,17 @@ impl StrategyExecutionRepository for SnapshotRepository {
         )
     }
 
+    async fn list_definition_snapshots(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<DefinitionSnapshot>, StrategyExecutionRepositoryError> {
+        Ok(if task_id == self.snapshot.task_id {
+            vec![self.snapshot.clone()]
+        } else {
+            Vec::new()
+        })
+    }
+
     async fn insert_definition_snapshot(
         &self,
         _transaction: &crate::unit_of_work::UnitOfWorkTransaction,

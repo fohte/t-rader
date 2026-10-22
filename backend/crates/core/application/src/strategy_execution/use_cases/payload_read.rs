@@ -15,12 +15,20 @@ impl StrategyExecutionUseCases {
         access: &AuthorizedExecution,
         query: ReadPayloadQuery,
     ) -> Result<PayloadPage, StrategyExecutionUseCaseError> {
+        self.read_payload_by_task_id(access.task_id, query).await
+    }
+
+    pub(super) async fn read_payload_by_task_id(
+        &self,
+        task_id: Uuid,
+        query: ReadPayloadQuery,
+    ) -> Result<PayloadPage, StrategyExecutionUseCaseError> {
         if !(1..=MAX_PAYLOAD_PAGE_ITEMS).contains(&query.limit) {
             return Err(StrategyExecutionUseCaseError::InvalidPageLimit);
         }
         let manifest = self
             .repository
-            .find_payload(access.task_id, query.payload_id)
+            .find_payload(task_id, query.payload_id)
             .await?
             .ok_or(StrategyExecutionUseCaseError::PayloadNotFound)?;
         if manifest.status != PayloadStatus::Sealed {
@@ -30,7 +38,7 @@ impl StrategyExecutionUseCases {
             if query.pointer.is_empty() {
                 read_array_page(
                     self.repository.as_ref(),
-                    access.task_id,
+                    task_id,
                     &manifest,
                     query.cursor,
                     query.limit,
@@ -43,7 +51,7 @@ impl StrategyExecutionUseCases {
                 }
                 let chunks = self
                     .repository
-                    .list_payload_chunks_for_range(access.task_id, query.payload_id, root_index, 1)
+                    .list_payload_chunks_for_range(task_id, query.payload_id, root_index, 1)
                     .await?;
                 let items = array_items_in_range(&chunks, root_index, 1)?;
                 let root_item = items
@@ -63,7 +71,7 @@ impl StrategyExecutionUseCases {
         } else {
             let chunks = self
                 .repository
-                .list_payload_chunks(access.task_id, query.payload_id)
+                .list_payload_chunks(task_id, query.payload_id)
                 .await?;
             let root = assemble_payload(&manifest, &chunks)?;
             let selected = if query.pointer.is_empty() {

@@ -109,6 +109,132 @@ export const Completed: Story = {
   ),
 }
 
+export const OperationWithPayload: Story = {
+  name: 'shows the fixed operation definition and a finite payload page.',
+  render: () => (
+    <RouterProvider
+      router={createTaskRunViewRouter({
+        strategyId: 'sample-strategy',
+        task: baseTask({
+          phase: 'completed',
+          updatedAt: '2026-08-16T09:04:33.200Z',
+        }),
+        steps: [
+          {
+            phase_key: 'calculate',
+            execution_step_id: 'sample-step-operation',
+            kind: 'operation',
+            label: '計算',
+            model: null,
+            status: 'completed',
+            input_ref: {
+              payload_inputs: [
+                {
+                  field: 'source',
+                  payload_id: '00000000-0000-4000-8000-000000000001',
+                  pointer: '/records',
+                  cursor: 0,
+                  limit: 25,
+                },
+              ],
+            },
+            output_ref: { id: '00000000-0000-4000-8000-000000000002' },
+            output: {
+              payloadRef: { id: '00000000-0000-4000-8000-000000000002' },
+              pointer: '/value',
+            },
+            started_at: '2026-08-16T09:00:00.000Z',
+            finished_at: '2026-08-16T09:00:08.000Z',
+            trace_id: 'sample-trace-operation',
+            span_id: 'sample-span-operation',
+          },
+        ],
+        configPhases: [
+          {
+            key: 'calculate',
+            label: '計算',
+            kind: 'operation',
+            operation: 'evaluate_saved_code',
+            codeId: 'sample-code',
+            model: null,
+            definition: {
+              key: 'calculate',
+              label: '計算',
+              kind: 'operation',
+              operation: 'evaluate_saved_code',
+              code_id: 'sample-code',
+            },
+          },
+        ],
+        notes: [],
+        notesState: 'success',
+        executionDefinition: {
+          status: 'ready',
+          digest: 'synthetic-digest',
+          createdAt: '2026-08-16T09:00:00.000Z',
+          definition: {
+            agent_config: {
+              agent_graph: 'phases:\n  - key: calculate\n    kind: operation',
+            },
+          },
+        },
+        executionDefinitionOpen: true,
+        selectedPayload: {
+          payloadId: '00000000-0000-4000-8000-000000000002',
+          label: '出力',
+          pointer: '/value',
+        },
+        payloadRead: {
+          status: 'ready',
+          manifest: {
+            status: 'sealed',
+            itemCount: 1,
+            incompleteReason: null,
+          },
+          page: {
+            data: { value: 'sample-result' },
+            totalCount: 1,
+            nextCursor: 1,
+          },
+        },
+      })}
+    />
+  ),
+}
+
+export const IncompletePayload: Story = {
+  name: 'shows the reason when a payload capture is incomplete.',
+  render: () => (
+    <RouterProvider
+      router={createTaskRunViewRouter({
+        strategyId: 'sample-strategy',
+        task: baseTask({
+          phase: 'failed',
+          updatedAt: '2026-08-16T09:04:33.200Z',
+        }),
+        steps: [],
+        configPhases: [],
+        notes: [],
+        notesState: 'success',
+        selectedPayload: {
+          payloadId: '00000000-0000-4000-8000-000000000003',
+          label: '入力',
+          pointer: '/records',
+        },
+        payloadRead: {
+          status: 'ready',
+          manifest: {
+            status: 'incomplete',
+            itemCount: 0,
+            incompleteReason: 'source_revision_changed',
+          },
+          page: null,
+        },
+      })}
+    />
+  ),
+}
+
 export const Failed: Story = {
   name: 'shows an error summary for a task that failed during item checks.',
   render: () => (

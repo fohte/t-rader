@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
@@ -5,6 +6,7 @@ import { type StatItem, StatRow } from '#components/portfolio/stat-row'
 import {
   type AgentGraphOutputSchema,
   type AgentGraphPhaseSummary,
+  type ExecutionPayloadReference,
   StepDetail,
   TaskExecutionTree,
   type TaskStep,
@@ -31,6 +33,31 @@ export interface TaskRunViewProps {
   notes: { id: string; title: string }[]
   notesState: TaskRunNotesState
   traceUrlTemplate?: string
+  executionDefinition?: {
+    status: 'loading' | 'error' | 'missing' | 'ready'
+    digest?: string
+    createdAt?: string
+    definition?: unknown
+  }
+  executionDefinitionOpen?: boolean
+  selectedPayload?: ExecutionPayloadReference | null
+  payloadRead?:
+    | { status: 'loading' | 'error' }
+    | {
+        status: 'ready'
+        manifest: {
+          status: string
+          itemCount: number
+          incompleteReason: string | null
+        }
+        page: {
+          data: unknown
+          totalCount: number
+          nextCursor: number | null
+        } | null
+      }
+  onSelectPayload?: (reference: ExecutionPayloadReference) => void
+  onNextPayloadPage?: (cursor: number) => void
   /** task の取得に失敗したか (`task` が null の間、ロード中との表示を出し分けるために使う) */
   taskLoadError?: boolean
 }
@@ -88,11 +115,18 @@ export function TaskRunView({
   notes,
   notesState,
   traceUrlTemplate,
+  executionDefinition,
+  executionDefinitionOpen = false,
+  selectedPayload = null,
+  payloadRead,
+  onSelectPayload,
+  onNextPayloadPage,
   taskLoadError = false,
 }: TaskRunViewProps): React.ReactElement {
   const [selectedStep, setSelectedStep] = useState<{
     step: TaskStep
     outputSchema?: AgentGraphOutputSchema
+    phaseDefinition?: Record<string, unknown>
   } | null>(null)
 
   return (
@@ -159,6 +193,45 @@ export function TaskRunView({
 
           <TaskRunNotes notes={notes} state={notesState} />
 
+          {executionDefinition != null && (
+            <section
+              aria-label="実行時の固定定義"
+              className="border border-border bg-card p-4"
+            >
+              <h2 className="mb-2 font-mono text-xs font-bold uppercase tracking-wider">
+                実行時の固定定義
+              </h2>
+              {executionDefinition.status === 'loading' ? (
+                <p className="font-mono text-xs text-muted-foreground">
+                  固定定義を読み込み中です。
+                </p>
+              ) : executionDefinition.status === 'error' ? (
+                <p className="font-mono text-xs text-destructive">
+                  固定定義を取得できませんでした。
+                </p>
+              ) : executionDefinition.status === 'missing' ? (
+                <p className="font-mono text-xs text-muted-foreground">
+                  固定定義の記録がありません。
+                </p>
+              ) : (
+                <>
+                  <p className="font-mono text-2xs text-muted-foreground">
+                    SHA-256 {executionDefinition.digest} ·{' '}
+                    {executionDefinition.createdAt}
+                  </p>
+                  <details open={executionDefinitionOpen} className="mt-2">
+                    <summary className="cursor-pointer font-mono text-xs text-foreground">
+                      定義 snapshot を表示
+                    </summary>
+                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-2xs">
+                      {JSON.stringify(executionDefinition.definition, null, 2)}
+                    </pre>
+                  </details>
+                </>
+              )}
+            </section>
+          )}
+
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-task-run)">
             <div className="border border-border bg-card p-4">
               {steps.length === 0 ? (
@@ -181,17 +254,98 @@ export function TaskRunView({
                 <StepDetail
                   step={selectedStep.step}
                   outputSchema={selectedStep.outputSchema}
+                  phaseDefinition={selectedStep.phaseDefinition}
                   traceUrlTemplate={traceUrlTemplate}
+                  onSelectPayload={onSelectPayload}
                 />
               ) : (
                 <p className="font-mono text-xs text-muted-foreground">
                   ステップを選択してください。
                 </p>
               )}
+              {selectedPayload != null && (
+                <ExecutionPayloadPanel
+                  reference={selectedPayload}
+                  payloadRead={payloadRead}
+                  onNextPayloadPage={onNextPayloadPage}
+                />
+              )}
             </aside>
           </div>
         </>
       )}
     </div>
+  )
+}
+
+function ExecutionPayloadPanel({
+  reference,
+  payloadRead,
+  onNextPayloadPage,
+}: {
+  reference: ExecutionPayloadReference
+  payloadRead: TaskRunViewProps['payloadRead']
+  onNextPayloadPage?: (cursor: number) => void
+}): React.ReactElement {
+  const page = payloadRead?.status === 'ready' ? payloadRead.page : null
+  const nextCursor = page?.nextCursor
+
+  return (
+    <section
+      aria-label="実行 payload"
+      className="mt-4 border-t border-border pt-4"
+    >
+      <h2 className="mb-2 font-mono text-xs font-bold">{reference.label}</h2>
+      <p className="mb-2 break-all font-mono text-2xs text-muted-foreground">
+        {reference.payloadId} · pointer {reference.pointer || '/'}
+      </p>
+      {payloadRead?.status === 'loading' ? (
+        <p className="font-mono text-xs text-muted-foreground">
+          payload を読み込み中です。
+        </p>
+      ) : payloadRead?.status === 'error' ? (
+        <p className="font-mono text-xs text-destructive">
+          payload を取得できませんでした。
+        </p>
+      ) : payloadRead?.status !== 'ready' ? (
+        <p className="font-mono text-xs text-muted-foreground">
+          payload を選択してください。
+        </p>
+      ) : payloadRead.manifest.status !== 'sealed' ? (
+        <p className="font-mono text-xs text-muted-foreground">
+          {payloadRead.manifest.status === 'staging'
+            ? 'payload の記録が完了していません。'
+            : 'payload は未完了のため内容を表示できません。'}{' '}
+          {payloadRead.manifest.incompleteReason ?? ''}
+        </p>
+      ) : page == null ? (
+        <p className="font-mono text-xs text-muted-foreground">
+          payload page がありません。
+        </p>
+      ) : (
+        <>
+          <p className="mb-2 font-mono text-2xs text-muted-foreground">
+            全 {page.totalCount} 件 · 表示{' '}
+            {Array.isArray(page.data) ? page.data.length : 1} 件
+          </p>
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all font-mono text-2xs">
+            {JSON.stringify(page.data, null, 2)}
+          </pre>
+          {nextCursor != null && onNextPayloadPage != null && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                onNextPayloadPage(nextCursor)
+              }}
+            >
+              次のページを表示
+            </Button>
+          )}
+        </>
+      )}
+    </section>
   )
 }

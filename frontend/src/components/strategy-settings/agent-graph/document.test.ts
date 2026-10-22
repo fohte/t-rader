@@ -7,8 +7,11 @@ import {
   parseAgentGraphPhases,
   removePhase,
   setPhaseArrayField,
+  setPhaseCodeId,
   setPhaseField,
   setPhaseForEach,
+  setPhaseInput,
+  setPhaseKind,
   setPhaseLabelField,
   setPhaseMaxParallel,
   setPhaseOutput,
@@ -434,5 +437,157 @@ describe('movePhase', () => {
     expect(parseAgentGraphPhases(movePhase(SAMPLE, 1, 'down'))).toEqual(
       parseAgentGraphPhases(SAMPLE),
     )
+  })
+})
+
+describe('operation phases', () => {
+  function readOperationEditOutput(yamlText: string) {
+    const doc = parseDocument(yamlText)
+    const subagents = doc.getIn(['phases', 0, 'subagents'], true)
+    return {
+      phase: parseAgentGraphPhases(yamlText)?.[0],
+      labelField: doc.getIn(['phases', 0, 'label_field']),
+      subagents: isSeq(subagents) ? subagents.toJS(doc) : null,
+    }
+  }
+
+  const yaml = `timeout_minutes: 60
+execution_limits: { max_model_calls: 9 }
+tool_limits: { tool_alpha: 2 }
+tool_models: { tool_alpha: fictional-model-orbit }
+phases:
+  - key: calculate
+    label: 計算
+    model: fictional-model-orbit
+    prompt: sample prompt
+    timeout_minutes: 12
+    input:
+      request:
+        literal: { count: 2 }
+    output: { result: { type: number } }
+`
+
+  it('operation の定義と入力 binding を読み取る', () => {
+    const operationYaml = `phases:
+  - key: calculate
+    label: 計算
+    kind: operation
+    operation: evaluate_saved_code
+    model: null
+    code_id: sample-code
+    input:
+      previous:
+        prior_output: { phase: prepare, pointer: /items, cursor: 3, limit: 25 }
+      source:
+        dataset: { provider: sample-provider, params: { code: DEMO } }
+`
+    expect(parseAgentGraphPhases(operationYaml)).toEqual([
+      {
+        key: 'calculate',
+        label: '計算',
+        forEach: undefined,
+        labelField: undefined,
+        maxParallel: undefined,
+        input: {
+          previous: {
+            prior_output: {
+              phase: 'prepare',
+              pointer: '/items',
+              cursor: 3,
+              limit: 25,
+            },
+          },
+          source: {
+            dataset: { provider: 'sample-provider', params: { code: 'DEMO' } },
+          },
+        },
+        output: {},
+        kind: 'operation',
+        operation: 'evaluate_saved_code',
+        codeId: 'sample-code',
+      },
+    ])
+  })
+
+  it('有効な operation の空 subagents と label_field を編集後も保つ', () => {
+    const operationYaml = `phases:
+  - key: calculate
+    label: 計算
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: sample-code
+    label_field: sample-label
+    subagents: []
+`
+    const updated = setPhaseCodeId(operationYaml, 0, 'updated-code')
+
+    expect(readOperationEditOutput(updated)).toEqual({
+      phase: {
+        key: 'calculate',
+        label: '計算',
+        forEach: undefined,
+        labelField: 'sample-label',
+        maxParallel: undefined,
+        output: {},
+        kind: 'operation',
+        operation: 'evaluate_saved_code',
+        codeId: 'updated-code',
+      },
+      labelField: 'sample-label',
+      subagents: [],
+    })
+  })
+
+  it('LLM から operation に切り替えても共通定義と top-level 設定を保つ', () => {
+    const changed = setPhaseCodeId(
+      setPhaseKind(yaml, 0, 'operation'),
+      0,
+      'sample-code',
+    )
+    const doc = parseDocument(changed)
+    expect(doc.toJS()).toEqual({
+      timeout_minutes: 60,
+      execution_limits: { max_model_calls: 9 },
+      tool_limits: { tool_alpha: 2 },
+      tool_models: { tool_alpha: 'fictional-model-orbit' },
+      phases: [
+        {
+          key: 'calculate',
+          label: '計算',
+          timeout_minutes: 12,
+          input: { request: { literal: { count: 2 } } },
+          output: { result: { type: 'number' } },
+          kind: 'operation',
+          operation: 'evaluate_saved_code',
+          code_id: 'sample-code',
+        },
+      ],
+    })
+  })
+
+  it('入力 binding を更新してもほかの定義を保つ', () => {
+    const operationYaml = setPhaseCodeId(
+      setPhaseKind(yaml, 0, 'operation'),
+      0,
+      'sample-code',
+    )
+    const updated = setPhaseInput(operationYaml, 0, {
+      previous: { prior_output: { phase: 'prepare', pointer: '/items' } },
+    })
+    expect(parseAgentGraphPhases(updated)?.[0]).toEqual({
+      key: 'calculate',
+      label: '計算',
+      forEach: undefined,
+      labelField: undefined,
+      maxParallel: undefined,
+      timeoutMinutes: 12,
+      input: {
+        previous: { prior_output: { phase: 'prepare', pointer: '/items' } },
+      },
+      output: { result: { type: 'number' } },
+      kind: 'operation',
+      operation: 'evaluate_saved_code',
+      codeId: 'sample-code',
+    })
   })
 })

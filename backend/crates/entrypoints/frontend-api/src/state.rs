@@ -32,6 +32,7 @@ use core_application::screener::ScreenerUseCases;
 use core_application::stock_group::StockGroupUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
+use core_application::strategy_execution::StrategyExecutionUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::subagent_definition::SubagentDefinitionUseCases;
@@ -71,6 +72,7 @@ pub struct FrontendApiState {
     pub screener_use_cases: ScreenerUseCases,
     pub subagent_definition_use_cases: SubagentDefinitionUseCases,
     pub strategy_scope_use_cases: Arc<StrategyScopeUseCases>,
+    pub strategy_execution_use_cases: StrategyExecutionUseCases,
     pub strategy_task_use_cases: StrategyTaskUseCases,
     pub strategy_earnings_target_use_cases: StrategyEarningsTargetUseCases,
     pub strategy_use_cases: StrategyUseCases,

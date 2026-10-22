@@ -45,6 +45,7 @@ async function renderTaskView(
   task: TaskRun,
   notes: TaskRunNote[] = [],
   notesState: ComponentProps<typeof TaskRunView>['notesState'] = 'success',
+  additionalProps: Partial<ComponentProps<typeof TaskRunView>> = {},
 ) {
   const rootRoute = createRootRoute({
     component: () => (
@@ -55,6 +56,7 @@ async function renderTaskView(
         configPhases={[]}
         notes={notes}
         notesState={notesState}
+        {...additionalProps}
       />
     ),
   })
@@ -104,6 +106,17 @@ function readNotesOutput() {
       title: link.textContent,
       href: link.getAttribute('href'),
     })),
+  }
+}
+
+function readPayloadPanelOutput(section: HTMLElement) {
+  return {
+    title: section.querySelector('h2')?.textContent,
+    messages: Array.from(section.querySelectorAll('p')).map((paragraph) =>
+      paragraph.textContent.trim(),
+    ),
+    content: section.querySelector('pre')?.textContent ?? null,
+    nextPage: section.querySelector('button')?.textContent ?? null,
   }
 }
 
@@ -180,6 +193,74 @@ describe('TaskRunView', () => {
       count: '0 件',
       emptyMessage: 'この実行で作成・更新されたノートはありません。',
       notes: [],
+    })
+  })
+
+  it('payload page の全件数と表示件数、次ページを区別する', async () => {
+    await renderTaskView(makeTask(), [], 'success', {
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000001',
+        label: 'input: source',
+        pointer: '/records',
+        cursor: 0,
+        limit: 2,
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'sealed',
+          itemCount: 5,
+          incompleteReason: null,
+        },
+        page: {
+          data: [{ value: 'sample-a' }, { value: 'sample-b' }],
+          totalCount: 5,
+          nextCursor: 2,
+        },
+      },
+      onNextPayloadPage: () => {},
+    })
+
+    const section = screen.getByRole('region', { name: '実行 payload' })
+    expect(readPayloadPanelOutput(section)).toEqual({
+      title: 'input: source',
+      messages: [
+        '00000000-0000-4000-8000-000000000001 · pointer /records',
+        '全 5 件 · 表示 2 件',
+      ],
+      content:
+        '[\n  {\n    "value": "sample-a"\n  },\n  {\n    "value": "sample-b"\n  }\n]',
+      nextPage: '次のページを表示',
+    })
+  })
+
+  it('未完了 payload の理由だけを表示し内容を表示しない', async () => {
+    await renderTaskView(makeTask(), [], 'success', {
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000002',
+        label: '出力',
+        pointer: '/value',
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'incomplete',
+          itemCount: 0,
+          incompleteReason: 'capture interrupted',
+        },
+        page: null,
+      },
+    })
+
+    const section = screen.getByRole('region', { name: '実行 payload' })
+    expect(readPayloadPanelOutput(section)).toEqual({
+      title: '出力',
+      messages: [
+        '00000000-0000-4000-8000-000000000002 · pointer /value',
+        'payload は未完了のため内容を表示できません。 capture interrupted',
+      ],
+      content: null,
+      nextPage: null,
     })
   })
 })

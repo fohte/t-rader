@@ -52,6 +52,19 @@ impl StrategyExecutionRepository for PostgresStrategyExecutionRepository {
         .map_err(database_error)
     }
 
+    async fn list_definition_snapshots(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<DefinitionSnapshot>, StrategyExecutionRepositoryError> {
+        let rows = task_execution_definition_snapshot::Entity::find()
+            .filter(task_execution_definition_snapshot::Column::TaskId.eq(task_id))
+            .order_by_asc(task_execution_definition_snapshot::Column::DefinitionKey)
+            .all(&self.db)
+            .await
+            .map_err(database_error)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
     async fn insert_definition_snapshot(
         &self,
         transaction: &UnitOfWorkTransaction,

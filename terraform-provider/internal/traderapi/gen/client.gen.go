@@ -274,6 +274,70 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// ExecutionArtifactsResponse defines model for ExecutionArtifactsResponse.
+type ExecutionArtifactsResponse struct {
+	DefinitionSnapshots []ExecutionDefinitionSnapshotResponse `json:"definition_snapshots"`
+	TaskId              openapi_types.UUID                    `json:"task_id"`
+}
+
+// ExecutionDefinitionSnapshotResponse defines model for ExecutionDefinitionSnapshotResponse.
+type ExecutionDefinitionSnapshotResponse struct {
+	CreatedAt     time.Time          `json:"created_at"`
+	Definition    interface{}        `json:"definition"`
+	DefinitionKey string             `json:"definition_key"`
+	Digest        string             `json:"digest"`
+	TaskId        openapi_types.UUID `json:"task_id"`
+}
+
+// ExecutionPayloadCaptureMetadataResponse defines model for ExecutionPayloadCaptureMetadataResponse.
+type ExecutionPayloadCaptureMetadataResponse struct {
+	CapturedAt       time.Time                `json:"captured_at"`
+	ExpectedCount    nullable.Nullable[int64] `json:"expected_count,omitempty"`
+	MissingCount     nullable.Nullable[int64] `json:"missing_count,omitempty"`
+	ReceivedCount    int64                    `json:"received_count"`
+	UnretrievedCount nullable.Nullable[int64] `json:"unretrieved_count,omitempty"`
+}
+
+// ExecutionPayloadManifestResponse defines model for ExecutionPayloadManifestResponse.
+type ExecutionPayloadManifestResponse struct {
+	ByteCount        int64                                                      `json:"byte_count"`
+	CaptureMetadata  nullable.Nullable[ExecutionPayloadCaptureMetadataResponse] `json:"capture_metadata,omitempty"`
+	ChunkCount       int64                                                      `json:"chunk_count"`
+	CreatedAt        time.Time                                                  `json:"created_at"`
+	Digest           nullable.Nullable[string]                                  `json:"digest,omitempty"`
+	ExecutionStepId  nullable.Nullable[openapi_types.UUID]                      `json:"execution_step_id,omitempty"`
+	Id               openapi_types.UUID                                         `json:"id"`
+	IncompleteReason nullable.Nullable[string]                                  `json:"incomplete_reason,omitempty"`
+	ItemCount        int64                                                      `json:"item_count"`
+	Kind             string                                                     `json:"kind"`
+	RootIsArray      bool                                                       `json:"root_is_array"`
+	Schema           interface{}                                                `json:"schema"`
+	SealedAt         nullable.Nullable[time.Time]                               `json:"sealed_at,omitempty"`
+	Source           string                                                     `json:"source"`
+	SourceLocator    interface{}                                                `json:"source_locator,omitempty"`
+	SourceMetadata   interface{}                                                `json:"source_metadata"`
+	SourceRevision   nullable.Nullable[string]                                  `json:"source_revision,omitempty"`
+	Status           string                                                     `json:"status"`
+	TaskId           openapi_types.UUID                                         `json:"task_id"`
+}
+
+// ExecutionPayloadPageResponse defines model for ExecutionPayloadPageResponse.
+type ExecutionPayloadPageResponse struct {
+	Cursor     int64                    `json:"cursor"`
+	Data       interface{}              `json:"data"`
+	Digest     string                   `json:"digest"`
+	NextCursor nullable.Nullable[int64] `json:"next_cursor,omitempty"`
+	PayloadId  openapi_types.UUID       `json:"payload_id"`
+	Pointer    string                   `json:"pointer"`
+	TotalCount int64                    `json:"total_count"`
+}
+
+// ExecutionPayloadResponse defines model for ExecutionPayloadResponse.
+type ExecutionPayloadResponse struct {
+	Manifest ExecutionPayloadManifestResponse                `json:"manifest"`
+	Page     nullable.Nullable[ExecutionPayloadPageResponse] `json:"page,omitempty"`
+}
+
 // GraphDef defines model for GraphDef.
 type GraphDef struct {
 	Edges  []GraphEdge               `json:"edges"`
@@ -851,6 +915,13 @@ type RemoveStrategyEarningsTargetParams struct {
 type ListStrategyTasksParams struct {
 	ContextKind *StrategyTaskContextKind `form:"context_kind,omitempty" json:"context_kind,omitempty"`
 	ContextId   *string                  `form:"context_id,omitempty" json:"context_id,omitempty"`
+}
+
+// GetTaskExecutionPayloadParams defines parameters for GetTaskExecutionPayload.
+type GetTaskExecutionPayloadParams struct {
+	Pointer *string `form:"pointer,omitempty" json:"pointer,omitempty"`
+	Cursor  *int64  `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit   *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListStrategyTriggersParams defines parameters for ListStrategyTriggers.
@@ -1623,6 +1694,16 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/strategies/{id}/tasks/{task_id} (the `GetStrategyTask` operationId).
 	GetStrategyTask(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTaskExecutionArtifacts task 開始時点で固定した定義を取得する。
+	//
+	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts (the `GetTaskExecutionArtifacts` operationId).
+	GetTaskExecutionArtifacts(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTaskExecutionPayload task に紐づく payload の固定 manifest と有限 page を取得する。
+	//
+	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id} (the `GetTaskExecutionPayload` operationId).
+	GetTaskExecutionPayload(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, payloadId openapi_types.UUID, params *GetTaskExecutionPayloadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListStrategyTaskNotes 戦略タスクが書いたノートを現行バージョンで返す。
 	//
@@ -3267,6 +3348,36 @@ func (c *OpenAPIClient) ListStrategyTasks(ctx context.Context, id openapi_types.
 // Corresponds with GET /api/strategies/{id}/tasks/{task_id} (the `GetStrategyTask` operationId).
 func (c *OpenAPIClient) GetStrategyTask(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetStrategyTaskRequest(c.Server, id, taskId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTaskExecutionArtifacts task 開始時点で固定した定義を取得する。
+//
+// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts (the `GetTaskExecutionArtifacts` operationId).
+func (c *OpenAPIClient) GetTaskExecutionArtifacts(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTaskExecutionArtifactsRequest(c.Server, id, taskId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTaskExecutionPayload task に紐づく payload の固定 manifest と有限 page を取得する。
+//
+// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id} (the `GetTaskExecutionPayload` operationId).
+func (c *OpenAPIClient) GetTaskExecutionPayload(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, payloadId openapi_types.UUID, params *GetTaskExecutionPayloadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTaskExecutionPayloadRequest(c.Server, id, taskId, payloadId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6316,6 +6427,146 @@ func NewGetStrategyTaskRequest(server string, id openapi_types.UUID, taskId open
 	return req, nil
 }
 
+// NewGetTaskExecutionArtifactsRequest constructs an http.Request for the GetTaskExecutionArtifacts method
+func NewGetTaskExecutionArtifactsRequest(server string, id openapi_types.UUID, taskId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "task_id", taskId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/strategies/%s/tasks/%s/execution-artifacts", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTaskExecutionPayloadRequest constructs an http.Request for the GetTaskExecutionPayload method
+func NewGetTaskExecutionPayloadRequest(server string, id openapi_types.UUID, taskId openapi_types.UUID, payloadId openapi_types.UUID, params *GetTaskExecutionPayloadParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "task_id", taskId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "payload_id", payloadId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/strategies/%s/tasks/%s/execution-artifacts/payloads/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Pointer != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "pointer", *params.Pointer, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListStrategyTaskNotesRequest constructs an http.Request for the ListStrategyTaskNotes method
 func NewListStrategyTaskNotesRequest(server string, id openapi_types.UUID, taskId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -7494,6 +7745,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/strategies/{id}/tasks/{task_id} (the `GetStrategyTask` operationId).
 	GetStrategyTaskWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetStrategyTaskResult, error)
+
+	// GetTaskExecutionArtifactsWithResponse task 開始時点で固定した定義を取得する。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts (the `GetTaskExecutionArtifacts` operationId).
+	GetTaskExecutionArtifactsWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetTaskExecutionArtifactsResult, error)
+
+	// GetTaskExecutionPayloadWithResponse task に紐づく payload の固定 manifest と有限 page を取得する。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id} (the `GetTaskExecutionPayload` operationId).
+	GetTaskExecutionPayloadWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, payloadId openapi_types.UUID, params *GetTaskExecutionPayloadParams, reqEditors ...RequestEditorFn) (*GetTaskExecutionPayloadResult, error)
 
 	// ListStrategyTaskNotesWithResponse 戦略タスクが書いたノートを現行バージョンで返す。
 	//
@@ -11997,6 +12262,130 @@ func (r GetStrategyTaskResult) ContentType() string {
 	return ""
 }
 
+type GetTaskExecutionArtifactsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ExecutionArtifactsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTaskExecutionArtifactsResult) GetJSON200() *ExecutionArtifactsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTaskExecutionArtifactsResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTaskExecutionArtifactsResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTaskExecutionArtifactsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTaskExecutionArtifactsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTaskExecutionArtifactsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTaskExecutionArtifactsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTaskExecutionArtifactsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetTaskExecutionPayloadResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ExecutionPayloadResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTaskExecutionPayloadResult) GetJSON200() *ExecutionPayloadResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTaskExecutionPayloadResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTaskExecutionPayloadResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTaskExecutionPayloadResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTaskExecutionPayloadResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTaskExecutionPayloadResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTaskExecutionPayloadResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTaskExecutionPayloadResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListStrategyTaskNotesResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -13977,6 +14366,32 @@ func (c *ClientWithResponses) GetStrategyTaskWithResponse(ctx context.Context, i
 		return nil, err
 	}
 	return ParseGetStrategyTaskResult(rsp)
+}
+
+// GetTaskExecutionArtifactsWithResponse task 開始時点で固定した定義を取得する。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts (the `GetTaskExecutionArtifacts` operationId).
+func (c *ClientWithResponses) GetTaskExecutionArtifactsWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetTaskExecutionArtifactsResult, error) {
+	rsp, err := c.GetTaskExecutionArtifacts(ctx, id, taskId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTaskExecutionArtifactsResult(rsp)
+}
+
+// GetTaskExecutionPayloadWithResponse task に紐づく payload の固定 manifest と有限 page を取得する。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id} (the `GetTaskExecutionPayload` operationId).
+func (c *ClientWithResponses) GetTaskExecutionPayloadWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, payloadId openapi_types.UUID, params *GetTaskExecutionPayloadParams, reqEditors ...RequestEditorFn) (*GetTaskExecutionPayloadResult, error) {
+	rsp, err := c.GetTaskExecutionPayload(ctx, id, taskId, payloadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTaskExecutionPayloadResult(rsp)
 }
 
 // ListStrategyTaskNotesWithResponse 戦略タスクが書いたノートを現行バージョンで返す。
@@ -17516,6 +17931,100 @@ func ParseGetStrategyTaskResult(rsp *http.Response) (*GetStrategyTaskResult, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest StrategyTaskStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTaskExecutionArtifactsResult parses an HTTP response from a GetTaskExecutionArtifactsWithResponse call
+func ParseGetTaskExecutionArtifactsResult(rsp *http.Response) (*GetTaskExecutionArtifactsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTaskExecutionArtifactsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ExecutionArtifactsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTaskExecutionPayloadResult parses an HTTP response from a GetTaskExecutionPayloadWithResponse call
+func ParseGetTaskExecutionPayloadResult(rsp *http.Response) (*GetTaskExecutionPayloadResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTaskExecutionPayloadResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ExecutionPayloadResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

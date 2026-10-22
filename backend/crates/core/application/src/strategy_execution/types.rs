@@ -179,6 +179,12 @@ pub struct PayloadPage {
     pub digest: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecutionPayloadRead {
+    pub manifest: PayloadManifest,
+    pub page: Option<PayloadPage>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadPayloadQuery {
     pub payload_id: Uuid,

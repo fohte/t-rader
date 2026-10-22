@@ -53,6 +53,8 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         ))
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
+        .routes(routes!(strategies::get_task_execution_artifacts))
+        .routes(routes!(strategies::get_task_execution_payload))
         .routes(routes!(strategies::list_strategy_task_notes))
         .routes(routes!(strategies::list_strategy_tasks))
         .routes(routes!(strategy_task_steps::get_strategy_task_step_origin))

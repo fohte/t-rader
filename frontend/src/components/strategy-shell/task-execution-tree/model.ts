@@ -14,14 +14,30 @@ export type AgentGraphOutputSchema = Record<string, unknown>
 export interface AgentGraphPhaseSummary {
   key: string
   label: string
-  model: string
+  kind?: 'llm' | 'operation'
+  operation?: string
+  codeId?: string
+  model: string | null
   forEach?: string
   output?: AgentGraphOutputSchema
+  definition?: Record<string, unknown>
 }
 
 export type PhaseNode =
-  | { kind: 'pending'; key: string; label: string; model: string }
-  | { kind: 'empty'; key: string; label: string; model: string }
+  | {
+      kind: 'pending'
+      key: string
+      label: string
+      model: string | null
+      operation?: string
+    }
+  | {
+      kind: 'empty'
+      key: string
+      label: string
+      model: string | null
+      operation?: string
+    }
   | {
       kind: 'single'
       key: string
@@ -63,8 +79,8 @@ export function readTaskSteps(steps: unknown): TaskStep[] {
   return Array.isArray(steps) ? steps.filter(isTaskStep) : []
 }
 
-// agent_graph の YAML から表示に使う `key`/`label`/`model`/`for_each`/`output` を取り出す。
-// output の構造は解釈しない。パースに失敗した場合は「未設定」と同じ扱い (空配列) にする。
+// agent_graph の YAML から実行順と phase 定義を取り出す。パースに失敗した場合は
+// 「未設定」と同じ扱い (空配列) にする。
 export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
   if (yaml.trim() === '') return []
   const parsed = tryParseYaml(yaml)
@@ -78,19 +94,41 @@ export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
     if (!isRecord(p)) continue
     const { key, label, model, output } = p
     const forEach = p['for_each']
-    if (
-      typeof key === 'string' &&
-      typeof label === 'string' &&
-      typeof model === 'string'
-    ) {
+    if (typeof key !== 'string' || typeof label !== 'string') continue
+    if (p['kind'] === 'operation') {
+      if (
+        p['operation'] !== 'evaluate_saved_code' ||
+        typeof p['code_id'] !== 'string' ||
+        (model !== undefined && model !== null)
+      ) {
+        continue
+      }
       result.push({
         key,
         label,
-        model,
-        ...(typeof forEach === 'string' ? { forEach } : {}),
+        kind: 'operation',
+        operation: 'evaluate_saved_code',
+        codeId: p['code_id'],
+        model: null,
         ...(isRecord(output) ? { output } : {}),
+        definition: p,
       })
+      continue
     }
+    if (
+      (p['kind'] !== undefined && p['kind'] !== 'llm') ||
+      typeof model !== 'string'
+    ) {
+      continue
+    }
+    result.push({
+      key,
+      label,
+      model,
+      ...(typeof forEach === 'string' ? { forEach } : {}),
+      ...(isRecord(output) ? { output } : {}),
+      definition: p,
+    })
   }
   return result
 }
@@ -142,13 +180,19 @@ export function buildPhaseNodes(
           key,
           label: config.label,
           model: config.model,
+          ...(config.operation !== undefined
+            ? { operation: config.operation }
+            : {}),
         }
       }
       return {
         kind: 'pending',
         key,
         label: config?.label ?? key,
-        model: config?.model ?? '',
+        model: config == null ? '' : config.model,
+        ...(config?.operation !== undefined
+          ? { operation: config.operation }
+          : {}),
       }
     }
     const hasItem = phaseSteps.some((s) => s.item !== undefined)
@@ -236,4 +280,83 @@ export function buildTraceUrl(
   return template
     .replace('{trace_id}', encodeURIComponent(traceId))
     .replace('{span_id}', encodeURIComponent(spanId ?? ''))
+}
+
+export interface ExecutionPayloadReference {
+  payloadId: string
+  label: string
+  pointer: string
+  cursor?: number
+  limit?: number
+}
+
+function payloadIdFrom(value: unknown): string | null {
+  if (!isRecord(value)) return null
+  if (typeof value['id'] === 'string') return value['id']
+  for (const key of [
+    'payloadRef',
+    'payload_ref',
+    'output_payload',
+    'payload',
+  ]) {
+    const nested = value[key]
+    if (isRecord(nested) && typeof nested['id'] === 'string') {
+      return nested['id']
+    }
+  }
+  return null
+}
+
+export function listStepPayloadReferences(
+  step: TaskStep,
+): ExecutionPayloadReference[] {
+  const references: ExecutionPayloadReference[] = []
+  if (isRecord(step.input_ref)) {
+    const inputs = step.input_ref['payload_inputs']
+    if (Array.isArray(inputs)) {
+      for (const input of inputs) {
+        if (
+          isRecord(input) &&
+          typeof input['payload_id'] === 'string' &&
+          typeof input['pointer'] === 'string'
+        ) {
+          references.push({
+            payloadId: input['payload_id'],
+            label: `input: ${typeof input['field'] === 'string' ? input['field'] : 'payload'}`,
+            pointer: input['pointer'],
+            ...(typeof input['cursor'] === 'number'
+              ? { cursor: input['cursor'] }
+              : {}),
+            ...(typeof input['limit'] === 'number'
+              ? { limit: input['limit'] }
+              : {}),
+          })
+        }
+      }
+    }
+    const executionInput = payloadIdFrom(step.input_ref['execution_input'])
+    if (executionInput != null) {
+      references.push({
+        payloadId: executionInput,
+        label: '実行入力',
+        pointer: '',
+      })
+    }
+  }
+
+  const outputPayload = payloadIdFrom(step.output_ref)
+  if (outputPayload != null) {
+    const output = isRecord(step.output) ? step.output : undefined
+    const outputRef =
+      output == null ? null : payloadIdFrom(output['payloadRef'])
+    references.push({
+      payloadId: outputPayload,
+      label: '出力',
+      pointer:
+        outputRef === outputPayload && typeof output?.['pointer'] === 'string'
+          ? output['pointer']
+          : '',
+    })
+  }
+  return references
 }

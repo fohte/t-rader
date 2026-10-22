@@ -61,6 +61,55 @@ impl StrategyExecutionUseCases {
         }
     }
 
+    pub async fn list_task_execution_definitions(
+        &self,
+        scope: StrategyScope,
+        task_id: Uuid,
+    ) -> Result<Vec<DefinitionSnapshot>, StrategyExecutionUseCaseError> {
+        self.verify_task_scope(scope, task_id).await?;
+        let snapshots = self.repository.list_definition_snapshots(task_id).await?;
+        for snapshot in &snapshots {
+            verify_definition_digest(snapshot)?;
+        }
+        Ok(snapshots)
+    }
+
+    pub async fn read_task_execution_payload(
+        &self,
+        scope: StrategyScope,
+        task_id: Uuid,
+        query: super::ReadPayloadQuery,
+    ) -> Result<super::ExecutionPayloadRead, StrategyExecutionUseCaseError> {
+        self.verify_task_scope(scope, task_id).await?;
+        let manifest = self
+            .repository
+            .find_payload(task_id, query.payload_id)
+            .await?
+            .ok_or(StrategyExecutionUseCaseError::PayloadNotFound)?;
+        let page = if manifest.status == PayloadStatus::Sealed {
+            Some(self.read_payload_by_task_id(task_id, query).await?)
+        } else {
+            None
+        };
+        Ok(super::ExecutionPayloadRead { manifest, page })
+    }
+
+    async fn verify_task_scope(
+        &self,
+        scope: StrategyScope,
+        task_id: Uuid,
+    ) -> Result<(), StrategyExecutionUseCaseError> {
+        let task = self
+            .task_repository
+            .find_by_id(task_id)
+            .await?
+            .ok_or(StrategyExecutionUseCaseError::TaskNotFound)?;
+        if task.strategy_id != scope.id() {
+            return Err(StrategyExecutionUseCaseError::StrategyMismatch);
+        }
+        Ok(())
+    }
+
     pub async fn authorize_execution(
         &self,
         scope: StrategyScope,

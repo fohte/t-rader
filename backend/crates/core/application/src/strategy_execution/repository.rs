@@ -18,6 +18,11 @@ pub trait StrategyExecutionRepository: Send + Sync {
         definition_key: &str,
     ) -> Result<Option<DefinitionSnapshot>, StrategyExecutionRepositoryError>;
 
+    async fn list_definition_snapshots(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<DefinitionSnapshot>, StrategyExecutionRepositoryError>;
+
     async fn insert_definition_snapshot(
         &self,
         transaction: &UnitOfWorkTransaction,

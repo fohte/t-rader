@@ -30,7 +30,11 @@ interface TaskExecutionTreeProps {
   detailPlacement?: 'inline' | 'external'
   /** 選択行が変わるたびに呼ばれる (選択解除時は null) */
   onSelectStep?: (
-    selection: { step: TaskStep; outputSchema?: AgentGraphOutputSchema } | null,
+    selection: {
+      step: TaskStep
+      outputSchema?: AgentGraphOutputSchema
+      phaseDefinition?: Record<string, unknown>
+    } | null,
   ) => void
 }
 
@@ -55,12 +59,30 @@ interface RenderRow {
   indent: boolean
   last: boolean
   content:
-    | { kind: 'pending'; label: string; model: string }
-    | { kind: 'empty'; label: string; model: string }
-    | { kind: 'step'; step: TaskStep; outputSchema?: AgentGraphOutputSchema }
+    | {
+        kind: 'pending'
+        label: string
+        model: string | null
+        operation?: string
+      }
+    | {
+        kind: 'empty'
+        label: string
+        model: string | null
+        operation?: string
+      }
+    | {
+        kind: 'step'
+        step: TaskStep
+        outputSchema?: AgentGraphOutputSchema
+        phaseDefinition?: Record<string, unknown>
+      }
 }
 
-function toRows(nodes: PhaseNode[]): RenderRow[] {
+function toRows(
+  nodes: PhaseNode[],
+  configPhases: AgentGraphPhaseSummary[],
+): RenderRow[] {
   const rows: RenderRow[] = []
   nodes.forEach((node, groupIndex) => {
     const connectorBefore = groupIndex > 0
@@ -70,9 +92,19 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
         connectorBefore,
         indent: false,
         last: false,
-        content: { kind: node.kind, label: node.label, model: node.model },
+        content: {
+          kind: node.kind,
+          label: node.label,
+          model: node.model,
+          ...(node.operation !== undefined
+            ? { operation: node.operation }
+            : {}),
+        },
       })
     } else if (node.kind === 'single') {
+      const phaseDefinition = configPhases.find(
+        (phase) => phase.key === node.step.phase_key,
+      )?.definition
       rows.push({
         key: node.key,
         connectorBefore,
@@ -82,16 +114,25 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
           kind: 'step',
           step: node.step,
           outputSchema: node.outputSchema,
+          ...(phaseDefinition !== undefined ? { phaseDefinition } : {}),
         },
       })
     } else {
       node.branches.forEach((step, i) => {
+        const phaseDefinition = configPhases.find(
+          (phase) => phase.key === step.phase_key,
+        )?.definition
         rows.push({
           key: `${node.key}:${String(i)}`,
           connectorBefore: connectorBefore && i === 0,
           indent: true,
           last: i === node.branches.length - 1,
-          content: { kind: 'step', step, outputSchema: node.outputSchema },
+          content: {
+            kind: 'step',
+            step,
+            outputSchema: node.outputSchema,
+            ...(phaseDefinition !== undefined ? { phaseDefinition } : {}),
+          },
         })
       })
     }
@@ -110,7 +151,10 @@ export function TaskExecutionTree({
   detailPlacement = 'inline',
   onSelectStep,
 }: TaskExecutionTreeProps): React.ReactElement | null {
-  const rows = toRows(buildPhaseNodes(configPhases, steps, taskCompleted))
+  const rows = toRows(
+    buildPhaseNodes(configPhases, steps, taskCompleted),
+    configPhases,
+  )
   const [selectedKey, setSelectedKey] = useState<string | null>(() => {
     return (
       rows.find(
@@ -133,7 +177,13 @@ export function TaskExecutionTree({
     const row = rows.find((r) => r.key === selectedKey)
     onSelectStep(
       row?.content.kind === 'step'
-        ? { step: row.content.step, outputSchema: row.content.outputSchema }
+        ? {
+            step: row.content.step,
+            outputSchema: row.content.outputSchema,
+            ...(row.content.phaseDefinition !== undefined
+              ? { phaseDefinition: row.content.phaseDefinition }
+              : {}),
+          }
         : null,
     )
   }, [steps, configPhases, selectedKey, onSelectStep])
@@ -167,6 +217,7 @@ export function TaskExecutionTree({
                 <StepDetail
                   step={row.content.step}
                   outputSchema={row.content.outputSchema}
+                  phaseDefinition={row.content.phaseDefinition}
                   traceUrlTemplate={traceUrlTemplate}
                 />
               )}
@@ -194,7 +245,7 @@ function TreeRow({
         <span>{prefix}○</span>
         <span className="flex-1 truncate">{row.content.label}</span>
         <span className="text-2xs text-muted-foreground">
-          {row.content.model}
+          {row.content.operation ?? row.content.model ?? '—'}
         </span>
         <span className="text-2xs">対象なし</span>
       </div>
@@ -206,7 +257,9 @@ function TreeRow({
       <div className="flex items-baseline gap-2 py-1 text-muted-foreground">
         <span>{prefix}○</span>
         <span className="flex-1 truncate">{row.content.label}</span>
-        <span className="text-2xs">{row.content.model}</span>
+        <span className="text-2xs">
+          {row.content.operation ?? row.content.model ?? '—'}
+        </span>
         <span className="text-2xs">待機</span>
       </div>
     )
@@ -238,7 +291,9 @@ function TreeRow({
           {prefix}●
         </span>
         <span className="flex-1 truncate">{label}</span>
-        <span className="text-2xs text-muted-foreground">{step.model}</span>
+        <span className="text-2xs text-muted-foreground">
+          {step.kind === 'operation' ? 'operation' : (step.model ?? '—')}
+        </span>
         <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
           {badgeText}
         </span>
