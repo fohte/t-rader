@@ -219,11 +219,11 @@ async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
             definition_key: Set("task_start".into()),
             definition: Set(definition.clone()),
             digest: Set(digest.into()),
-            created_at: Set(Utc::now().fixed_offset()),
+            ..Default::default()
         }
-        .insert(&db)
+        .update(&db)
         .await
-        .expect("insert synthetic definition snapshot");
+        .expect("update synthetic definition snapshot");
     }
 
     let server = tests_common::build_server(db);
