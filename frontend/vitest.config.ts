@@ -6,8 +6,8 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig, mergeConfig } from 'vitest/config'
 
+import { tapLinkOnTouch } from './src/vitest/browser-commands.test-helper'
 import viteConfig from './vite.config'
-import { tapLinkOnTouch } from './vitest/browser-commands'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
