@@ -67,6 +67,7 @@ pub fn build_http_state(
         screener_use_cases: use_cases.screener(),
         subagent_definition_use_cases: use_cases.subagent_definitions(),
         strategy_scope_use_cases: Arc::new(use_cases.strategy_scope()),
+        strategy_execution_use_cases: use_cases.strategy_executions(),
         strategy_task_use_cases: use_cases.strategy_tasks(),
         strategy_earnings_target_use_cases: use_cases.strategy_earnings_targets(),
         strategy_use_cases: use_cases.strategies(),

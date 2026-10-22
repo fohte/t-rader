@@ -17,7 +17,7 @@ use crate::{
     },
     strategy_execution::{
         AuthorizedExecution, DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk,
-        PayloadManifest, PayloadSeal, SharedStrategyExecutionRepository,
+        PayloadManifest, PayloadManifestCursor, PayloadSeal, SharedStrategyExecutionRepository,
         StrategyExecutionRepository, StrategyExecutionRepositoryError,
     },
     unit_of_work::FakeUnitOfWork,
@@ -332,6 +332,17 @@ impl StrategyExecutionRepository for SnapshotRepository {
         )
     }
 
+    async fn list_definition_snapshots(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<DefinitionSnapshot>, StrategyExecutionRepositoryError> {
+        Ok(if task_id == self.snapshot.task_id {
+            vec![self.snapshot.clone()]
+        } else {
+            Vec::new()
+        })
+    }
+
     async fn insert_definition_snapshot(
         &self,
         _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
@@ -408,6 +419,22 @@ impl StrategyExecutionRepository for SnapshotRepository {
         _task_id: Uuid,
         _payload_id: Uuid,
     ) -> Result<Option<PayloadManifest>, StrategyExecutionRepositoryError> {
+        Err(unexpected_repository_call())
+    }
+
+    async fn count_payload_manifests(
+        &self,
+        _task_id: Uuid,
+    ) -> Result<u64, StrategyExecutionRepositoryError> {
+        Err(unexpected_repository_call())
+    }
+
+    async fn list_payload_manifests(
+        &self,
+        _task_id: Uuid,
+        _cursor: Option<PayloadManifestCursor>,
+        _limit: usize,
+    ) -> Result<Vec<PayloadManifest>, StrategyExecutionRepositoryError> {
         Err(unexpected_repository_call())
     }
 

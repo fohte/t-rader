@@ -26,6 +26,7 @@ const BETA: AgentGraphPhaseForm = {
 
 const NOOP_HANDLERS = {
   onLabelChange: () => {},
+  onKindChange: () => {},
   onMoveUp: () => {},
   onMoveDown: () => {},
   onRemove: () => {},

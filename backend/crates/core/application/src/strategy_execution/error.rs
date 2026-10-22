@@ -68,6 +68,8 @@ pub enum StrategyExecutionUseCaseError {
     InvalidPayloadPointer,
     #[error("payload page limit is invalid")]
     InvalidPageLimit,
+    #[error("payload manifest page limit is invalid")]
+    InvalidPayloadManifestPageLimit,
     #[error("payload page exceeds the response byte limit")]
     PayloadPageTooLarge,
     #[error("payload source revision changed between pages")]

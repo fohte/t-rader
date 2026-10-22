@@ -1,5 +1,6 @@
 import { Button } from '@fohte/ui/button'
 import { Checkbox } from '@fohte/ui/checkbox'
+import { Input } from '@fohte/ui/input'
 import type { RefObject } from 'react'
 
 import {
@@ -9,13 +10,17 @@ import {
   parseAgentGraphPhases,
   removePhase,
   setPhaseArrayField,
+  setPhaseCodeId,
   setPhaseField,
   setPhaseForEach,
+  setPhaseInput,
+  setPhaseKind,
   setPhaseLabelField,
   setPhaseMaxParallel,
   setPhaseOutput,
 } from '#components/strategy-settings/agent-graph/document'
 import { ForEachField } from '#components/strategy-settings/agent-graph/fields/for-each-field'
+import { InputBindingsField } from '#components/strategy-settings/agent-graph/fields/input-bindings-field'
 import { LabelFieldField } from '#components/strategy-settings/agent-graph/fields/label-field-field'
 import { MaxParallelField } from '#components/strategy-settings/agent-graph/fields/max-parallel-field'
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
@@ -110,6 +115,9 @@ export function AgentGraphForm({
               onLabelChange={(next) => {
                 onChange(setPhaseField(value, i, 'label', next))
               }}
+              onKindChange={(next) => {
+                onChange(setPhaseKind(value, i, next))
+              }}
               onMoveUp={() => {
                 onChange(movePhase(value, i, 'up'))
               }}
@@ -120,64 +128,88 @@ export function AgentGraphForm({
                 onChange(removePhase(value, i))
               }}
             >
-              <ModelField
-                value={phase.model}
-                onChange={(next) => {
-                  onChange(setPhaseField(value, i, 'model', next))
-                }}
-                models={models}
-              />
-              <ForEachField
-                phases={phases}
-                index={i}
-                value={phase.forEach}
-                onChange={(next) => {
-                  let updated = setPhaseForEach(value, i, next)
-                  // 参照先の配列が変わると items の形も変わるので、旧参照先の
-                  // property 名が残った label_field は無効な値になりうる
-                  if (next != null && next !== phase.forEach) {
-                    updated = setPhaseLabelField(updated, i, undefined)
-                  }
-                  onChange(updated)
-                }}
-              />
-              {phase.forEach != null && (
+              {phase.kind === 'operation' ? (
                 <>
-                  <LabelFieldField
-                    phases={phases}
-                    forEach={phase.forEach}
-                    value={phase.labelField}
-                    onChange={(next) => {
-                      onChange(setPhaseLabelField(value, i, next))
-                    }}
-                  />
-                  <MaxParallelField
-                    value={phase.maxParallel}
-                    onChange={(next) => {
-                      onChange(setPhaseMaxParallel(value, i, next))
+                  <label className="text-xs text-muted-foreground-strong">
+                    保存コード ID
+                  </label>
+                  <Input
+                    aria-label="保存コード ID"
+                    className="w-full max-w-sm"
+                    value={phase.codeId}
+                    onChange={(event) => {
+                      onChange(setPhaseCodeId(value, i, event.target.value))
                     }}
                   />
                 </>
+              ) : (
+                <>
+                  <ModelField
+                    value={phase.model}
+                    onChange={(next) => {
+                      onChange(setPhaseField(value, i, 'model', next))
+                    }}
+                    models={models}
+                  />
+                  <ForEachField
+                    phases={phases}
+                    index={i}
+                    value={phase.forEach}
+                    onChange={(next) => {
+                      let updated = setPhaseForEach(value, i, next)
+                      // 参照先の配列が変わると items の形も変わるので、旧参照先の
+                      // property 名が残った label_field は無効な値になりうる
+                      if (next != null && next !== phase.forEach) {
+                        updated = setPhaseLabelField(updated, i, undefined)
+                      }
+                      onChange(updated)
+                    }}
+                  />
+                  {phase.forEach != null && (
+                    <>
+                      <LabelFieldField
+                        phases={phases}
+                        forEach={phase.forEach}
+                        value={phase.labelField}
+                        onChange={(next) => {
+                          onChange(setPhaseLabelField(value, i, next))
+                        }}
+                      />
+                      <MaxParallelField
+                        value={phase.maxParallel}
+                        onChange={(next) => {
+                          onChange(setPhaseMaxParallel(value, i, next))
+                        }}
+                      />
+                    </>
+                  )}
+                  <PromptField
+                    value={phase.prompt}
+                    onChange={(next) => {
+                      onChange(setPhaseField(value, i, 'prompt', next))
+                    }}
+                  />
+                  <ToolsField
+                    value={phase.tools}
+                    onChange={(next) => {
+                      onChange(setPhaseArrayField(value, i, 'tools', next))
+                    }}
+                    options={tools}
+                  />
+                  <SkillsField
+                    value={phase.skills}
+                    onChange={(next) => {
+                      onChange(setPhaseArrayField(value, i, 'skills', next))
+                    }}
+                    options={skillNames}
+                  />
+                </>
               )}
-              <PromptField
-                value={phase.prompt}
+              <InputBindingsField
+                value={phase.input}
                 onChange={(next) => {
-                  onChange(setPhaseField(value, i, 'prompt', next))
+                  onChange(setPhaseInput(value, i, next))
                 }}
-              />
-              <ToolsField
-                value={phase.tools}
-                onChange={(next) => {
-                  onChange(setPhaseArrayField(value, i, 'tools', next))
-                }}
-                options={tools}
-              />
-              <SkillsField
-                value={phase.skills}
-                onChange={(next) => {
-                  onChange(setPhaseArrayField(value, i, 'skills', next))
-                }}
-                options={skillNames}
               />
               <OutputField
                 value={phase.output}

@@ -16,6 +16,9 @@ pub const MAX_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_PAYLOAD_CHUNK_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_PAYLOAD_PAGE_BYTES: usize = 1024 * 1024;
 pub const MAX_PAYLOAD_PAGE_ITEMS: usize = 1_000;
+pub const DEFAULT_PAYLOAD_PAGE_ITEMS: usize = 100;
+pub const MAX_PAYLOAD_MANIFEST_PAGE_ITEMS: usize = 100;
+pub const DEFAULT_PAYLOAD_MANIFEST_PAGE_ITEMS: usize = 50;
 pub const MAX_DATASET_PAGE_SIZE: usize = 1_000;
 pub const MAX_PAYLOAD_PAGES: usize = 10_000;
 
@@ -115,6 +118,40 @@ pub struct PayloadManifest {
     pub sealed_at: Option<DateTime<FixedOffset>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PayloadManifestCursor {
+    pub created_at: DateTime<FixedOffset>,
+    pub id: Uuid,
+}
+
+impl PayloadManifestCursor {
+    pub fn from_token(token: &str) -> Option<Self> {
+        let (created_at, id) = token.split_once('|')?;
+        Some(Self {
+            created_at: DateTime::parse_from_rfc3339(created_at).ok()?,
+            id: Uuid::parse_str(id).ok()?,
+        })
+    }
+
+    pub fn to_token(&self) -> String {
+        format!("{}|{}", self.created_at.to_rfc3339(), self.id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayloadManifestPage {
+    pub cursor: Option<PayloadManifestCursor>,
+    pub next_cursor: Option<PayloadManifestCursor>,
+    pub total_count: u64,
+    pub manifests: Vec<PayloadManifest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListPayloadManifestsQuery {
+    pub cursor: Option<PayloadManifestCursor>,
+    pub limit: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PayloadCaptureMetadata {
     pub captured_at: DateTime<FixedOffset>,
@@ -177,6 +214,12 @@ pub struct PayloadPage {
     pub next_cursor: Option<u64>,
     pub total_count: u64,
     pub digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecutionPayloadRead {
+    pub manifest: PayloadManifest,
+    pub page: Option<PayloadPage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

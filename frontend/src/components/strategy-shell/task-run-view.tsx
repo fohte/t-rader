@@ -3,16 +3,30 @@ import { useState } from 'react'
 
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
 import {
+  ExecutionPayloadManifestList,
+  type ExecutionPayloadManifestPageState,
+  type ExecutionPayloadManifestSummary,
+} from '#components/strategy-shell/execution-payload-manifest-list'
+import {
   type AgentGraphOutputSchema,
   type AgentGraphPhaseSummary,
+  type ExecutionPayloadReference,
   StepDetail,
   TaskExecutionTree,
   type TaskStep,
 } from '#components/strategy-shell/task-execution-tree'
 import {
+  type TaskRunDefinitionSnapshot,
+  TaskRunDefinitionSnapshotPanel,
+} from '#components/strategy-shell/task-run-definition-snapshot-panel'
+import {
   TaskRunNotes,
   type TaskRunNotesState,
 } from '#components/strategy-shell/task-run-notes'
+import {
+  TaskRunPayloadPanel,
+  type TaskRunPayloadRead,
+} from '#components/strategy-shell/task-run-payload-panel'
 import { Skeleton } from '#components/ui/skeleton'
 
 export interface TaskRunViewProps {
@@ -31,6 +45,16 @@ export interface TaskRunViewProps {
   notes: { id: string; title: string }[]
   notesState: TaskRunNotesState
   traceUrlTemplate?: string
+  definitionSnapshots?: TaskRunDefinitionSnapshot[]
+  definitionSnapshotsState?: 'loading' | 'error' | 'ready'
+  selectedPayload?: ExecutionPayloadReference | null
+  payloadRead?: TaskRunPayloadRead
+  onSelectPayload?: (reference: ExecutionPayloadReference) => void
+  onNextPayloadPage?: (cursor: number) => void
+  executionPayloadManifests?: ExecutionPayloadManifestPageState
+  onSelectPayloadManifest?: (manifest: ExecutionPayloadManifestSummary) => void
+  onPreviousPayloadManifestPage?: () => void
+  onNextPayloadManifestPage?: (cursor: string) => void
   /** task の取得に失敗したか (`task` が null の間、ロード中との表示を出し分けるために使う) */
   taskLoadError?: boolean
 }
@@ -88,11 +112,22 @@ export function TaskRunView({
   notes,
   notesState,
   traceUrlTemplate,
+  definitionSnapshots = [],
+  definitionSnapshotsState,
+  selectedPayload = null,
+  payloadRead,
+  onSelectPayload,
+  onNextPayloadPage,
+  executionPayloadManifests,
+  onSelectPayloadManifest,
+  onPreviousPayloadManifestPage,
+  onNextPayloadManifestPage,
   taskLoadError = false,
 }: TaskRunViewProps): React.ReactElement {
   const [selectedStep, setSelectedStep] = useState<{
     step: TaskStep
     outputSchema?: AgentGraphOutputSchema
+    phaseDefinition?: Record<string, unknown>
   } | null>(null)
 
   return (
@@ -159,6 +194,13 @@ export function TaskRunView({
 
           <TaskRunNotes notes={notes} state={notesState} />
 
+          {definitionSnapshotsState != null && (
+            <TaskRunDefinitionSnapshotPanel
+              snapshots={definitionSnapshots}
+              state={definitionSnapshotsState}
+            />
+          )}
+
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-task-run)">
             <div className="border border-border bg-card p-4">
               {steps.length === 0 ? (
@@ -181,12 +223,31 @@ export function TaskRunView({
                 <StepDetail
                   step={selectedStep.step}
                   outputSchema={selectedStep.outputSchema}
+                  phaseDefinition={selectedStep.phaseDefinition}
                   traceUrlTemplate={traceUrlTemplate}
+                  onSelectPayload={onSelectPayload}
                 />
               ) : (
                 <p className="font-mono text-xs text-muted-foreground">
                   ステップを選択してください。
                 </p>
+              )}
+              {selectedPayload != null && (
+                <TaskRunPayloadPanel
+                  key={`${selectedPayload.payloadId}:${selectedPayload.pointer}`}
+                  reference={selectedPayload}
+                  payloadRead={payloadRead}
+                  onSelectPayload={onSelectPayload}
+                  onNextPayloadPage={onNextPayloadPage}
+                />
+              )}
+              {executionPayloadManifests != null && (
+                <ExecutionPayloadManifestList
+                  state={executionPayloadManifests}
+                  onSelectManifest={onSelectPayloadManifest}
+                  onPreviousPage={onPreviousPayloadManifestPage}
+                  onNextPage={onNextPayloadManifestPage}
+                />
               )}
             </aside>
           </div>

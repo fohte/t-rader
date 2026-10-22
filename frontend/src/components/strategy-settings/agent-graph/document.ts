@@ -8,6 +8,7 @@ import {
 } from 'yaml'
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
+import { isSavedCodeOperationPhase } from '#lib/agent-graph-phase'
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -26,36 +27,74 @@ function toOptionalStringArray(v: unknown): string[] | undefined {
 
 function toPhaseForm(v: unknown): AgentGraphPhaseForm | null {
   if (!isRecord(v)) return null
-  const { key, label, model, prompt } = v
+  const { key, label } = v
+  if (typeof key !== 'string' || typeof label !== 'string') return null
+  const common = {
+    key,
+    label,
+    forEach: typeof v['for_each'] === 'string' ? v['for_each'] : undefined,
+    labelField:
+      typeof v['label_field'] === 'string' ? v['label_field'] : undefined,
+    maxParallel:
+      typeof v['max_parallel'] === 'number' ? v['max_parallel'] : undefined,
+    ...(typeof v['timeout_minutes'] === 'number'
+      ? { timeoutMinutes: v['timeout_minutes'] }
+      : {}),
+    ...(isRecord(v['input']) ? { input: v['input'] } : {}),
+    output: isRecord(v['output']) ? v['output'] : {},
+  }
+  if (v['kind'] === 'operation') {
+    if (
+      !isSavedCodeOperationPhase(v) ||
+      v['prompt'] !== undefined ||
+      [
+        'for_each',
+        'max_parallel',
+        'reasoning_effort',
+        'skills',
+        'tools',
+        'max_subagent_runs',
+      ].some((field) => v[field] !== undefined) ||
+      (v['subagents'] !== undefined &&
+        (!isStringArray(v['subagents']) || v['subagents'].length > 0)) ||
+      (v['label_field'] !== undefined && typeof v['label_field'] !== 'string')
+    ) {
+      return null
+    }
+    return {
+      ...common,
+      kind: 'operation',
+      operation: 'evaluate_saved_code',
+      codeId: v['code_id'],
+    }
+  }
+  const { model, prompt } = v
   if (
-    typeof key !== 'string' ||
-    typeof label !== 'string' ||
+    (v['kind'] !== undefined && v['kind'] !== 'llm') ||
     typeof model !== 'string' ||
     typeof prompt !== 'string'
   ) {
     return null
   }
   return {
-    key,
-    label,
+    ...common,
+    ...(v['kind'] === 'llm' ? { kind: 'llm' as const } : {}),
     model,
     prompt,
-    forEach: typeof v['for_each'] === 'string' ? v['for_each'] : undefined,
-    labelField:
-      typeof v['label_field'] === 'string' ? v['label_field'] : undefined,
-    maxParallel:
-      typeof v['max_parallel'] === 'number' ? v['max_parallel'] : undefined,
+    reasoningEffort:
+      typeof v['reasoning_effort'] === 'string'
+        ? v['reasoning_effort']
+        : undefined,
     skills: isStringArray(v['skills']) ? v['skills'] : [],
     tools: toOptionalStringArray(v['tools']),
-    output: isRecord(v['output']) ? v['output'] : {},
   }
 }
 
 /**
  * agent_graph の YAML から編集対象のフェーズ一覧を取り出す。
  * 構文エラー、`phases` がトップレベルに存在し配列であることを満たさない場合、または
- * 各フェーズが key/label/model/prompt を string で持たない (フォームで扱えない形の)
- * 場合は null を返す。呼び出し側はこれを「フォーム表示不可、YAML ビューにフォールバック」
+ * 各フェーズがフォームで扱えない形の場合は null を返す。呼び出し側はこれを
+ * 「フォーム表示不可、YAML ビューにフォールバック」
  * の合図として使う。
  *
  * 空文字列 (フェーズ分割 off) は空配列を返す。
@@ -124,6 +163,65 @@ export function setPhaseField(
 ): string {
   return withDocument(yamlText, (doc, seq) => {
     setStringField(doc, seq.items[index], field, value)
+  })
+}
+
+export function setPhaseKind(
+  yamlText: string,
+  index: number,
+  kind: 'llm' | 'operation',
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    const map = seq.items[index]
+    if (!isMap(map)) return
+    if (kind === 'operation') {
+      for (const field of [
+        'model',
+        'prompt',
+        'reasoning_effort',
+        'skills',
+        'tools',
+        'subagents',
+        'max_subagent_runs',
+        'max_parallel',
+        'for_each',
+        'label_field',
+      ]) {
+        map.delete(field)
+      }
+      map.set('kind', 'operation')
+      map.set('operation', 'evaluate_saved_code')
+      setStringField(doc, map, 'code_id', '')
+      return
+    }
+    map.delete('operation')
+    map.delete('code_id')
+    map.set('kind', 'llm')
+    setStringField(doc, map, 'model', '')
+    setStringField(doc, map, 'prompt', '')
+    map.set('skills', doc.createNode([]))
+  })
+}
+
+export function setPhaseCodeId(
+  yamlText: string,
+  index: number,
+  codeId: string,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    setStringField(doc, seq.items[index], 'code_id', codeId)
+  })
+}
+
+export function setPhaseInput(
+  yamlText: string,
+  index: number,
+  input: Record<string, unknown>,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    const map = seq.items[index]
+    if (!isMap(map)) return
+    map.set('input', doc.createNode(input))
   })
 }
 

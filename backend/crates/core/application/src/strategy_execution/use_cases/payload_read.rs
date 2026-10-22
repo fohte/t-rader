@@ -15,23 +15,43 @@ impl StrategyExecutionUseCases {
         access: &AuthorizedExecution,
         query: ReadPayloadQuery,
     ) -> Result<PayloadPage, StrategyExecutionUseCaseError> {
-        if !(1..=MAX_PAYLOAD_PAGE_ITEMS).contains(&query.limit) {
-            return Err(StrategyExecutionUseCaseError::InvalidPageLimit);
-        }
+        self.read_payload_by_task_id(access.task_id, query).await
+    }
+
+    pub(super) async fn read_payload_by_task_id(
+        &self,
+        task_id: Uuid,
+        query: ReadPayloadQuery,
+    ) -> Result<PayloadPage, StrategyExecutionUseCaseError> {
+        validate_page_limit(query.limit)?;
         let manifest = self
             .repository
-            .find_payload(access.task_id, query.payload_id)
+            .find_payload(task_id, query.payload_id)
             .await?
             .ok_or(StrategyExecutionUseCaseError::PayloadNotFound)?;
         if manifest.status != PayloadStatus::Sealed {
             return Err(StrategyExecutionUseCaseError::PayloadNotSealed);
         }
+        self.read_sealed_payload_page(task_id, &manifest, query)
+            .await
+    }
+
+    // Use the already fetched manifest so the page and its digest use the same sealed record.
+    pub(super) async fn read_sealed_payload_page(
+        &self,
+        task_id: Uuid,
+        manifest: &PayloadManifest,
+        query: ReadPayloadQuery,
+    ) -> Result<PayloadPage, StrategyExecutionUseCaseError> {
+        if manifest.id != query.payload_id {
+            return Err(StrategyExecutionUseCaseError::PayloadNotFound);
+        }
         let (data, next_cursor, total_count) = if manifest.root_is_array {
             if query.pointer.is_empty() {
                 read_array_page(
                     self.repository.as_ref(),
-                    access.task_id,
-                    &manifest,
+                    task_id,
+                    manifest,
                     query.cursor,
                     query.limit,
                 )
@@ -43,7 +63,7 @@ impl StrategyExecutionUseCases {
                 }
                 let chunks = self
                     .repository
-                    .list_payload_chunks_for_range(access.task_id, query.payload_id, root_index, 1)
+                    .list_payload_chunks_for_range(task_id, query.payload_id, root_index, 1)
                     .await?;
                 let items = array_items_in_range(&chunks, root_index, 1)?;
                 let root_item = items
@@ -63,9 +83,9 @@ impl StrategyExecutionUseCases {
         } else {
             let chunks = self
                 .repository
-                .list_payload_chunks(access.task_id, query.payload_id)
+                .list_payload_chunks(task_id, query.payload_id)
                 .await?;
-            let root = assemble_payload(&manifest, &chunks)?;
+            let root = assemble_payload(manifest, &chunks)?;
             let selected = if query.pointer.is_empty() {
                 root
             } else {
@@ -91,9 +111,17 @@ impl StrategyExecutionUseCases {
             total_count,
             digest: manifest
                 .digest
+                .clone()
                 .ok_or(StrategyExecutionUseCaseError::PayloadNotSealed)?,
         })
     }
+}
+
+pub(super) fn validate_page_limit(limit: usize) -> Result<(), StrategyExecutionUseCaseError> {
+    if !(1..=MAX_PAYLOAD_PAGE_ITEMS).contains(&limit) {
+        return Err(StrategyExecutionUseCaseError::InvalidPageLimit);
+    }
+    Ok(())
 }
 
 async fn read_array_page(

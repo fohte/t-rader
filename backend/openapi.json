@@ -7957,6 +7957,282 @@
         }
       }
     },
+    "/api/strategies/{id}/tasks/{task_id}/execution-artifacts": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "task 開始時点で固定した定義を取得する。",
+        "operationId": "get_task_execution_artifacts",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionArtifactsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "task に属する payload manifest の live 一覧を有限ページで取得する。",
+        "description": "total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。",
+        "operationId": "list_task_execution_payload_manifests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPayloadManifestPageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスまたは page パラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "task に紐づく payload の固定 manifest と有限 page を取得する。",
+        "operationId": "get_task_execution_payload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "payload_id",
+            "in": "path",
+            "description": "payload ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pointer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPayloadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスまたは page パラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/tasks/{task_id}/notes": {
       "get": {
         "tags": [
@@ -10967,6 +11243,298 @@
           "error": {
             "type": "string",
             "description": "エラーメッセージ"
+          }
+        }
+      },
+      "ExecutionArtifactsResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "definition_snapshots"
+        ],
+        "properties": {
+          "definition_snapshots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionDefinitionSnapshotResponse"
+            }
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ExecutionDefinitionSnapshotResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "definition_key",
+          "definition",
+          "digest",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "definition": {},
+          "definition_key": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ExecutionPayloadCaptureMetadataResponse": {
+        "type": "object",
+        "required": [
+          "captured_at",
+          "received_count"
+        ],
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expected_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "missing_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "received_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unretrieved_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionPayloadManifestPageResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "total_count",
+          "items"
+        ],
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionPayloadManifestResponse"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionPayloadManifestResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "kind",
+          "source",
+          "source_metadata",
+          "schema",
+          "root_is_array",
+          "chunk_count",
+          "item_count",
+          "byte_count",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "byte_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "capture_metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPayloadCaptureMetadataResponse"
+              }
+            ]
+          },
+          "chunk_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_step_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "incomplete_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "root_is_array": {
+            "type": "boolean"
+          },
+          "schema": {},
+          "sealed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_locator": {},
+          "source_metadata": {},
+          "source_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ExecutionPayloadPageResponse": {
+        "type": "object",
+        "required": [
+          "payload_id",
+          "pointer",
+          "data",
+          "cursor",
+          "total_count",
+          "digest"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "data": {},
+          "digest": {
+            "type": "string"
+          },
+          "next_cursor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "payload_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pointer": {
+            "type": "string"
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionPayloadResponse": {
+        "type": "object",
+        "required": [
+          "manifest"
+        ],
+        "properties": {
+          "manifest": {
+            "$ref": "#/components/schemas/ExecutionPayloadManifestResponse"
+          },
+          "page": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPayloadPageResponse"
+              }
+            ]
           }
         }
       },

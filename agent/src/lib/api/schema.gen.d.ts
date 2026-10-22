@@ -1430,6 +1430,60 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/tasks/{task_id}/execution-artifacts': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** task 開始時点で固定した定義を取得する。 */
+    get: operations['get_task_execution_artifacts']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * task に属する payload manifest の live 一覧を有限ページで取得する。
+     * @description total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
+     */
+    get: operations['list_task_execution_payload_manifests']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** task に紐づく payload の固定 manifest と有限 page を取得する。 */
+    get: operations['get_task_execution_payload']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/tasks/{task_id}/notes': {
     parameters: {
       query?: never
@@ -2073,6 +2127,91 @@ export interface components {
     ErrorResponse: {
       /** @description エラーメッセージ */
       error: string
+    }
+    ExecutionArtifactsResponse: {
+      definition_snapshots: components['schemas']['ExecutionDefinitionSnapshotResponse'][]
+      /** Format: uuid */
+      task_id: string
+    }
+    ExecutionDefinitionSnapshotResponse: {
+      /** Format: date-time */
+      created_at: string
+      definition: unknown
+      definition_key: string
+      digest: string
+      /** Format: uuid */
+      task_id: string
+    }
+    ExecutionPayloadCaptureMetadataResponse: {
+      /** Format: date-time */
+      captured_at: string
+      /** Format: int64 */
+      expected_count?: number | null
+      /** Format: int64 */
+      missing_count?: number | null
+      /** Format: int64 */
+      received_count: number
+      /** Format: int64 */
+      unretrieved_count?: number | null
+    }
+    ExecutionPayloadManifestPageResponse: {
+      cursor?: string | null
+      items: components['schemas']['ExecutionPayloadManifestResponse'][]
+      next_cursor?: string | null
+      /** Format: uuid */
+      task_id: string
+      /**
+       * Format: int64
+       * @description 取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
+       */
+      total_count: number
+    }
+    ExecutionPayloadManifestResponse: {
+      /** Format: int64 */
+      byte_count: number
+      capture_metadata?:
+        null | components['schemas']['ExecutionPayloadCaptureMetadataResponse']
+      /** Format: int64 */
+      chunk_count: number
+      /** Format: date-time */
+      created_at: string
+      digest?: string | null
+      /** Format: uuid */
+      execution_step_id?: string | null
+      /** Format: uuid */
+      id: string
+      incomplete_reason?: string | null
+      /** Format: int64 */
+      item_count: number
+      kind: string
+      root_is_array: boolean
+      schema: unknown
+      /** Format: date-time */
+      sealed_at?: string | null
+      source: string
+      source_locator?: unknown
+      source_metadata: unknown
+      source_revision?: string | null
+      status: string
+      /** Format: uuid */
+      task_id: string
+    }
+    ExecutionPayloadPageResponse: {
+      /** Format: int64 */
+      cursor: number
+      data: unknown
+      digest: string
+      /** Format: int64 */
+      next_cursor?: number | null
+      /** Format: uuid */
+      payload_id: string
+      pointer: string
+      /** Format: int64 */
+      total_count: number
+    }
+    ExecutionPayloadResponse: {
+      manifest: components['schemas']['ExecutionPayloadManifestResponse']
+      page?: null | components['schemas']['ExecutionPayloadPageResponse']
     }
     GraphDef: {
       edges: components['schemas']['GraphEdge'][]
@@ -9134,6 +9273,162 @@ export interface operations {
         }
       }
       /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_task_execution_artifacts: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExecutionArtifactsResponse']
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_task_execution_payload_manifests: {
+    parameters: {
+      query?: {
+        cursor?: string
+        limit?: number
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExecutionPayloadManifestPageResponse']
+        }
+      }
+      /** @description パスまたは page パラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_task_execution_payload: {
+    parameters: {
+      query?: {
+        pointer?: string
+        cursor?: number
+        limit?: number
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+        /** @description payload ID */
+        payload_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExecutionPayloadResponse']
+        }
+      }
+      /** @description パスまたは page パラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
