@@ -12,7 +12,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools'
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling'
 import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, createMiddleware } from 'langchain'
-import { errAsync, okAsync } from 'neverthrow'
+import { errAsync, ok, okAsync } from 'neverthrow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -26,6 +26,7 @@ import type {
   CompiledPhaseAgent,
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import type { ExecutionToolRequest } from '#strategy-agent/execution-tool-client'
 import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
 import { createReasoningContentAwareFetch } from '#strategy-agent/reasoning-content-middleware'
 import type {
@@ -41,6 +42,7 @@ import type {
   FetchSubagentDefinition,
   SubagentDefinition,
 } from '#strategy-agent/subagent-definition-client'
+import type { TaskExecutionSnapshot } from '#strategy-agent/task-execution-snapshot'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
 import {
   type CaptureWithFingerprintMock,
@@ -162,6 +164,7 @@ const AGENT_CONFIG: AgentConfig = {
 interface BuildDepsOptions {
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
+  readonly taskSnapshot?: TaskExecutionSnapshot
   readonly fetchSubagentDefinition?: FetchSubagentDefinition
   readonly onBuildPhaseAgentOptions?: (options: BuildPhaseAgentOptions) => void
   readonly buildPhaseAgentInvoke?: (
@@ -182,6 +185,10 @@ interface McpClientCall {
 
 interface Calls {
   fetchAgentConfigKey?: Parameters<FetchAgentConfig>[0]
+  taskExecutionSnapshotFetchCount: number
+  createChatModelCallCount: number
+  buildPhaseAgentCallCount: number
+  executionToolRequests: ExecutionToolRequest[]
   mcpClientClosed: boolean
   // createMcpClient の呼び出しごとの 1 行。生成数と close タイミングの検証用。
   mcpClients: McpClientCall[]
@@ -194,6 +201,10 @@ const buildDeps = (
   options: BuildDepsOptions,
 ): { deps: StrategyAgentDeps; calls: Calls } => {
   const calls: Calls = {
+    taskExecutionSnapshotFetchCount: 0,
+    createChatModelCallCount: 0,
+    buildPhaseAgentCallCount: 0,
+    executionToolRequests: [],
     mcpClientClosed: false,
     mcpClients: [],
     mcpClientToolModels: [],
@@ -209,6 +220,10 @@ const buildDeps = (
         ...AGENT_CONFIG,
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
       })
+    },
+    fetchTaskExecutionSnapshot: () => {
+      calls.taskExecutionSnapshotFetchCount++
+      return Promise.resolve(ok(options.taskSnapshot))
     },
     fetchSubagentDefinition:
       options.fetchSubagentDefinition ??
@@ -228,6 +243,21 @@ const buildDeps = (
       calls.mcpClients.push(client)
       return {
         getTools: () => Promise.resolve([...(options.tools ?? [])]),
+        callExecutionTool: (request) => {
+          calls.executionToolRequests.push(request)
+          return Promise.resolve(
+            ok(
+              request.name === 'execute_operation'
+                ? {
+                    input_payload: { id: 'synthetic-input-payload' },
+                    output_payload: { id: 'synthetic-output-payload' },
+                    exit_code: 0,
+                    stderr: '',
+                  }
+                : {},
+            ),
+          )
+        },
         close: () => {
           calls.mcpClientClosed = true
           client.closed = true
@@ -235,8 +265,12 @@ const buildDeps = (
         },
       }
     },
-    createChatModel: () => chatModel,
+    createChatModel: () => {
+      calls.createChatModelCallCount++
+      return chatModel
+    },
     buildPhaseAgent: (buildOptions) => {
+      calls.buildPhaseAgentCallCount++
       calls.capturedDeadlineSignal = buildOptions.deadlineSignal
       calls.capturedAgentSignal = buildOptions.agentSignal
       options.onBuildPhaseAgentOptions?.(buildOptions)
@@ -436,6 +470,48 @@ describe('runStrategyAgent', () => {
       expect(calls.mcpClientToolModels).toEqual([expectedToolModels])
     },
   )
+
+  it('executes the snapshotted saved operation without starting an LLM phase', async () => {
+    const { deps, calls } = buildDeps({
+      taskSnapshot: {
+        agentConfig: {
+          ...AGENT_CONFIG,
+          agentGraph: `phases:
+  - key: evaluate
+    label: Evaluate
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: snapshot-code
+    input:
+      factor:
+        literal: 3
+`,
+        },
+        subagentDefinitions: new Map(),
+      },
+    })
+
+    const result = await runStrategyAgent(deps, buildRunInput())
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (Evaluate)',
+    })
+    expect(calls.fetchAgentConfigKey).toEqual(undefined)
+    expect(calls.taskExecutionSnapshotFetchCount).toEqual(1)
+    expect(calls.createChatModelCallCount).toEqual(0)
+    expect(calls.buildPhaseAgentCallCount).toEqual(0)
+    expect(calls.executionToolRequests).toEqual([
+      {
+        name: 'execute_operation',
+        arguments: {
+          name: 'snapshot-code',
+          args: { factor: 3 },
+          payload_inputs: [],
+        },
+      },
+    ])
+  })
 
   it('passes the given purpose straight through to fetchAgentConfig instead of the default', async () => {
     const { deps, calls } = buildDeps({})

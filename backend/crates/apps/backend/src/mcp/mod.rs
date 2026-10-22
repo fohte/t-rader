@@ -5,8 +5,8 @@
 
 mod access_log;
 
-use std::sync::Arc;
 use std::time::Duration;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::services::use_cases::UseCases;
 use axum::Router;
@@ -100,6 +100,7 @@ pub(crate) fn strategy_server_dependencies(
         custom_indicators: use_cases.custom_indicators(),
         custom_indicator_evaluations: use_cases.custom_indicator_evaluations(),
         daily_bar_source,
+        dataset_providers: BTreeMap::new(),
         financial_summaries: use_cases.financial_summaries(),
         group_movers: use_cases.group_movers(),
         indicator_observations: use_cases.indicator_observations(),

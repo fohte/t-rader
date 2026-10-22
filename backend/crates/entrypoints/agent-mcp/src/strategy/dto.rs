@@ -317,6 +317,9 @@ pub struct ExecuteOperationParams {
     /// 定義の input_schema に従う JSON 入力。
     #[schemars(schema_with = "any_json_schema")]
     pub args: serde_json::Value,
+    /// sealed payload の指定範囲を bounded file として渡す入力。
+    #[serde(default)]
+    pub payload_inputs: Vec<OperationPayloadInput>,
     /// 指定した場合、出力内の数値を既存 evaluation へ保存する出力名と JSON Pointer。
     #[serde(default)]
     pub numeric_pointers: Option<BTreeMap<String, String>>,
@@ -324,6 +327,19 @@ pub struct ExecuteOperationParams {
     pub timeout_secs: Option<u32>,
     /// stdout + stderr の合計バイト数の上限。
     pub max_output_bytes: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct OperationPayloadInput {
+    /// args に file reference を挿入する field。
+    pub field: String,
+    pub payload_id: Uuid,
+    #[serde(default)]
+    pub pointer: String,
+    #[serde(default)]
+    pub cursor: Option<u64>,
+    #[serde(default)]
+    pub limit: Option<u32>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
@@ -389,6 +405,29 @@ pub struct ReadExecutionPayloadResult {
     pub next_cursor: Option<u64>,
     pub total_count: u64,
     pub digest: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct CaptureDatasetParams {
+    /// 登録済み provider の固定キー。
+    pub provider: String,
+    #[schemars(schema_with = "any_json_schema")]
+    pub params: serde_json::Map<String, serde_json::Value>,
+    pub page_size: Option<usize>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(test, derive(Deserialize))]
+pub struct CaptureDatasetResult {
+    pub payload: ExecutionPayloadRefDto,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[cfg_attr(test, derive(Deserialize))]
+pub struct ReadTaskExecutionSnapshotResult {
+    #[schemars(schema_with = "any_json_schema")]
+    pub definition: Option<serde_json::Value>,
+    pub digest: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

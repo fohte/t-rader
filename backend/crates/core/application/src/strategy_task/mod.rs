@@ -37,8 +37,8 @@ pub use repository::{
 pub(crate) use types::PreparedStrategyTaskSubmission;
 pub use types::{
     StrategyTask, StrategyTaskContext, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskStep,
-    StrategyTaskStepStatus, StrategyTaskUpdate, SubmittedTask, TaskListQuery, TaskSource,
-    TaskStatusView,
+    StrategyTaskStepKind, StrategyTaskStepStatus, StrategyTaskUpdate, SubmittedTask, TaskListQuery,
+    TaskSource, TaskStatusView,
 };
 
 use crate::agent_config::graph::parse_agent_graph;

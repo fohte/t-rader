@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 axum = { workspace = true }
+base64 = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 core-application = { workspace = true }
 core-domain = { workspace = true }

@@ -100,6 +100,15 @@ describe('readTaskSteps', () => {
     expect(readTaskSteps([step])).toEqual([step])
   })
 
+  it('keeps an operation step whose model is null', () => {
+    const step = makeStep({
+      phase_key: 'run',
+      kind: 'operation',
+      model: null,
+    })
+    expect(readTaskSteps([step])).toEqual([step])
+  })
+
   it.each([
     'phase_key',
     'label',

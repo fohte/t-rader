@@ -9,10 +9,11 @@ import {
 } from '#strategy-agent/agent-graph/run-agent-graph/execution-abort'
 import {
   collectRequiredArrayFields,
-  resolveForEachItems,
-  runForEachItems,
+  runForEachPhase,
   splitForEach,
 } from '#strategy-agent/agent-graph/run-agent-graph/for-each-runner'
+import { runOperationPhase } from '#strategy-agent/agent-graph/run-agent-graph/operation-runner'
+import { resolveLlmPhaseInputs } from '#strategy-agent/agent-graph/run-agent-graph/phase-inputs'
 import { buildPhaseMessageText } from '#strategy-agent/agent-graph/run-agent-graph/phase-message'
 import {
   createStepRecorder,
@@ -110,11 +111,41 @@ const runPhase = async (
   const requiredArrayFields =
     requiredArrayFieldsByPhase.get(phase.key) ?? new Set<string>()
 
+  if (phase.kind === 'operation') {
+    const previous = findPreviousStepForPhase(context.previousSteps, phase.key)
+    if (
+      reuseCompleted &&
+      previous?.status === 'completed' &&
+      previous.output !== undefined
+    ) {
+      recorder.recordExisting(previous)
+      return ok(previous.output)
+    }
+    return runOperationPhase(
+      phase,
+      context,
+      priorResults,
+      recorder,
+      previous?.executionStepId,
+      previous?.inputRef,
+    )
+  }
+
   if (phase.forEach === undefined) {
     const previous = findPreviousStepForPhase(context.previousSteps, phase.key)
     if (reuseCompleted && previous?.status === 'completed') {
       recorder.recordExisting(previous)
       return ok(previous.output)
+    }
+
+    const resolvedInputs = await resolveLlmPhaseInputs(
+      phase.input,
+      priorResults,
+      context,
+    )
+    if (resolvedInputs.isErr()) return err(resolvedInputs.error)
+    if (isExecutionAborted(context)) {
+      return err(new Error(getExecutionAbortMessage(context)))
     }
 
     const messageText = buildPhaseMessageText({
@@ -124,6 +155,7 @@ const runPhase = async (
       phasePrompt: phase.prompt,
       item: undefined,
       priorResults,
+      inputBindings: resolvedInputs.value,
     })
     return invokeAndRecordStep(
       deps,
@@ -140,19 +172,27 @@ const runPhase = async (
   }
 
   const [refKey, refField] = splitForEach(phase.forEach)
-  const itemsResult = resolveForEachItems(priorResults, refKey, refField)
-  if (itemsResult.isErr()) return itemsResult
-
   const previousStepsForPhase =
     context.previousSteps?.filter((s) => s.phaseKey === phase.key) ?? []
+  const resolvedInputs = await resolveLlmPhaseInputs(
+    phase.input,
+    priorResults,
+    context,
+  )
+  if (resolvedInputs.isErr()) return err(resolvedInputs.error)
+  if (isExecutionAborted(context)) {
+    return err(new Error(getExecutionAbortMessage(context)))
+  }
 
-  return runForEachItems(
+  return runForEachPhase(
     deps,
     phase,
     context,
     priorResults,
+    resolvedInputs.value,
     phaseKeys,
-    itemsResult.value,
+    refKey,
+    refField,
     recorder,
     requiredArrayFields,
     previousStepsForPhase,

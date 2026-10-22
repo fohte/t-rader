@@ -119,6 +119,226 @@ phases:
     )
   })
 
+  it('parses operation phases and all supported input bindings without a model', () => {
+    expect(
+      parseAgentGraph(`
+phases:
+  - key: earlier
+    label: Earlier
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-source
+  - key: prepare
+    label: 架空データを変換
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-transform
+    input:
+      literal_value:
+        literal: { count: 3 }
+      prior_value:
+        prior_output:
+          phase: earlier
+          pointer: /value/items
+          cursor: 4
+          limit: 8
+      dataset_value:
+        dataset:
+          provider: demo-source
+          params: { collection: demo-set }
+    output:
+      items: { type: array }
+`),
+    ).toEqual(
+      ok({
+        phases: [
+          {
+            key: 'earlier',
+            label: 'Earlier',
+            kind: 'operation',
+            operation: 'evaluate_saved_code',
+            codeId: 'demo-source',
+            skills: [],
+            subagents: [],
+            output: {},
+          },
+          {
+            key: 'prepare',
+            label: '架空データを変換',
+            kind: 'operation',
+            operation: 'evaluate_saved_code',
+            codeId: 'demo-transform',
+            skills: [],
+            subagents: [],
+            input: {
+              literal_value: { literal: { count: 3 } },
+              prior_value: {
+                priorOutput: {
+                  phase: 'earlier',
+                  pointer: '/value/items',
+                  cursor: 4,
+                  limit: 8,
+                },
+              },
+              dataset_value: {
+                dataset: {
+                  provider: 'demo-source',
+                  params: { collection: 'demo-set' },
+                },
+              },
+            },
+            output: { items: { type: 'array' } },
+          },
+        ],
+      }),
+    )
+  })
+
+  it.each([
+    { name: 'for_each', field: 'for_each: prepare.items' },
+    { name: 'reasoning_effort', field: 'reasoning_effort: medium' },
+    { name: 'tools', field: 'tools: []' },
+    { name: 'skills', field: 'skills: []' },
+    { name: 'max_subagent_runs', field: 'max_subagent_runs: 1' },
+    { name: 'max_parallel', field: 'max_parallel: 2' },
+  ])('rejects operation metadata $name', ({ field }) => {
+    const result = parseAgentGraph(`
+phases:
+  - key: prepare
+    label: Prepare
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-transform
+    ${field}
+`)
+
+    expect(
+      result.mapErr(
+        (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+      ),
+    ).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
+  it.each([
+    {
+      name: 'a later operation phase',
+      source: 'later',
+      phases: `
+  - key: current
+    label: Current
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-current
+    input:
+      rows:
+        prior_output: { phase: later, pointer: /value/rows }
+  - key: later
+    label: Later
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-later`,
+    },
+    {
+      name: 'an LLM phase',
+      source: 'earlier',
+      phases: `
+  - key: earlier
+    label: Earlier
+    model: demo-model
+    prompt: Process this synthetic value.
+  - key: current
+    label: Current
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-current
+    input:
+      rows:
+        prior_output: { phase: earlier, pointer: /value/rows }`,
+    },
+  ])('rejects prior_output bound to $name', ({ phases }) => {
+    const result = parseAgentGraph(`phases:${phases}`)
+
+    expect(
+      result.mapErr(
+        (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+      ),
+    ).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
+  it('rejects unknown prior_output fields', () => {
+    const result = parseAgentGraph(`
+phases:
+  - key: earlier
+    label: Earlier
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-source
+  - key: current
+    label: Current
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-current
+    input:
+      rows:
+        prior_output:
+          phase: earlier
+          pointer: /value/rows
+          source: unexpected
+`)
+
+    expect(
+      result.mapErr(
+        (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+      ),
+    ).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
+  it('rejects a dataset provider containing only whitespace', () => {
+    const result = parseAgentGraph(`
+phases:
+  - key: prepare
+    label: Prepare
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-transform
+    input:
+      rows:
+        dataset:
+          provider: "   "
+          params: {}
+`)
+
+    expect(
+      result.mapErr(
+        (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+      ),
+    ).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
   it.each([
     { name: 'zero at the graph level', target: 'graph', value: '0' },
     { name: 'too large at the graph level', target: 'graph', value: '361' },

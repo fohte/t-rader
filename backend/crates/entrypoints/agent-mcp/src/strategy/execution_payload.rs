@@ -1,8 +1,9 @@
 use std::time::Duration;
 
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use core_application::{
     custom_indicator::CustomIndicator,
-    kata_exec::{ExecRequest, ExecResult},
+    kata_exec::{ExecFile, ExecRequest, ExecResult},
     strategy_execution::{
         PayloadDefinition, PayloadKind, ReadPayloadQuery, StrategyExecutionUseCaseError,
     },
@@ -23,6 +24,10 @@ use super::{
     EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_STDIN_BYTES, EXEC_MAX_TIMEOUT_SECS, StrategyServer,
     check_exec_upper_bound, internal_error, invalid_params,
 };
+
+mod operation_files;
+
+use operation_files::validate_file_collection;
 
 impl StrategyServer {
     pub(crate) async fn execute_operation_inner(
@@ -48,21 +53,28 @@ impl StrategyServer {
             .await
             .map_err(strategy_execution_error)?;
         let indicator = resolved.definition;
-        validate_with_schema(&indicator.input_schema, &params.args).map_err(
-            |error| match error {
-                SchemaCheckError::Mismatch(message) => invalid_params(format!(
-                    "args do not match input_schema of definition '{name}': {message}"
-                )),
-                SchemaCheckError::BrokenSchema(message) => {
-                    internal_error(format!("stored input_schema is invalid: {message}"))
-                }
-            },
-        )?;
+        let (args, input_files, materialized_inputs) = self
+            .materialize_operation_inputs(&access, params.args.clone(), &params.payload_inputs)
+            .await?;
+        validate_with_schema(&indicator.input_schema, &args).map_err(|error| match error {
+            SchemaCheckError::Mismatch(message) => invalid_params(format!(
+                "args do not match input_schema of definition '{name}': {message}"
+            )),
+            SchemaCheckError::BrokenSchema(message) => {
+                internal_error(format!("stored input_schema is invalid: {message}"))
+            }
+        })?;
 
-        let args = params.args.clone();
         let definition_key = format!("custom_indicator:{name}");
         let definition_digest = resolved.digest;
-        let input = json!({ "args": args.clone() });
+        let input = if materialized_inputs.is_empty() {
+            json!({ "args": args.clone() })
+        } else {
+            json!({
+                "args": args.clone(),
+                "payload_inputs": materialized_inputs,
+            })
+        };
         let stdin = serialize_operation_input(&input)?;
         let input_payload = self
             .dependencies
@@ -81,14 +93,14 @@ impl StrategyServer {
             .map_err(strategy_execution_error)?;
 
         let result = self
-            .run_saved_operation(scope, &indicator, &stdin, &params)
+            .run_saved_operation(scope, &indicator, &stdin, input_files, &params)
             .await?;
         let output = if result.exit_code == 0 {
             Some(parse_and_validate_output(&result.stdout, &indicator)?)
         } else {
             None
         };
-        let output_value = operation_output_value(&result, output.as_ref());
+        let output_value = operation_output_value(&result, output.as_ref())?;
         let output_payload = self
             .dependencies
             .strategy_executions
@@ -139,6 +151,7 @@ impl StrategyServer {
         scope: StrategyScope,
         indicator: &CustomIndicator,
         stdin: &str,
+        input_files: Option<Vec<ExecFile>>,
         params: &ExecuteOperationParams,
     ) -> Result<ExecResult, McpError> {
         let max_output_bytes = params.max_output_bytes.unwrap_or(EXEC_MAX_OUTPUT_BYTES);
@@ -150,7 +163,7 @@ impl StrategyServer {
                     .timeout_secs
                     .map(|seconds| Duration::from_secs(seconds.into())),
                 max_output_bytes: Some(max_output_bytes as usize),
-                input_files: None,
+                input_files: operation_file_transfer_inputs(input_files),
             })
             .await
             .map_err(|error| kata_exec_error(error, scope.id(), indicator))
@@ -221,6 +234,10 @@ fn serialize_operation_input(input: &serde_json::Value) -> Result<String, McpErr
     Ok(stdin)
 }
 
+fn operation_file_transfer_inputs(input_files: Option<Vec<ExecFile>>) -> Option<Vec<ExecFile>> {
+    input_files
+}
+
 fn operation_payload_definition(
     definition_key: &str,
     digest: &str,
@@ -240,7 +257,26 @@ fn operation_payload_definition(
 fn input_schema(argument_schema: &serde_json::Value) -> serde_json::Value {
     json!({
         "type": "object",
-        "properties": {"args": argument_schema},
+        "properties": {
+            "args": argument_schema,
+            "payload_inputs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "field": {"type": "string"},
+                        "payload_id": {"type": "string", "format": "uuid"},
+                        "pointer": {"type": "string"},
+                        "cursor": {"type": "integer", "minimum": 0},
+                        "limit": {"type": "integer", "minimum": 1},
+                        "digest": {"type": "string"},
+                        "path": {"type": "string"},
+                    },
+                    "required": ["field", "payload_id", "pointer", "digest", "path"],
+                    "additionalProperties": false,
+                }
+            }
+        },
         "required": ["args"],
         "additionalProperties": false,
     })
@@ -254,6 +290,18 @@ fn output_schema(value_schema: &serde_json::Value) -> serde_json::Value {
             "stdout": {"type": "string"},
             "stderr": {"type": "string"},
             "value": {"anyOf": [value_schema, {"type": "null"}]},
+            "files": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content_base64": {"type": "string"},
+                    },
+                    "required": ["path", "content_base64"],
+                    "additionalProperties": false,
+                }
+            },
         },
         "required": ["exit_code", "stdout", "stderr", "value"],
         "additionalProperties": false,
@@ -263,13 +311,29 @@ fn output_schema(value_schema: &serde_json::Value) -> serde_json::Value {
 fn operation_output_value(
     result: &ExecResult,
     value: Option<&serde_json::Value>,
-) -> serde_json::Value {
-    json!({
+) -> Result<serde_json::Value, McpError> {
+    validate_file_collection(&result.files, "output")?;
+    let mut output = json!({
         "exit_code": result.exit_code,
         "stdout": result.stdout,
         "stderr": result.stderr,
         "value": value,
-    })
+    });
+    if !result.files.is_empty() {
+        output["files"] = serde_json::Value::Array(
+            result
+                .files
+                .iter()
+                .map(|file| {
+                    json!({
+                        "path": file.path,
+                        "content_base64": BASE64.encode(&file.bytes),
+                    })
+                })
+                .collect(),
+        );
+    }
+    Ok(output)
 }
 
 impl From<core_application::strategy_execution::PayloadRef> for ExecutionPayloadRefDto {
@@ -305,5 +369,114 @@ fn strategy_execution_error(error: StrategyExecutionUseCaseError) -> McpError {
             tracing::error!(error = %error, "strategy execution payload operation failed");
             internal_error("strategy execution payload operation failed")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core_application::kata_exec::ExecFile;
+    use serde_json::json;
+
+    use super::operation_files::{MAX_OPERATION_INPUT_FILE_BYTES, validate_file_collection};
+    use super::{operation_file_transfer_inputs, operation_output_value, output_schema};
+
+    #[test]
+    fn operation_without_payload_inputs_keeps_json_transfer() {
+        assert_eq!(operation_file_transfer_inputs(None), None);
+    }
+
+    #[test]
+    fn operation_output_persists_every_returned_file() {
+        let result = core_application::kata_exec::ExecResult {
+            stdout: "{\"score\":3}".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+            files: vec![
+                ExecFile {
+                    path: "outputs/result.bin".to_string(),
+                    bytes: vec![0, 255, 1],
+                },
+                ExecFile {
+                    path: "outputs/summary.json".to_string(),
+                    bytes: b"{\"ok\":true}".to_vec(),
+                },
+            ],
+        };
+
+        assert_eq!(
+            operation_output_value(&result, Some(&json!({ "score": 3 }))).unwrap(),
+            json!({
+                "exit_code": 0,
+                "stdout": "{\"score\":3}",
+                "stderr": "",
+                "value": { "score": 3 },
+                "files": [{
+                    "path": "outputs/result.bin",
+                    "content_base64": "AP8B",
+                }, {
+                    "path": "outputs/summary.json",
+                    "content_base64": "eyJvayI6dHJ1ZX0=",
+                }],
+            }),
+        );
+    }
+
+    #[test]
+    fn operation_output_rejects_files_over_the_transfer_limit() {
+        let result = core_application::kata_exec::ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            exit_code: 0,
+            files: vec![ExecFile {
+                path: "outputs/large.json".to_string(),
+                bytes: vec![0; MAX_OPERATION_INPUT_FILE_BYTES + 1],
+            }],
+        };
+
+        assert!(operation_output_value(&result, None).is_err());
+    }
+
+    #[test]
+    fn operation_output_schema_declares_file_contents() {
+        assert_eq!(
+            output_schema(&json!({ "type": "object" })),
+            json!({
+                "type": "object",
+                "properties": {
+                    "exit_code": { "type": "integer" },
+                    "stdout": { "type": "string" },
+                    "stderr": { "type": "string" },
+                    "value": { "anyOf": [{ "type": "object" }, { "type": "null" }] },
+                    "files": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string" },
+                                "content_base64": { "type": "string" },
+                            },
+                            "required": ["path", "content_base64"],
+                            "additionalProperties": false,
+                        },
+                    },
+                },
+                "required": ["exit_code", "stdout", "stderr", "value", "files"],
+                "additionalProperties": false,
+            }),
+        );
+    }
+
+    #[test]
+    fn file_collection_rejects_unsafe_paths() {
+        assert!(
+            validate_file_collection(
+                &[ExecFile {
+                    path: "../escape.json".to_string(),
+                    bytes: b"{}".to_vec(),
+                }],
+                "output",
+            )
+            .is_err(),
+        );
     }
 }

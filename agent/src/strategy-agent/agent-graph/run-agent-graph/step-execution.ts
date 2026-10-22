@@ -15,7 +15,7 @@ import type {
 } from '#strategy-agent/agent-graph/run-agent-graph/types'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { withPhaseSpan } from '#strategy-agent/agent-graph/tracing'
-import type { AgentGraphPhase } from '#strategy-agent/agent-graph/types'
+import type { LlmAgentGraphPhase } from '#strategy-agent/agent-graph/types'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 
 // 上限に達しても structured response を得られなければ、そのフェーズを失敗として確定する。
@@ -25,6 +25,13 @@ const STEP_MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
   'run-agent-graph.step-mcp-client-close-failed'
 const STRUCTURED_OUTPUT_RETRY_FINGERPRINT =
   'run-agent-graph.structured-output-retry'
+
+const EXECUTION_RUNTIME_TOOL_NAMES = new Set([
+  'execute_operation',
+  'read_execution_payload',
+  'capture_dataset',
+  'read_task_execution_snapshot',
+])
 
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -42,6 +49,12 @@ export const createStepRecorder = (
       steps.push({ ...step, status: 'running' })
       notify()
       return steps.length - 1
+    },
+    update: (index, update) => {
+      const current = steps[index]
+      if (current === undefined) return
+      steps[index] = { ...current, ...update }
+      notify()
     },
     finish: (index, outcome) => {
       const current = steps[index]
@@ -92,17 +105,18 @@ const buildRetryFeedbackMessage = (
 
 const createPhaseAgent = (
   deps: RunAgentGraphDeps,
-  phase: AgentGraphPhase,
+  phase: LlmAgentGraphPhase,
   context: RunAgentGraphContext,
   tools: readonly DynamicStructuredTool[],
   localTools: readonly DynamicStructuredTool[],
 ): CompiledPhaseAgent => {
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   const { tools: phaseTools } = phase
-  const filteredMcpTools =
-    phaseTools === undefined
-      ? tools
-      : tools.filter((tool) => phaseTools.includes(tool.name))
+  const filteredMcpTools = tools.filter(
+    (tool) =>
+      !EXECUTION_RUNTIME_TOOL_NAMES.has(tool.name) &&
+      (phaseTools === undefined || phaseTools.includes(tool.name)),
+  )
   const filteredTools = [...filteredMcpTools, ...localTools]
   const filteredSkills: Record<string, string> = {}
   for (const name of phase.skills) {
@@ -132,7 +146,7 @@ const createPhaseAgent = (
 }
 
 const resolveLocalTools = (
-  phase: AgentGraphPhase,
+  phase: LlmAgentGraphPhase,
   executionStepId: string,
   recorder: StepRecorder,
   context: RunAgentGraphContext,
@@ -220,7 +234,7 @@ const invokePhaseWithRetry = async (
 // executionStepId を生成し、invokePhaseWithRetry の再試行間で使い回す。
 export const invokeAndRecordStep = (
   deps: RunAgentGraphDeps,
-  phase: AgentGraphPhase,
+  phase: LlmAgentGraphPhase,
   context: RunAgentGraphContext,
   messages: readonly HumanMessage[],
   requiredArrayFields: ReadonlySet<string>,

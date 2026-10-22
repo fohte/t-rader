@@ -4,10 +4,9 @@ import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { BaseMessage, SystemMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
-import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, toolStrategy } from 'langchain'
-import { errAsync, ResultAsync } from 'neverthrow'
+import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 
 import { extractMessageText } from '#a2a/message-text'
 import { logger } from '#logger'
@@ -43,10 +42,19 @@ import {
   createReasoningContentAwareFetch,
   reasoningContentMiddleware,
 } from '#strategy-agent/reasoning-content-middleware'
+import {
+  type CreateStrategyMcpClient,
+  createStrategyMcpClient,
+} from '#strategy-agent/strategy-mcp-client'
 import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
 import type { FetchSubagentDefinition } from '#strategy-agent/subagent-definition-client'
 import { createSubagentDefinitionFetcher } from '#strategy-agent/subagent-definition-client'
 import { createRunSubagentTool } from '#strategy-agent/subagent-tool'
+import type { FetchTaskExecutionSnapshot } from '#strategy-agent/task-execution-snapshot'
+import {
+  createSnapshotSubagentDefinitionFetcher,
+  createTaskExecutionSnapshotFetcher,
+} from '#strategy-agent/task-execution-snapshot'
 import {
   createToolCallCapMiddleware,
   MAX_TOOL_CALLS_PER_MODEL_CALL,
@@ -56,13 +64,6 @@ import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
 // OpenCode Go's OpenAI-compatible endpoint.
 const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
-
-const STRATEGY_ID_HEADER = 'x-strategy-id'
-const EXECUTION_ID_HEADER = 'x-execution-id'
-const SUBAGENT_EXECUTION_ID_HEADER = 'x-subagent-execution-id'
-const SUBAGENT_DEFINITION_KEY_HEADER = 'x-subagent-definition-key'
-const TOOL_MODELS_HEADER = 'x-tool-models'
-const MCP_TOOL_TIMEOUT_MS = 150_000
 
 const DEFAULT_PURPOSE = 'default'
 
@@ -76,25 +77,13 @@ export interface StrategyAgentResult {
   readonly errorKind?: 'usage_limit' | 'agent_error'
 }
 
-export interface McpToolsClient {
-  getTools(): Promise<DynamicStructuredTool[]>
-  close(): Promise<void>
-}
-
-interface SubagentExecutionIdentity {
-  readonly executionId: string
-  readonly definitionKey: string
-}
+export type { McpToolsClient } from '#strategy-agent/strategy-mcp-client'
 
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
+  readonly fetchTaskExecutionSnapshot: FetchTaskExecutionSnapshot
   readonly fetchSubagentDefinition: FetchSubagentDefinition
-  readonly createMcpClient: (
-    strategyId: string,
-    executionId: string,
-    toolModels: Readonly<Record<string, string>>,
-    subagentExecution?: SubagentExecutionIdentity,
-  ) => McpToolsClient
+  readonly createMcpClient: CreateStrategyMcpClient
   readonly createChatModel: (
     model: string,
     options?: { reasoningEffort?: string },
@@ -271,60 +260,45 @@ type ReasoningEffort = NonNullable<
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
-): StrategyAgentDeps => ({
-  fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
-  fetchSubagentDefinition: createSubagentDefinitionFetcher(
-    config.backendApiBaseUrl,
-  ),
-  createMcpClient: (strategyId, executionId, toolModels, subagentExecution) =>
-    new MultiServerMCPClient({
-      defaultToolTimeout: MCP_TOOL_TIMEOUT_MS,
-      mcpServers: {
-        strategy: {
-          url: `${config.backendApiBaseUrl.replace(/\/+$/, '')}/mcp/strategy`,
-          headers: {
-            [STRATEGY_ID_HEADER]: strategyId,
-            [EXECUTION_ID_HEADER]: executionId,
-            [TOOL_MODELS_HEADER]: JSON.stringify(toolModels),
-            ...(subagentExecution !== undefined
-              ? {
-                  [SUBAGENT_EXECUTION_ID_HEADER]: subagentExecution.executionId,
-                  [SUBAGENT_DEFINITION_KEY_HEADER]:
-                    subagentExecution.definitionKey,
-                }
-              : {}),
-          },
+): StrategyAgentDeps => {
+  const createMcpClient = createStrategyMcpClient(config.backendApiBaseUrl)
+  return {
+    fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
+    fetchTaskExecutionSnapshot:
+      createTaskExecutionSnapshotFetcher(createMcpClient),
+    fetchSubagentDefinition: createSubagentDefinitionFetcher(
+      config.backendApiBaseUrl,
+    ),
+    createMcpClient,
+    createChatModel: (model, options) =>
+      new ChatOpenAI({
+        apiKey: config.llmApiKey,
+        model,
+        // model 引数によっては上流 backend が非ストリーミングの応答から
+        // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
+        streaming: true,
+        timeout: config.llmCallTimeoutMs,
+        // SDK 内の再試行によるタイムアウトの累積を防ぎ、再試行を middleware に集約する。
+        maxRetries: 0,
+        configuration: {
+          baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
+          fetch: createReasoningContentAwareFetch(),
         },
-      },
-    }),
-  createChatModel: (model, options) =>
-    new ChatOpenAI({
-      apiKey: config.llmApiKey,
-      model,
-      // model 引数によっては上流 backend が非ストリーミングの応答から
-      // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
-      streaming: true,
-      timeout: config.llmCallTimeoutMs,
-      // SDK 内の再試行によるタイムアウトの累積を防ぎ、再試行を middleware に集約する。
-      maxRetries: 0,
-      configuration: {
-        baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
-        fetch: createReasoningContentAwareFetch(),
-      },
-      ...(options?.reasoningEffort !== undefined
-        ? {
-            reasoning: {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent_graph 由来の reasoningEffort は model と同じ自由文字列として持ち回っており、ChatOpenAI 側のリテラル型に合わせ込むための意図的な narrowing。
-              effort: options.reasoningEffort as ReasoningEffort,
-            },
-          }
-        : {}),
-    }),
-  buildPhaseAgent: createDefaultBuildPhaseAgent(
-    config.genAiProviderName,
-    config.llmCallTimeoutMs,
-  ),
-})
+        ...(options?.reasoningEffort !== undefined
+          ? {
+              reasoning: {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent_graph 由来の reasoningEffort は model と同じ自由文字列として持ち回っており、ChatOpenAI 側のリテラル型に合わせ込むための意図的な narrowing。
+                effort: options.reasoningEffort as ReasoningEffort,
+              },
+            }
+          : {}),
+      }),
+    buildPhaseAgent: createDefaultBuildPhaseAgent(
+      config.genAiProviderName,
+      config.llmCallTimeoutMs,
+    ),
+  }
+}
 
 // パースに失敗した要素は無視し、正常にパースできたステップのみ再開情報として扱う。
 const parseResumeSteps = (
@@ -401,9 +375,20 @@ export const runStrategyAgent = async (
   }
 
   return Promise.resolve()
-    .then(() =>
-      deps
-        .fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
+    .then(() => deps.fetchTaskExecutionSnapshot(strategyId, taskId))
+    .then((snapshotResult) => {
+      if (snapshotResult.isErr()) return toErrorResult(snapshotResult.error)
+      const snapshot = snapshotResult.value
+      const agentConfigResult =
+        snapshot === undefined
+          ? deps.fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
+          : okAsync(snapshot.agentConfig)
+      const fetchSubagentDefinition = createSnapshotSubagentDefinitionFetcher(
+        snapshot,
+        deps.fetchSubagentDefinition,
+      )
+
+      return agentConfigResult
         .andThen((agentConfig) => {
           const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
           if (parsedGraph.isErr()) {
@@ -416,7 +401,9 @@ export const runStrategyAgent = async (
               createStepMcpClient: (executionStepId) =>
                 deps.createMcpClient(
                   strategyId,
-                  `${taskId}:${executionStepId}`,
+                  executionStepId === undefined
+                    ? taskId
+                    : `${taskId}:${executionStepId}`,
                   parsedGraph.value.toolModels ?? {},
                 ),
               createSubagentTool: (
@@ -429,7 +416,7 @@ export const runStrategyAgent = async (
                   phase,
                   parentExecutionStepId,
                   recorder,
-                  fetchDefinition: deps.fetchSubagentDefinition,
+                  fetchDefinition: fetchSubagentDefinition,
                   createMcpClient: (executionStepId, definitionKey) =>
                     deps.createMcpClient(
                       strategyId,
@@ -467,7 +454,7 @@ export const runStrategyAgent = async (
             (error) => error,
           )
         })
-        .match((r) => r, toErrorResult),
-    )
+        .match((r) => r, toErrorResult)
+    })
     .catch((error: unknown) => toErrorResult(error))
 }

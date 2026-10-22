@@ -28,6 +28,30 @@ pub enum StrategyTaskStepStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StrategyTaskStepKind {
+    #[default]
+    Llm,
+    Operation,
+}
+
+impl StrategyTaskStepKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Llm => "llm",
+            Self::Operation => "operation",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "llm" => Some(Self::Llm),
+            "operation" => Some(Self::Operation),
+            _ => None,
+        }
+    }
+}
+
 impl StrategyTaskStepStatus {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -86,11 +110,15 @@ pub struct StrategyTaskStep {
     pub execution_step_id: Uuid,
     pub task_id: Uuid,
     pub phase_key: String,
+    pub kind: StrategyTaskStepKind,
     pub label: String,
-    pub model: String,
+    pub model: Option<String>,
     pub status: StrategyTaskStepStatus,
     pub item: Option<serde_json::Value>,
+    pub item_key: Option<serde_json::Value>,
     pub item_label: Option<String>,
+    pub input_ref: Option<serde_json::Value>,
+    pub output_ref: Option<serde_json::Value>,
     pub output: Option<serde_json::Value>,
     pub started_at: DateTime<FixedOffset>,
     pub finished_at: Option<DateTime<FixedOffset>>,

@@ -7,8 +7,8 @@ use uuid::Uuid;
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask};
 use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
-    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
-    StrategyTaskUseCases,
+    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepKind,
+    StrategyTaskStepStatus, StrategyTaskUseCases,
 };
 use crate::unit_of_work::FakeUnitOfWork;
 
@@ -256,11 +256,15 @@ fn step(
         execution_step_id,
         task_id,
         phase_key: phase_key.to_string(),
+        kind: StrategyTaskStepKind::Llm,
         label: phase_key.to_string(),
-        model: "fictional-model".to_string(),
+        model: Some("fictional-model".to_string()),
         status,
         item: None,
+        item_key: None,
         item_label: None,
+        input_ref: None,
+        output_ref: None,
         output: None,
         started_at: now,
         finished_at: None,

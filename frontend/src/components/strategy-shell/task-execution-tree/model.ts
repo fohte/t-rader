@@ -46,7 +46,7 @@ function isTaskStep(v: unknown): v is TaskStep {
     isRecord(v) &&
     typeof v['phase_key'] === 'string' &&
     typeof v['label'] === 'string' &&
-    typeof v['model'] === 'string' &&
+    (v['model'] === null || typeof v['model'] === 'string') &&
     typeof v['status'] === 'string' &&
     typeof v['started_at'] === 'string' &&
     typeof v['trace_id'] === 'string' &&

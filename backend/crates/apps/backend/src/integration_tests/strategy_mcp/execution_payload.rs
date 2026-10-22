@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -7,7 +7,7 @@ use core_application::{
     strategy_execution::{
         DatasetCaptureReport, DatasetPage, DatasetPageCompletion, DatasetProvider,
         DatasetProviderError, DatasetSnapshot, PayloadDefinition, PayloadKind, PayloadPage,
-        PayloadRef, ReadPayloadQuery,
+        PayloadRef, ReadPayloadQuery, SharedDatasetProvider,
     },
     strategy_scope::StrategyScope,
 };
@@ -23,7 +23,7 @@ use sea_orm::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::tests_common;
+use super::{StrategyServer, tests_common};
 
 const DATASET_REVISION: &str = "sample-revision-a";
 const DATASET_DIGEST: &str = "b52cddda5a045faaee6394056f35404ef21a3b843edfbe739fc30fd52933c8ca";
@@ -354,6 +354,141 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
                 total_count: 3,
                 digest: DATASET_DIGEST.into(),
             },
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn mcp_capture_dataset_uses_registered_provider_and_returns_sealed_pages(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let execution_step_id = Uuid::from_u128(704);
+    let base_server = tests_common::build_server(db.clone());
+    let provider: SharedDatasetProvider = Arc::new(SyntheticDatasetProvider {
+        items: vec![
+            json!({"value": 11}),
+            json!({"value": 22}),
+            json!({"value": 33}),
+        ],
+        mode: ProviderMode::Stable,
+    });
+    let server = StrategyServer::new(
+        base_server
+            .entrypoint_server()
+            .clone()
+            .with_dataset_providers(BTreeMap::from([(
+                "synthetic-provider".to_string(),
+                provider,
+            )])),
+    );
+    let execution_id = format!("{a2a_task_id}:{execution_step_id}");
+    let captured: Value = server
+        .invoke::<_, Value>(
+            "capture_dataset",
+            strategy_id,
+            json!({
+                "provider": "synthetic-provider",
+                "params": {"request_tag": "sample"},
+                "page_size": 2,
+            }),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("capture dataset through MCP")
+        .into_value();
+    let payload_id = Uuid::parse_str(
+        captured["payload"]["id"]
+            .as_str()
+            .expect("captured payload ID"),
+    )
+    .expect("valid captured payload ID");
+    let persisted = task_execution_payload::Entity::find_by_id(payload_id)
+        .one(&db)
+        .await
+        .expect("query captured payload")
+        .expect("captured payload exists");
+    let mut returned_payload = captured["payload"].clone();
+    let returned_task_matches = returned_payload["task_id"] == json!(task_id);
+    returned_payload["id"] = json!("<payload-id>");
+    returned_payload["task_id"] = json!("<task-id>");
+    let mut stored_page_one: Value = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({
+                "payload_id": payload_id,
+                "pointer": "",
+                "cursor": 0,
+                "limit": 2,
+            }),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("read first captured page through MCP")
+        .into_value();
+    stored_page_one["payload_id"] = json!("<payload-id>");
+    let mut stored_page_two: Value = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({
+                "payload_id": payload_id,
+                "pointer": "",
+                "cursor": 2,
+                "limit": 2,
+            }),
+            Some(execution_id),
+            None,
+        )
+        .await
+        .expect("read second captured page through MCP")
+        .into_value();
+    stored_page_two["payload_id"] = json!("<payload-id>");
+
+    assert_eq!(
+        (
+            returned_task_matches,
+            returned_payload,
+            persisted.status,
+            stored_page_one,
+            stored_page_two,
+        ),
+        (
+            true,
+            json!({
+                "id": "<payload-id>",
+                "task_id": "<task-id>",
+                "kind": "input",
+                "digest": DATASET_DIGEST,
+                "item_count": 3,
+                "byte_count": 40,
+                "source_revision": DATASET_REVISION,
+                "source_locator": {"page_key": "sample-page"},
+                "source_metadata": {"provider_tag": "synthetic"},
+            }),
+            "sealed".to_string(),
+            json!({
+                "payload_id": "<payload-id>",
+                "pointer": "",
+                "data": [{"value": 11}, {"value": 22}],
+                "cursor": 0,
+                "next_cursor": 2,
+                "total_count": 3,
+                "digest": DATASET_DIGEST,
+            }),
+            json!({
+                "payload_id": "<payload-id>",
+                "pointer": "",
+                "data": [{"value": 33}],
+                "cursor": 2,
+                "next_cursor": null,
+                "total_count": 3,
+                "digest": DATASET_DIGEST,
+            }),
         ),
     );
 }

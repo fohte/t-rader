@@ -51,7 +51,7 @@ export interface RunAgentGraphContext {
   readonly skills: Readonly<Record<string, string>>
   // 実行ステップ 1 件だけを担う MCP client を組み立てる。同時に開いている
   // コネクション数を並列度で抑えるため、ステップの終了時に close される。
-  readonly createStepMcpClient: (executionStepId: string) => McpToolsClient
+  readonly createStepMcpClient: (executionStepId?: string) => McpToolsClient
   readonly createSubagentTool?: (
     phase: AgentGraphPhase,
     parentExecutionStepId: string,
@@ -79,11 +79,20 @@ export type StepStartInput = Omit<
   'status' | 'finishedAt' | 'output' | 'error'
 >
 type StepOutcome =
-  | { readonly status: 'completed'; readonly output: unknown }
+  | {
+      readonly status: 'completed'
+      readonly output: unknown
+      readonly inputRef?: unknown
+      readonly outputRef?: unknown
+    }
   | { readonly status: 'failed'; readonly error: string }
 
 export interface StepRecorder {
   readonly start: (step: StepStartInput) => number
+  readonly update: (
+    index: number,
+    update: Partial<Pick<StrategyTaskStep, 'inputRef' | 'outputRef'>>,
+  ) => void
   readonly finish: (index: number, outcome: StepOutcome) => void
   // resume でスキップした (再実行しない) 完了済みステップをそのまま steps に
   // 積む。start/finish を経由しないので running を経由せず直接完了状態になる。

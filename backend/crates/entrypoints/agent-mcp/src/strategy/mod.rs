@@ -16,6 +16,7 @@ pub(super) mod evidence;
 pub(super) mod execution_payload;
 pub(super) mod fin_summary;
 mod graph_dto;
+pub(super) mod graph_execution;
 pub(super) mod holdings;
 pub(super) mod macro_indicator;
 pub(super) mod margin;
@@ -163,6 +164,14 @@ pub struct StrategyServer {
 impl StrategyServer {
     pub fn new(dependencies: StrategyServerDependencies) -> Self {
         Self { dependencies }
+    }
+
+    pub fn with_dataset_providers(
+        mut self,
+        providers: BTreeMap<String, core_application::strategy_execution::SharedDatasetProvider>,
+    ) -> Self {
+        self.dependencies.dataset_providers = providers;
+        self
     }
 
     pub fn with_kata_executor(mut self, kata_executor: Option<SharedKataExecutor>) -> Self {

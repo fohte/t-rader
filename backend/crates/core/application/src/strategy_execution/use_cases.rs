@@ -84,6 +84,20 @@ impl StrategyExecutionUseCases {
         })
     }
 
+    pub async fn read_task_start_snapshot(
+        &self,
+        access: &super::AuthorizedExecution,
+    ) -> Result<Option<DefinitionSnapshot>, StrategyExecutionUseCaseError> {
+        let snapshot = self
+            .repository
+            .find_definition_snapshot(access.task_id, "task_start")
+            .await?;
+        if let Some(snapshot) = &snapshot {
+            verify_definition_digest(snapshot)?;
+        }
+        Ok(snapshot)
+    }
+
     pub async fn resolve_custom_indicator(
         &self,
         scope: StrategyScope,

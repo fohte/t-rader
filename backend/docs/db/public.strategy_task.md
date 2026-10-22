@@ -95,6 +95,10 @@ erDiagram
   text span_id
   text error
   bigint seq
+  text kind
+  jsonb item_key
+  jsonb input_ref
+  jsonb output_ref
 }
 "public.event_firing" {
   uuid event_id FK
