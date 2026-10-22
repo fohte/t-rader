@@ -1147,7 +1147,7 @@ mod tests {
         let earliest_us_id = format!("US:DEMO-EARLY-{suffix}");
         let later_us_id = format!("US:DEMO-LATER-{suffix}");
         let no_earlier_us_id = format!("US:DEMO-NO-EARLIER-{suffix}");
-        let foreign_id = format!("JP-DEMO-MINUTE-{suffix}");
+        let foreign_id = format!("KR:DEMO-MINUTE-{suffix}");
         for (id, market) in [
             (&earliest_us_id, "US"),
             (&later_us_id, "US"),
@@ -1219,7 +1219,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn finds_no_minute_bar_when_no_us_instrument_exists(db: DatabaseHandle) {
         let instrument_id = format!(
-            "JP-DEMO-EMPTY-{suffix}",
+            "KR:DEMO-EMPTY-{suffix}",
             suffix = uuid::Uuid::new_v4().simple()
         );
         instruments::Entity::insert(instruments::ActiveModel {
