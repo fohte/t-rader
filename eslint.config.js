@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import { config } from '@fohte/eslint-config'
 import storybook from 'eslint-plugin-storybook'
 
@@ -5,6 +7,13 @@ export default config(
   {
     typescript: { typeChecked: true },
     errorHandling: {},
+    shadcn: {
+      files: ['frontend/src/**/*.ts{,x}'],
+      rootDir: resolve(import.meta.dirname, 'frontend'),
+    },
+    noRawFormElements: {
+      files: ['frontend/src/**/*.tsx'],
+    },
     tailwind: { cssConfigPath: 'frontend/src/index.css' },
   },
   ...storybook.configs['flat/recommended'],

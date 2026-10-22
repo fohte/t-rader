@@ -56,58 +56,56 @@ export function NoteEvaluationEvidenceCardView({
           </Button>
         }
       />
-      <PopoverContent
-        align="start"
-        padding="md"
-        className="w-80 space-y-2 text-xs"
-      >
-        <p className="font-mono font-semibold text-foreground">{title}</p>
-        {state.status === 'loading' ? (
-          <p role="status" className="text-muted-foreground">
-            実行記録を読み込み中...
-          </p>
-        ) : state.status === 'error' ? (
-          <p role="alert" className="text-destructive">
-            実行記録を取得できませんでした
-          </p>
-        ) : state.status === 'not-found' ? (
-          <p role="status" className="text-muted-foreground">
-            実行記録が見つかりません
-          </p>
-        ) : (
-          <div className="space-y-2">
-            <dl className="space-y-1">
-              <div className="flex gap-x-3">
-                <dt className="w-16 shrink-0 text-muted-foreground">
-                  実行時刻
-                </dt>
-                <dd className="min-w-0 font-mono tabular-nums">
-                  {formatIngestDateTime(state.evaluation.evaluated_at)}
-                </dd>
+      <PopoverContent align="start" padding="md" className="w-80">
+        <div className="space-y-2 text-xs">
+          <p className="font-mono font-semibold text-foreground">{title}</p>
+          {state.status === 'loading' ? (
+            <p role="status" className="text-muted-foreground">
+              実行記録を読み込み中...
+            </p>
+          ) : state.status === 'error' ? (
+            <p role="alert" className="text-destructive">
+              実行記録を取得できませんでした
+            </p>
+          ) : state.status === 'not-found' ? (
+            <p role="status" className="text-muted-foreground">
+              実行記録が見つかりません
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <dl className="space-y-1">
+                <div className="flex gap-x-3">
+                  <dt className="w-16 shrink-0 text-muted-foreground">
+                    実行時刻
+                  </dt>
+                  <dd className="min-w-0 font-mono tabular-nums">
+                    {formatIngestDateTime(state.evaluation.evaluated_at)}
+                  </dd>
+                </div>
+                <div className="flex gap-x-3">
+                  <dt className="w-16 shrink-0 text-muted-foreground">
+                    出どころ
+                  </dt>
+                  <dd className="min-w-0">自作指標の実行記録</dd>
+                </div>
+              </dl>
+              <div className="space-y-1">
+                <p className="text-muted-foreground">入力</p>
+                <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-all border border-border bg-bg-tertiary p-2 font-mono text-2xs">
+                  {formatJson(state.evaluation.args)}
+                </pre>
               </div>
-              <div className="flex gap-x-3">
-                <dt className="w-16 shrink-0 text-muted-foreground">
-                  出どころ
-                </dt>
-                <dd className="min-w-0">自作指標の実行記録</dd>
-              </div>
-            </dl>
-            <div className="space-y-1">
-              <p className="text-muted-foreground">入力</p>
-              <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-all border border-border bg-bg-tertiary p-2 font-mono text-2xs">
-                {formatJson(state.evaluation.args)}
-              </pre>
+              <details className="border-t border-border pt-2">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  コードを表示
+                </summary>
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all border border-border bg-bg-tertiary p-2 font-mono text-2xs">
+                  {state.evaluation.code}
+                </pre>
+              </details>
             </div>
-            <details className="border-t border-border pt-2">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                コードを表示
-              </summary>
-              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all border border-border bg-bg-tertiary p-2 font-mono text-2xs">
-                {state.evaluation.code}
-              </pre>
-            </details>
-          </div>
-        )}
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   )
