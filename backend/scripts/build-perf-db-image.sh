@@ -73,7 +73,14 @@ cleanup() {
 trap cleanup EXIT
 
 psql_exec() {
+  local docker_exec_args=()
+  if [[ "${1-}" == '--interactive' ]]; then
+    docker_exec_args+=(--interactive)
+    shift
+  fi
+
   docker exec \
+    "${docker_exec_args[@]}" \
     --env "PGPASSWORD=$POSTGRES_PASSWORD" \
     "$container_name" psql \
     -X \
@@ -195,17 +202,7 @@ port="$(docker port "$container_name" 5432/tcp | sed 's/.*://')"
     cargo run -p migration -- up
 )
 
-docker exec --interactive \
-  --env "PGPASSWORD=$POSTGRES_PASSWORD" \
-  "$container_name" psql \
-  -X \
-  -q \
-  --host=127.0.0.1 \
-  --port=5432 \
-  -U "$POSTGRES_USER" \
-  -d "$POSTGRES_DATABASE" \
-  -v ON_ERROR_STOP=1 \
-  < "$seed_sql"
+psql_exec --interactive < "$seed_sql"
 
 shrink_wal
 docker stop --timeout 60 "$container_name" > /dev/null
