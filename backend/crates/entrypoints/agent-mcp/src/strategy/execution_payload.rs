@@ -11,6 +11,7 @@ use core_application::{
 };
 use rmcp::ErrorData as McpError;
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::dto::{
@@ -36,6 +37,7 @@ impl StrategyServer {
         a2a_task_id: &str,
         execution_step_id: Uuid,
         params: ExecuteOperationParams,
+        cancellation: CancellationToken,
     ) -> Result<ExecuteOperationResult, McpError> {
         let name = params.name.trim();
         validate_execute_operation_params(name, &params)?;
@@ -92,9 +94,22 @@ impl StrategyServer {
             .await
             .map_err(strategy_execution_error)?;
 
+        if cancellation.is_cancelled() {
+            return Err(internal_error("execution request cancelled"));
+        }
         let result = self
-            .run_saved_operation(scope, &indicator, &stdin, input_files, &params)
+            .run_saved_operation(
+                scope,
+                &indicator,
+                &stdin,
+                input_files,
+                &params,
+                &cancellation,
+            )
             .await?;
+        if cancellation.is_cancelled() {
+            return Err(internal_error("execution request cancelled"));
+        }
         let output = if result.exit_code == 0 {
             Some(parse_and_validate_output(&result.stdout, &indicator)?)
         } else {
@@ -116,6 +131,9 @@ impl StrategyServer {
             )
             .await
             .map_err(strategy_execution_error)?;
+        if cancellation.is_cancelled() {
+            return Err(internal_error("execution request cancelled"));
+        }
 
         let (evaluation_id, projection_error) = match (output.is_some(), params.numeric_pointers) {
             (true, Some(pointers)) => match self
@@ -135,6 +153,9 @@ impl StrategyServer {
             },
             _ => (None, None),
         };
+        if cancellation.is_cancelled() {
+            return Err(internal_error("execution request cancelled"));
+        }
 
         Ok(ExecuteOperationResult {
             input_payload: input_payload.into(),
@@ -153,20 +174,23 @@ impl StrategyServer {
         stdin: &str,
         input_files: Option<Vec<ExecFile>>,
         params: &ExecuteOperationParams,
+        cancellation: &CancellationToken,
     ) -> Result<ExecResult, McpError> {
         let max_output_bytes = params.max_output_bytes.unwrap_or(EXEC_MAX_OUTPUT_BYTES);
-        self.kata_executor()?
-            .run(ExecRequest {
-                code: indicator.code.clone(),
-                stdin: Some(stdin.to_string()),
-                timeout: params
-                    .timeout_secs
-                    .map(|seconds| Duration::from_secs(seconds.into())),
-                max_output_bytes: Some(max_output_bytes as usize),
-                input_files,
-            })
-            .await
-            .map_err(|error| kata_exec_error(error, scope.id(), indicator))
+        let execution = self.kata_executor()?.run(ExecRequest {
+            code: indicator.code.clone(),
+            stdin: Some(stdin.to_string()),
+            timeout: params
+                .timeout_secs
+                .map(|seconds| Duration::from_secs(seconds.into())),
+            max_output_bytes: Some(max_output_bytes as usize),
+            input_files,
+        });
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => Err(internal_error("execution request cancelled")),
+            result = execution => result.map_err(|error| kata_exec_error(error, scope.id(), indicator)),
+        }
     }
 
     pub(crate) async fn read_execution_payload_inner(

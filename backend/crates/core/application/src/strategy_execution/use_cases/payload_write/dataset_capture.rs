@@ -41,7 +41,7 @@ impl StrategyExecutionUseCases {
         let snapshot = tokio::select! {
             biased;
             _ = cancellation.cancelled() => {
-                return Err(StrategyExecutionUseCaseError::ExecutionCancelled);
+                return Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled);
             }
             result = provider.open(scope, request) => result?,
         };
@@ -65,7 +65,7 @@ impl StrategyExecutionUseCases {
         if cancellation.is_cancelled() {
             self.mark_incomplete(access.task_id, payload_id, "request_cancelled")
                 .await?;
-            return Err(StrategyExecutionUseCaseError::ExecutionCancelled);
+            return Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled);
         }
         let mut capture_metadata = PayloadCaptureMetadata {
             captured_at: snapshot.captured_at,
@@ -86,7 +86,7 @@ impl StrategyExecutionUseCases {
                 _ = cancellation.cancelled() => {
                     self.mark_incomplete(access.task_id, payload_id, "request_cancelled")
                         .await?;
-                    return Err(StrategyExecutionUseCaseError::ExecutionCancelled);
+                    return Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled);
                 }
                 result = provider.read_page(&snapshot, cursor.as_deref(), page_size) => result,
             } {
@@ -238,7 +238,7 @@ impl StrategyExecutionUseCases {
         }
         self.mark_incomplete(task_id, payload_id, "request_cancelled")
             .await?;
-        Err(StrategyExecutionUseCaseError::ExecutionCancelled)
+        Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled)
     }
 
     async fn fail_invalid_provider_completion<T>(

@@ -30,14 +30,15 @@ impl StrategyServer {
         let execution_step_id = execution_step_id_from_ctx(&ctx).ok_or_else(|| {
             invalid_params("x-execution-id must include a valid execution step ID")
         })?;
-        let cancellation = ctx.ct.clone();
-        tokio::select! {
-            biased;
-            _ = cancellation.cancelled() => Err(super::super::internal_error("execution request cancelled")),
-            result = self.execute_operation_inner(scope, &a2a_task_id, execution_step_id, params) => {
-                result.map(Json)
-            }
-        }
+        self.execute_operation_inner(
+            scope,
+            &a2a_task_id,
+            execution_step_id,
+            params,
+            ctx.ct.clone(),
+        )
+        .await
+        .map(Json)
     }
 
     /// task 内で seal 済み payload の有限ページを読む

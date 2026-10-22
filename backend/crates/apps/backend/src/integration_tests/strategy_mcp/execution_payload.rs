@@ -1,5 +1,5 @@
 use std::future::pending;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -55,6 +55,13 @@ struct SyntheticDatasetProvider {
 
 struct WaitingDatasetProvider {
     started: Arc<tokio::sync::Notify>,
+    wait_at: DatasetWaitStage,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DatasetWaitStage {
+    Open,
+    ReadPage,
 }
 
 #[async_trait]
@@ -64,6 +71,10 @@ impl DatasetProvider for WaitingDatasetProvider {
         _scope: StrategyScope,
         _request: Value,
     ) -> Result<DatasetSnapshot, DatasetProviderError> {
+        if self.wait_at == DatasetWaitStage::Open {
+            self.started.notify_one();
+            pending().await
+        }
         Ok(DatasetSnapshot {
             source_revision: DATASET_REVISION.into(),
             source_locator: None,
@@ -80,8 +91,13 @@ impl DatasetProvider for WaitingDatasetProvider {
         _cursor: Option<&str>,
         _limit: usize,
     ) -> Result<DatasetPage, DatasetProviderError> {
-        self.started.notify_one();
-        pending().await
+        if self.wait_at == DatasetWaitStage::ReadPage {
+            self.started.notify_one();
+            pending().await
+        }
+        Err(DatasetProviderError::Failed(
+            "unexpected provider read".into(),
+        ))
     }
 }
 
@@ -949,6 +965,7 @@ async fn cancelled_dataset_capture_marks_its_payload_incomplete(
     let started = Arc::new(tokio::sync::Notify::new());
     let provider = WaitingDatasetProvider {
         started: Arc::clone(&started),
+        wait_at: DatasetWaitStage::ReadPage,
     };
     let cancellation = tokio_util::sync::CancellationToken::new();
     let capture_cancellation = cancellation.clone();
@@ -970,7 +987,9 @@ async fn cancelled_dataset_capture_marks_its_payload_incomplete(
             .map_err(|error| error.to_string())
     });
 
-    started.notified().await;
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("dataset page read starts");
     cancellation.cancel();
     let capture_result = capture.await.expect("join cancelled capture");
     let stored = task_execution_payload::Entity::find()
@@ -987,6 +1006,59 @@ async fn cancelled_dataset_capture_marks_its_payload_incomplete(
             "incomplete".to_string(),
             Some("request_cancelled".to_string()),
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn cancelled_dataset_open_does_not_create_a_payload(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+            .strategy_executions();
+    let access = use_cases
+        .authorize_execution(StrategyScope::from(strategy_id), &a2a_task_id, None)
+        .await
+        .expect("authorize synthetic task");
+    let started = Arc::new(tokio::sync::Notify::new());
+    let provider = WaitingDatasetProvider {
+        started: Arc::clone(&started),
+        wait_at: DatasetWaitStage::Open,
+    };
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let capture_cancellation = cancellation.clone();
+    let capture = tokio::spawn(async move {
+        use_cases
+            .capture_dataset(
+                StrategyScope::from(strategy_id),
+                &access,
+                "synthetic-provider".into(),
+                &provider,
+                json!({}),
+                DatasetCaptureOptions {
+                    page_size: 10,
+                    cancellation: &capture_cancellation,
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("dataset provider open starts");
+    cancellation.cancel();
+    let capture_result = capture.await.expect("join cancelled dataset open");
+    let stored = task_execution_payload::Entity::find()
+        .filter(task_execution_payload::Column::TaskId.eq(task_id))
+        .one(&db)
+        .await
+        .expect("query payload created during cancelled open");
+
+    assert_eq!(
+        (capture_result, stored.is_none()),
+        (Err("dataset capture was cancelled".to_string()), true),
     );
 }
 
