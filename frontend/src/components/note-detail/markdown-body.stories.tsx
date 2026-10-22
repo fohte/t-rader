@@ -238,6 +238,26 @@ export const LinksWithoutHover: Story = {
   },
 }
 
+export const LinksOnMobile: Story = {
+  name: 'shows links without hovering on a narrow screen.',
+  args: { ...LinksWithoutHover.args },
+  globals: { viewport: { value: 'mobileNoteLinks' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileNoteLinks: {
+          name: 'Mobile note links',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
+}
+
 export const WithRangeCommentGutter: Story = {
   name: 'the formatted note keeps its body position beside the comment gutter.',
   decorators: [withNoteBodyCard],
