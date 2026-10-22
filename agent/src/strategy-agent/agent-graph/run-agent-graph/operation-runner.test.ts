@@ -949,6 +949,341 @@ describe('runAgentGraph operation phases', () => {
     }
   })
 
+  it('cancels an in-flight dataset capture before the operation and later phases run', async () => {
+    vi.useFakeTimers()
+    try {
+      const modelCalls: string[] = []
+      const calls: ExecutionToolRequest[] = []
+      const latestSteps: StrategyTaskStep[][] = []
+      let captureSignal: AbortSignal | undefined
+      let markCaptureStarted: () => void = () => undefined
+      const captureStarted = new Promise<void>((resolve) => {
+        markCaptureStarted = () => {
+          resolve()
+        }
+      })
+      const context = createContext(
+        (request, signal) => {
+          calls.push(request)
+          if (request.name !== 'capture_dataset') {
+            return Promise.resolve(err(new Error('unexpected fixed tool call')))
+          }
+          captureSignal = signal
+          markCaptureStarted()
+          return new Promise((_, reject) => {
+            if (signal === undefined) {
+              reject(new Error('dataset capture had no cancellation signal'))
+              return
+            }
+            signal.addEventListener(
+              'abort',
+              () => {
+                reject(new Error('dataset capture cancelled'))
+              },
+              { once: true },
+            )
+          })
+        },
+        (steps) => latestSteps.push([...steps]),
+      )
+      const execution = runAgentGraph(
+        createDeps(modelCalls, () =>
+          Promise.resolve({ structuredResponse: {} }),
+        ),
+        {
+          phases: [
+            {
+              key: 'prepare',
+              label: 'Prepare',
+              kind: 'operation',
+              operation: 'evaluate_saved_code',
+              codeId: 'demo-transform',
+              timeoutMinutes: 1,
+              input: {
+                rows: {
+                  dataset: {
+                    provider: 'demo-source',
+                    params: { collection: 'demo-set' },
+                  },
+                },
+              },
+              skills: [],
+              subagents: [],
+              output: {},
+            },
+            {
+              key: 'follow-up',
+              label: 'Follow up',
+              kind: 'llm',
+              model: 'demo-follow-up-model',
+              prompt: 'Continue after the operation.',
+              skills: [],
+              subagents: [],
+              output: {},
+            },
+          ],
+        },
+        context,
+      )
+
+      await captureStarted
+      await vi.advanceTimersByTimeAsync(60_000)
+      const result = await execution
+      expect(
+        Array.of<unknown>(
+          result,
+          calls,
+          modelCalls,
+          captureSignal?.aborted ?? false,
+          normalizeStepTimestamps(latestSteps.at(-1) ?? []),
+        ),
+      ).toEqual([
+        {
+          status: 'failed',
+          message: 'フェーズ prepare が timeout (1 分) を超過',
+          errorKind: 'agent_error',
+        },
+        [
+          {
+            name: 'capture_dataset',
+            arguments: {
+              provider: 'demo-source',
+              params: { collection: 'demo-set' },
+            },
+          },
+        ],
+        [],
+        true,
+        [
+          {
+            phaseKey: 'prepare',
+            executionStepId: '<execution-step-id-1>',
+            kind: 'operation',
+            label: 'Prepare',
+            model: null,
+            status: 'failed',
+            error: 'dataset capture cancelled',
+            startedAt: '<started-at>',
+            finishedAt: '<finished-at>',
+            traceId: NOOP_TRACE_ID,
+            spanId: NOOP_SPAN_ID,
+          },
+        ],
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops payload-backed for_each after cancellation and preserves completed items', async () => {
+    vi.useFakeTimers()
+    try {
+      const modelCalls: string[] = []
+      const calls: ExecutionToolRequest[] = []
+      const latestSteps: StrategyTaskStep[][] = []
+      const payloadId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
+      const pointer = '/value/items'
+      let payloadReadSignal: AbortSignal | undefined
+      let markSecondPageStarted: () => void = () => undefined
+      const secondPageStarted = new Promise<void>((resolve) => {
+        markSecondPageStarted = () => {
+          resolve()
+        }
+      })
+      const context = createContext(
+        (request, signal) => {
+          calls.push(request)
+          if (request.name === 'execute_operation') {
+            return Promise.resolve(
+              ok(
+                operationResponse(
+                  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+                  payloadId,
+                  'demo-page-digest',
+                ),
+              ),
+            )
+          }
+          if (request.name !== 'read_execution_payload') {
+            return Promise.resolve(err(new Error('unexpected fixed tool call')))
+          }
+          const { cursor } = request.arguments
+          if (cursor === 0) {
+            return Promise.resolve(
+              ok({
+                payload_id: payloadId,
+                pointer,
+                data: [{ label: 'first-item' }],
+                cursor,
+                next_cursor: 1,
+                total_count: 2,
+                digest: 'demo-page-digest',
+              }),
+            )
+          }
+          payloadReadSignal = signal
+          markSecondPageStarted()
+          return new Promise((_, reject) => {
+            if (signal === undefined) {
+              reject(new Error('payload page read had no cancellation signal'))
+              return
+            }
+            signal.addEventListener(
+              'abort',
+              () => {
+                reject(new Error('payload page read cancelled'))
+              },
+              { once: true },
+            )
+          })
+        },
+        (steps) => latestSteps.push([...steps]),
+      )
+      const execution = runAgentGraph(
+        createDeps(modelCalls, () =>
+          Promise.resolve({ structuredResponse: { inspected: 'complete' } }),
+        ),
+        {
+          phases: [
+            {
+              key: 'prepare',
+              label: 'Prepare',
+              kind: 'operation',
+              operation: 'evaluate_saved_code',
+              codeId: 'demo-source',
+              skills: [],
+              subagents: [],
+              output: { items: { type: 'array' } },
+            },
+            {
+              key: 'inspect',
+              label: 'Inspect',
+              kind: 'llm',
+              model: 'demo-item-model',
+              prompt: 'Inspect the assigned item.',
+              forEach: 'prepare.items',
+              labelField: 'label',
+              maxParallel: 1,
+              timeoutMinutes: 1,
+              skills: [],
+              subagents: [],
+              output: { inspected: { type: 'string' } },
+            },
+            {
+              key: 'follow-up',
+              label: 'Follow up',
+              kind: 'llm',
+              model: 'demo-follow-up-model',
+              prompt: 'Continue after item inspection.',
+              skills: [],
+              subagents: [],
+              output: {},
+            },
+          ],
+        },
+        context,
+      )
+
+      await secondPageStarted
+      await vi.advanceTimersByTimeAsync(60_000)
+      const result = await execution
+      expect(
+        Array.of<unknown>(
+          result,
+          calls,
+          modelCalls,
+          payloadReadSignal?.aborted ?? false,
+          normalizeStepTimestamps(latestSteps.at(-1) ?? []),
+        ),
+      ).toEqual([
+        {
+          status: 'failed',
+          message: 'フェーズ inspect が timeout (1 分) を超過',
+          errorKind: 'agent_error',
+        },
+        [
+          {
+            name: 'execute_operation',
+            arguments: {
+              name: 'demo-source',
+              args: {},
+              payload_inputs: [],
+            },
+          },
+          {
+            name: 'read_execution_payload',
+            arguments: {
+              payload_id: payloadId,
+              pointer,
+              cursor: 0,
+              limit: 100,
+            },
+          },
+          {
+            name: 'read_execution_payload',
+            arguments: {
+              payload_id: payloadId,
+              pointer,
+              cursor: 1,
+              limit: 100,
+            },
+          },
+        ],
+        ['demo-item-model'],
+        true,
+        [
+          {
+            phaseKey: 'prepare',
+            executionStepId: '<execution-step-id-1>',
+            kind: 'operation',
+            label: 'Prepare',
+            model: null,
+            status: 'completed',
+            output: {
+              payloadRef: {
+                id: payloadId,
+                digest: 'demo-page-digest',
+              },
+              pointer: '/value',
+            },
+            inputRef: {
+              payload_inputs: [],
+              execution_input: {
+                id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+                digest: 'demo-input-digest',
+              },
+            },
+            outputRef: {
+              id: payloadId,
+              digest: 'demo-page-digest',
+            },
+            startedAt: '<started-at>',
+            finishedAt: '<finished-at>',
+            traceId: NOOP_TRACE_ID,
+            spanId: NOOP_SPAN_ID,
+          },
+          {
+            phaseKey: 'inspect',
+            executionStepId: '<execution-step-id-2>',
+            label: 'Inspect',
+            model: 'demo-item-model',
+            status: 'completed',
+            item: { label: 'first-item' },
+            itemKey: { payload_id: payloadId, pointer, index: 0 },
+            itemLabel: 'first-item',
+            output: { inspected: 'complete' },
+            startedAt: '<started-at>',
+            finishedAt: '<finished-at>',
+            traceId: NOOP_TRACE_ID,
+            spanId: NOOP_SPAN_ID,
+          },
+        ],
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('reuses captured dataset payloads when resuming an operation step', async () => {
     const modelCalls: string[] = []
     const calls: ExecutionToolRequest[] = []
