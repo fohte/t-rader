@@ -166,12 +166,10 @@ describe('TaskRunPage', () => {
     )
 
     const user = userEvent.setup()
-    await user.click(
-      await screen.findByRole('button', { name: /架空 task A step/ }),
-    )
-    await screen.findByText(/task-a-only-detail/)
-    await user.click(screen.getByRole('button', { name: /sample-fieldを開く/ }))
-    await screen.findByText(/synthetic-a/)
+    await user.click(await screen.findByText('架空 task A step'))
+    await screen.findByText('{ "marker": "task-a-only-detail" }')
+    await user.click(screen.getByText('→ input: sample-fieldを開く'))
+    await screen.findByText('[ "synthetic-a", "synthetic-b" ]')
 
     await router.navigate({
       to: '/strategies/$id/runs/$taskId',
@@ -182,7 +180,8 @@ describe('TaskRunPage', () => {
     const actual = {
       taskHeading: screen.getByRole('heading', { level: 1 }).textContent,
       oldStepDetail:
-        screen.queryByText(/task-a-only-detail/)?.textContent ?? null,
+        screen.queryByText('{ "marker": "task-a-only-detail" }')?.textContent ??
+        null,
       payloadReads,
       selectedPayload:
         screen.queryByRole('region', { name: '実行 payload' })?.textContent ??
