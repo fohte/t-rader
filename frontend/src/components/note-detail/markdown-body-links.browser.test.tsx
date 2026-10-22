@@ -36,6 +36,18 @@ interface CdpTargetInfo {
 
 declare module 'vitest/browser' {
   interface CDPSession {
+    send(
+      method: 'DOM.getNodeForLocation',
+      params: {
+        x: number
+        y: number
+        includeUserAgentShadowDOM: boolean
+      },
+    ): Promise<{ backendNodeId: number }>
+    send(
+      method: 'DOM.describeNode',
+      params: { backendNodeId: number },
+    ): Promise<{ node: { nodeName: string; attributes: string[] } }>
     send(method: string, params?: Record<string, unknown>): Promise<unknown>
     on(event: string, listener: (target: CdpTargetInfo) => void): void
     off(event: string, listener: (target: CdpTargetInfo) => void): void
@@ -150,6 +162,13 @@ function getMainFramePoint(element: HTMLElement) {
   }
 }
 
+function serializeLinkTarget(
+  nodeName: string,
+  href: string | null | undefined,
+) {
+  return JSON.stringify({ nodeName, href })
+}
+
 function readMobileViewportState() {
   return {
     width: window.innerWidth,
@@ -163,6 +182,18 @@ function readMobileViewportState() {
 async function tapLink(session: CdpSession, name: string) {
   const link = await screen.findByRole('link', { name })
   const { x, y } = getMainFramePoint(link)
+  const { backendNodeId } = await session.send('DOM.getNodeForLocation', {
+    x: Math.round(x),
+    y: Math.round(y),
+    includeUserAgentShadowDOM: true,
+  })
+  const { node } = await session.send('DOM.describeNode', {
+    backendNodeId,
+  })
+  const hrefIndex = node.attributes.indexOf('href')
+  expect(
+    serializeLinkTarget(node.nodeName, node.attributes[hrefIndex + 1]),
+  ).toEqual(serializeLinkTarget('A', link.getAttribute('href')))
   await session.send('Input.synthesizeTapGesture', {
     x,
     y,
