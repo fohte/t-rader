@@ -68,6 +68,27 @@ const tableResult: WidgetQueryResponse = {
     },
   ],
 }
+const lineQueries: WidgetQueryDefinitions = {
+  sample: { metric: 'close', by: 'stock' },
+}
+const lineResult: WidgetQueryResponse = {
+  as_of: '2099-01-19',
+  rows: [],
+  series: [
+    {
+      key: 'sample:stock:DEMO-A',
+      query: 'sample',
+      name: 'サンプル値',
+      target: { key: 'stock:DEMO-A', name: 'サンプル銘柄 A' },
+      points: [
+        { date: '2099-01-05', value: 32.4 },
+        { date: '2099-01-06', value: 33.1 },
+        { date: '2099-01-07', value: null },
+        { date: '2099-01-19', value: 35.2 },
+      ],
+    },
+  ],
+}
 
 function withGroupRouter(Story: ComponentType) {
   return (
@@ -131,6 +152,19 @@ export const Table: Story = {
         type: 'table',
         columns: ['metric_b', 'metric_a'],
       },
+    },
+  },
+}
+
+export const Line: Story = {
+  name: '基準日と期間を示して銘柄の値を折れ線で表示する。',
+  args: {
+    state: {
+      kind: 'ready',
+      queries: lineQueries,
+      display: { sample: { label: 'サンプル値', format: 'number' } },
+      result: lineResult,
+      viz: { type: 'line', series: ['sample'] },
     },
   },
 }

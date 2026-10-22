@@ -9,4 +9,5 @@ export const testEChartsPalette = {
   upDim: '#5a2a2a',
   down: '#3f9fe0',
   downDim: '#234152',
+  seriesColors: ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de'],
 } satisfies EChartsPalette

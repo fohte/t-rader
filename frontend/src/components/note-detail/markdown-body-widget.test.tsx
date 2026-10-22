@@ -72,6 +72,26 @@ const TABLE_WIDGET_SOURCE = [
   '  as_of: 2099-01-05',
   '\x60\x60\x60',
 ].join('\n')
+const LINE_WIDGET_SOURCE = [
+  '```widget',
+  'queries:',
+  '  sample:',
+  '    metric: close',
+  '    by: stock',
+  '    universe:',
+  '      stocks: [DEMO-A]',
+  'display:',
+  '  sample:',
+  '    label: サンプル値',
+  '    format: number',
+  'viz:',
+  '  type: line',
+  '  series: [sample]',
+  'time:',
+  '  as_of: 2099-01-10',
+  '  range: "2099-01-01..2099-01-10"',
+  '```',
+].join('\n')
 
 const WIDGET_SOURCES_WITHOUT_AS_OF = [
   {
@@ -231,6 +251,35 @@ describe('MarkdownBody widget blocks', () => {
               columns: ['sample_metric'],
             },
             time: { as_of: '2099-01-05' },
+          },
+        },
+        { enabled: true },
+      ],
+    ])
+  })
+
+  it('sends line series and its date range to the widget query API', () => {
+    render(<MarkdownBody source={LINE_WIDGET_SOURCE} />)
+
+    expect(useApiQuery.mock.calls).toEqual([
+      [
+        'post',
+        '/api/widgets/query',
+        {
+          body: {
+            queries: {
+              sample: {
+                metric: 'close',
+                by: 'stock',
+                universe: { stocks: ['DEMO-A'] },
+              },
+            },
+            display: { sample: { label: 'サンプル値', format: 'number' } },
+            viz: { type: 'line', series: ['sample'] },
+            time: {
+              as_of: '2099-01-10',
+              range: '2099-01-01..2099-01-10',
+            },
           },
         },
         { enabled: true },

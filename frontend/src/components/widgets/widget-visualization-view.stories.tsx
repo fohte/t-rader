@@ -47,6 +47,42 @@ const tableResult: WidgetQueryResponse = {
     },
   ],
 }
+const lineResult: WidgetQueryResponse = {
+  as_of: '2099-01-19',
+  rows: [],
+  series: [
+    {
+      key: 'movement:group:demo-axis/demo-group-a',
+      query: 'movement',
+      name: '騰落率',
+      target: {
+        key: 'group:demo-axis/demo-group-a',
+        name: 'サンプル分類 A',
+      },
+      points: [
+        { date: '2099-01-05', value: 0.012 },
+        { date: '2099-01-06', value: null },
+        { date: '2099-01-07', value: -0.008 },
+        { date: '2099-01-19', value: 0.014 },
+      ],
+    },
+    {
+      key: 'movement:group:demo-axis/demo-group-b',
+      query: 'movement',
+      name: '騰落率',
+      target: {
+        key: 'group:demo-axis/demo-group-b',
+        name: 'サンプル分類 B',
+      },
+      points: [
+        { date: '2099-01-05', value: -0.006 },
+        { date: '2099-01-06', value: 0.009 },
+        { date: '2099-01-07', value: 0.015 },
+        { date: '2099-01-19', value: 0.004 },
+      ],
+    },
+  ],
+}
 
 function withWidgetRouter(Story: ComponentType) {
   return (
@@ -94,5 +130,14 @@ export const Table: Story = {
       metric_b: { label: '指標 B', format: 'number' },
     },
     viz: { type: 'table', columns: ['metric_b', 'metric_a'] },
+  },
+}
+
+export const Line: Story = {
+  name: '期間中のグループ別騰落率を折れ線で比較する。',
+  args: {
+    result: lineResult,
+    display: { movement: { label: '騰落率' } },
+    viz: { type: 'line', series: ['movement'] },
   },
 }

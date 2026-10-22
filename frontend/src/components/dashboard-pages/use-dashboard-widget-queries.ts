@@ -14,7 +14,9 @@ function createWidgetQueryBody(
     asOf === undefined
       ? time
       : asOf === null
-        ? undefined
+        ? time?.range == null
+          ? undefined
+          : { range: time.range }
         : { ...time, as_of: asOf }
   return {
     queries,
