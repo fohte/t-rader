@@ -99,7 +99,7 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('submits a task with a valid strategy_id through the full A2A machinery to completion', async () => {
     const app = buildApp()
 
-    const submitRes = await app.request('/internal/tasks', {
+    const submitRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -128,7 +128,7 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('rejects a task submitted with an invalid strategy_id', async () => {
     const app = buildApp()
 
-    const submitRes = await app.request('/internal/tasks', {
+    const submitRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -156,7 +156,7 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('rejects a task submitted with no strategy_id at all', async () => {
     const app = buildApp()
 
-    const submitRes = await app.request('/internal/tasks', {
+    const submitRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -164,7 +164,6 @@ describeIfDb('t-rader-agent internal API integration', () => {
       },
       body: JSON.stringify({
         task_id: '22222222-2222-2222-2222-222222222224',
-        strategy_id: '',
         prompt: 'do the thing',
       }),
     })
@@ -175,7 +174,7 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('returns 401 for an internal API request with a missing or wrong bearer token', async () => {
     const app = buildApp()
 
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
