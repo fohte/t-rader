@@ -22,7 +22,7 @@ export interface McpToolsClient {
   close(): Promise<void>
 }
 
-export interface SubagentExecutionIdentity {
+interface SubagentExecutionIdentity {
   readonly executionId: string
   readonly definitionKey: string
 }

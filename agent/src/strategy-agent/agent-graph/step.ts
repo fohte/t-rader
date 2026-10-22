@@ -6,7 +6,7 @@ import { z } from 'zod'
 export const AGENT_GRAPH_STEPS_ARTIFACT_ID = 'agent-graph-steps'
 
 type StrategyTaskStepStatus = 'running' | 'completed' | 'failed'
-export type StrategyTaskStepKind = 'llm' | 'operation'
+type StrategyTaskStepKind = 'llm' | 'operation'
 
 export interface StrategyTaskStep {
   readonly phaseKey: string

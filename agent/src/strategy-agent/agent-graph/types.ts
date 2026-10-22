@@ -1,4 +1,4 @@
-export interface PriorOutputBinding {
+interface PriorOutputBinding {
   readonly phase: string
   readonly pointer: string
   readonly cursor?: number
