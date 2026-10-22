@@ -13,6 +13,7 @@ pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
+mod execution_budget_router;
 pub(super) mod execution_payload;
 pub(super) mod fin_summary;
 mod graph_dto;
@@ -38,7 +39,6 @@ pub(super) mod short_sale_report;
 pub(super) mod stock_groups;
 pub(super) mod stock_registration;
 pub(super) mod strategy_earnings_targets;
-mod tool_call_limit;
 mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;
@@ -50,7 +50,6 @@ use std::collections::BTreeMap;
 
 use core_application::kata_exec::{KataExecError, SharedKataExecutor};
 use core_application::llm_client::LlmClientError as LiteLlmError;
-use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
 use core_application::persistence::PersistenceError;
 use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
 use core_application::web_search::SharedWebSearchClient;
@@ -70,6 +69,7 @@ const MAX_LIST_LIMIT: u64 = 200;
 pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
+const STRATEGY_TASK_ID_HEADER: &str = "x-strategy-task-id";
 /// `x-execution-id` ヘッダ名。agent は `{a2a_task_id}:{step_id}` 形式の値を MCP tool 呼び出し
 /// ごとに送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列、`a2a_task_id` は
 /// resume のたびに新しくなる実行 (試行) の id)。`a2a_task_id` をそのままキーにすると resume の
@@ -140,18 +140,6 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
             internal_error(format!("failed to parse litellm response: {msg}"))
         }
         LiteLlmError::Init(msg) => internal_error(format!("litellm client init error: {msg}")),
-    }
-}
-
-pub(super) fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
-    match error {
-        error @ McpToolCallCountUseCaseError::CallLimitExceeded { .. } => {
-            invalid_params(error.to_string())
-        }
-        error => {
-            tracing::error!(error = %error, "strategy mcp db error");
-            internal_error(format!("database error: {error}"))
-        }
     }
 }
 
@@ -337,6 +325,25 @@ fn execution_id_from_headers(headers: &axum::http::HeaderMap) -> Option<String> 
 fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     let parts = ctx.extensions.get::<axum::http::request::Parts>()?;
     execution_id_from_headers(&parts.headers)
+}
+
+fn strategy_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Option<Uuid>, McpError> {
+    let Some(parts) = ctx.extensions.get::<axum::http::request::Parts>() else {
+        return Ok(None);
+    };
+    let Some(header) = parts.headers.get(STRATEGY_TASK_ID_HEADER) else {
+        return Ok(None);
+    };
+    let raw = header.to_str().map_err(|_| {
+        invalid_params(format!(
+            "{STRATEGY_TASK_ID_HEADER} header is not valid ASCII"
+        ))
+    })?;
+    Uuid::parse_str(raw.trim()).map(Some).map_err(|_| {
+        invalid_params(format!(
+            "{STRATEGY_TASK_ID_HEADER} header is not a valid uuid"
+        ))
+    })
 }
 
 fn tool_model_from_headers(

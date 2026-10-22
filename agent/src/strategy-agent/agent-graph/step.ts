@@ -56,7 +56,7 @@ export const toStepJson = (step: StrategyTaskStep): StrategyTaskStepJson => ({
   ...(step.error !== undefined ? { error: step.error } : {}),
 })
 
-// resume 用に backend (`POST /internal/tasks` の `resume_steps`) から届く wire JSON
+// resume 用に backend (`POST /internal/v2/tasks` の `resume_steps`) から届く wire JSON
 // の形状。中身は backend 側 (step_to_resume_wire_json) の契約で保証されている前提だが、
 // 型システムの外から届く値のため実行時にも検証する。
 export const strategyTaskStepJsonSchema = z.object({

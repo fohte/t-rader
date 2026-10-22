@@ -86,7 +86,6 @@ impl StrategyTaskUseCases {
         new_result_text: Option<String>,
         new_steps: Option<serde_json::Value>,
         claim_now: chrono::DateTime<chrono::FixedOffset>,
-        deadline_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> Result<AutoResumeClaimResult, StrategyTaskCompletionError> {
         let task_update = StrategyTaskUpdate {
             task_id: task.task_id,
@@ -111,7 +110,7 @@ impl StrategyTaskUseCases {
             .await?;
         let claimed = if result.task_updated {
             self.repository
-                .claim_resumable(&transaction, task.task_id, claim_now, deadline_at, true)
+                .claim_resumable(&transaction, task.task_id, claim_now, true)
                 .await?
         } else {
             false

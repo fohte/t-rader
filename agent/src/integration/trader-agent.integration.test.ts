@@ -99,13 +99,14 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('submits a task with a valid strategy_id through the full A2A machinery to completion', async () => {
     const app = buildApp()
 
-    const submitRes = await app.request('/internal/tasks', {
+    const submitRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: 'Bearer test-token',
       },
       body: JSON.stringify({
+        task_id: '22222222-2222-4222-8222-222222222222',
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
       }),
@@ -127,13 +128,14 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('rejects a task submitted with an invalid strategy_id', async () => {
     const app = buildApp()
 
-    const submitRes = await app.request('/internal/tasks', {
+    const submitRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: 'Bearer test-token',
       },
       body: JSON.stringify({
+        task_id: '22222222-2222-4222-8222-222222222223',
         strategy_id: 'not-a-uuid',
         prompt: 'do the thing',
       }),
@@ -154,13 +156,16 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('rejects a task submitted with no strategy_id at all', async () => {
     const app = buildApp()
 
-    const submitRes = await app.request('/internal/tasks', {
+    const submitRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: 'Bearer test-token',
       },
-      body: JSON.stringify({ strategy_id: '', prompt: 'do the thing' }),
+      body: JSON.stringify({
+        task_id: '22222222-2222-4222-8222-222222222224',
+        prompt: 'do the thing',
+      }),
     })
 
     expect(submitRes.status).toBe(422)
@@ -169,7 +174,7 @@ describeIfDb('t-rader-agent internal API integration', () => {
   it('returns 401 for an internal API request with a missing or wrong bearer token', async () => {
     const app = buildApp()
 
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

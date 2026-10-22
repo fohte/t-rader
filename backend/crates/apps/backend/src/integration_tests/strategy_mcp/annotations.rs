@@ -12,8 +12,8 @@ mod tests {
     use super::super::tests_common::{
         ChangeHistoryShape, build_server, change_history_for, insert_strategy,
         normalize_annotation, normalize_create_annotation, normalize_read_annotations,
-        normalize_read_annotations_unordered, seed_annotation, seed_comment, seed_note,
-        ts_sentinel,
+        normalize_read_annotations_unordered, resume_test_execution_task, seed_annotation,
+        seed_comment, seed_note, ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
     use gateway_postgres::entities::{annotation, strategy_task_step_evidence};
@@ -22,7 +22,10 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn create_annotation_then_read_annotations(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "fictional-strategy").await;
-        let server = build_server(db.clone());
+        let task =
+            super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+                .await;
+        let server = build_server(db.clone()).with_default_execution_task_id(task.a2a_task_id);
         let ts: DateTime<FixedOffset> = "2030-01-02T00:00:00+09:00".parse().expect("ts");
         let execution_step_id = Uuid::from_u128(90);
         let evidence_timestamp: DateTime<FixedOffset> =
@@ -144,7 +147,10 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "fictional-strategy").await;
-        let server = build_server(db.clone());
+        let task =
+            super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+                .await;
+        let server = build_server(db.clone()).with_default_execution_task_id(task.a2a_task_id);
         let execution_step_id = Uuid::from_u128(92);
         let evidence_timestamp: DateTime<FixedOffset> =
             "2030-02-02T00:00:00Z".parse().expect("evidence timestamp");
@@ -328,7 +334,11 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
-        let server = build_server(db);
+        let task =
+            super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+                .await;
+        let server =
+            build_server(db.clone()).with_default_execution_task_id(task.a2a_task_id.clone());
         let step_id = Uuid::new_v4();
         let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
 
@@ -336,7 +346,7 @@ mod tests {
             .create_annotation(
                 strategy_id,
                 Some(step_id),
-                Some("attempt-1".into()),
+                Some(task.a2a_task_id.clone()),
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
@@ -350,11 +360,14 @@ mod tests {
             .await
             .expect("create from first attempt");
 
-        let second = server
+        let resumed_task = resume_test_execution_task(&db, &task).await;
+        let resumed_server =
+            build_server(db).with_default_execution_task_id(resumed_task.a2a_task_id.clone());
+        let second = resumed_server
             .create_annotation(
                 strategy_id,
                 Some(step_id),
-                Some("attempt-2".into()),
+                Some(resumed_task.a2a_task_id),
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
@@ -393,7 +406,11 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
-        let server = build_server(db.clone());
+        let task =
+            super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+                .await;
+        let server =
+            build_server(db.clone()).with_default_execution_task_id(task.a2a_task_id.clone());
         let step_id = Uuid::new_v4();
         let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
 
@@ -401,7 +418,7 @@ mod tests {
             .create_annotation(
                 strategy_id,
                 Some(step_id),
-                Some("attempt-1".into()),
+                Some(task.a2a_task_id.clone()),
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
@@ -423,11 +440,14 @@ mod tests {
         .await
         .expect("mark approved");
 
-        let second = server
+        let resumed_task = resume_test_execution_task(&db, &task).await;
+        let resumed_server = build_server(db.clone())
+            .with_default_execution_task_id(resumed_task.a2a_task_id.clone());
+        let second = resumed_server
             .create_annotation(
                 strategy_id,
                 Some(step_id),
-                Some("attempt-2".into()),
+                Some(resumed_task.a2a_task_id),
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
@@ -473,7 +493,11 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
-        let server = build_server(db.clone());
+        let task =
+            super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+                .await;
+        let server =
+            build_server(db.clone()).with_default_execution_task_id(task.a2a_task_id.clone());
         let step_id = Uuid::new_v4();
         let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
 
@@ -481,7 +505,7 @@ mod tests {
             .create_annotation(
                 strategy_id,
                 Some(step_id),
-                Some("attempt-1".into()),
+                Some(task.a2a_task_id.clone()),
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
@@ -503,11 +527,14 @@ mod tests {
         )
         .await;
 
-        let second = server
+        let resumed_task = resume_test_execution_task(&db, &task).await;
+        let resumed_server = build_server(db.clone())
+            .with_default_execution_task_id(resumed_task.a2a_task_id.clone());
+        let second = resumed_server
             .create_annotation(
                 strategy_id,
                 Some(step_id),
-                Some("attempt-2".into()),
+                Some(resumed_task.a2a_task_id),
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
@@ -551,7 +578,10 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
-        let server = build_server(db);
+        let task =
+            super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+                .await;
+        let server = build_server(db).with_default_execution_task_id(task.a2a_task_id.clone());
         let step_id = Uuid::new_v4();
         let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
 
@@ -561,7 +591,7 @@ mod tests {
                 .create_annotation(
                     strategy_id,
                     Some(step_id),
-                    Some("attempt-1".into()),
+                    Some(task.a2a_task_id.clone()),
                     CreateAnnotationParams {
                         target_symbol: "7203".into(),
                         target_kind: "signal".into(),

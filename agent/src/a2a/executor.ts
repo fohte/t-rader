@@ -20,6 +20,7 @@ import {
   extractPurpose,
   extractResumeSteps,
   extractStrategyId,
+  extractStrategyTaskId,
 } from '#a2a/message-metadata'
 import { extractMessageText } from '#a2a/message-text'
 import { withLogBindings } from '#logger'
@@ -190,6 +191,7 @@ export class TraderAgentExecutor implements AgentExecutor {
   ): Promise<void> {
     const { taskId, contextId, userMessage, task } = requestContext
     const rawStrategyId = extractStrategyId(userMessage)
+    const strategyTaskId = extractStrategyTaskId(userMessage)
     const purpose = extractPurpose(userMessage)
     const resumeSteps = extractResumeSteps(userMessage)
     const deadlineAt = extractDeadlineAt(userMessage)
@@ -224,6 +226,36 @@ export class TraderAgentExecutor implements AgentExecutor {
         final: true,
         status: rejectedStatus,
       } satisfies TaskStatusUpdateEvent)
+      eventBus.finished()
+      return
+    }
+    if (strategyTaskId === undefined || !isValidStrategyId(strategyTaskId)) {
+      const rejectedStatus = {
+        state: 'rejected' as const,
+        timestamp: new Date().toISOString(),
+        message: buildAgentMessage(
+          'task_id is missing or not a valid UUID',
+          taskId,
+          contextId,
+        ),
+      }
+      if (task === undefined) {
+        eventBus.publish({
+          id: taskId,
+          contextId,
+          kind: 'task',
+          history: [userMessage],
+          status: rejectedStatus,
+        } satisfies Task)
+      } else {
+        eventBus.publish({
+          kind: 'status-update',
+          taskId,
+          contextId,
+          status: rejectedStatus,
+          final: true,
+        })
+      }
       eventBus.finished()
       return
     }
@@ -394,6 +426,7 @@ export class TraderAgentExecutor implements AgentExecutor {
             strategyId,
             purpose,
             taskId,
+            strategyTaskId,
             userMessage: promptMessage,
             resumeSteps,
             asOf,

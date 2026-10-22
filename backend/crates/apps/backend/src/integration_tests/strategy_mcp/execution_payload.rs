@@ -12,8 +12,8 @@ use core_application::{
     strategy_scope::StrategyScope,
 };
 use gateway_postgres::entities::{
-    custom_indicator, custom_indicator_evaluation, sea_orm_active_enums::StrategyTaskPhase,
-    strategy_task, task_execution_definition_snapshot, task_execution_payload,
+    custom_indicator, custom_indicator_evaluation, task_execution_definition_snapshot,
+    task_execution_payload,
 };
 use sea_orm::{
     ActiveModelTrait,
@@ -140,25 +140,8 @@ async fn create_running_task(
     db: &gateway_postgres::DatabaseHandle,
     strategy_id: Uuid,
 ) -> (Uuid, String) {
-    let task_id = crate::testing::insert_test_strategy_task(
-        db,
-        strategy_id,
-        "synthetic task prompt",
-        None,
-        Utc::now().fixed_offset(),
-    )
-    .await;
-    let a2a_task_id = format!("sample-task-{}", Uuid::new_v4());
-    strategy_task::ActiveModel {
-        task_id: Set(task_id),
-        a2a_task_id: Set(Some(a2a_task_id.clone())),
-        phase: Set(StrategyTaskPhase::Running),
-        ..Default::default()
-    }
-    .update(db)
-    .await
-    .expect("update synthetic task");
-    (task_id, a2a_task_id)
+    let task = tests_common::create_test_execution_task(db, strategy_id, "phases: []").await;
+    (task.task_id, task.a2a_task_id)
 }
 
 fn normalize_payload_ref(mut payload: PayloadRef) -> PayloadRef {
@@ -758,6 +741,10 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
     });
     let definition_snapshots = task_execution_definition_snapshot::Entity::find()
         .filter(task_execution_definition_snapshot::Column::TaskId.eq(task_id))
+        .filter(
+            task_execution_definition_snapshot::Column::DefinitionKey
+                .eq("custom_indicator:sample-operation"),
+        )
         .all(&db)
         .await
         .expect("query definition snapshots");
@@ -1268,7 +1255,7 @@ async fn execution_scope_rejects_another_strategy_before_running_saved_code(
     assert_eq!(
         (result, requests),
         (
-            Err("-32602: task execution is outside the requested strategy scope".to_string()),
+            Err("-32602: execution does not match an active task".to_string()),
             Vec::<ExecRequest>::new(),
         ),
     );

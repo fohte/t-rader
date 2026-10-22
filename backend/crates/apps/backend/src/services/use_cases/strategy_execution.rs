@@ -1,7 +1,13 @@
 use std::sync::Arc;
 
-use core_application::strategy_execution::StrategyExecutionUseCases;
-use gateway_postgres::{PostgresStrategyExecutionRepository, PostgresStrategyTaskRepository};
+use core_application::{
+    execution_budget::ExecutionBudgetUseCases,
+    strategy_execution::StrategyExecutionUseCases,
+};
+use gateway_postgres::{
+    PostgresExecutionBudgetRepository, PostgresStrategyExecutionRepository,
+    PostgresStrategyTaskRepository,
+};
 
 use super::UseCases;
 
@@ -15,6 +21,14 @@ impl UseCases {
             self.custom_indicator_evaluations(),
             self.subagent_definitions(),
             self.agent_configs(),
+        )
+    }
+
+    pub fn execution_budgets(&self) -> ExecutionBudgetUseCases {
+        ExecutionBudgetUseCases::new(
+            self.unit_of_work.clone(),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+            Arc::new(PostgresStrategyExecutionRepository::new(self.db.clone())),
         )
     }
 }

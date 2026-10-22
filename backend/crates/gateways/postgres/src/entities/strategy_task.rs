@@ -52,6 +52,8 @@ pub enum Relation {
     TaskExecutionDefinitionSnapshot,
     #[sea_orm(has_many = "super::task_execution_payload::Entity")]
     TaskExecutionPayload,
+    #[sea_orm(has_one = "super::task_execution_state::Entity")]
+    TaskExecutionState,
 }
 
 impl Related<super::event_firing::Entity> for Entity {
@@ -81,6 +83,12 @@ impl Related<super::task_execution_definition_snapshot::Entity> for Entity {
 impl Related<super::task_execution_payload::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::TaskExecutionPayload.def()
+    }
+}
+
+impl Related<super::task_execution_state::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TaskExecutionState.def()
     }
 }
 

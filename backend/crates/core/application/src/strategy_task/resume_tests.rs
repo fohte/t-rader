@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Duration, FixedOffset};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rstest::rstest;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask};
+use crate::execution_budget::test_support::FakeExecutionBudgetRepository;
 use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
     ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
@@ -64,7 +65,11 @@ impl ResumeHarness {
     fn with_repository(repository: Arc<FakeStrategyTaskRepository>) -> Self {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let agent_client = FakeAgentTaskClient::new();
-        let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+        let use_cases = StrategyTaskUseCases::new(
+            unit_of_work.clone(),
+            repository.clone(),
+            Arc::new(FakeExecutionBudgetRepository::default()),
+        );
         Self {
             repository,
             unit_of_work,
@@ -136,51 +141,6 @@ fn fixed_time() -> DateTime<FixedOffset> {
     (DateTime::<chrono::Utc>::UNIX_EPOCH + chrono::Duration::days(20_454)).fixed_offset()
 }
 
-async fn resume_deadline(
-    harness: &ResumeHarness,
-    task_id: Uuid,
-    expected_minutes: i64,
-) -> (ResumeResult, bool, bool) {
-    harness
-        .agent_client
-        .set_next_task_id("fake-agent-task")
-        .await;
-    let before_resume = chrono::Utc::now().fixed_offset();
-
-    let result = summarize_result(
-        harness
-            .use_cases
-            .resume(&harness.agent_client, task_id)
-            .await,
-    );
-
-    let after_resume = chrono::Utc::now().fixed_offset();
-    let submitted_deadline = harness
-        .agent_client
-        .submitted
-        .lock()
-        .await
-        .first()
-        .map(|request| request.deadline_at);
-    let stored_deadline = harness
-        .repository
-        .state
-        .lock()
-        .await
-        .task
-        .as_ref()
-        .map(|task| task.deadline_at);
-    let deadline_matches_timeout = submitted_deadline.is_some_and(|deadline| {
-        deadline >= before_resume + Duration::minutes(expected_minutes)
-            && deadline <= after_resume + Duration::minutes(expected_minutes)
-    });
-    let deadline_was_persisted = submitted_deadline
-        .zip(stored_deadline)
-        .is_some_and(|(submitted_deadline, stored_deadline)| submitted_deadline == stored_deadline);
-
-    (result, deadline_was_persisted, deadline_matches_timeout)
-}
-
 fn task(phase: StrategyTaskPhase, auto_resumed_at: Option<DateTime<FixedOffset>>) -> StrategyTask {
     let now = fixed_time();
     StrategyTask {
@@ -192,7 +152,7 @@ fn task(phase: StrategyTaskPhase, auto_resumed_at: Option<DateTime<FixedOffset>>
         phase,
         error_summary: Some("previous failure".to_string()),
         result_text: Some("stale result".to_string()),
-        deadline_at: now,
+        deadline_at: Utc::now().fixed_offset() + Duration::minutes(40),
         purpose: Some("fictional-purpose".to_string()),
         as_of: Some(now),
         context_kind: None,
@@ -204,42 +164,96 @@ fn task(phase: StrategyTaskPhase, auto_resumed_at: Option<DateTime<FixedOffset>>
 }
 
 #[tokio::test]
-async fn resume_sets_deadline_from_agent_graph_at_resume_time() {
-    let task = task(StrategyTaskPhase::Failed, None);
+async fn resume_preserves_the_original_deadline_when_the_agent_graph_changes() {
+    let mut task = task(StrategyTaskPhase::Failed, None);
+    task.deadline_at = Utc::now().fixed_offset() + Duration::minutes(7);
     let task_id = task.task_id;
+    let original_deadline = task.deadline_at;
     let harness = ResumeHarness::new(Some(task), Vec::new());
     harness
         .repository
         .set_agent_graph(&agent_graph_with_timeouts(Some(40), None))
         .await;
+    harness
+        .agent_client
+        .set_next_task_id("fake-agent-task")
+        .await;
+
+    let result = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let submitted_deadline = harness.agent_client.submitted.lock().await[0].deadline_at;
+    let stored_deadline = harness
+        .repository
+        .state
+        .lock()
+        .await
+        .task
+        .as_ref()
+        .map(|task| task.deadline_at);
+
     assert_eq!(
-        resume_deadline(&harness, task_id, 40).await,
+        (result, submitted_deadline, stored_deadline),
         (
             ResumeResult::Submitted {
                 task_id,
                 a2a_task_id: "fake-agent-task".to_string(),
             },
-            true,
-            true,
+            original_deadline,
+            Some(original_deadline),
         ),
     );
 }
 
+#[rstest]
+#[case::manual(false)]
+#[case::automatic(true)]
 #[tokio::test]
-async fn resume_uses_default_deadline_when_agent_graph_is_missing() {
-    let task = task(StrategyTaskPhase::Failed, None);
+async fn resume_rejects_an_expired_original_deadline(#[case] auto: bool) {
+    let mut task = task(StrategyTaskPhase::Failed, None);
+    task.deadline_at = fixed_time();
     let task_id = task.task_id;
-    let repository = Arc::new(FakeStrategyTaskRepository::without_agent_config(Some(task)));
-    let harness = ResumeHarness::with_repository(repository);
+    let harness = ResumeHarness::new(Some(task), Vec::new());
+    harness
+        .agent_client
+        .set_next_task_id("fake-agent-task")
+        .await;
+
+    let result = summarize_result(if auto {
+        harness
+            .use_cases
+            .auto_resume(&harness.agent_client, task_id)
+            .await
+    } else {
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await
+    });
+
     assert_eq!(
-        resume_deadline(&harness, task_id, 15).await,
         (
-            ResumeResult::Submitted {
+            result,
+            harness.agent_client.submitted.lock().await.len(),
+            harness
+                .repository
+                .state
+                .lock()
+                .await
+                .task
+                .as_ref()
+                .map(|task| task.phase),
+        ),
+        (
+            ResumeResult::NotResumable {
                 task_id,
-                a2a_task_id: "fake-agent-task".to_string(),
+                phase: StrategyTaskPhase::Failed.as_str().to_string(),
             },
-            true,
-            true,
+            0,
+            Some(StrategyTaskPhase::Failed),
         ),
     );
 }

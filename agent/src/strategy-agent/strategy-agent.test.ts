@@ -131,6 +131,7 @@ const buildRunInput = (
   strategyId: 'strategy-1',
   purpose: undefined,
   taskId: 'task-1',
+  strategyTaskId: '22222222-2222-2222-2222-222222222222',
   userMessage: buildUserMessage('do the thing'),
   resumeSteps: undefined,
   asOf: undefined,
@@ -215,6 +216,7 @@ const buildDeps = (
       (() => errAsync(new Error('unexpected subagent definition fetch'))),
     createMcpClient: (
       _strategyId,
+      _strategyTaskId,
       executionId,
       toolModels,
       subagentExecution,
@@ -228,6 +230,9 @@ const buildDeps = (
       calls.mcpClients.push(client)
       return {
         getTools: () => Promise.resolve([...(options.tools ?? [])]),
+        reserveModelCall: () => Promise.resolve(),
+        reserveSubagentRun: () => Promise.resolve(),
+        transitionReservation: () => Promise.resolve(),
         close: () => {
           calls.mcpClientClosed = true
           client.closed = true
@@ -890,6 +895,7 @@ describe('createStrategyAgentDeps', () => {
   it('sets the tool timeout and strategy headers when creating an MCP client', () => {
     createStrategyAgentDeps(baseConfig).createMcpClient(
       'strategy-1',
+      '22222222-2222-2222-2222-222222222222',
       'task-1:step-1',
       { search_web: 'example-model-search' },
     )
@@ -901,6 +907,7 @@ describe('createStrategyAgentDeps', () => {
           url: 'http://t-rader-backend/mcp/strategy',
           headers: {
             'x-strategy-id': 'strategy-1',
+            'x-strategy-task-id': '22222222-2222-2222-2222-222222222222',
             'x-execution-id': 'task-1:step-1',
             'x-tool-models': '{"search_web":"example-model-search"}',
           },
@@ -912,6 +919,7 @@ describe('createStrategyAgentDeps', () => {
   it('sends the subagent execution identity as separate headers', () => {
     createStrategyAgentDeps(baseConfig).createMcpClient(
       'strategy-1',
+      '22222222-2222-2222-2222-222222222222',
       'task-1:step-1',
       {},
       { executionId: 'subagent-run-1', definitionKey: 'researcher' },
@@ -924,6 +932,7 @@ describe('createStrategyAgentDeps', () => {
           url: 'http://t-rader-backend/mcp/strategy',
           headers: {
             'x-strategy-id': 'strategy-1',
+            'x-strategy-task-id': '22222222-2222-2222-2222-222222222222',
             'x-execution-id': 'task-1:step-1',
             'x-tool-models': '{}',
             'x-subagent-execution-id': 'subagent-run-1',

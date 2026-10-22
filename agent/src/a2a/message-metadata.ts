@@ -5,6 +5,11 @@ export const extractStrategyId = (message: Message): string | undefined => {
   return typeof raw === 'string' ? raw : undefined
 }
 
+export const extractStrategyTaskId = (message: Message): string | undefined => {
+  const taskId = message.metadata?.['task_id']
+  return typeof taskId === 'string' ? taskId : undefined
+}
+
 export const extractPurpose = (message: Message): string | undefined => {
   const raw = message.metadata?.['purpose']
   return typeof raw === 'string' ? raw : undefined

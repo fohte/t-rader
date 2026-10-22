@@ -3,7 +3,10 @@
 use axum::http::{HeaderMap, HeaderValue};
 use chrono::{DateTime, FixedOffset};
 use core_application::change_history::Actor;
-use core_application::subagent_definition::SubagentDefinitionFields;
+use core_application::{
+    agent_task_client::FakeAgentTaskClient, strategy_task::TaskSource,
+    subagent_definition::SubagentDefinitionFields,
+};
 use indoc::formatdoc;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
@@ -64,7 +67,7 @@ pub(super) async fn create_task_with_subagent_limits(
     tool_name: &str,
     subagent_max_calls: i64,
     task_max_calls: u32,
-) -> String {
+) -> TestExecutionContext {
     let purpose = format!("sample-purpose-{}", Uuid::new_v4());
     crate::testing::agent_config::create(db, purpose.clone())
         .await
@@ -109,25 +112,95 @@ pub(super) async fn create_task_with_subagent_limits(
         .await
         .expect("save test agent graph");
 
-    let task_execution_id = format!("task-{}", Uuid::new_v4());
-    let task_id = crate::testing::insert_test_strategy_task(
-        db,
-        strategy_id,
-        "sample task",
-        Some(&purpose),
-        chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
-    )
-    .await;
+    submit_test_execution_task(&use_cases, strategy_id, &purpose).await
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TestExecutionContext {
+    pub task_id: Uuid,
+    pub a2a_task_id: String,
+}
+
+pub(super) async fn create_test_execution_task(
+    db: &gateway_postgres::DatabaseHandle,
+    strategy_id: Uuid,
+    graph_yaml: &str,
+) -> TestExecutionContext {
+    let purpose = format!("sample-purpose-{}", Uuid::new_v4());
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+    use_cases
+        .agent_configs()
+        .create(purpose.clone())
+        .await
+        .expect("create test agent config");
+    use_cases
+        .agent_configs()
+        .save_agent_graph(&purpose, graph_yaml)
+        .await
+        .expect("save test agent graph");
+
+    submit_test_execution_task(&use_cases, strategy_id, &purpose).await
+}
+
+pub(super) async fn build_server_with_test_execution_task(
+    db: gateway_postgres::DatabaseHandle,
+    strategy_id: Uuid,
+) -> (StrategyServer, TestExecutionContext) {
+    let task = create_test_execution_task(&db, strategy_id, "phases: []").await;
+    let server = build_server(db).with_default_execution_task_id(task.a2a_task_id.clone());
+    (server, task)
+}
+
+async fn submit_test_execution_task(
+    use_cases: &crate::services::use_cases::UseCases,
+    strategy_id: Uuid,
+    purpose: &str,
+) -> TestExecutionContext {
+    let a2a_task_id = format!("sample-attempt-{}", Uuid::new_v4());
+    let fake = FakeAgentTaskClient::new();
+    fake.set_next_task_id(&a2a_task_id).await;
+    let submitted = use_cases
+        .strategy_tasks()
+        .submit_task(
+            &fake,
+            strategy_id,
+            "sample execution prompt",
+            TaskSource::Review,
+            Some(purpose.to_string()),
+        )
+        .await
+        .expect("submit test execution task");
+    TestExecutionContext {
+        task_id: submitted.task_id,
+        a2a_task_id: submitted.a2a_task_id,
+    }
+}
+
+pub(super) async fn resume_test_execution_task(
+    db: &gateway_postgres::DatabaseHandle,
+    task: &TestExecutionContext,
+) -> TestExecutionContext {
+    let fake = FakeAgentTaskClient::new();
+    let next_a2a_task_id = format!("sample-resumed-attempt-{}", Uuid::new_v4());
+    fake.set_next_task_id(&next_a2a_task_id).await;
     gateway_postgres::entities::strategy_task::ActiveModel {
-        task_id: sea_orm::ActiveValue::Set(task_id),
-        a2a_task_id: sea_orm::ActiveValue::Set(Some(task_execution_id.clone())),
+        task_id: Set(task.task_id),
+        phase: Set(gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Failed),
         ..Default::default()
     }
     .update(db)
     .await
-    .expect("set test task execution ID");
-
-    task_execution_id
+    .expect("mark test task failed before resume");
+    let resumed = crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+        .strategy_tasks()
+        .resume(&fake, task.task_id)
+        .await
+        .expect("resume test task");
+    TestExecutionContext {
+        task_id: resumed.task_id,
+        a2a_task_id: resumed.a2a_task_id,
+    }
 }
 
 pub(super) fn insert_subagent_headers(headers: &mut HeaderMap, subagent: Option<(&str, &str)>) {
@@ -168,10 +241,19 @@ pub(super) fn build_server_with_source(
     db: impl Into<gateway_postgres::DatabaseHandle>,
     daily_bar_source: Option<SharedDailyBarSource>,
 ) -> StrategyServer {
-    let use_cases = crate::services::use_cases::build_use_cases_without_agent_task_client(db);
-    StrategyServer::new(crate::mcp::StrategyServer::new(
-        crate::mcp::strategy_server_dependencies(&use_cases, daily_bar_source, None, None, None),
-    ))
+    let db = db.into();
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+    StrategyServer::new(
+        crate::mcp::StrategyServer::new(crate::mcp::strategy_server_dependencies(
+            &use_cases,
+            daily_bar_source,
+            None,
+            None,
+            None,
+        )),
+        db,
+    )
 }
 
 /// DTO の比較で動的な timestamp を差し替えるための sentinel 値。

@@ -7,7 +7,9 @@ use core_application::{
     },
     strategy_task::StrategyTaskUseCases,
 };
-use gateway_postgres::{PostgresEventRepository, PostgresStrategyTaskRepository};
+use gateway_postgres::{
+    PostgresEventRepository, PostgresExecutionBudgetRepository, PostgresStrategyTaskRepository,
+};
 
 use super::UseCases;
 
@@ -32,6 +34,7 @@ impl UseCases {
         StrategyTaskUseCases::new(
             self.unit_of_work.clone(),
             Arc::new(PostgresStrategyTaskRepository::new(self.db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_task_start_snapshotter(Arc::new(self.strategy_executions()))
     }

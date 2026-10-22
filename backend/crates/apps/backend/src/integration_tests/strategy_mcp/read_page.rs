@@ -18,8 +18,8 @@ use uuid::Uuid;
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto::{ReadPageParams, ReadPageResult};
 use super::tests_common::{
-    create_task_with_subagent_limits, insert_strategy, insert_subagent_headers,
-    mock_db_with_strategy,
+    TestExecutionContext, create_task_with_subagent_limits, insert_strategy,
+    insert_subagent_headers, mock_db_with_strategy,
 };
 use crate::services::use_cases::build_use_cases_without_agent_task_client;
 use entrypoint_agent_mcp::StrategyServer;
@@ -161,7 +161,8 @@ fn server(
     llm_client: Option<SharedLlmClient>,
     web_search_client: Option<SharedWebSearchClient>,
 ) -> StrategyServer {
-    let use_cases = build_use_cases_without_agent_task_client(db);
+    let db = db.into();
+    let use_cases = build_use_cases_without_agent_task_client(db.clone());
     StrategyServer::new(crate::mcp::strategy_server_dependencies(
         &use_cases,
         None,
@@ -270,37 +271,39 @@ async fn read_page_uses_tool_model_and_truncates_extracted_content_at_100000_cha
 #[backend_test_macros::database_test]
 async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
-    let task_execution_id =
+    let task_execution =
         create_task_with_subagent_limits(&db, strategy_id, "reader", "read_page", 1, 4).await;
     let (web_search_client, extracted_urls) = web_search_client("Example page");
     let (llm_client, llm) = llm_client();
     let server = server(db, Some(llm_client), Some(web_search_client));
+    let child_run_a = Uuid::from_u128(501).to_string();
+    let child_run_b = Uuid::from_u128(502).to_string();
 
     let first_subagent_call = invoke_read_page(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("reader-run-a", "reader")),
+        &task_execution,
+        Some((&child_run_a, "reader")),
     )
     .await;
     let repeated_subagent_call = invoke_read_page(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("reader-run-a", "reader")),
+        &task_execution,
+        Some((&child_run_a, "reader")),
     )
     .await;
     let other_subagent_call = invoke_read_page(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("reader-run-b", "reader")),
+        &task_execution,
+        Some((&child_run_b, "reader")),
     )
     .await;
-    let phase_call = invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
-    let second_phase_call = invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+    let phase_call = invoke_read_page(&server, strategy_id, &task_execution, None).await;
+    let second_phase_call = invoke_read_page(&server, strategy_id, &task_execution, None).await;
     let call_beyond_task_limit =
-        invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+        invoke_read_page(&server, strategy_id, &task_execution, None).await;
 
     assert_eq!(
         (
@@ -316,14 +319,14 @@ async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::Datab
         (
             Ok(json!({"url": PAGE_URL, "text": "page answer"})),
             Err(McpError::invalid_params(
-                "read_page call limit (1) exceeded for this subagent execution",
+                "execution budget limit was exceeded for reader:read_page",
                 None,
             )),
             Ok(json!({"url": PAGE_URL, "text": "page answer"})),
             Ok(json!({"url": PAGE_URL, "text": "page answer"})),
             Ok(json!({"url": PAGE_URL, "text": "page answer"})),
             Err(McpError::invalid_params(
-                "read_page call limit (4) exceeded for this task execution",
+                "execution budget limit was exceeded for read_page",
                 None,
             )),
             vec![
@@ -340,12 +343,22 @@ async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::Datab
 async fn invoke_read_page(
     server: &StrategyServer,
     strategy_id: Uuid,
-    task_execution_id: &str,
+    task_execution: &TestExecutionContext,
     subagent: Option<(&str, &str)>,
 ) -> Result<Value, McpError> {
+    let execution_step_id = subagent
+        .map(|(execution_id, _)| execution_id.to_string())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let mut headers = headers(
         strategy_id,
-        Some(format!("{task_execution_id}:example-step")),
+        Some(format!(
+            "{}:{execution_step_id}",
+            task_execution.a2a_task_id
+        )),
+    );
+    headers.insert(
+        "x-strategy-task-id",
+        HeaderValue::from_str(&task_execution.task_id.to_string()).expect("valid strategy task ID"),
     );
     insert_subagent_headers(&mut headers, subagent);
 
@@ -456,32 +469,17 @@ async fn read_page_requires_tool_model_configuration() {
 #[backend_test_macros::database_test]
 async fn read_page_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution =
+        create_task_with_subagent_limits(&db, strategy_id, "reader", "read_page", 1, 20).await;
     let (web_search_client, extracted_urls) = web_search_client("page content");
     let (llm_client, llm) = llm_client();
     let server = server(db, Some(llm_client), Some(web_search_client));
-    let task_id = format!("task-{}", Uuid::new_v4());
     let mut results = Vec::new();
 
     for _ in 0..READ_PAGE_TEST_CALL_LIMIT {
-        results.push(
-            call_tool_output_with_headers::<_, Value>(
-                &server,
-                "read_page",
-                serde_json::to_value(params(PAGE_URL, "question")).expect("serialize params"),
-                headers(strategy_id, Some(format!("{task_id}:{}", Uuid::new_v4()))),
-            )
-            .await,
-        );
+        results.push(invoke_read_page(&server, strategy_id, &task_execution, None).await);
     }
-    results.push(
-        call_tool_output_with_headers::<_, Value>(
-            &server,
-            "read_page",
-            serde_json::to_value(params(PAGE_URL, "question")).expect("serialize params"),
-            headers(strategy_id, Some(format!("{task_id}:{}", Uuid::new_v4()))),
-        )
-        .await,
-    );
+    results.push(invoke_read_page(&server, strategy_id, &task_execution, None).await);
 
     assert_eq!(
         (
@@ -493,7 +491,7 @@ async fn read_page_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHa
             (0..READ_PAGE_TEST_CALL_LIMIT)
                 .map(|_| Ok(json!({"url": PAGE_URL, "text": "page answer"})))
                 .chain(std::iter::once(Err(McpError::invalid_params(
-                    "read_page call limit (20) exceeded for this task execution",
+                    "execution budget limit was exceeded for read_page",
                     None,
                 ))))
                 .collect::<Vec<_>>(),
@@ -504,36 +502,33 @@ async fn read_page_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHa
 }
 
 #[backend_test_macros::database_test]
-async fn read_page_releases_call_count_reservation_after_extraction_failure(
-    db: gateway_postgres::DatabaseHandle,
-) {
+async fn read_page_keeps_call_count_after_extraction_failure(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution =
+        create_task_with_subagent_limits(&db, strategy_id, "reader", "read_page", 1, 20).await;
     let (llm_client, _) = llm_client();
     let server = server(db, Some(llm_client), Some(failing_web_search_client()));
-    let task_id = format!("task-{}", Uuid::new_v4());
     let mut errors = Vec::new();
 
     for _ in 0..(READ_PAGE_TEST_CALL_LIMIT * 2) {
-        errors.push(
-            call_tool_output_with_headers::<_, Value>(
-                &server,
-                "read_page",
-                serde_json::to_value(params(PAGE_URL, "question")).expect("serialize params"),
-                headers(strategy_id, Some(format!("{task_id}:{}", Uuid::new_v4()))),
-            )
-            .await,
-        );
+        errors.push(invoke_read_page(&server, strategy_id, &task_execution, None).await);
     }
 
     assert_eq!(
         errors,
-        (0..(READ_PAGE_TEST_CALL_LIMIT * 2))
+        (0..READ_PAGE_TEST_CALL_LIMIT)
             .map(|_| {
                 Err(McpError::internal_error(
                     "page extraction failed: failed to extract page https://example.invalid/article: page is unavailable",
                     None,
                 ))
             })
+            .chain((0..READ_PAGE_TEST_CALL_LIMIT).map(|_| {
+                Err(McpError::invalid_params(
+                    "execution budget limit was exceeded for read_page",
+                    None,
+                ))
+            }))
             .collect::<Vec<_>>(),
     );
 }
@@ -543,23 +538,16 @@ async fn read_page_keeps_call_count_reservation_after_completion_failure(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution =
+        create_task_with_subagent_limits(&db, strategy_id, "reader", "read_page", 1, 20).await;
     let (web_search_client, extracted_urls) = web_search_client("page content");
     let (llm_client, llm) = failing_llm_client();
     let server = server(db, Some(llm_client), Some(web_search_client));
-    let task_id = format!("task-{}", Uuid::new_v4());
     let calls_after_limit = READ_PAGE_TEST_CALL_LIMIT + 1;
     let mut errors = Vec::new();
 
     for _ in 0..calls_after_limit {
-        errors.push(
-            call_tool_output_with_headers::<_, Value>(
-                &server,
-                "read_page",
-                serde_json::to_value(params(PAGE_URL, "question")).expect("serialize params"),
-                headers(strategy_id, Some(format!("{task_id}:{}", Uuid::new_v4()))),
-            )
-            .await,
-        );
+        errors.push(invoke_read_page(&server, strategy_id, &task_execution, None).await);
     }
 
     assert_eq!(
@@ -577,7 +565,7 @@ async fn read_page_keeps_call_count_reservation_after_completion_failure(
                     ))
                 })
                 .chain(std::iter::once(Err(McpError::invalid_params(
-                    "read_page call limit (20) exceeded for this task execution",
+                    "execution budget limit was exceeded for read_page",
                     None,
                 ))))
                 .collect::<Vec<_>>(),
