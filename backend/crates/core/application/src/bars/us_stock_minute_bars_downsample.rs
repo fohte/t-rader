@@ -24,29 +24,154 @@ async fn acquire_us_stock_bars_write_lock(
     }
 }
 
-fn processing_budget_exhausted(
-    clock: &dyn super::clock::BarsIngestClock,
+#[derive(Clone, Copy)]
+enum DownsamplePostponementReason {
+    ProcessingBudgetExhausted,
+    WriteLockBusy,
+}
+
+impl DownsamplePostponementReason {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::ProcessingBudgetExhausted => "processing_budget_exhausted",
+            Self::WriteLockBusy => "write_lock_busy",
+        }
+    }
+}
+
+struct DownsampleProcessingBudget {
     started_at: Instant,
     paused_for: StdDuration,
-    budget: Option<StdDuration>,
-) -> bool {
-    budget.is_some_and(|budget| {
-        clock
-            .instant()
-            .saturating_duration_since(started_at)
-            .saturating_sub(paused_for)
-            >= budget
-    })
+    limit: Option<StdDuration>,
+}
+
+impl DownsampleProcessingBudget {
+    fn new(started_at: Instant, limit: Option<StdDuration>) -> Self {
+        Self {
+            started_at,
+            paused_for: StdDuration::ZERO,
+            limit,
+        }
+    }
+
+    fn is_exhausted(&self, clock: &dyn super::clock::BarsIngestClock) -> bool {
+        self.limit.is_some_and(|limit| {
+            clock
+                .instant()
+                .saturating_duration_since(self.started_at)
+                .saturating_sub(self.paused_for)
+                >= limit
+        })
+    }
+
+    fn exclude_pause(&mut self, duration: StdDuration) {
+        self.paused_for = self.paused_for.saturating_add(duration);
+    }
+}
+
+enum InstrumentDownsampleOutcome {
+    Completed {
+        stats: UsStockMinuteBarsDownsampleStats,
+        transaction_duration: StdDuration,
+    },
+    Postponed(DownsamplePostponementReason),
+}
+
+fn log_downsample_postponed(
+    reason: DownsamplePostponementReason,
+    batch_from: DateTime<Utc>,
+    stats: &UsStockMinuteBarsDownsampleStats,
+) {
+    tracing::info!(
+        reason = reason.as_str(),
+        batch_from = %batch_from,
+        hourly_bars_inserted = stats.hourly_bars_inserted,
+        minute_bars_deleted = stats.minute_bars_deleted,
+        "米国株の分足間引きを次回の実行に延期しました"
+    );
 }
 
 impl UsStockBarsIngestUseCases {
+    async fn downsample_instrument(
+        &self,
+        instrument_id: &str,
+        batch_from: DateTime<Utc>,
+        batch_until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+        budget: &DownsampleProcessingBudget,
+    ) -> Result<InstrumentDownsampleOutcome, BarsUseCaseError> {
+        if budget.is_exhausted(self.clock.as_ref()) {
+            return Ok(InstrumentDownsampleOutcome::Postponed(
+                DownsamplePostponementReason::ProcessingBudgetExhausted,
+            ));
+        }
+
+        let Some(write_lock_guard) = acquire_us_stock_bars_write_lock(
+            self.us_stock_bars_write_lock.as_ref(),
+            WRITE_LOCK_WAIT_TIMEOUT,
+        )
+        .await?
+        else {
+            return Ok(InstrumentDownsampleOutcome::Postponed(
+                DownsamplePostponementReason::WriteLockBusy,
+            ));
+        };
+
+        if budget.is_exhausted(self.clock.as_ref()) {
+            drop(write_lock_guard);
+            return Ok(InstrumentDownsampleOutcome::Postponed(
+                DownsamplePostponementReason::ProcessingBudgetExhausted,
+            ));
+        }
+
+        let transaction_started_at = self.clock.instant();
+        let batch_result = async {
+            let transaction = self.bars.unit_of_work.begin().await?;
+            let stats = self
+                .bars
+                .repository
+                .downsample_us_stock_minute_bar_range(
+                    &transaction,
+                    instrument_id,
+                    batch_from,
+                    batch_until,
+                    cutoff,
+                )
+                .await?;
+            self.bars.unit_of_work.commit(transaction).await?;
+            Ok::<_, BarsUseCaseError>(stats)
+        }
+        .await;
+        let transaction_duration = self
+            .clock
+            .instant()
+            .saturating_duration_since(transaction_started_at);
+        drop(write_lock_guard);
+        let stats = match batch_result {
+            Ok(stats) => stats,
+            Err(error) => {
+                tracing::error!(
+                    instrument_id = %instrument_id,
+                    error = %error,
+                    "米国株の分足を集計できませんでした"
+                );
+                return Err(error);
+            }
+        };
+
+        Ok(InstrumentDownsampleOutcome::Completed {
+            stats,
+            transaction_duration,
+        })
+    }
+
     pub async fn downsample_old_us_stock_minute_bars(
         &self,
         now: DateTime<Utc>,
         config: UsStockMinuteBarsDownsampleConfig,
     ) -> Result<UsStockMinuteBarsDownsampleStats, BarsUseCaseError> {
-        let processing_started_at = self.clock.instant();
-        let mut paused_for = StdDuration::ZERO;
+        let mut budget =
+            DownsampleProcessingBudget::new(self.clock.instant(), config.max_processing_duration);
         let cutoff = us_stock_hourly_history_cutoff(now);
         let Some(oldest_bar) = self
             .bars
@@ -58,16 +183,16 @@ impl UsStockBarsIngestUseCases {
         };
 
         let mut stats = UsStockMinuteBarsDownsampleStats::default();
-        if processing_budget_exhausted(
-            self.clock.as_ref(),
-            processing_started_at,
-            paused_for,
-            config.max_processing_duration,
-        ) {
+        let mut batch_from = hourly_bar_bucket_start(oldest_bar);
+        if budget.is_exhausted(self.clock.as_ref()) {
+            log_downsample_postponed(
+                DownsamplePostponementReason::ProcessingBudgetExhausted,
+                batch_from,
+                &stats,
+            );
             return Ok(stats);
         }
 
-        let mut batch_from = hourly_bar_bucket_start(oldest_bar);
         while batch_from < cutoff {
             let batch_until = batch_from
                 .checked_add_signed(Duration::days(DOWNSAMPLE_BATCH_DAYS))
@@ -77,131 +202,48 @@ impl UsStockBarsIngestUseCases {
                 .repository
                 .find_us_stock_minute_bar_instrument_ids(batch_from, batch_until, cutoff)
                 .await?;
-            if processing_budget_exhausted(
-                self.clock.as_ref(),
-                processing_started_at,
-                paused_for,
-                config.max_processing_duration,
-            ) {
-                tracing::info!(
-                    reason = "processing_budget_exhausted",
-                    batch_from = %batch_from,
-                    hourly_bars_inserted = stats.hourly_bars_inserted,
-                    minute_bars_deleted = stats.minute_bars_deleted,
-                    "米国株の分足間引きを次回の実行に延期しました"
+            if budget.is_exhausted(self.clock.as_ref()) {
+                log_downsample_postponed(
+                    DownsamplePostponementReason::ProcessingBudgetExhausted,
+                    batch_from,
+                    &stats,
                 );
                 return Ok(stats);
             }
 
             for instrument_id in &instrument_ids {
-                if processing_budget_exhausted(
-                    self.clock.as_ref(),
-                    processing_started_at,
-                    paused_for,
-                    config.max_processing_duration,
-                ) {
-                    tracing::info!(
-                        reason = "processing_budget_exhausted",
-                        batch_from = %batch_from,
-                        hourly_bars_inserted = stats.hourly_bars_inserted,
-                        minute_bars_deleted = stats.minute_bars_deleted,
-                        "米国株の分足間引きを次回の実行に延期しました"
-                    );
-                    return Ok(stats);
-                }
-
-                let Some(write_lock_guard) = acquire_us_stock_bars_write_lock(
-                    self.us_stock_bars_write_lock.as_ref(),
-                    WRITE_LOCK_WAIT_TIMEOUT,
-                )
-                .await?
-                else {
-                    tracing::info!(
-                        reason = "write_lock_busy",
-                        batch_from = %batch_from,
-                        hourly_bars_inserted = stats.hourly_bars_inserted,
-                        minute_bars_deleted = stats.minute_bars_deleted,
-                        "米国株の分足間引きを次回の実行に延期しました"
-                    );
-                    return Ok(stats);
-                };
-
-                if processing_budget_exhausted(
-                    self.clock.as_ref(),
-                    processing_started_at,
-                    paused_for,
-                    config.max_processing_duration,
-                ) {
-                    drop(write_lock_guard);
-                    tracing::info!(
-                        reason = "processing_budget_exhausted",
-                        batch_from = %batch_from,
-                        hourly_bars_inserted = stats.hourly_bars_inserted,
-                        minute_bars_deleted = stats.minute_bars_deleted,
-                        "米国株の分足間引きを次回の実行に延期しました"
-                    );
-                    return Ok(stats);
-                }
-
-                let transaction_started_at = self.clock.instant();
-                let batch_result = async {
-                    let transaction = self.bars.unit_of_work.begin().await?;
-                    let batch_stats = self
-                        .bars
-                        .repository
-                        .downsample_us_stock_minute_bar_range(
-                            &transaction,
-                            instrument_id,
-                            batch_from,
-                            batch_until,
-                            cutoff,
-                        )
-                        .await?;
-                    self.bars.unit_of_work.commit(transaction).await?;
-                    Ok::<_, BarsUseCaseError>(batch_stats)
-                }
-                .await;
-                let transaction_duration = self
-                    .clock
-                    .instant()
-                    .saturating_duration_since(transaction_started_at);
-                drop(write_lock_guard);
-                let batch_stats = match batch_result {
-                    Ok(batch_stats) => batch_stats,
-                    Err(error) => {
-                        tracing::error!(
-                            instrument_id = %instrument_id,
-                            error = %error,
-                            "米国株の分足を集計できませんでした"
-                        );
-                        return Err(error);
+                match self
+                    .downsample_instrument(instrument_id, batch_from, batch_until, cutoff, &budget)
+                    .await?
+                {
+                    InstrumentDownsampleOutcome::Postponed(reason) => {
+                        log_downsample_postponed(reason, batch_from, &stats);
+                        return Ok(stats);
                     }
-                };
+                    InstrumentDownsampleOutcome::Completed {
+                        stats: batch_stats,
+                        transaction_duration,
+                    } => {
+                        stats.hourly_bars_inserted += batch_stats.hourly_bars_inserted;
+                        stats.minute_bars_deleted += batch_stats.minute_bars_deleted;
 
-                stats.hourly_bars_inserted += batch_stats.hourly_bars_inserted;
-                stats.minute_bars_deleted += batch_stats.minute_bars_deleted;
+                        if budget.is_exhausted(self.clock.as_ref()) {
+                            log_downsample_postponed(
+                                DownsamplePostponementReason::ProcessingBudgetExhausted,
+                                batch_from,
+                                &stats,
+                            );
+                            return Ok(stats);
+                        }
 
-                if processing_budget_exhausted(
-                    self.clock.as_ref(),
-                    processing_started_at,
-                    paused_for,
-                    config.max_processing_duration,
-                ) {
-                    tracing::info!(
-                        reason = "processing_budget_exhausted",
-                        batch_from = %batch_from,
-                        hourly_bars_inserted = stats.hourly_bars_inserted,
-                        minute_bars_deleted = stats.minute_bars_deleted,
-                        "米国株の分足間引きを次回の実行に延期しました"
-                    );
-                    return Ok(stats);
-                }
-
-                if config.max_processing_duration.is_some() {
-                    let rest = transaction_duration.saturating_mul(DOWNSAMPLE_REST_MULTIPLIER);
-                    if !rest.is_zero() {
-                        self.clock.sleep(rest).await;
-                        paused_for = paused_for.saturating_add(rest);
+                        if budget.limit.is_some() {
+                            let rest =
+                                transaction_duration.saturating_mul(DOWNSAMPLE_REST_MULTIPLIER);
+                            if !rest.is_zero() {
+                                self.clock.sleep(rest).await;
+                                budget.exclude_pause(rest);
+                            }
+                        }
                     }
                 }
             }
@@ -280,14 +322,18 @@ mod tests {
         busy_on_attempt: AtomicUsize,
         attempts: AtomicUsize,
         active: Arc<AtomicUsize>,
+        clock: Arc<TestDownsampleClock>,
+        acquire_duration: StdMutex<StdDuration>,
     }
 
     impl TestDownsampleWriteLock {
-        fn new() -> Self {
+        fn new(active: Arc<AtomicUsize>, clock: Arc<TestDownsampleClock>) -> Self {
             Self {
                 busy_on_attempt: AtomicUsize::new(0),
                 attempts: AtomicUsize::new(0),
-                active: Arc::new(AtomicUsize::new(0)),
+                active,
+                clock,
+                acquire_duration: StdMutex::new(StdDuration::ZERO),
             }
         }
 
@@ -297,6 +343,13 @@ mod tests {
 
         fn attempts(&self) -> usize {
             self.attempts.load(Ordering::SeqCst)
+        }
+
+        fn set_acquire_duration(&self, duration: StdDuration) {
+            *self
+                .acquire_duration
+                .lock()
+                .expect("lock acquisition duration lock is available") = duration;
         }
     }
 
@@ -311,7 +364,8 @@ mod tests {
     impl UsStockBarsWriteLockGuard for TestDownsampleWriteLockGuard {}
 
     struct TestDownsampleClock {
-        now: StdMutex<Instant>,
+        started_at: Instant,
+        elapsed: StdMutex<StdDuration>,
         lock_active: Arc<AtomicUsize>,
         sleeps: StdMutex<Vec<StdDuration>>,
         lock_counts_during_sleep: StdMutex<Vec<usize>>,
@@ -320,21 +374,31 @@ mod tests {
     impl TestDownsampleClock {
         fn new(lock_active: Arc<AtomicUsize>) -> Self {
             Self {
-                now: StdMutex::new(Instant::now()),
+                started_at: Instant::now(),
+                elapsed: StdMutex::new(StdDuration::ZERO),
                 lock_active,
                 sleeps: StdMutex::new(Vec::new()),
                 lock_counts_during_sleep: StdMutex::new(Vec::new()),
             }
+        }
+
+        fn advance(&self, duration: StdDuration) {
+            let mut elapsed = self
+                .elapsed
+                .lock()
+                .expect("clock elapsed time lock is available");
+            *elapsed = elapsed.saturating_add(duration);
         }
     }
 
     #[async_trait::async_trait]
     impl BarsIngestClock for TestDownsampleClock {
         fn instant(&self) -> Instant {
-            let mut now = self.now.lock().expect("clock lock is available");
-            let current = *now;
-            *now += StdDuration::from_secs(1);
-            current
+            self.started_at
+                + *self
+                    .elapsed
+                    .lock()
+                    .expect("clock elapsed time lock is available")
         }
 
         async fn sleep(&self, duration: StdDuration) {
@@ -346,7 +410,7 @@ mod tests {
                 .lock()
                 .expect("lock history lock is available")
                 .push(self.lock_active.load(Ordering::SeqCst));
-            *self.now.lock().expect("clock lock is available") += duration;
+            self.advance(duration);
         }
     }
 
@@ -361,6 +425,12 @@ mod tests {
                 return Ok(None);
             }
 
+            self.clock.advance(
+                *self
+                    .acquire_duration
+                    .lock()
+                    .expect("lock acquisition duration lock is available"),
+            );
             self.active.fetch_add(1, Ordering::SeqCst);
             Ok(Some(Box::new(TestDownsampleWriteLockGuard(
                 self.active.clone(),
@@ -372,8 +442,9 @@ mod tests {
     async fn downsample_fixture() -> DownsampleFixture {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakeBarsRepository::new());
-        let write_lock = Arc::new(TestDownsampleWriteLock::new());
-        let clock = Arc::new(TestDownsampleClock::new(write_lock.active.clone()));
+        let active = Arc::new(AtomicUsize::new(0));
+        let clock = Arc::new(TestDownsampleClock::new(active.clone()));
+        let write_lock = Arc::new(TestDownsampleWriteLock::new(active, clock.clone()));
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
         let bars_use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
         let shared_write_lock: SharedUsStockBarsWriteLock = write_lock.clone();
@@ -631,13 +702,19 @@ mod tests {
                 date("2038-12-30T03:05:00Z"),
             )])
             .await;
+        let clock = downsample_fixture.clock.clone();
+        repository
+            .set_minute_bar_downsample_candidate_query_hook(Arc::new(move || {
+                clock.advance(StdDuration::from_secs(2));
+            }))
+            .await;
 
         let result = downsample_fixture
             .use_cases
             .downsample_old_us_stock_minute_bars(
                 date("2040-01-01T12:00:00Z"),
                 UsStockMinuteBarsDownsampleConfig {
-                    max_processing_duration: Some(StdDuration::from_secs(2)),
+                    max_processing_duration: Some(StdDuration::from_secs(1)),
                 },
             )
             .await
@@ -684,13 +761,19 @@ mod tests {
                 minute_bars_deleted: 3,
             })
             .await;
+        let clock = downsample_fixture.clock.clone();
+        repository
+            .set_minute_bar_downsample_transaction_hook(Arc::new(move || {
+                clock.advance(StdDuration::from_secs(1));
+            }))
+            .await;
 
         let result = downsample_fixture
             .use_cases
             .downsample_old_us_stock_minute_bars(
                 date("2040-01-01T12:00:00Z"),
                 UsStockMinuteBarsDownsampleConfig {
-                    max_processing_duration: Some(StdDuration::from_secs(7)),
+                    max_processing_duration: Some(StdDuration::from_secs(1)),
                 },
             )
             .await
@@ -720,7 +803,9 @@ mod tests {
                     .sleeps
                     .lock()
                     .expect("sleep history lock is available")
-                    .clone(),
+                    .iter()
+                    .map(StdDuration::as_secs)
+                    .collect::<Vec<_>>(),
             ),
             (
                 Ok(UsStockMinuteBarsDownsampleStats {
@@ -739,6 +824,59 @@ mod tests {
     #[rstest]
     #[tokio::test]
     #[awt]
+    async fn downsample_does_not_start_a_transaction_when_lock_wait_uses_the_budget(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        repository
+            .seed_bars(vec![minute_bar(
+                "US:DEMO-ALPHA",
+                date("2038-12-30T03:05:00Z"),
+            )])
+            .await;
+        downsample_fixture
+            .write_lock
+            .set_acquire_duration(StdDuration::from_secs(2));
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(
+                date("2040-01-01T12:00:00Z"),
+                UsStockMinuteBarsDownsampleConfig {
+                    max_processing_duration: Some(StdDuration::from_secs(1)),
+                },
+            )
+            .await
+            .map_err(|_| ());
+        let begun = downsample_fixture.unit_of_work.begun.lock().await.clone();
+        let committed = downsample_fixture
+            .unit_of_work
+            .committed
+            .lock()
+            .await
+            .clone();
+
+        assert_eq!(
+            (
+                result,
+                begun.len(),
+                committed == begun,
+                downsample_fixture.write_lock.attempts(),
+                downsample_fixture.write_lock.active.load(Ordering::SeqCst),
+                downsample_fixture
+                    .clock
+                    .sleeps
+                    .lock()
+                    .expect("sleep history lock is available")
+                    .clone(),
+            ),
+            (Ok(Default::default()), 0, true, 1, 0, Vec::new()),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
     async fn downsample_rests_nine_transaction_durations_after_releasing_the_write_lock(
         #[future] downsample_fixture: DownsampleFixture,
     ) {
@@ -748,6 +886,12 @@ mod tests {
                 minute_bar("US:DEMO-ALPHA", date("2038-12-30T03:05:00Z")),
                 minute_bar("US:DEMO-BETA", date("2038-12-30T03:05:00Z")),
             ])
+            .await;
+        let clock = downsample_fixture.clock.clone();
+        repository
+            .set_minute_bar_downsample_transaction_hook(Arc::new(move || {
+                clock.advance(StdDuration::from_secs(1));
+            }))
             .await;
 
         let result = downsample_fixture
@@ -779,7 +923,9 @@ mod tests {
                     .sleeps
                     .lock()
                     .expect("sleep history lock is available")
-                    .clone(),
+                    .iter()
+                    .map(StdDuration::as_secs)
+                    .collect::<Vec<_>>(),
                 downsample_fixture
                     .clock
                     .lock_counts_during_sleep
@@ -787,14 +933,7 @@ mod tests {
                     .expect("lock history lock is available")
                     .clone(),
             ),
-            (
-                Ok(Default::default()),
-                2,
-                true,
-                2,
-                vec![StdDuration::from_secs(9), StdDuration::from_secs(9)],
-                vec![0, 0],
-            ),
+            (Ok(Default::default()), 2, true, 2, vec![9, 9], vec![0, 0],),
         );
     }
 
