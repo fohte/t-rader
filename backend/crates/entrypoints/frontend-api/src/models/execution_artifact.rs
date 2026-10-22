@@ -31,6 +31,7 @@ pub struct ExecutionPayloadManifestPageResponse {
     pub task_id: Uuid,
     pub cursor: Option<String>,
     pub next_cursor: Option<String>,
+    /// 取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
     pub total_count: u64,
     pub items: Vec<ExecutionPayloadManifestResponse>,
 }

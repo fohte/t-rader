@@ -1454,7 +1454,10 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** task に属する payload manifest を安定した cursor で一覧取得する。 */
+    /**
+     * task に属する payload manifest の live 一覧を有限ページで取得する。
+     * @description total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
+     */
     get: operations['list_task_execution_payload_manifests']
     put?: never
     post?: never
@@ -2157,7 +2160,10 @@ export interface components {
       next_cursor?: string | null
       /** Format: uuid */
       task_id: string
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description 取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
+       */
       total_count: number
     }
     ExecutionPayloadManifestResponse: {

@@ -28,7 +28,11 @@ afterEach(() => {
 function readManifestListOutput(section: HTMLElement) {
   const row = within(section).getByRole('listitem')
   return {
-    summary: within(section).getByText('全 5 件 · 表示 1 件').textContent,
+    summary: within(section).getByText('取得時点の現在総数 5 件 · 表示 1 件')
+      .textContent,
+    liveNote: within(section).getByText(
+      '一覧は live です。追加分は先頭ページを再読すると確認できます。',
+    ).textContent,
     row: {
       details: Array.from(row.querySelectorAll('p')).map((paragraph) =>
         paragraph.textContent.replace(/\s+/g, ' ').trim(),
@@ -63,7 +67,9 @@ describe('ExecutionPayloadManifestList', () => {
       name: '実行 payload 記録',
     })
     const expected = {
-      summary: '全 5 件 · 表示 1 件',
+      summary: '取得時点の現在総数 5 件 · 表示 1 件',
+      liveNote:
+        '一覧は live です。追加分は先頭ページを再読すると確認できます。',
       row: {
         details: [
           '00000000-0000-4000-8000-000000000011 · 入力 · 未完了',

@@ -80,7 +80,11 @@ export function ExecutionPayloadManifestList({
       ) : (
         <>
           <p className="mb-2 font-mono text-2xs text-muted-foreground">
-            全 {state.totalCount} 件 · 表示 {state.items.length} 件
+            取得時点の現在総数 {state.totalCount} 件 · 表示 {state.items.length}{' '}
+            件
+          </p>
+          <p className="mb-2 font-mono text-2xs text-muted-foreground">
+            一覧は live です。追加分は先頭ページを再読すると確認できます。
           </p>
           {state.items.length === 0 ? (
             <p className="font-mono text-xs text-muted-foreground">

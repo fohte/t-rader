@@ -8035,7 +8035,8 @@
         "tags": [
           "strategies"
         ],
-        "summary": "task に属する payload manifest を安定した cursor で一覧取得する。",
+        "summary": "task に属する payload manifest の live 一覧を有限ページで取得する。",
+        "description": "total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。",
         "operationId": "list_task_execution_payload_manifests",
         "parameters": [
           {
@@ -11366,6 +11367,7 @@
           "total_count": {
             "type": "integer",
             "format": "int64",
+            "description": "取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。",
             "minimum": 0
           }
         }

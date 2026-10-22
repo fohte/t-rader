@@ -304,7 +304,9 @@ type ExecutionPayloadManifestPageResponse struct {
 	Items      []ExecutionPayloadManifestResponse `json:"items"`
 	NextCursor nullable.Nullable[string]          `json:"next_cursor,omitempty"`
 	TaskId     openapi_types.UUID                 `json:"task_id"`
-	TotalCount int64                              `json:"total_count"`
+
+	// TotalCount 取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
+	TotalCount int64 `json:"total_count"`
 }
 
 // ExecutionPayloadManifestResponse defines model for ExecutionPayloadManifestResponse.
@@ -1715,7 +1717,9 @@ type ClientInterface interface {
 	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts (the `GetTaskExecutionArtifacts` operationId).
 	GetTaskExecutionArtifacts(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListTaskExecutionPayloadManifests task に属する payload manifest を安定した cursor で一覧取得する。
+	// ListTaskExecutionPayloadManifests task に属する payload manifest の live 一覧を有限ページで取得する。
+	//
+	// total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。.
 	//
 	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads (the `ListTaskExecutionPayloadManifests` operationId).
 	ListTaskExecutionPayloadManifests(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, params *ListTaskExecutionPayloadManifestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3393,7 +3397,9 @@ func (c *OpenAPIClient) GetTaskExecutionArtifacts(ctx context.Context, id openap
 	return c.Client.Do(req)
 }
 
-// ListTaskExecutionPayloadManifests task に属する payload manifest を安定した cursor で一覧取得する。
+// ListTaskExecutionPayloadManifests task に属する payload manifest の live 一覧を有限ページで取得する。
+//
+// total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。.
 //
 // Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads (the `ListTaskExecutionPayloadManifests` operationId).
 func (c *OpenAPIClient) ListTaskExecutionPayloadManifests(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, params *ListTaskExecutionPayloadManifestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7868,7 +7874,9 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/execution-artifacts (the `GetTaskExecutionArtifacts` operationId).
 	GetTaskExecutionArtifactsWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetTaskExecutionArtifactsResult, error)
 
-	// ListTaskExecutionPayloadManifestsWithResponse task に属する payload manifest を安定した cursor で一覧取得する。
+	// ListTaskExecutionPayloadManifestsWithResponse task に属する payload manifest の live 一覧を有限ページで取得する。
+	//
+	// total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -14565,7 +14573,9 @@ func (c *ClientWithResponses) GetTaskExecutionArtifactsWithResponse(ctx context.
 	return ParseGetTaskExecutionArtifactsResult(rsp)
 }
 
-// ListTaskExecutionPayloadManifestsWithResponse task に属する payload manifest を安定した cursor で一覧取得する。
+// ListTaskExecutionPayloadManifestsWithResponse task に属する payload manifest の live 一覧を有限ページで取得する。
+//
+// total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。.
 //
 // Returns a wrapper object for the known response body format(s).
 //

@@ -140,11 +140,12 @@ pub async fn get_task_execution_payload(
     Ok(Json(ExecutionPayloadResponse::from(payload)))
 }
 
-/// task に属する payload manifest を安定した cursor で一覧取得する。
 #[utoipa::path(
     get,
     path = "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads",
     tag = "strategies",
+    summary = "task に属する payload manifest の live 一覧を有限ページで取得する。",
+    description = "total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。",
     params(
         ("id" = Uuid, Path, description = "戦略 ID"),
         ("task_id" = Uuid, Path, description = "戦略タスク ID"),

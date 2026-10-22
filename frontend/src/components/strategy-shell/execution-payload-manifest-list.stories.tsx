@@ -16,7 +16,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const UnreferencedIncompletePayload: Story = {
-  name: 'an unreferenced incomplete payload can be selected.',
+  name: 'the live list shows its current total and an unreferenced incomplete payload.',
   args: {
     state: {
       status: 'ready',
