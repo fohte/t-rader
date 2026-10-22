@@ -137,7 +137,7 @@ function getMainFramePoint(element: HTMLElement) {
     frameBounds && frameMetrics && frameMetrics.offsetHeight > 0
       ? frameBounds.height / frameMetrics.offsetHeight
       : 1
-  const bounds = element.getBoundingClientRect()
+  const bounds = element.getClientRects()[0] ?? element.getBoundingClientRect()
   return {
     x:
       (frameBounds?.left ?? 0) +
