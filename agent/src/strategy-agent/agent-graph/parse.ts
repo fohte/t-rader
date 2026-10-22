@@ -191,58 +191,56 @@ const agentGraphConfigSchema = z
     }
   })
 
+const toCommonPhaseFields = (raw: z.infer<typeof agentGraphPhaseSchema>) => ({
+  key: raw.key,
+  label: raw.label,
+  ...(raw.for_each !== undefined ? { forEach: raw.for_each } : {}),
+  ...(raw.label_field !== undefined ? { labelField: raw.label_field } : {}),
+  ...(raw.max_parallel !== undefined ? { maxParallel: raw.max_parallel } : {}),
+  ...(raw.timeout_minutes !== undefined
+    ? { timeoutMinutes: raw.timeout_minutes }
+    : {}),
+  skills: raw.skills ?? [],
+  subagents: raw.subagents ?? [],
+  ...(raw.max_subagent_runs !== undefined
+    ? { maxSubagentRuns: raw.max_subagent_runs }
+    : {}),
+  ...(raw.tools !== undefined ? { tools: raw.tools } : {}),
+  ...(raw.input !== undefined
+    ? {
+        input: Object.fromEntries(
+          Object.entries(raw.input).map(([key, binding]) => [
+            key,
+            toInputBinding(binding),
+          ]),
+        ),
+      }
+    : {}),
+  output: raw.output,
+})
+
 const toAgentGraphPhase = (
   raw: z.infer<typeof agentGraphPhaseSchema>,
-): AgentGraphPhase => ({
-  ...(() => {
-    const common = {
-      key: raw.key,
-      label: raw.label,
-      ...(raw.for_each !== undefined ? { forEach: raw.for_each } : {}),
-      ...(raw.label_field !== undefined ? { labelField: raw.label_field } : {}),
-      ...(raw.max_parallel !== undefined
-        ? { maxParallel: raw.max_parallel }
-        : {}),
-      ...(raw.timeout_minutes !== undefined
-        ? { timeoutMinutes: raw.timeout_minutes }
-        : {}),
-      skills: raw.skills ?? [],
-      subagents: raw.subagents ?? [],
-      ...(raw.max_subagent_runs !== undefined
-        ? { maxSubagentRuns: raw.max_subagent_runs }
-        : {}),
-      ...(raw.tools !== undefined ? { tools: raw.tools } : {}),
-      ...(raw.input !== undefined
-        ? {
-            input: Object.fromEntries(
-              Object.entries(raw.input).map(([key, binding]) => [
-                key,
-                toInputBinding(binding),
-              ]),
-            ),
-          }
-        : {}),
-      output: raw.output,
-    }
-    if (raw.kind === 'operation') {
-      return {
-        ...common,
-        kind: 'operation' as const,
-        operation: raw.operation,
-        codeId: raw.code_id,
-      }
-    }
+): AgentGraphPhase => {
+  const common = toCommonPhaseFields(raw)
+  if (raw.kind === 'operation') {
     return {
       ...common,
-      ...(raw.kind === 'llm' ? { kind: 'llm' as const } : {}),
-      model: raw.model,
-      ...(raw.reasoning_effort !== undefined
-        ? { reasoningEffort: raw.reasoning_effort }
-        : {}),
-      prompt: raw.prompt,
+      kind: 'operation',
+      operation: raw.operation,
+      codeId: raw.code_id,
     }
-  })(),
-})
+  }
+  return {
+    ...common,
+    ...(raw.kind === 'llm' ? { kind: 'llm' } : {}),
+    model: raw.model,
+    ...(raw.reasoning_effort !== undefined
+      ? { reasoningEffort: raw.reasoning_effort }
+      : {}),
+    prompt: raw.prompt,
+  }
+}
 
 const toInputBinding = (
   raw: z.infer<typeof inputBindingSchema>,

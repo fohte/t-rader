@@ -3,7 +3,7 @@ import { err, ok } from 'neverthrow'
 
 import { isPlainObject } from '#strategy-agent/agent-graph/json'
 import type { PayloadReference } from '#strategy-agent/agent-graph/run-agent-graph/operation-runner'
-import type { ExecutionToolRequest } from '#strategy-agent/execution-tool-client'
+import { callExecutionToolSafely as callExecutionTool } from '#strategy-agent/execution-tool-client'
 import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 
 export interface SealedPayloadItem {
@@ -22,28 +22,6 @@ export interface SealedPayloadPage {
   readonly totalCount: number
   readonly digest: string
 }
-
-const callExecutionTool = (
-  client: McpToolsClient,
-  request: Extract<
-    ExecutionToolRequest,
-    { readonly name: 'read_execution_payload' }
-  >,
-): Promise<Result<unknown, Error>> =>
-  client.callExecutionTool === undefined
-    ? Promise.resolve(
-        err(new Error('execution MCP tool dispatcher is not configured')),
-      )
-    : Promise.resolve()
-        .then(() => client.callExecutionTool?.(request))
-        .then(
-          (result) =>
-            result ??
-            err(new Error('execution MCP tool dispatcher is not configured')),
-        )
-        .catch((error: unknown) =>
-          err(error instanceof Error ? error : new Error(String(error))),
-        )
 
 const parseReadPayloadPage = (
   value: unknown,

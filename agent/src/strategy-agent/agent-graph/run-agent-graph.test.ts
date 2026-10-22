@@ -323,6 +323,60 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it('preserves legacy LLM tools while keeping task runtime tools internal', async () => {
+    const configuredTools: string[][] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => {
+        configuredTools.push(options.tools.map((tool) => tool.name))
+        return {
+          invoke: () => Promise.resolve({ structuredResponse: {} }),
+        }
+      },
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'demo-model',
+          prompt: 'Process the synthetic input.',
+          skills: [],
+          subagents: [],
+          tools: [
+            'execute_operation',
+            'read_execution_payload',
+            'capture_dataset',
+            'read_task_execution_snapshot',
+          ],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory([
+        buildFakeTool('execute_operation'),
+        buildFakeTool('read_execution_payload'),
+        buildFakeTool('capture_dataset'),
+        buildFakeTool('read_task_execution_snapshot'),
+      ]),
+      originalPromptText: 'req',
+    })
+
+    const actual = Array.of<unknown>(result, configuredTools)
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (Work)',
+      },
+      [['execute_operation', 'read_execution_payload']],
+    ])
+  })
+
   it('fails immediately without running any phase when deadlineSignal is already aborted', async () => {
     const { deps, calls } = buildDeps(() =>
       Promise.reject(new Error('phase should not be invoked')),

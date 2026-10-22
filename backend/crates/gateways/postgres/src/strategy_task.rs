@@ -410,11 +410,19 @@ fn task_from_model(model: strategy_task::Model) -> StrategyTask {
 }
 
 fn step_from_model(model: strategy_task_step::Model) -> StrategyTaskStep {
+    let kind = StrategyTaskStepKind::parse(&model.kind).unwrap_or_else(|| {
+        tracing::warn!(
+            execution_step_id = %model.execution_step_id,
+            kind = %model.kind,
+            "unknown strategy task step kind; reading as LLM step"
+        );
+        StrategyTaskStepKind::Llm
+    });
     StrategyTaskStep {
         execution_step_id: model.execution_step_id,
         task_id: model.task_id,
         phase_key: model.phase_key,
-        kind: StrategyTaskStepKind::parse(&model.kind).unwrap_or(StrategyTaskStepKind::Llm),
+        kind,
         label: model.label,
         model: model.model,
         status: step_status_from_db(model.status),

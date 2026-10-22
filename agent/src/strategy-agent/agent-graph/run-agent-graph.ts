@@ -184,12 +184,12 @@ const runPhase = async (
     return err(new Error(getExecutionAbortMessage(context)))
   }
 
-  return runForEachPhase(
+  return runForEachPhase({
     deps,
     phase,
     context,
     priorResults,
-    resolvedInputs.value,
+    inputBindings: resolvedInputs.value,
     phaseKeys,
     refKey,
     refField,
@@ -197,7 +197,7 @@ const runPhase = async (
     requiredArrayFields,
     previousStepsForPhase,
     reuseCompleted,
-  )
+  })
 }
 
 export const runAgentGraph = async (

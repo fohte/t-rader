@@ -26,13 +26,14 @@
 | kind              | text                      | 'llm'::text                                     | false    |          |                                                 | ステップの実行方式。                                                |
 | item_key          | jsonb                     |                                                 | true     |          |                                                 | ページ取得した配列項目を再開時に識別するキー。                      |
 | input_ref         | jsonb                     |                                                 | true     |          |                                                 | ステップが参照した固定入力 payload と JSON pointer。                |
-| output_ref        | jsonb                     |                                                 | true     |          |                                                 | ステップが生成した固定出力 payload と JSON pointer。                |
+| output_ref        | jsonb                     |                                                 | true     |          |                                                 | ステップが生成した固定出力 payload の参照。                         |
 
 ## Constraints
 
 | Name                                          | Type        | Definition                                                                |
 | --------------------------------------------- | ----------- | ------------------------------------------------------------------------- |
 | strategy_task_step_execution_step_id_not_null | n           | NOT NULL execution_step_id                                                |
+| strategy_task_step_kind_check                 | CHECK       | CHECK ((kind = ANY (ARRAY['llm'::text, 'operation'::text])))              |
 | strategy_task_step_kind_not_null              | n           | NOT NULL kind                                                             |
 | strategy_task_step_label_not_null             | n           | NOT NULL label                                                            |
 | strategy_task_step_phase_key_not_null         | n           | NOT NULL phase_key                                                        |

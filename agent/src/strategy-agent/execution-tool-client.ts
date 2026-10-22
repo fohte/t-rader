@@ -38,6 +38,31 @@ export type ExecutionToolRequest =
       readonly arguments: Record<string, never>
     }
 
+export interface ExecutionToolCaller {
+  callExecutionTool?: (
+    request: ExecutionToolRequest,
+  ) => Promise<Result<unknown, Error>>
+}
+
+export const callExecutionToolSafely = (
+  client: ExecutionToolCaller,
+  request: ExecutionToolRequest,
+): Promise<Result<unknown, Error>> =>
+  client.callExecutionTool === undefined
+    ? Promise.resolve(
+        err(new Error('execution MCP tool dispatcher is not configured')),
+      )
+    : Promise.resolve()
+        .then(() => client.callExecutionTool?.(request))
+        .then(
+          (result) =>
+            result ??
+            err(new Error('execution MCP tool dispatcher is not configured')),
+        )
+        .catch((error: unknown) =>
+          err(error instanceof Error ? error : new Error(String(error))),
+        )
+
 const parseJson = Result.fromThrowable(
   (text: string): unknown => JSON.parse(text),
   (error): Error =>

@@ -163,7 +163,7 @@ impl StrategyServer {
                     .timeout_secs
                     .map(|seconds| Duration::from_secs(seconds.into())),
                 max_output_bytes: Some(max_output_bytes as usize),
-                input_files: operation_file_transfer_inputs(input_files),
+                input_files,
             })
             .await
             .map_err(|error| kata_exec_error(error, scope.id(), indicator))
@@ -232,10 +232,6 @@ fn serialize_operation_input(input: &serde_json::Value) -> Result<String, McpErr
         )));
     }
     Ok(stdin)
-}
-
-fn operation_file_transfer_inputs(input_files: Option<Vec<ExecFile>>) -> Option<Vec<ExecFile>> {
-    input_files
 }
 
 fn operation_payload_definition(
@@ -377,13 +373,8 @@ mod tests {
     use core_application::kata_exec::ExecFile;
     use serde_json::json;
 
-    use super::operation_files::{MAX_OPERATION_INPUT_FILE_BYTES, validate_file_collection};
-    use super::{operation_file_transfer_inputs, operation_output_value, output_schema};
-
-    #[test]
-    fn operation_without_payload_inputs_keeps_json_transfer() {
-        assert_eq!(operation_file_transfer_inputs(None), None);
-    }
+    use super::operation_files::{MAX_OPERATION_FILE_BYTES, validate_file_collection};
+    use super::{operation_output_value, output_schema};
 
     #[test]
     fn operation_output_persists_every_returned_file() {
@@ -429,7 +420,7 @@ mod tests {
             exit_code: 0,
             files: vec![ExecFile {
                 path: "outputs/large.json".to_string(),
-                bytes: vec![0; MAX_OPERATION_INPUT_FILE_BYTES + 1],
+                bytes: vec![0; MAX_OPERATION_FILE_BYTES + 1],
             }],
         };
 
@@ -460,7 +451,7 @@ mod tests {
                         },
                     },
                 },
-                "required": ["exit_code", "stdout", "stderr", "value", "files"],
+                "required": ["exit_code", "stdout", "stderr", "value"],
                 "additionalProperties": false,
             }),
         );

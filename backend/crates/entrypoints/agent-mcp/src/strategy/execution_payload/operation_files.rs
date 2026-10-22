@@ -13,9 +13,9 @@ use super::super::dto::OperationPayloadInput;
 use super::super::{internal_error, invalid_params};
 use super::strategy_execution_error;
 
-pub(super) const MAX_OPERATION_INPUT_FILES: usize = 128;
-pub(super) const MAX_OPERATION_INPUT_FILE_BYTES: usize = 8 * 1024 * 1024;
-const MAX_OPERATION_INPUT_TOTAL_BYTES: usize = 16 * 1024 * 1024;
+pub(super) const MAX_OPERATION_FILES: usize = 128;
+pub(super) const MAX_OPERATION_FILE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_OPERATION_TOTAL_BYTES: usize = 16 * 1024 * 1024;
 const OPERATION_PAYLOAD_PAGE_LIMIT: usize = 1_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -48,9 +48,9 @@ impl StrategyServer {
         if bindings.is_empty() {
             return Ok((args, None, Vec::new()));
         }
-        if bindings.len() > MAX_OPERATION_INPUT_FILES {
+        if bindings.len() > MAX_OPERATION_FILES {
             return Err(invalid_params(format!(
-                "payload_inputs exceeds {MAX_OPERATION_INPUT_FILES} files"
+                "payload_inputs exceeds {MAX_OPERATION_FILES} files"
             )));
         }
         if !args.is_object() {
@@ -84,9 +84,9 @@ impl StrategyServer {
             total_bytes = total_bytes
                 .checked_add(bytes.len())
                 .ok_or_else(|| invalid_params("payload input size overflow"))?;
-            if total_bytes > MAX_OPERATION_INPUT_TOTAL_BYTES {
+            if total_bytes > MAX_OPERATION_TOTAL_BYTES {
                 return Err(invalid_params(format!(
-                    "payload inputs exceed {MAX_OPERATION_INPUT_TOTAL_BYTES} total bytes"
+                    "payload inputs exceed {MAX_OPERATION_TOTAL_BYTES} total bytes"
                 )));
             }
 
@@ -183,9 +183,9 @@ impl StrategyServer {
                     selected_content_bytes = selected_content_bytes
                         .checked_add(item_size + usize::from(!items.is_empty()))
                         .ok_or_else(|| invalid_params("payload input size overflow"))?;
-                    if selected_content_bytes > MAX_OPERATION_INPUT_FILE_BYTES {
+                    if selected_content_bytes > MAX_OPERATION_FILE_BYTES {
                         return Err(invalid_params(format!(
-                            "payload input exceeds {MAX_OPERATION_INPUT_FILE_BYTES} bytes"
+                            "payload input exceeds {MAX_OPERATION_FILE_BYTES} bytes"
                         )));
                     }
                     items.push(item.clone());
@@ -236,9 +236,9 @@ impl StrategyServer {
         };
         let bytes = serde_json::to_vec(&value)
             .map_err(|_| internal_error("failed to serialize payload input"))?;
-        if bytes.len() > MAX_OPERATION_INPUT_FILE_BYTES {
+        if bytes.len() > MAX_OPERATION_FILE_BYTES {
             return Err(invalid_params(format!(
-                "payload input exceeds {MAX_OPERATION_INPUT_FILE_BYTES} bytes"
+                "payload input exceeds {MAX_OPERATION_FILE_BYTES} bytes"
             )));
         }
         Ok((
@@ -266,9 +266,9 @@ fn expected_payload_selection_count(
 }
 
 pub(super) fn validate_file_collection(files: &[ExecFile], label: &str) -> Result<(), McpError> {
-    if files.len() > MAX_OPERATION_INPUT_FILES {
+    if files.len() > MAX_OPERATION_FILES {
         return Err(invalid_params(format!(
-            "{label} file count exceeds {MAX_OPERATION_INPUT_FILES}"
+            "{label} file count exceeds {MAX_OPERATION_FILES}"
         )));
     }
     let mut paths = HashSet::with_capacity(files.len());
@@ -278,17 +278,17 @@ pub(super) fn validate_file_collection(files: &[ExecFile], label: &str) -> Resul
         if !paths.insert(file.path.as_str()) {
             return Err(invalid_params(format!("{label} file paths must be unique")));
         }
-        if file.bytes.len() > MAX_OPERATION_INPUT_FILE_BYTES {
+        if file.bytes.len() > MAX_OPERATION_FILE_BYTES {
             return Err(invalid_params(format!(
-                "{label} file exceeds {MAX_OPERATION_INPUT_FILE_BYTES} bytes"
+                "{label} file exceeds {MAX_OPERATION_FILE_BYTES} bytes"
             )));
         }
         total_bytes = total_bytes
             .checked_add(file.bytes.len())
             .ok_or_else(|| invalid_params(format!("{label} file size overflow")))?;
-        if total_bytes > MAX_OPERATION_INPUT_TOTAL_BYTES {
+        if total_bytes > MAX_OPERATION_TOTAL_BYTES {
             return Err(invalid_params(format!(
-                "{label} files exceed {MAX_OPERATION_INPUT_TOTAL_BYTES} total bytes"
+                "{label} files exceed {MAX_OPERATION_TOTAL_BYTES} total bytes"
             )));
         }
     }

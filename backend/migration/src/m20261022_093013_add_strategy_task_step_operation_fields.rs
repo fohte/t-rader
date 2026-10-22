@@ -1,5 +1,6 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
@@ -10,12 +11,6 @@ enum StrategyTaskStep {
     ItemKey,
     InputRef,
     OutputRef,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261022_093013_add_strategy_task_step_operation_fields"
-    }
 }
 
 #[async_trait::async_trait]
@@ -38,10 +33,26 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "ALTER TABLE strategy_task_step \
+                 ADD CONSTRAINT strategy_task_step_kind_check \
+                 CHECK (kind IN ('llm', 'operation'))",
+            )
+            .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "UPDATE strategy_task_step SET model = '' WHERE model IS NULL; \
+                 ALTER TABLE strategy_task_step \
+                 DROP CONSTRAINT strategy_task_step_kind_check",
+            )
+            .await?;
         manager
             .alter_table(
                 Table::alter()

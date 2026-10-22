@@ -269,7 +269,7 @@ comments:
       item_key: 'ページ取得した配列項目を再開時に識別するキー。'
       item_label: '処理項目の表示名。'
       input_ref: 'ステップが参照した固定入力 payload と JSON pointer。'
-      output_ref: 'ステップが生成した固定出力 payload と JSON pointer。'
+      output_ref: 'ステップが生成した固定出力 payload の参照。'
       output: 'ステップが出力した構造化データ。'
       started_at: 'ステップを開始した時刻。'
       finished_at: 'ステップを終了した時刻。'

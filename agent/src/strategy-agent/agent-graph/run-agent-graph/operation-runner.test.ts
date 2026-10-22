@@ -5,6 +5,7 @@ import { err, ok } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 
 import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
+import { buildPhaseMessageText } from '#strategy-agent/agent-graph/run-agent-graph/phase-message'
 import type {
   RunAgentGraphContext,
   RunAgentGraphDeps,
@@ -165,123 +166,270 @@ describe('runAgentGraph operation phases', () => {
       context,
     )
 
-    expect(result).toEqual({
-      status: 'completed',
-      message: '2フェーズの実行が完了しました (Prepare → Transform)',
-    })
-    expect(modelCalls).toEqual([])
-    expect(calls).toEqual([
+    const actual = Array.of<unknown>(
+      result,
+      modelCalls,
+      calls,
+      normalizeStepTimestamps(latestSteps.at(-1) ?? []),
+    )
+
+    expect(actual).toEqual([
       {
-        name: 'execute_operation',
-        arguments: {
-          name: 'demo-source',
-          args: { seed: { count: 3 } },
-          payload_inputs: [],
-        },
-      },
-      {
-        name: 'capture_dataset',
-        arguments: {
-          provider: 'demo-source',
-          params: { collection: 'demo-set' },
-        },
-      },
-      {
-        name: 'execute_operation',
-        arguments: {
-          name: 'demo-transform',
-          args: { mode: 'sample-mode' },
-          payload_inputs: [
-            {
-              field: 'rows',
-              payload_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
-              pointer: '/value/rows',
-              cursor: 2,
-              limit: 3,
-            },
-            {
-              field: 'dataset',
-              payload_id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
-              pointer: '',
-            },
-          ],
-        },
-      },
-    ])
-    expect(normalizeStepTimestamps(latestSteps.at(-1) ?? [])).toEqual([
-      {
-        phaseKey: 'source',
-        executionStepId: '<execution-step-id-1>',
-        kind: 'operation',
-        label: 'Prepare',
-        model: null,
         status: 'completed',
-        output: {
-          payloadRef: {
+        message: '2フェーズの実行が完了しました (Prepare → Transform)',
+      },
+      [],
+      [
+        {
+          name: 'execute_operation',
+          arguments: {
+            name: 'demo-source',
+            args: { seed: { count: 3 } },
+            payload_inputs: [],
+          },
+        },
+        {
+          name: 'capture_dataset',
+          arguments: {
+            provider: 'demo-source',
+            params: { collection: 'demo-set' },
+          },
+        },
+        {
+          name: 'execute_operation',
+          arguments: {
+            name: 'demo-transform',
+            args: { mode: 'sample-mode' },
+            payload_inputs: [
+              {
+                field: 'rows',
+                payload_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+                pointer: '/value/rows',
+                cursor: 2,
+                limit: 3,
+              },
+              {
+                field: 'dataset',
+                payload_id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
+                pointer: '',
+              },
+            ],
+          },
+        },
+      ],
+      [
+        {
+          phaseKey: 'source',
+          executionStepId: '<execution-step-id-1>',
+          kind: 'operation',
+          label: 'Prepare',
+          model: null,
+          status: 'completed',
+          output: {
+            payloadRef: {
+              id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+              digest: 'demo-first-digest',
+            },
+            pointer: '/value',
+          },
+          inputRef: {
+            payload_inputs: [],
+            execution_input: {
+              id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+              digest: 'demo-input-digest',
+            },
+          },
+          outputRef: {
             id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
             digest: 'demo-first-digest',
           },
-          pointer: '/value',
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
         },
-        inputRef: {
-          payload_inputs: [],
-          execution_input: {
-            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
-            digest: 'demo-input-digest',
+        {
+          phaseKey: 'transform',
+          executionStepId: '<execution-step-id-2>',
+          kind: 'operation',
+          label: 'Transform',
+          model: null,
+          status: 'completed',
+          output: {
+            payloadRef: {
+              id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+              digest: 'demo-second-digest',
+            },
+            pointer: '/value',
           },
-        },
-        outputRef: {
-          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
-          digest: 'demo-first-digest',
-        },
-        startedAt: '<started-at>',
-        finishedAt: '<finished-at>',
-        traceId: NOOP_TRACE_ID,
-        spanId: NOOP_SPAN_ID,
-      },
-      {
-        phaseKey: 'transform',
-        executionStepId: '<execution-step-id-2>',
-        kind: 'operation',
-        label: 'Transform',
-        model: null,
-        status: 'completed',
-        output: {
-          payloadRef: {
+          inputRef: {
+            payload_inputs: [
+              {
+                field: 'rows',
+                payload_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+                pointer: '/value/rows',
+                cursor: 2,
+                limit: 3,
+              },
+              {
+                field: 'dataset',
+                payload_id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
+                pointer: '',
+              },
+            ],
+            execution_input: {
+              id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
+              digest: 'demo-input-digest',
+            },
+          },
+          outputRef: {
             id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
             digest: 'demo-second-digest',
           },
-          pointer: '/value',
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
         },
-        inputRef: {
-          payload_inputs: [
-            {
-              field: 'rows',
-              payload_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+      ],
+    ])
+  })
+
+  it('binds a sealed prior-output page into an LLM phase message', async () => {
+    const payloadId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
+    const pageDigest = 'demo-page-digest'
+    const calls: ExecutionToolRequest[] = []
+    const modelCalls: string[] = []
+    const messages: string[] = []
+    const context = createContext((request) => {
+      calls.push(request)
+      switch (request.name) {
+        case 'execute_operation':
+          return Promise.resolve(
+            ok(
+              operationResponse(
+                'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+                payloadId,
+                'demo-output-digest',
+              ),
+            ),
+          )
+        case 'read_execution_payload':
+          return Promise.resolve(
+            ok({
+              payload_id: payloadId,
               pointer: '/value/rows',
+              data: [{ value: 7 }],
               cursor: 2,
-              limit: 3,
+              next_cursor: null,
+              total_count: 3,
+              digest: pageDigest,
+            }),
+          )
+        case 'capture_dataset':
+        case 'read_task_execution_snapshot':
+          return Promise.resolve(err(new Error('unexpected fixed tool call')))
+      }
+    })
+    const deps: RunAgentGraphDeps = {
+      createChatModel: (model) => {
+        modelCalls.push(model)
+        return new FakeChatModel({})
+      },
+      buildPhaseAgent: () => ({
+        invoke: ({ messages: phaseMessages }) => {
+          messages.push(phaseMessages.map((message) => message.text).join('\n'))
+          return Promise.resolve({ structuredResponse: { review: 'complete' } })
+        },
+      }),
+    }
+    const priorResult = {
+      payloadRef: { id: payloadId, digest: 'demo-output-digest' },
+      pointer: '/value',
+    }
+    const resolvedInput = {
+      payload_id: payloadId,
+      pointer: '/value/rows',
+      cursor: 2,
+      data: [{ value: 7 }],
+      next_cursor: null,
+      total_count: 3,
+      digest: pageDigest,
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'prepare',
+          label: 'Prepare',
+          kind: 'operation',
+          operation: 'evaluate_saved_code',
+          codeId: 'demo-source',
+          skills: [],
+          subagents: [],
+          output: { rows: { type: 'array' } },
+        },
+        {
+          key: 'review',
+          label: 'Review',
+          kind: 'llm',
+          model: 'demo-model',
+          prompt: 'Review the captured values.',
+          input: {
+            rows: {
+              priorOutput: {
+                phase: 'prepare',
+                pointer: '/value/rows',
+                cursor: 2,
+                limit: 2,
+              },
             },
-            {
-              field: 'dataset',
-              payload_id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
-              pointer: '',
-            },
-          ],
-          execution_input: {
-            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
-            digest: 'demo-input-digest',
+          },
+          skills: [],
+          subagents: [],
+          output: { review: { type: 'string' } },
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, context)
+    const actual = Array.of<unknown>(result, calls, modelCalls, messages)
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Prepare → Review)',
+      },
+      [
+        {
+          name: 'execute_operation',
+          arguments: {
+            name: 'demo-source',
+            args: {},
+            payload_inputs: [],
           },
         },
-        outputRef: {
-          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
-          digest: 'demo-second-digest',
+        {
+          name: 'read_execution_payload',
+          arguments: {
+            payload_id: payloadId,
+            pointer: '/value/rows',
+            cursor: 2,
+            limit: 2,
+          },
         },
-        startedAt: '<started-at>',
-        finishedAt: '<finished-at>',
-        traceId: NOOP_TRACE_ID,
-        spanId: NOOP_SPAN_ID,
-      },
+      ],
+      ['demo-model'],
+      [
+        buildPhaseMessageText({
+          originalPromptText: 'Process the provided synthetic input.',
+          phaseKeys: ['prepare', 'review'],
+          phaseKey: 'review',
+          phasePrompt: 'Review the captured values.',
+          item: undefined,
+          priorResults: { prepare: priorResult },
+          inputBindings: { rows: resolvedInput },
+        }),
+      ],
     ])
   })
 
@@ -394,7 +542,7 @@ describe('runAgentGraph operation phases', () => {
           payload_id: payloadId,
           pointer,
           cursor: 0,
-          limit: 2,
+          limit: 100,
         },
       },
       {
@@ -403,7 +551,7 @@ describe('runAgentGraph operation phases', () => {
           payload_id: payloadId,
           pointer,
           cursor: 2,
-          limit: 2,
+          limit: 100,
         },
       },
     ])

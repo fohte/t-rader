@@ -39,6 +39,38 @@ type ForEachItemOutcome =
   | { readonly kind: 'success'; readonly value: unknown }
   | { readonly kind: 'error'; readonly error: unknown }
 
+interface ForEachExecutionOptions {
+  readonly deps: RunAgentGraphDeps
+  readonly phase: LlmAgentGraphPhase
+  readonly context: RunAgentGraphContext
+  readonly priorResults: Readonly<Record<string, unknown>>
+  readonly inputBindings: Readonly<Record<string, unknown>>
+  readonly phaseKeys: readonly string[]
+  readonly recorder: StepRecorder
+  readonly requiredArrayFields: ReadonlySet<string>
+  readonly previousStepsForPhase: readonly StrategyTaskStep[]
+  readonly reuseCompleted: boolean
+}
+
+interface RunForEachItemsOptions extends ForEachExecutionOptions {
+  readonly items: readonly unknown[]
+  readonly itemKeys?: readonly unknown[]
+  readonly startIndex?: number
+  readonly totalItemCount?: number
+}
+
+interface RunPayloadBackedForEachOptions extends ForEachExecutionOptions {
+  readonly payloadRef: { readonly id: string; readonly digest?: string }
+  readonly pointer: string
+}
+
+interface RunForEachPhaseOptions extends ForEachExecutionOptions {
+  readonly refKey: string
+  readonly refField: string
+}
+
+const PAYLOAD_FOR_EACH_PAGE_SIZE = 100
+
 export const splitForEach = (forEach: string): readonly [string, string] => {
   const dotIndex = forEach.indexOf('.')
   return [forEach.slice(0, dotIndex), forEach.slice(dotIndex + 1)]
@@ -58,7 +90,7 @@ export const collectRequiredArrayFields = (
   return map
 }
 
-export const resolveForEachItems = (
+const resolveForEachItems = (
   priorResults: Readonly<Record<string, unknown>>,
   refKey: string,
   refField: string,
@@ -91,22 +123,22 @@ const extractItemLabel = (
   return typeof value === 'string' ? value : undefined
 }
 
-export const runForEachItems = async (
-  deps: RunAgentGraphDeps,
-  phase: LlmAgentGraphPhase,
-  context: RunAgentGraphContext,
-  priorResults: Readonly<Record<string, unknown>>,
-  inputBindings: Readonly<Record<string, unknown>>,
-  phaseKeys: readonly string[],
-  items: readonly unknown[],
-  recorder: StepRecorder,
-  requiredArrayFields: ReadonlySet<string>,
-  previousStepsForPhase: readonly StrategyTaskStep[],
-  reuseCompleted: boolean,
-  itemKeys?: readonly unknown[],
+const runForEachItems = async ({
+  deps,
+  phase,
+  context,
+  priorResults,
+  inputBindings,
+  phaseKeys,
+  items,
+  recorder,
+  requiredArrayFields,
+  previousStepsForPhase,
+  reuseCompleted,
+  itemKeys,
   startIndex = 0,
   totalItemCount = items.length,
-): Promise<Result<ForEachBatch, unknown>> => {
+}: RunForEachItemsOptions): Promise<Result<ForEachBatch, unknown>> => {
   const concurrency = Math.max(phase.maxParallel ?? items.length, 1)
   const workerCount = Math.min(concurrency, items.length)
   const results: (ForEachItemOutcome | undefined)[] = []
@@ -199,24 +231,23 @@ export const runForEachItems = async (
   })
 }
 
-const runPayloadBackedForEach = async (
-  deps: RunAgentGraphDeps,
-  phase: LlmAgentGraphPhase,
-  context: RunAgentGraphContext,
-  priorResults: Readonly<Record<string, unknown>>,
-  inputBindings: Readonly<Record<string, unknown>>,
-  phaseKeys: readonly string[],
-  payloadRef: { readonly id: string; readonly digest?: string },
-  pointer: string,
-  recorder: StepRecorder,
-  requiredArrayFields: ReadonlySet<string>,
-  previousStepsForPhase: readonly StrategyTaskStep[],
-  reuseCompleted: boolean,
-): Promise<Result<unknown[], unknown>> => {
+const runPayloadBackedForEach = async ({
+  deps,
+  phase,
+  context,
+  priorResults,
+  inputBindings,
+  phaseKeys,
+  payloadRef,
+  pointer,
+  recorder,
+  requiredArrayFields,
+  previousStepsForPhase,
+  reuseCompleted,
+}: RunPayloadBackedForEachOptions): Promise<Result<unknown[], unknown>> => {
   if (isExecutionAborted(context)) {
     return err(new Error(getExecutionAbortMessage(context)))
   }
-  const pageSize = Math.max(1, Math.min(phase.maxParallel ?? 1, 1_000))
   const outputs: unknown[] = []
   let firstError: unknown
   const readResult = await Promise.resolve()
@@ -226,24 +257,24 @@ const runPayloadBackedForEach = async (
         client,
         payloadRef,
         pointer,
-        pageSize,
+        PAYLOAD_FOR_EACH_PAGE_SIZE,
         async (pageItems, totalItemCount) => {
-          const batch = await runForEachItems(
+          const batch = await runForEachItems({
             deps,
             phase,
             context,
             priorResults,
             inputBindings,
             phaseKeys,
-            pageItems.map((item) => item.value),
+            items: pageItems.map((item) => item.value),
             recorder,
             requiredArrayFields,
             previousStepsForPhase,
             reuseCompleted,
-            pageItems.map((item) => item.itemKey),
-            pageItems[0]?.itemKey.index ?? 0,
+            itemKeys: pageItems.map((item) => item.itemKey),
+            startIndex: pageItems[0]?.itemKey.index ?? 0,
             totalItemCount,
-          )
+          })
           if (batch.isErr()) return err(batch.error)
           outputs.push(...batch.value.outputs)
           firstError ??= batch.value.firstError
@@ -262,54 +293,54 @@ const runPayloadBackedForEach = async (
   return ok(outputs)
 }
 
-export const runForEachPhase = async (
-  deps: RunAgentGraphDeps,
-  phase: LlmAgentGraphPhase,
-  context: RunAgentGraphContext,
-  priorResults: Readonly<Record<string, unknown>>,
-  inputBindings: Readonly<Record<string, unknown>>,
-  phaseKeys: readonly string[],
-  refKey: string,
-  refField: string,
-  recorder: StepRecorder,
-  requiredArrayFields: ReadonlySet<string>,
-  previousStepsForPhase: readonly StrategyTaskStep[],
-  reuseCompleted: boolean,
-): Promise<Result<unknown, unknown>> => {
+export const runForEachPhase = async ({
+  deps,
+  phase,
+  context,
+  priorResults,
+  inputBindings,
+  phaseKeys,
+  refKey,
+  refField,
+  recorder,
+  requiredArrayFields,
+  previousStepsForPhase,
+  reuseCompleted,
+}: RunForEachPhaseOptions): Promise<Result<unknown, unknown>> => {
   const payloadSource = payloadPointerForField(priorResults[refKey], refField)
   if (payloadSource !== undefined) {
-    return runPayloadBackedForEach(
+    return runPayloadBackedForEach({
       deps,
       phase,
       context,
       priorResults,
       inputBindings,
       phaseKeys,
-      payloadSource.payloadRef,
-      payloadSource.pointer,
+      payloadRef: payloadSource.payloadRef,
+      pointer: payloadSource.pointer,
       recorder,
       requiredArrayFields,
       previousStepsForPhase,
       reuseCompleted,
-    )
+    })
   }
 
   const itemsResult = resolveForEachItems(priorResults, refKey, refField)
   if (itemsResult.isErr()) return itemsResult
 
-  const batch = await runForEachItems(
+  const batch = await runForEachItems({
     deps,
     phase,
     context,
     priorResults,
     inputBindings,
     phaseKeys,
-    itemsResult.value,
+    items: itemsResult.value,
     recorder,
     requiredArrayFields,
     previousStepsForPhase,
     reuseCompleted,
-  )
+  })
   if (batch.isErr()) return batch
   if (batch.value.itemCount > 0 && batch.value.outputs.length === 0) {
     return err(

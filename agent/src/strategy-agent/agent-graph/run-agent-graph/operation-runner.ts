@@ -11,7 +11,7 @@ import type {
   InputBinding,
   OperationAgentGraphPhase,
 } from '#strategy-agent/agent-graph/types'
-import type { ExecutionToolRequest } from '#strategy-agent/execution-tool-client'
+import { callExecutionToolSafely as callExecutionTool } from '#strategy-agent/execution-tool-client'
 import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 
 export interface PayloadReference {
@@ -91,25 +91,6 @@ export const extractPayloadReference = (
   }
   return undefined
 }
-
-const callExecutionTool = (
-  client: McpToolsClient,
-  request: ExecutionToolRequest,
-): Promise<Result<unknown, Error>> =>
-  client.callExecutionTool === undefined
-    ? Promise.resolve(
-        err(new Error('execution MCP tool dispatcher is not configured')),
-      )
-    : Promise.resolve()
-        .then(() => client.callExecutionTool?.(request))
-        .then(
-          (result) =>
-            result ??
-            err(new Error('execution MCP tool dispatcher is not configured')),
-        )
-        .catch((error: unknown) =>
-          err(error instanceof Error ? error : new Error(String(error))),
-        )
 
 const resolvePayloadInput = (
   field: string,
@@ -219,7 +200,7 @@ const isOperationResult = (
   'input_payload' in value &&
   'output_payload' in value
 
-const runOperation = async (
+export const runOperationPhase = async (
   phase: OperationAgentGraphPhase,
   context: RunAgentGraphContext,
   priorResults: Readonly<Record<string, unknown>>,
@@ -326,21 +307,4 @@ const runOperation = async (
           return result.map((value) => value.output)
         })
     },
-  )
-
-export const runOperationPhase = (
-  phase: OperationAgentGraphPhase,
-  context: RunAgentGraphContext,
-  priorResults: Readonly<Record<string, unknown>>,
-  recorder: StepRecorder,
-  existingExecutionStepId?: string,
-  previousInputRef?: unknown,
-): Promise<Result<OperationPhaseOutput, unknown>> =>
-  runOperation(
-    phase,
-    context,
-    priorResults,
-    recorder,
-    existingExecutionStepId,
-    previousInputRef,
   )

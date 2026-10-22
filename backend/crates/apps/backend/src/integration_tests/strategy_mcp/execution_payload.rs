@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use async_trait::async_trait;
 use chrono::Utc;
 use core_application::{
-    kata_exec::{ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor},
+    kata_exec::{ExecFile, ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor},
     strategy_execution::{
         DatasetCaptureReport, DatasetPage, DatasetPageCompletion, DatasetProvider,
         DatasetProviderError, DatasetSnapshot, PayloadDefinition, PayloadKind, PayloadPage,
@@ -33,6 +33,8 @@ const OPERATION_OUTPUT_DIGEST: &str =
     "02e3edf64da0a6e80a2df605decdb64605cd8a66b71be923c8148c945955b615";
 const OPERATION_FAILURE_DIGEST: &str =
     "6ee28d7049e92a25b270e9f8d805a635d27e957420d6bb1c4f6270a10515d804";
+const TASK_START_SNAPSHOT_DIGEST: &str =
+    "8b71de3f8e45dcb78cf9e14199658490a9bbe1b59a902c22b849b6386b921cbc";
 
 #[derive(Clone, Copy)]
 enum ProviderMode {
@@ -159,6 +161,221 @@ async fn create_running_task(
     .await
     .expect("update synthetic task");
     (task_id, a2a_task_id)
+}
+
+#[backend_test_macros::database_test]
+async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (valid_task_id, valid_a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let (invalid_task_id, invalid_a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let (_, missing_a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let valid_execution_id = format!("{valid_a2a_task_id}:{}", Uuid::from_u128(709));
+    let invalid_execution_id = format!("{invalid_a2a_task_id}:{}", Uuid::from_u128(710));
+    let missing_execution_id = format!("{missing_a2a_task_id}:{}", Uuid::from_u128(711));
+    let definition = json!({"phase": "synthetic"});
+    for (task_id, digest) in [
+        (valid_task_id, TASK_START_SNAPSHOT_DIGEST),
+        (invalid_task_id, "demo-invalid-digest"),
+    ] {
+        task_execution_definition_snapshot::ActiveModel {
+            task_id: Set(task_id),
+            definition_key: Set("task_start".into()),
+            definition: Set(definition.clone()),
+            digest: Set(digest.into()),
+            created_at: Set(Utc::now().fixed_offset()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert synthetic definition snapshot");
+    }
+
+    let server = tests_common::build_server(db);
+    let valid: Result<Value, String> = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some(valid_execution_id),
+            None,
+        )
+        .await
+        .map(|response| response.into_value())
+        .map_err(|error| error.message.to_string());
+    let missing: Result<Value, String> = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some(missing_execution_id),
+            None,
+        )
+        .await
+        .map(|response| response.into_value())
+        .map_err(|error| error.message.to_string());
+    let invalid: Result<Value, String> = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some(invalid_execution_id),
+            None,
+        )
+        .await
+        .map(|response| response.into_value())
+        .map_err(|error| error.message.to_string());
+
+    let actual = (valid, missing, invalid);
+
+    assert_eq!(
+        actual,
+        (
+            Ok(json!({
+                "definition": definition,
+                "digest": TASK_START_SNAPSHOT_DIGEST,
+            })),
+            Ok(json!({"definition": null, "digest": null})),
+            Err("strategy graph execution failed".into()),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn mcp_operation_materializes_selected_payload_as_an_input_file(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (_, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let execution_step_id = Uuid::from_u128(707);
+    let indicator_id = Uuid::from_u128(708);
+    custom_indicator::ActiveModel {
+        indicator_id: Set(indicator_id),
+        name: Set("sample-operation".into()),
+        scope: Set("strategy".into()),
+        strategy_id: Set(Some(strategy_id)),
+        code: Set("synthetic source".into()),
+        input_schema: Set(json!({
+            "type": "object",
+            "properties": {"items": {"type": "object"}},
+            "required": ["items"],
+            "additionalProperties": false,
+        })),
+        output_schema: Set(json!({"type": "object"})),
+        description: Set(None),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("insert synthetic operation");
+
+    let base_server = tests_common::build_server(db.clone());
+    let provider: SharedDatasetProvider = Arc::new(SyntheticDatasetProvider {
+        items: vec![
+            json!({"value": 11}),
+            json!({"value": 22}),
+            json!({"value": 33}),
+        ],
+        mode: ProviderMode::Stable,
+    });
+    let executor = Arc::new(FakeKataExecutor::new());
+    executor
+        .set_response(Ok(ExecResult {
+            stdout: "{\"ok\":true}".into(),
+            stderr: String::new(),
+            exit_code: 0,
+            files: Vec::new(),
+        }))
+        .await;
+    let server = StrategyServer::new(
+        base_server
+            .entrypoint_server()
+            .clone()
+            .with_dataset_providers(BTreeMap::from([(
+                "synthetic-provider".to_string(),
+                provider,
+            )])),
+    )
+    .with_kata_executor(Some(executor.clone()));
+    let execution_id = format!("{a2a_task_id}:{execution_step_id}");
+    let captured: Value = server
+        .invoke::<_, Value>(
+            "capture_dataset",
+            strategy_id,
+            json!({
+                "provider": "synthetic-provider",
+                "params": {"request_tag": "sample"},
+                "page_size": 2,
+            }),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("capture synthetic dataset")
+        .into_value();
+    let payload_id = Uuid::parse_str(
+        captured["payload"]["id"]
+            .as_str()
+            .expect("captured payload ID"),
+    )
+    .expect("valid captured payload ID");
+    server
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            json!({
+                "name": "sample-operation",
+                "args": {},
+                "payload_inputs": [{
+                    "field": "items",
+                    "payload_id": payload_id,
+                    "pointer": "",
+                    "cursor": 1,
+                    "limit": 1,
+                }],
+                "timeout_secs": null,
+                "max_output_bytes": null,
+            }),
+            Some(execution_id),
+            None,
+        )
+        .await
+        .expect("execute operation with selected payload input");
+
+    let request = executor.requests.lock().await[0].clone();
+    let stdin: Value = serde_json::from_str(request.stdin.as_deref().expect("operation stdin"))
+        .expect("operation input JSON");
+    let actual = (stdin, request.input_files);
+
+    assert_eq!(
+        actual,
+        (
+            json!({
+                "args": {
+                    "items": {
+                        "path": "inputs/input-0.json",
+                        "payload_id": payload_id,
+                        "pointer": "",
+                        "digest": DATASET_DIGEST,
+                    },
+                },
+                "payload_inputs": [{
+                    "field": "items",
+                    "payload_id": payload_id,
+                    "pointer": "",
+                    "cursor": 1,
+                    "limit": 1,
+                    "digest": DATASET_DIGEST,
+                    "path": "inputs/input-0.json",
+                }],
+            }),
+            Some(vec![ExecFile {
+                path: "inputs/input-0.json".into(),
+                bytes: b"[{\"value\":22}]".to_vec(),
+            }]),
+        ),
+    );
 }
 
 fn normalize_payload_ref(mut payload: PayloadRef) -> PayloadRef {

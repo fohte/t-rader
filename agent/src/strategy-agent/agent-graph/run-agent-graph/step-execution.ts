@@ -27,8 +27,6 @@ const STRUCTURED_OUTPUT_RETRY_FINGERPRINT =
   'run-agent-graph.structured-output-retry'
 
 const EXECUTION_RUNTIME_TOOL_NAMES = new Set([
-  'execute_operation',
-  'read_execution_payload',
   'capture_dataset',
   'read_task_execution_snapshot',
 ])

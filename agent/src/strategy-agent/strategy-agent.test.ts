@@ -493,23 +493,34 @@ describe('runStrategyAgent', () => {
 
     const result = await runStrategyAgent(deps, buildRunInput())
 
-    expect(result).toEqual({
-      status: 'completed',
-      message: '1フェーズの実行が完了しました (Evaluate)',
-    })
-    expect(calls.fetchAgentConfigKey).toEqual(undefined)
-    expect(calls.taskExecutionSnapshotFetchCount).toEqual(1)
-    expect(calls.createChatModelCallCount).toEqual(0)
-    expect(calls.buildPhaseAgentCallCount).toEqual(0)
-    expect(calls.executionToolRequests).toEqual([
+    const actual = Array.of<unknown>(
+      result,
+      calls.fetchAgentConfigKey,
+      calls.taskExecutionSnapshotFetchCount,
+      calls.createChatModelCallCount,
+      calls.buildPhaseAgentCallCount,
+      calls.executionToolRequests,
+    )
+
+    expect(actual).toEqual([
       {
-        name: 'execute_operation',
-        arguments: {
-          name: 'snapshot-code',
-          args: { factor: 3 },
-          payload_inputs: [],
-        },
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (Evaluate)',
       },
+      undefined,
+      1,
+      0,
+      0,
+      [
+        {
+          name: 'execute_operation',
+          arguments: {
+            name: 'snapshot-code',
+            args: { factor: 3 },
+            payload_inputs: [],
+          },
+        },
+      ],
     ])
   })
 
