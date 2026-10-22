@@ -155,26 +155,39 @@ describe('MarkdownBody links', () => {
       const session = cdp()
       await session.send('Target.setDiscoverTargets', { discover: true })
 
+      let targetId: string | undefined
+      let resolveOpenedTarget:
+        ((targetInfo: CdpTargetInfo['targetInfo']) => void) | undefined
       const openedTarget = new Promise<CdpTargetInfo['targetInfo']>(
         (resolve) => {
-          const onTarget = ({ targetInfo }: CdpTargetInfo) => {
-            if (targetInfo.type !== 'page' || targetInfo.url !== targetUrl)
-              return
-            session.off('Target.targetCreated', onTarget)
-            session.off('Target.targetInfoChanged', onTarget)
-            resolve(targetInfo)
-          }
-          session.on('Target.targetCreated', onTarget)
-          session.on('Target.targetInfoChanged', onTarget)
+          resolveOpenedTarget = resolve
         },
       )
+      const onTarget = ({ targetInfo }: CdpTargetInfo) => {
+        if (targetInfo.type !== 'page' || targetInfo.url !== targetUrl) return
+        targetId = targetInfo.targetId
+        resolveOpenedTarget?.(targetInfo)
+      }
+      session.on('Target.targetCreated', onTarget)
+      session.on('Target.targetInfoChanged', onTarget)
 
-      await page.getByRole('link', { name: linkName(targetUrl) }).click()
-      const target = await openedTarget
+      try {
+        await page.getByRole('link', { name: linkName(targetUrl) }).click()
+        const target = await openedTarget
+        targetId = target.targetId
 
-      expect(target.url).toEqual(targetUrl)
-      await session.send('Target.closeTarget', { targetId: target.targetId })
-      await session.send('Target.setDiscoverTargets', { discover: false })
+        expect(target.url).toEqual(targetUrl)
+      } finally {
+        session.off('Target.targetCreated', onTarget)
+        session.off('Target.targetInfoChanged', onTarget)
+        const cleanupCommands = [
+          session.send('Target.setDiscoverTargets', { discover: false }),
+        ]
+        if (targetId != null) {
+          cleanupCommands.push(session.send('Target.closeTarget', { targetId }))
+        }
+        await Promise.all(cleanupCommands)
+      }
     },
   )
 
