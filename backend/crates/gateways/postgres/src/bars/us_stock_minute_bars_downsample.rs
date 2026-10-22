@@ -24,7 +24,8 @@ pub(super) async fn find_earliest_minute_bar_before(
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT MIN(timestamp) AS timestamp FROM bars \
-             WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' AND timestamp < $1",
+             WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' AND timestamp < $1 \
+             GROUP BY timeframe",
             [cutoff.fixed_offset().into()],
         ))
         .await?;
