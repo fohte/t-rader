@@ -251,6 +251,32 @@ describe('POST /internal/v2/tasks', () => {
     expect(res.status).toBe(422)
   })
 
+  it('rejects an empty strategy_id before starting an agent task', async () => {
+    let sendMessageCalled = false
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: () => {
+          sendMessageCalled = true
+          return Promise.resolve(buildTask({ id: 'task-1' }))
+        },
+      }),
+    )
+    const res = await app.request('/internal/v2/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        task_id: taskId,
+        strategy_id: '',
+        prompt: 'do the thing',
+      }),
+    })
+
+    expect(dispatchObservation(res.status, sendMessageCalled)).toEqual({
+      status: 422,
+      sendMessageCalled: false,
+    })
+  })
+
   it('rejects submissions without the stable task id before dispatch', async () => {
     let sendMessageCalled = false
     const app = buildApp(
