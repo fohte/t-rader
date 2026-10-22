@@ -116,6 +116,59 @@ const tableWidget: DashboardWidgetPageState = {
   },
 }
 
+const groupLineWidget: DashboardWidgetPageState = {
+  key: 'group-movement-line',
+  title: '分類別の騰落率',
+  width: 'full',
+  definition: {
+    queries: {
+      movement: { metric: 'change', period: '1d', by: 'group' },
+    },
+    display: { movement: { label: '騰落率', format: 'percent' } },
+    viz: { type: 'line', series: ['movement'] },
+  },
+  isPending: false,
+  errorMessage: null,
+  result: {
+    as_of: '2099-01-19',
+    rows: [],
+    series: [
+      {
+        key: 'movement:group:sample-axis/sample-group-a',
+        query: 'movement',
+        name: '騰落率',
+        target: {
+          key: 'group:sample-axis/sample-group-a',
+          name: '分類 A',
+        },
+        points: [
+          { date: '2099-01-05', value: 0.012 },
+          { date: '2099-01-06', value: 0.018 },
+          { date: '2099-01-07', value: null },
+          { date: '2099-01-12', value: -0.008 },
+          { date: '2099-01-19', value: 0.014 },
+        ],
+      },
+      {
+        key: 'movement:group:sample-axis/sample-group-b',
+        query: 'movement',
+        name: '騰落率',
+        target: {
+          key: 'group:sample-axis/sample-group-b',
+          name: '分類 B',
+        },
+        points: [
+          { date: '2099-01-05', value: -0.006 },
+          { date: '2099-01-06', value: 0.009 },
+          { date: '2099-01-07', value: 0.015 },
+          { date: '2099-01-12', value: -0.011 },
+          { date: '2099-01-19', value: 0.004 },
+        ],
+      },
+    ],
+  },
+}
+
 const movementList: DashboardWidgetPageState = {
   key: 'movement-list',
   title: '値動きの一覧',
@@ -170,6 +223,18 @@ export const ConfiguredDate: Story = {
 export const Preview: Story = {
   name: '保存前の設定を一覧へのリンクなしで表示します。',
   args: { state: readyState, showDashboardListLink: false },
+}
+
+export const PreviewLineAndTable: Story = {
+  name: 'プレビューで分類別の折れ線と表を並べて表示する。',
+  args: {
+    state: {
+      ...readyState,
+      title: '期間推移のプレビュー',
+      widgets: [groupLineWidget, tableWidget],
+    },
+    showDashboardListLink: false,
+  },
 }
 
 export const Loading: Story = {
