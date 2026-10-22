@@ -3,7 +3,7 @@ import '#index.css'
 import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { cdp, page } from 'vitest/browser'
+import { cdp, commands, page } from 'vitest/browser'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
@@ -36,21 +36,13 @@ interface CdpTargetInfo {
 
 declare module 'vitest/browser' {
   interface CDPSession {
-    send(
-      method: 'DOM.getNodeForLocation',
-      params: {
-        x: number
-        y: number
-        includeUserAgentShadowDOM: boolean
-      },
-    ): Promise<{ backendNodeId: number }>
-    send(
-      method: 'DOM.describeNode',
-      params: { backendNodeId: number },
-    ): Promise<{ node: { nodeName: string; attributes: string[] } }>
     send(method: string, params?: Record<string, unknown>): Promise<unknown>
     on(event: string, listener: (target: CdpTargetInfo) => void): void
     off(event: string, listener: (target: CdpTargetInfo) => void): void
+  }
+
+  interface BrowserCommands {
+    tapLinkOnTouch(selector: string): Promise<void>
   }
 }
 
@@ -113,55 +105,6 @@ async function withMobileViewport<T>(
   }
 }
 
-function readFrameMetrics(frame: Element | null) {
-  if (
-    frame == null ||
-    !('offsetWidth' in frame) ||
-    !('offsetHeight' in frame) ||
-    !('clientLeft' in frame) ||
-    !('clientTop' in frame)
-  ) {
-    return undefined
-  }
-
-  const { offsetWidth, offsetHeight, clientLeft, clientTop } = frame
-  if (
-    typeof offsetWidth !== 'number' ||
-    typeof offsetHeight !== 'number' ||
-    typeof clientLeft !== 'number' ||
-    typeof clientTop !== 'number'
-  ) {
-    return undefined
-  }
-
-  return { offsetWidth, offsetHeight, clientLeft, clientTop }
-}
-
-function getMainFramePoint(element: HTMLElement) {
-  const frame = window.frameElement
-  const frameBounds = frame?.getBoundingClientRect()
-  const frameMetrics = readFrameMetrics(frame)
-  const scaleX =
-    frameBounds && frameMetrics && frameMetrics.offsetWidth > 0
-      ? frameBounds.width / frameMetrics.offsetWidth
-      : 1
-  const scaleY =
-    frameBounds && frameMetrics && frameMetrics.offsetHeight > 0
-      ? frameBounds.height / frameMetrics.offsetHeight
-      : 1
-  const bounds = element.getClientRects()[0] ?? element.getBoundingClientRect()
-  return {
-    x:
-      (frameBounds?.left ?? 0) +
-      (frameMetrics?.clientLeft ?? 0) * scaleX +
-      (bounds.left + bounds.width / 2) * scaleX,
-    y:
-      (frameBounds?.top ?? 0) +
-      (frameMetrics?.clientTop ?? 0) * scaleY +
-      (bounds.top + bounds.height / 2) * scaleY,
-  }
-}
-
 function readMobileViewportState() {
   return {
     width: window.innerWidth,
@@ -172,40 +115,9 @@ function readMobileViewportState() {
   }
 }
 
-async function expectTapTargetIsLink(
-  session: CdpSession,
-  link: HTMLElement,
-  point: { x: number; y: number },
-) {
-  const { backendNodeId } = await session.send('DOM.getNodeForLocation', {
-    x: point.x,
-    y: point.y,
-    includeUserAgentShadowDOM: true,
-  })
-  const { node } = await session.send('DOM.describeNode', {
-    backendNodeId,
-  })
-  const hrefIndex = node.attributes.indexOf('href')
-  const actual = JSON.stringify({
-    nodeName: node.nodeName,
-    href: node.attributes[hrefIndex + 1],
-  })
-  const expected = JSON.stringify({
-    nodeName: 'A',
-    href: link.getAttribute('href'),
-  })
-  expect(actual).toBe(expected)
-}
-
-async function tapLink(session: CdpSession, name: string) {
-  const link = await screen.findByRole('link', { name })
-  const point = getMainFramePoint(link)
-  const roundedPoint = { x: Math.round(point.x), y: Math.round(point.y) }
-  await expectTapTargetIsLink(session, link, roundedPoint)
-  await session.send('Input.synthesizeTapGesture', {
-    ...roundedPoint,
-    gestureSourceType: 'touch',
-  })
+async function tapLink(name: string) {
+  const link = page.getByRole('link', { name })
+  await commands.tapLinkOnTouch(link.selector)
 }
 
 async function expectNewTab(
@@ -385,7 +297,7 @@ describe('MarkdownBody links', () => {
       await withMobileViewport(session, async () => {
         renderNote(source(targetUrl))
         await expectNewTab(session, targetUrl, () =>
-          tapLink(session, linkName(targetUrl)),
+          tapLink(linkName(targetUrl)),
         )
       })
     },
@@ -434,7 +346,7 @@ describe('MarkdownBody links', () => {
       await withMobileViewport(session, async () => {
         const router = renderNote(source, noteLinks)
 
-        await tapLink(session, linkName)
+        await tapLink(linkName)
         await waitFor(() => {
           expect(readLocation(router)).toEqual(expectedLocation)
         })
