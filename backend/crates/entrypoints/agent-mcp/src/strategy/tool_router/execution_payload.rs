@@ -37,7 +37,8 @@ impl StrategyServer {
     /// task 内で seal 済み payload の有限ページを読む
     #[tool(
         name = "read_execution_payload",
-        description = "Read a sealed payload belonging to the current task. JSON Pointer selects a value and cursor/limit return a finite page. Staging and incomplete payloads cannot be read."
+        description = "Read a sealed payload belonging to the current task. JSON Pointer selects a value and cursor/limit return a finite page. Staging and incomplete payloads cannot be read.",
+        annotations(read_only_hint = true)
     )]
     async fn read_execution_payload(
         &self,
