@@ -81,6 +81,7 @@ mod tests {
         let server = create_test_server(db).await;
         let response = server.get("/api/agent-tools").await;
         // ToolRouter::list_all() は name の昇順でソートして返す
+        // json! の再帰上限を超えないよう、期待値を複数の chunk に分ける。
         let tools = [
             serde_json::json!([
                     {"name": "add_earnings_target", "description": "Add a stock or group to the current strategy's earnings targets. Set ref_kind to stock or group. Group ref_id values use axis_key/group_key. Repeating an existing target is a no-op."},
@@ -143,7 +144,10 @@ mod tests {
             ]),
         ]
         .into_iter()
-        .flat_map(|chunk| chunk.as_array().cloned().unwrap_or_default())
+        .flat_map(|chunk| match chunk {
+            serde_json::Value::Array(values) => values,
+            value => vec![value],
+        })
         .collect::<Vec<_>>();
 
         assert_response_eq(
