@@ -76,6 +76,8 @@ pub enum StrategyExecutionUseCaseError {
     InvalidDatasetCompletion,
     #[error("dataset provider reported an incomplete capture")]
     DatasetCaptureIncomplete,
+    #[error("dataset capture was cancelled")]
+    ExecutionCancelled,
     #[error(transparent)]
     DatasetProvider(#[from] DatasetProviderError),
     #[error("numeric projection is invalid")]

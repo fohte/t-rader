@@ -30,9 +30,14 @@ impl StrategyServer {
         let execution_step_id = execution_step_id_from_ctx(&ctx).ok_or_else(|| {
             invalid_params("x-execution-id must include a valid execution step ID")
         })?;
-        self.execute_operation_inner(scope, &a2a_task_id, execution_step_id, params)
-            .await
-            .map(Json)
+        let cancellation = ctx.ct.clone();
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => Err(super::super::internal_error("execution request cancelled")),
+            result = self.execute_operation_inner(scope, &a2a_task_id, execution_step_id, params) => {
+                result.map(Json)
+            }
+        }
     }
 
     /// task 内で seal 済み payload の有限ページを読む
@@ -50,8 +55,13 @@ impl StrategyServer {
         let a2a_task_id = execution_task_id_for_read_from_ctx(&ctx)
             .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
-        self.read_execution_payload_inner(scope, &a2a_task_id, execution_step_id, params)
-            .await
-            .map(Json)
+        let cancellation = ctx.ct.clone();
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => Err(super::super::internal_error("execution request cancelled")),
+            result = self.read_execution_payload_inner(scope, &a2a_task_id, execution_step_id, params) => {
+                result.map(Json)
+            }
+        }
     }
 }

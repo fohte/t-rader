@@ -1,9 +1,12 @@
-use std::sync::Arc;
+use std::{future::pending, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 use axum_test::TestServer;
 use chrono::Utc;
 use core_application::agent_task_client::DisabledAgentTaskClient;
-use core_application::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
+use core_application::kata_exec::{
+    ExecRequest, ExecResult, FakeKataExecutor, KataExecError, KataExecutor, SharedKataExecutor,
+};
 use gateway_postgres::entities::{
     custom_indicator, sea_orm_active_enums::StrategyTaskPhase, strategy_task,
     task_execution_definition_snapshot,
@@ -13,6 +16,7 @@ use sea_orm::{
     ActiveValue::{NotSet, Set},
 };
 use serde_json::{Value, json};
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 use crate::testing::insert_test_strategy;
@@ -20,6 +24,28 @@ use crate::testing::mcp::{legacy_initialize_body, parse_sse_response};
 
 const TASK_START_SNAPSHOT_DIGEST: &str =
     "8b71de3f8e45dcb78cf9e14199658490a9bbe1b59a902c22b849b6386b921cbc";
+
+struct NotifyOnDrop(Arc<Notify>);
+
+impl Drop for NotifyOnDrop {
+    fn drop(&mut self) {
+        self.0.notify_one();
+    }
+}
+
+struct PendingKataExecutor {
+    started: Arc<Notify>,
+    dropped: Arc<Notify>,
+}
+
+#[async_trait]
+impl KataExecutor for PendingKataExecutor {
+    async fn run(&self, _request: ExecRequest) -> Result<ExecResult, KataExecError> {
+        let _drop_notification = NotifyOnDrop(Arc::clone(&self.dropped));
+        self.started.notify_one();
+        pending().await
+    }
+}
 
 async fn call_strategy_tool(
     server: &TestServer,
@@ -434,4 +460,91 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
     });
 
     assert_eq!(actual, expected);
+}
+
+#[backend_test_macros::database_test]
+async fn cancelling_an_in_flight_operation_request_stops_the_kata_handler(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
+    let task_id = crate::testing::insert_test_strategy_task(
+        &db,
+        strategy_id,
+        "synthetic task prompt",
+        None,
+        Utc::now().fixed_offset(),
+    )
+    .await;
+    let a2a_task_id = format!("sample-task-{}", Uuid::new_v4());
+    strategy_task::ActiveModel {
+        task_id: Set(task_id),
+        a2a_task_id: Set(Some(a2a_task_id.clone())),
+        phase: Set(StrategyTaskPhase::Running),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .expect("mark synthetic task as running");
+
+    custom_indicator::ActiveModel {
+        indicator_id: Set(Uuid::new_v4()),
+        name: Set("sample-operation".into()),
+        scope: Set("strategy".into()),
+        strategy_id: Set(Some(strategy_id)),
+        code: Set("synthetic source".into()),
+        input_schema: Set(json!({"type": "object"})),
+        output_schema: Set(json!({"type": "object"})),
+        description: Set(None),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("insert synthetic saved operation");
+
+    let started = Arc::new(Notify::new());
+    let dropped = Arc::new(Notify::new());
+    let shared_executor: SharedKataExecutor = Arc::new(PendingKataExecutor {
+        started: Arc::clone(&started),
+        dropped: Arc::clone(&dropped),
+    });
+    let server = TestServer::new(crate::mcp::router(
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db),
+        Arc::new(DisabledAgentTaskClient),
+        None,
+        Some(shared_executor),
+        None,
+        None,
+        Vec::new(),
+    ))
+    .expect("build MCP test server");
+    let execution_id = format!("{a2a_task_id}:{}", Uuid::new_v4());
+    let in_flight_request = tokio::spawn(async move {
+        call_strategy_tool(
+            &server,
+            20,
+            strategy_id,
+            &execution_id,
+            "execute_operation",
+            json!({
+                "name": "sample-operation",
+                "args": {},
+                "timeout_secs": null,
+                "max_output_bytes": null,
+            }),
+        )
+        .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("Kata execution starts");
+    in_flight_request.abort();
+    let request_result = in_flight_request.await;
+    let execution_drop = tokio::time::timeout(Duration::from_secs(5), dropped.notified()).await;
+
+    assert_eq!(
+        (request_result.is_err(), execution_drop.is_ok()),
+        (true, true),
+    );
 }

@@ -1,6 +1,8 @@
 mod payload_read;
 mod payload_write;
 
+pub use payload_write::DatasetCaptureOptions;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use chrono::Utc;

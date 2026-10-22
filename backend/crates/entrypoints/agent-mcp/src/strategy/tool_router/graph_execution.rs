@@ -29,7 +29,7 @@ impl StrategyServer {
         let execution_step_id = execution_step_id_from_ctx(&ctx).ok_or_else(|| {
             invalid_params("x-execution-id must include a valid execution step ID")
         })?;
-        self.capture_dataset_inner(scope, &a2a_task_id, execution_step_id, params)
+        self.capture_dataset_inner(scope, &a2a_task_id, execution_step_id, params, &ctx.ct)
             .await
             .map(Json)
     }

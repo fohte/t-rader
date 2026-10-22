@@ -1,7 +1,10 @@
-use core_application::strategy_execution::{MAX_DATASET_PAGE_SIZE, StrategyExecutionUseCaseError};
+use core_application::strategy_execution::{
+    DatasetCaptureOptions, MAX_DATASET_PAGE_SIZE, StrategyExecutionUseCaseError,
+};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use serde_json::Value;
+use tokio_util::sync::CancellationToken;
 
 use super::dto::{
     CaptureDatasetParams, CaptureDatasetResult, ExecutionPayloadRefDto,
@@ -16,6 +19,7 @@ impl StrategyServer {
         a2a_task_id: &str,
         execution_step_id: uuid::Uuid,
         params: CaptureDatasetParams,
+        cancellation: &CancellationToken,
     ) -> Result<CaptureDatasetResult, McpError> {
         let provider_name = params.provider.trim();
         if provider_name.is_empty() {
@@ -41,7 +45,10 @@ impl StrategyServer {
                 provider_name.to_string(),
                 provider.as_ref(),
                 Value::Object(params.params),
-                params.page_size.unwrap_or(MAX_DATASET_PAGE_SIZE),
+                DatasetCaptureOptions {
+                    page_size: params.page_size.unwrap_or(MAX_DATASET_PAGE_SIZE),
+                    cancellation,
+                },
             )
             .await
             .map_err(strategy_execution_error)?;

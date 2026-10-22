@@ -280,6 +280,7 @@ const runPayloadBackedForEach = async ({
           firstError ??= batch.value.firstError
           return ok(undefined)
         },
+        context.deadlineSignal,
       ).finally(() => client.close().catch(() => undefined)),
     )
     .catch((error: unknown) =>

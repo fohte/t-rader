@@ -15,6 +15,7 @@ export type ExecutionToolRequest =
           readonly cursor?: number
           readonly limit?: number
         }[]
+        readonly timeout_secs?: number
       }
     }
   | {
@@ -41,19 +42,21 @@ export type ExecutionToolRequest =
 export interface ExecutionToolCaller {
   callExecutionTool?: (
     request: ExecutionToolRequest,
+    signal?: AbortSignal,
   ) => Promise<Result<unknown, Error>>
 }
 
 export const callExecutionToolSafely = (
   client: ExecutionToolCaller,
   request: ExecutionToolRequest,
+  signal?: AbortSignal,
 ): Promise<Result<unknown, Error>> =>
   client.callExecutionTool === undefined
     ? Promise.resolve(
         err(new Error('execution MCP tool dispatcher is not configured')),
       )
     : Promise.resolve()
-        .then(() => client.callExecutionTool?.(request))
+        .then(() => client.callExecutionTool?.(request, signal))
         .then(
           (result) =>
             result ??

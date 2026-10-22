@@ -15,4 +15,4 @@ pub use types::{
     PayloadPage, PayloadRef, PayloadSeal, PayloadStatus, ReadPayloadQuery, ResolvedCustomIndicator,
     SharedDatasetProvider, SharedTaskStartSnapshotter, TaskStartSnapshotter,
 };
-pub use use_cases::StrategyExecutionUseCases;
+pub use use_cases::{DatasetCaptureOptions, StrategyExecutionUseCases};

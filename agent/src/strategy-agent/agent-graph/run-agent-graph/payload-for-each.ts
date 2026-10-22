@@ -89,6 +89,7 @@ export const readSealedPayloadPages = async (
     items: readonly SealedPayloadItem[],
     totalCount: number,
   ) => Promise<Result<void, unknown>>,
+  signal?: AbortSignal,
 ): Promise<Result<number, unknown>> => {
   if (client.callExecutionTool === undefined) {
     return err(new Error('execution MCP tool dispatcher is not configured'))
@@ -103,6 +104,7 @@ export const readSealedPayloadPages = async (
       pointer,
       cursor,
       pageSize,
+      signal,
     )
     if (page.isErr()) return err(page.error)
     if (
@@ -149,16 +151,21 @@ export const readSealedPayloadPage = async (
   pointer: string,
   cursor: number,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<Result<SealedPayloadPage, Error>> => {
-  const read = await callExecutionTool(client, {
-    name: 'read_execution_payload',
-    arguments: {
-      payload_id: payloadRef.id,
-      pointer,
-      cursor,
-      limit,
+  const read = await callExecutionTool(
+    client,
+    {
+      name: 'read_execution_payload',
+      arguments: {
+        payload_id: payloadRef.id,
+        pointer,
+        cursor,
+        limit,
+      },
     },
-  })
+    signal,
+  )
   if (read.isErr()) return err(read.error)
   return parseReadPayloadPage(read.value, payloadRef.id, pointer, cursor, limit)
 }

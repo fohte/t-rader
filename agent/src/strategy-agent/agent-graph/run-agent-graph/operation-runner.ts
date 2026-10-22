@@ -42,6 +42,8 @@ interface StoredOperationInputReference {
   readonly execution_input?: unknown
 }
 
+const OPERATION_EXECUTION_MAX_TIMEOUT_SECS = 60
+
 const isPayloadInput = (value: unknown): value is PayloadInput =>
   isPlainObject(value) &&
   typeof value['field'] === 'string' &&
@@ -97,6 +99,7 @@ const resolvePayloadInput = (
   binding: Exclude<InputBinding, { readonly literal: unknown }>,
   priorResults: Readonly<Record<string, unknown>>,
   client: McpToolsClient,
+  signal: AbortSignal | undefined,
 ): Promise<Result<PayloadInput, Error>> => {
   if ('priorOutput' in binding) {
     const prior = priorResults[binding.priorOutput.phase]
@@ -122,13 +125,17 @@ const resolvePayloadInput = (
     )
   }
 
-  return callExecutionTool(client, {
-    name: 'capture_dataset',
-    arguments: {
-      provider: binding.dataset.provider,
-      params: binding.dataset.params,
+  return callExecutionTool(
+    client,
+    {
+      name: 'capture_dataset',
+      arguments: {
+        provider: binding.dataset.provider,
+        params: binding.dataset.params,
+      },
     },
-  }).then((result) =>
+    signal,
+  ).then((result) =>
     result.andThen((captured) => {
       const payloadRef = extractPayloadReference(captured)
       return payloadRef === undefined
@@ -176,6 +183,7 @@ const resolveOperationInput = async (
       binding,
       priorResults,
       client,
+      context.deadlineSignal,
     )
     if (result.isErr()) return err(result.error)
     payloadInputsByField.set(field, result.value)
@@ -245,14 +253,26 @@ export const runOperationPhase = async (
               if (context.deadlineSignal?.aborted === true) {
                 return err(new Error('phase deadline exceeded'))
               }
-              const executed = await callExecutionTool(client, {
-                name: 'execute_operation',
-                arguments: {
-                  name: phase.codeId,
-                  args: input.value.args,
-                  payload_inputs: input.value.payloadInputs,
+              const executed = await callExecutionTool(
+                client,
+                {
+                  name: 'execute_operation',
+                  arguments: {
+                    name: phase.codeId,
+                    args: input.value.args,
+                    payload_inputs: input.value.payloadInputs,
+                    ...(phase.timeoutMinutes === undefined
+                      ? {}
+                      : {
+                          timeout_secs: Math.min(
+                            phase.timeoutMinutes * 60,
+                            OPERATION_EXECUTION_MAX_TIMEOUT_SECS,
+                          ),
+                        }),
+                  },
                 },
-              })
+                context.deadlineSignal,
+              )
               return executed.andThen((raw) => {
                 if (!isOperationResult(raw)) {
                   return err(

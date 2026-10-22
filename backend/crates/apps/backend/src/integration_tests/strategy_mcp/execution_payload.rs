@@ -1,3 +1,4 @@
+use std::future::pending;
 use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
@@ -5,9 +6,9 @@ use chrono::Utc;
 use core_application::{
     kata_exec::{ExecFile, ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor},
     strategy_execution::{
-        DatasetCaptureReport, DatasetPage, DatasetPageCompletion, DatasetProvider,
-        DatasetProviderError, DatasetSnapshot, PayloadDefinition, PayloadKind, PayloadPage,
-        PayloadRef, ReadPayloadQuery, SharedDatasetProvider,
+        DatasetCaptureOptions, DatasetCaptureReport, DatasetPage, DatasetPageCompletion,
+        DatasetProvider, DatasetProviderError, DatasetSnapshot, PayloadDefinition, PayloadKind,
+        PayloadPage, PayloadRef, ReadPayloadQuery, SharedDatasetProvider,
     },
     strategy_scope::StrategyScope,
 };
@@ -50,6 +51,38 @@ enum ProviderMode {
 struct SyntheticDatasetProvider {
     items: Vec<Value>,
     mode: ProviderMode,
+}
+
+struct WaitingDatasetProvider {
+    started: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait]
+impl DatasetProvider for WaitingDatasetProvider {
+    async fn open(
+        &self,
+        _scope: StrategyScope,
+        _request: Value,
+    ) -> Result<DatasetSnapshot, DatasetProviderError> {
+        Ok(DatasetSnapshot {
+            source_revision: DATASET_REVISION.into(),
+            source_locator: None,
+            source_metadata: Value::Null,
+            schema: json!({"type": "array"}),
+            captured_at: Utc::now().fixed_offset(),
+            expected_count: None,
+        })
+    }
+
+    async fn read_page(
+        &self,
+        _snapshot: &DatasetSnapshot,
+        _cursor: Option<&str>,
+        _limit: usize,
+    ) -> Result<DatasetPage, DatasetProviderError> {
+        self.started.notify_one();
+        pending().await
+    }
 }
 
 impl SyntheticDatasetProvider {
@@ -450,7 +483,10 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
             "synthetic-provider".into(),
             &provider,
             json!({"request_tag": "sample"}),
-            2,
+            DatasetCaptureOptions {
+                page_size: 2,
+                cancellation: &tokio_util::sync::CancellationToken::new(),
+            },
         )
         .await
         .expect("capture synthetic dataset");
@@ -740,7 +776,10 @@ async fn incomplete_provider_capture_cannot_be_read(db: gateway_postgres::Databa
                 "synthetic-provider".into(),
                 &provider,
                 json!({}),
-                1,
+                DatasetCaptureOptions {
+                    page_size: 1,
+                    cancellation: &tokio_util::sync::CancellationToken::new(),
+                },
             )
             .await
             .map(|_| ())
@@ -861,7 +900,10 @@ async fn unknown_provider_total_is_persisted_without_inventing_a_count(
             "synthetic-provider".into(),
             &provider,
             json!({}),
-            1,
+            DatasetCaptureOptions {
+                page_size: 1,
+                cancellation: &tokio_util::sync::CancellationToken::new(),
+            },
         )
         .await
         .expect("capture dataset with unknown total");
@@ -887,6 +929,63 @@ async fn unknown_provider_total_is_persisted_without_inventing_a_count(
                 "missing_count": null,
                 "unretrieved_count": 0,
             }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn cancelled_dataset_capture_marks_its_payload_incomplete(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+            .strategy_executions();
+    let access = use_cases
+        .authorize_execution(StrategyScope::from(strategy_id), &a2a_task_id, None)
+        .await
+        .expect("authorize synthetic task");
+    let started = Arc::new(tokio::sync::Notify::new());
+    let provider = WaitingDatasetProvider {
+        started: Arc::clone(&started),
+    };
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let capture_cancellation = cancellation.clone();
+    let capture = tokio::spawn(async move {
+        use_cases
+            .capture_dataset(
+                StrategyScope::from(strategy_id),
+                &access,
+                "synthetic-provider".into(),
+                &provider,
+                json!({}),
+                DatasetCaptureOptions {
+                    page_size: 10,
+                    cancellation: &capture_cancellation,
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    });
+
+    started.notified().await;
+    cancellation.cancel();
+    let capture_result = capture.await.expect("join cancelled capture");
+    let stored = task_execution_payload::Entity::find()
+        .filter(task_execution_payload::Column::TaskId.eq(task_id))
+        .one(&db)
+        .await
+        .expect("query cancelled payload")
+        .expect("cancelled payload row exists");
+
+    assert_eq!(
+        (capture_result, stored.status, stored.incomplete_reason),
+        (
+            Err("dataset capture was cancelled".to_string()),
+            "incomplete".to_string(),
+            Some("request_cancelled".to_string()),
         ),
     );
 }

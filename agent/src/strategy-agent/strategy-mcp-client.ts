@@ -17,6 +17,7 @@ export interface McpToolsClient {
   getTools(): Promise<DynamicStructuredTool[]>
   callExecutionTool?(
     request: ExecutionToolRequest,
+    signal?: AbortSignal,
   ): Promise<Result<unknown, Error>>
   close(): Promise<void>
 }
@@ -59,7 +60,7 @@ export const createStrategyMcpClient =
     return {
       getTools: () => client.getTools(),
       close: () => client.close(),
-      callExecutionTool: async (request) =>
+      callExecutionTool: async (request, signal) =>
         await ResultAsync.fromPromise(
           client.getClient('strategy'),
           (error) =>
@@ -70,7 +71,11 @@ export const createStrategyMcpClient =
           mcpClient === undefined
             ? errAsync(new Error('failed to connect to strategy MCP server'))
             : ResultAsync.fromPromise(
-                mcpClient.callTool(request),
+                mcpClient.callTool(
+                  request,
+                  undefined,
+                  signal === undefined ? undefined : { signal },
+                ),
                 (error) =>
                   new Error(`${request.name} MCP tool call failed`, {
                     cause: error,

@@ -38,6 +38,7 @@ const resolvePayloadBinding = async (
         binding.priorOutput.pointer,
         binding.priorOutput.cursor ?? 0,
         binding.priorOutput.limit ?? 100,
+        context.deadlineSignal,
       )
         .finally(() => client.close().catch(() => undefined))
         .then((page) =>
