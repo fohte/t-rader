@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider } from '@tanstack/react-router'
 import {
   cleanup,
   fireEvent,
@@ -15,10 +16,35 @@ import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
-const { useBarsQuery } = vi.hoisted(() => ({ useBarsQuery: vi.fn() }))
+interface IndicatorObservationRequestOptions {
+  params: {
+    path: { id: string }
+    query: { from: string; to: string }
+  }
+}
 
-vi.mock('#lib/api/client', () => ({ $api: { useQuery: useBarsQuery } }))
+interface IndicatorObservationResponse {
+  response: { ok: boolean }
+  data: Array<{ date: string; value: number }> | undefined
+}
+
+const { useBarsQuery, fetchGet } = vi.hoisted(() => ({
+  useBarsQuery: vi.fn(),
+  fetchGet:
+    vi.fn<
+      (
+        path: string,
+        options: IndicatorObservationRequestOptions,
+      ) => Promise<IndicatorObservationResponse>
+    >(),
+}))
+
+vi.mock('#lib/api/client', () => ({
+  $api: { useQuery: useBarsQuery },
+  fetchClient: { GET: fetchGet },
+}))
 vi.mock('#components/candlestick-chart', () => ({
   CandlestickChart: ({ bars }: { bars: unknown[] }) => (
     <div> {bars.length} bars</div>
@@ -49,6 +75,38 @@ const emptyRangeComments = {
   onCancelReply: () => {},
   onReply: () => {},
   onToggleResolved: () => {},
+}
+
+function requestedIndicatorObservations() {
+  return fetchGet.mock.calls.map(([, options]) => ({
+    id: options.params.path.id,
+    query: options.params.query,
+  }))
+}
+
+function indicatorChangeDisplayOutput(
+  chip: HTMLElement,
+  callsBeforeOpen: number,
+) {
+  const calculation = screen.getByText('計算 (現在の観測値)')
+
+  return {
+    callsBeforeOpen,
+    requests: requestedIndicatorObservations(),
+    priceBarRequests: useBarsQuery.mock.calls.filter(
+      ([, path]) => path === '/api/bars',
+    ),
+    displayValue: chip.textContent,
+    calculation: calculation.nextElementSibling?.textContent,
+  }
+}
+
+function indicatorChangeStatusOutput(chip: HTMLElement, status: HTMLElement) {
+  return {
+    savedPercentage: chip.textContent,
+    message: status.textContent,
+    requests: requestedIndicatorObservations(),
+  }
 }
 
 function QueryClientWrapper({ children }: { children: ReactNode }) {
@@ -92,6 +150,7 @@ afterEach(() => {
   cleanup()
   queryClient.clear()
   useBarsQuery.mockReset()
+  fetchGet.mockReset()
 })
 
 const GRAPH_DEF: components['schemas']['GraphDef'] = {
@@ -869,6 +928,122 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
     ])
   })
 
+  it('shows the saved indicator percentage and fetches observations only when opened', async () => {
+    const user = userEvent.setup()
+    const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
+    fetchGet.mockImplementation((_path, options) => {
+      const date = options.params.query.from
+      return Promise.resolve({
+        response: { ok: true },
+        data: [
+          {
+            date,
+            value: date === '2030-01-02' ? 100 : 112.5,
+          },
+        ],
+      })
+    })
+    const router = createStoryRouter(
+      () => (
+        <QueryClientProvider client={queryClient}>
+          <MarkdownBody
+            source={token}
+            resolvedPriceReferences={{ [token]: { value: 12.5 } }}
+          />
+        </QueryClientProvider>
+      ),
+      {
+        paths: ['/indicators/$indicatorId'],
+        initialPath: '/indicators/demo-indicator',
+      },
+    )
+    render(<RouterProvider router={router} />)
+
+    const chip = await screen.findByRole('button', {
+      name: '+12.5% の根拠を開く',
+    })
+    const callsBeforeOpen = fetchGet.mock.calls.length
+    await user.click(chip)
+    await screen.findByText('計算 (現在の観測値)')
+
+    expect(indicatorChangeDisplayOutput(chip, callsBeforeOpen)).toEqual({
+      callsBeforeOpen: 0,
+      requests: [
+        {
+          id: 'demo-indicator',
+          query: { from: '2030-01-02', to: '2030-01-02' },
+        },
+        {
+          id: 'demo-indicator',
+          query: { from: '2030-01-03', to: '2030-01-03' },
+        },
+      ],
+      priceBarRequests: [],
+      displayValue: '+12.5%',
+      calculation: '(112.5 − 100) ÷ 100 × 100 = +12.50%',
+    })
+  })
+
+  it.each([
+    {
+      name: 'the request fails',
+      response: { ok: false },
+      data: undefined,
+      role: 'alert',
+      message: '指標の観測値を取得できませんでした',
+    },
+    {
+      name: 'both observations are missing',
+      response: { ok: true },
+      data: [],
+      role: 'status',
+      message: '指定日の指標観測値がありません: 2030-01-02、2030-01-03',
+    },
+  ])(
+    'keeps the saved percentage visible when $name',
+    async ({ response, data, role, message }) => {
+      const user = userEvent.setup()
+      const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
+      fetchGet.mockResolvedValue({ response, data })
+      const router = createStoryRouter(
+        () => (
+          <QueryClientProvider client={queryClient}>
+            <MarkdownBody
+              source={token}
+              resolvedPriceReferences={{ [token]: { value: 12.5 } }}
+            />
+          </QueryClientProvider>
+        ),
+        {
+          paths: ['/indicators/$indicatorId'],
+          initialPath: '/indicators/demo-indicator',
+        },
+      )
+      render(<RouterProvider router={router} />)
+
+      const chip = await screen.findByRole('button', {
+        name: '+12.5% の根拠を開く',
+      })
+      await user.click(chip)
+      const status = await screen.findByRole(role)
+
+      expect(indicatorChangeStatusOutput(chip, status)).toEqual({
+        savedPercentage: '+12.5%',
+        message,
+        requests: [
+          {
+            id: 'demo-indicator',
+            query: { from: '2030-01-02', to: '2030-01-02' },
+          },
+          {
+            id: 'demo-indicator',
+            query: { from: '2030-01-03', to: '2030-01-03' },
+          },
+        ],
+      })
+    },
+  )
+
   it('keeps an unresolved change token visible when its bars cannot be loaded', () => {
     useBarsQuery.mockReturnValue({
       data: undefined,
@@ -906,6 +1081,29 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
       expect(container.textContent).toBe(
         '価格 [[price:fictional-code@2030-01-02:close]]',
       )
+    },
+  )
+
+  it.each([
+    { name: 'a missing saved value', references: {} },
+    {
+      name: 'a non-numeric saved value',
+      references: {
+        '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]': {
+          value: '12.5',
+        },
+      },
+    },
+  ])(
+    'keeps an unresolved indicator change token visible for $name',
+    ({ references }) => {
+      const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
+      const { container } = render(
+        <MarkdownBody source={token} resolvedPriceReferences={references} />,
+        { wrapper: QueryClientWrapper },
+      )
+
+      expect(container.textContent).toBe(token)
     },
   )
 

@@ -9,7 +9,7 @@ import type {
 import { findAndReplace } from 'mdast-util-find-and-replace'
 
 import {
-  type ParsedNoteChangeReference,
+  type ParsedStockChangeReference,
   parseNoteChangeReference,
 } from '#lib/note-change-reference'
 import { parseNotePriceReference } from '#lib/note-price-reference'
@@ -39,7 +39,7 @@ interface NoteGraphBlock extends Node {
 
 interface NoteChangeFigure extends Node {
   type: 'noteChangeFigure'
-  data: Data & { hName: string; hProperties: ParsedNoteChangeReference }
+  data: Data & { hName: string; hProperties: ParsedStockChangeReference }
 }
 
 declare module 'mdast' {
@@ -73,7 +73,7 @@ function noteGraphBlock(graphId: string): NoteGraphBlock {
 }
 
 function noteChangeFigure(
-  reference: ParsedNoteChangeReference,
+  reference: ParsedStockChangeReference,
 ): NoteChangeFigure {
   return {
     type: 'noteChangeFigure',
@@ -156,7 +156,7 @@ function replaceGraphParagraphs(root: Root): void {
 
 function collectChangeReferences(
   node: Node,
-  references: Map<string, ParsedNoteChangeReference>,
+  references: Map<string, ParsedStockChangeReference>,
 ): void {
   if (
     node.type === 'noteToken' &&
@@ -164,14 +164,11 @@ function collectChangeReferences(
     isRecord(node.data) &&
     node.data.hName === 'note-change-reference' &&
     isRecord(node.data.hProperties) &&
-    typeof node.data.hProperties.token === 'string' &&
-    typeof node.data.hProperties.instrumentId === 'string' &&
-    typeof node.data.hProperties.start === 'string' &&
-    typeof node.data.hProperties.end === 'string'
+    typeof node.data.hProperties.token === 'string'
   ) {
     const token = node.data.hProperties.token
     const reference = parseNoteChangeReference(token)
-    if (reference != null) references.set(token, reference)
+    if (reference?.kind === 'stock') references.set(token, reference)
   }
 
   if ('children' in node && Array.isArray(node.children)) {
@@ -189,7 +186,7 @@ function appendChangeFigures(
     if (child == null) continue
 
     if (child.type === 'paragraph') {
-      const references = new Map<string, ParsedNoteChangeReference>()
+      const references = new Map<string, ParsedStockChangeReference>()
       collectChangeReferences(child, references)
       const figures = [...references.values()].map((reference) => ({
         ...noteChangeFigure(reference),

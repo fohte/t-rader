@@ -7,6 +7,7 @@ import {
   formatNoteEvidencePrice,
   type NoteEvidenceDetails,
 } from '#lib/note-change-evidence'
+import type { NoteIndicatorChangeEvidenceState } from '#lib/note-indicator-change-evidence'
 import type { NotePriceReferenceField } from '#lib/note-price-reference'
 import type { NoteValuationReferenceField } from '#lib/note-valuation-indicator-reference'
 
@@ -53,6 +54,13 @@ interface NoteEvidenceIndicator {
   date: string
 }
 
+interface NoteEvidenceIndicatorChange {
+  kind: 'indicator-change'
+  start: string
+  end: string
+  state: NoteIndicatorChangeEvidenceState
+}
+
 type NoteEvidenceCardReference =
   | (NoteEvidenceDetails & {
       stockName: string | null
@@ -64,6 +72,10 @@ type NoteEvidenceCardReference =
       stockId: string
     })
   | (NoteEvidenceIndicator & {
+      indicatorName: string | null
+      indicatorId: string
+    })
+  | (NoteEvidenceIndicatorChange & {
       indicatorName: string | null
       indicatorId: string
     })
@@ -85,6 +97,14 @@ function referenceTitle(reference: NoteEvidenceCardReference): string {
   if (reference.kind === 'indicator') {
     return reference.indicatorName ?? reference.indicatorId
   }
+  if (reference.kind === 'indicator-change') {
+    const name = reference.indicatorName
+    const label =
+      name == null || name === ''
+        ? reference.indicatorId
+        : `${name} (${reference.indicatorId})`
+    return `${label} · 騰落率`
+  }
 
   const label = stockLabel(reference.stockName, reference.stockId)
   if (reference.kind === 'valuation') {
@@ -99,6 +119,7 @@ function referenceTitle(reference: NoteEvidenceCardReference): string {
 
 function evidenceSource(reference: NoteEvidenceCardReference): string {
   if (reference.kind === 'indicator') return 'マクロ指標'
+  if (reference.kind === 'indicator-change') return '現在の観測値'
   if (reference.kind === 'valuation') {
     return VALUATION_SPLIT_ADJUSTED[reference.field]
       ? 'バリュエーション (分割調整済み)'
@@ -108,9 +129,20 @@ function evidenceSource(reference: NoteEvidenceCardReference): string {
 }
 
 function EvidenceRows({ reference }: { reference: NoteEvidenceCardReference }) {
+  const isChange =
+    reference.kind === 'change' || reference.kind === 'indicator-change'
+  const indicatorValues =
+    reference.kind === 'indicator-change'
+      ? reference.state.status === 'ready'
+        ? reference.state.evidence
+        : reference.state.status === 'zero-start'
+          ? reference.state
+          : undefined
+      : undefined
+
   return (
     <dl className="space-y-1">
-      {reference.kind === 'change' ? (
+      {isChange ? (
         <>
           <div className="flex gap-x-3">
             <dt className="w-14 shrink-0 text-muted-foreground">期間</dt>
@@ -125,11 +157,74 @@ function EvidenceRows({ reference }: { reference: NoteEvidenceCardReference }) {
           <dd className="min-w-0 font-mono tabular-nums">{reference.date}</dd>
         </div>
       )}
+      {indicatorValues != null && (
+        <>
+          <div className="flex gap-x-3">
+            <dt className="w-14 shrink-0 text-muted-foreground">始点の値</dt>
+            <dd className="min-w-0 font-mono tabular-nums">
+              {formatNoteEvidencePrice(indicatorValues.startValue)}
+            </dd>
+          </div>
+          <div className="flex gap-x-3">
+            <dt className="w-14 shrink-0 text-muted-foreground">終点の値</dt>
+            <dd className="min-w-0 font-mono tabular-nums">
+              {formatNoteEvidencePrice(indicatorValues.endValue)}
+            </dd>
+          </div>
+        </>
+      )}
       <div className="flex gap-x-3">
         <dt className="w-14 shrink-0 text-muted-foreground">出どころ</dt>
         <dd className="min-w-0">{evidenceSource(reference)}</dd>
       </div>
     </dl>
+  )
+}
+
+function IndicatorChangeCalculation({
+  state,
+}: {
+  state: NoteIndicatorChangeEvidenceState
+}) {
+  if (state.status === 'loading') {
+    return (
+      <p role="status" className="text-muted-foreground">
+        指標の観測値を読み込み中...
+      </p>
+    )
+  }
+  if (state.status === 'error') {
+    return (
+      <p role="alert" className="text-destructive">
+        指標の観測値を取得できませんでした
+      </p>
+    )
+  }
+  if (state.status === 'missing') {
+    return (
+      <p role="status" className="text-muted-foreground">
+        指定日の指標観測値がありません: {state.missingDates.join('、')}
+      </p>
+    )
+  }
+  if (state.status === 'zero-start') {
+    return (
+      <p role="status" className="text-muted-foreground">
+        始点が 0 のため、指標の騰落率を計算できません
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-muted-foreground">計算 (現在の観測値)</p>
+      <p className="font-mono tabular-nums">
+        ({formatNoteEvidencePrice(state.evidence.endValue)} −{' '}
+        {formatNoteEvidencePrice(state.evidence.startValue)}) ÷{' '}
+        {formatNoteEvidencePrice(state.evidence.startValue)} × 100 ={' '}
+        {formatNoteEvidencePercentage(state.evidence.changePercent)}%
+      </p>
+    </div>
   )
 }
 
@@ -182,7 +277,10 @@ function ChangeCalculation({
 function StockPageLink({
   reference,
 }: {
-  reference: Exclude<NoteEvidenceCardReference, { kind: 'indicator' }>
+  reference: Exclude<
+    NoteEvidenceCardReference,
+    { kind: 'indicator' | 'indicator-change' }
+  >
 }) {
   const linkDate = reference.kind === 'change' ? reference.end : reference.date
 
@@ -230,8 +328,12 @@ export function NoteEvidenceCardView({
             {reference.kind === 'change' && (
               <ChangeCalculation reference={reference} />
             )}
+            {reference.kind === 'indicator-change' && (
+              <IndicatorChangeCalculation state={reference.state} />
+            )}
           </div>
-          {reference.kind === 'indicator' ? (
+          {reference.kind === 'indicator' ||
+          reference.kind === 'indicator-change' ? (
             <Link
               to="/indicators/$indicatorId"
               params={{ indicatorId: reference.indicatorId }}

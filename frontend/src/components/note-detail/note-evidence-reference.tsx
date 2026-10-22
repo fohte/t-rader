@@ -15,7 +15,12 @@ import {
   type NoteEvidenceDetails,
   resolveNoteChangeEvidence,
 } from '#lib/note-change-evidence'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
+import type {
+  ParsedIndicatorChangeReference,
+  ParsedNoteChangeReference,
+  ParsedStockChangeReference,
+} from '#lib/note-change-reference'
+import { resolveNoteIndicatorChangeEvidence } from '#lib/note-indicator-change-evidence'
 import type { ParsedNotePriceReference } from '#lib/note-price-reference'
 import type {
   ParsedNoteIndicatorObservationReference,
@@ -164,20 +169,34 @@ export function NoteEvaluationEvidenceReference({
   )
 }
 
-export function NoteChangeReference({
-  instrumentId,
-  start,
-  end,
-  field,
-  token,
-  value,
-}: ParsedNoteChangeReference & { token: string; value?: string }) {
+export function NoteChangeReference(
+  reference: ParsedNoteChangeReference & { token: string; value?: string },
+) {
+  if (reference.kind === 'indicator') {
+    if (reference.value == null) {
+      return (
+        <span className="font-mono font-medium tabular-nums">
+          {reference.token}
+        </span>
+      )
+    }
+
+    return (
+      <ResolvedNoteIndicatorChangeReference
+        {...reference}
+        value={reference.value}
+      />
+    )
+  }
+
+  const { instrumentId, start, end, field, token, value } = reference
   if (value == null) {
     return <span className="font-mono font-medium tabular-nums">{token}</span>
   }
 
   return (
     <ResolvedNoteChangeReference
+      kind="stock"
       instrumentId={instrumentId}
       start={start}
       end={end}
@@ -193,8 +212,9 @@ function ResolvedNoteChangeReference({
   end,
   field,
   value,
-}: ParsedNoteChangeReference & { value: string }) {
-  const reference: ParsedNoteChangeReference = {
+}: ParsedStockChangeReference & { value: string }) {
+  const reference: ParsedStockChangeReference = {
+    kind: 'stock',
     instrumentId,
     start,
     end,
@@ -220,6 +240,79 @@ function ResolvedNoteChangeReference({
       instrumentId={instrumentId}
       displayValue={`${formatNoteEvidencePercentage(numericValue, 0)}%`}
       evidence={{ kind: 'change', start, end, barsState, field }}
+    />
+  )
+}
+
+function ResolvedNoteIndicatorChangeReference({
+  indicatorId,
+  start,
+  end,
+  value,
+}: ParsedIndicatorChangeReference & { value: string }) {
+  const [open, setOpen] = useState(false)
+  const indicator = useResolveRef(`indicator:${indicatorId}`)
+  const evidenceQuery = useQuery({
+    queryKey: ['note-indicator-change-evidence', indicator.id, start, end],
+    queryFn: async ({ signal }) => {
+      const [startResult, endResult] = await Promise.all([
+        fetchClient.GET('/api/refs/indicators/{id}/observations', {
+          params: {
+            path: { id: indicator.id },
+            query: { from: start, to: start },
+          },
+          signal,
+        }),
+        fetchClient.GET('/api/refs/indicators/{id}/observations', {
+          params: {
+            path: { id: indicator.id },
+            query: { from: end, to: end },
+          },
+          signal,
+        }),
+      ])
+
+      if (
+        !startResult.response.ok ||
+        startResult.data == null ||
+        !endResult.response.ok ||
+        endResult.data == null
+      ) {
+        return { status: 'error' as const }
+      }
+
+      return {
+        status: 'ready' as const,
+        state: resolveNoteIndicatorChangeEvidence(
+          startResult.data,
+          endResult.data,
+          start,
+          end,
+        ),
+      }
+    },
+    enabled: open,
+    retry: false,
+  })
+  const state = evidenceQuery.isPending
+    ? { status: 'loading' as const }
+    : evidenceQuery.isError || evidenceQuery.data.status === 'error'
+      ? { status: 'error' as const }
+      : evidenceQuery.data.state
+
+  return (
+    <NoteEvidenceCardView
+      open={open}
+      onOpenChange={setOpen}
+      displayValue={`${formatNoteEvidencePercentage(Number(value), 0)}%`}
+      reference={{
+        kind: 'indicator-change',
+        start,
+        end,
+        state,
+        indicatorName: indicator.name,
+        indicatorId: indicator.id,
+      }}
     />
   )
 }
