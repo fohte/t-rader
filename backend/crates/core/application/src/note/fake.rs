@@ -7,7 +7,10 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::query::{NoteReadQuery, NoteReadQueryError};
-use super::types::{Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteVersion};
+use super::types::{
+    Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteOverview, NoteOverviewQuery,
+    NoteOverviewView, NoteSnapshot, NoteVersion,
+};
 
 pub struct FakeNoteReadQuery {
     note: Note,
@@ -153,6 +156,37 @@ impl NoteReadQuery for FakeNoteReadQuery {
             cursor: None,
             has_more: false,
         })
+    }
+
+    async fn list_note_overviews(
+        &self,
+        query: NoteOverviewQuery,
+    ) -> Result<Vec<NoteOverview>, NoteReadQueryError> {
+        if query
+            .kind
+            .as_deref()
+            .is_some_and(|kind| self.note.kind.as_deref() != Some(kind))
+            || query
+                .tag
+                .as_deref()
+                .is_some_and(|tag| !super::frontmatter_has_tag(&self.version.frontmatter_json, tag))
+            || (query.view == NoteOverviewView::Pending && self.version.status != "unread")
+        {
+            return Ok(Vec::new());
+        }
+
+        let current = self.version.is_current.then(|| self.version.clone());
+        let latest_unread = (self.version.status == "unread").then(|| self.version.clone());
+        Ok(vec![NoteOverview {
+            representative: NoteSnapshot {
+                note: self.note.clone(),
+                version: self.version.clone(),
+                created_by_kind: "human".into(),
+            },
+            current,
+            latest_unread,
+            unread_version_count: i64::from(self.version.status == "unread"),
+        }])
     }
 
     async fn list_notes_written_by_task(

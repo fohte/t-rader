@@ -150,6 +150,28 @@ pub struct NoteListPage {
     pub has_more: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum NoteOverviewView {
+    #[default]
+    All,
+    Pending,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NoteOverviewQuery {
+    pub view: NoteOverviewView,
+    pub kind: Option<String>,
+    pub tag: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteOverview {
+    pub representative: NoteSnapshot,
+    pub current: Option<NoteVersion>,
+    pub latest_unread: Option<NoteVersion>,
+    pub unread_version_count: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NewNoteLink {
     pub from_version_id: Uuid,

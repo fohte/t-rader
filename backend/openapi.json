@@ -4097,6 +4097,80 @@
         }
       }
     },
+    "/api/notes/overview": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノート一覧の代表・現行・最新 unread バージョン",
+        "operationId": "list_note_overviews",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "description": "表示対象。`all` は現行優先、`pending` は最新 unread のみを返す。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "all"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "ノート属性で絞り込む。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "view が選んだ代表バージョンのタグで絞り込む。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteOverviewResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/{id}": {
       "get": {
         "tags": [
@@ -11558,6 +11632,42 @@
             "items": {
               "$ref": "#/components/schemas/NoteLinkItem"
             }
+          }
+        }
+      },
+      "NoteOverviewResponse": {
+        "type": "object",
+        "required": [
+          "representative",
+          "unread_version_count"
+        ],
+        "properties": {
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NoteVersion"
+              }
+            ]
+          },
+          "latest_unread": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NoteVersion"
+              }
+            ]
+          },
+          "representative": {
+            "$ref": "#/components/schemas/Note"
+          },
+          "unread_version_count": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
