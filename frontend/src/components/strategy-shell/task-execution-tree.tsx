@@ -7,6 +7,7 @@ export type {
 export {
   listStepPayloadReferences,
   parseAgentGraphPhases,
+  readTaskStartAgentGraph,
   readTaskSteps,
 } from '#components/strategy-shell/task-execution-tree/model'
 export { StepDetail } from '#components/strategy-shell/task-execution-tree/step-detail'

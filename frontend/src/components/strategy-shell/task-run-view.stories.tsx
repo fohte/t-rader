@@ -38,6 +38,28 @@ function baseTask(
   }
 }
 
+function artifactStateView(overrides: Partial<TaskRunViewProps>) {
+  return (
+    <RouterProvider
+      router={createTaskRunViewRouter({
+        strategyId: 'sample-strategy',
+        task: baseTask(),
+        steps: [PREPARATION_STEP],
+        configPhases: CONFIG_PHASES,
+        notes: [],
+        notesState: 'success',
+        executionDefinition: {
+          status: 'ready',
+          digest: 'synthetic-digest',
+          createdAt: '2026-08-16T09:00:00.000Z',
+          definition: { agent_config: { agent_graph: 'phases: []' } },
+        },
+        ...overrides,
+      })}
+    />
+  )
+}
+
 const meta = {
   title: 'StrategyShell/TaskRunView',
   parameters: { layout: 'fullscreen' },
@@ -233,6 +255,95 @@ export const IncompletePayload: Story = {
       })}
     />
   ),
+}
+
+export const DefinitionLoading: Story = {
+  name: 'shows the loading state while the fixed definition is fetched.',
+  render: () =>
+    artifactStateView({ executionDefinition: { status: 'loading' } }),
+}
+
+export const DefinitionError: Story = {
+  name: 'shows an error when the fixed definition cannot be fetched.',
+  render: () => artifactStateView({ executionDefinition: { status: 'error' } }),
+}
+
+export const DefinitionMissing: Story = {
+  name: 'shows that a legacy run has no fixed definition snapshot.',
+  render: () =>
+    artifactStateView({
+      task: baseTask({ phase: 'completed' }),
+      configPhases: [],
+      executionDefinition: { status: 'missing' },
+    }),
+}
+
+export const PayloadLoading: Story = {
+  name: 'shows the loading state while a payload page is fetched.',
+  render: () =>
+    artifactStateView({
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000004',
+        label: '入力',
+        pointer: '/records',
+      },
+      payloadRead: { status: 'loading' },
+    }),
+}
+
+export const PayloadError: Story = {
+  name: 'shows an error when a payload page cannot be fetched.',
+  render: () =>
+    artifactStateView({
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000004',
+        label: '入力',
+        pointer: '/records',
+      },
+      payloadRead: { status: 'error' },
+    }),
+}
+
+export const PayloadStaging: Story = {
+  name: 'shows that a staging payload is not ready to display.',
+  render: () =>
+    artifactStateView({
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000004',
+        label: '入力',
+        pointer: '/records',
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'staging',
+          itemCount: 0,
+          incompleteReason: 'capture_in_progress',
+        },
+        page: null,
+      },
+    }),
+}
+
+export const PayloadPageMissing: Story = {
+  name: 'shows when a sealed payload has no readable page.',
+  render: () =>
+    artifactStateView({
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000004',
+        label: '入力',
+        pointer: '/records',
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'sealed',
+          itemCount: 0,
+          incompleteReason: null,
+        },
+        page: null,
+      },
+    }),
 }
 
 export const Failed: Story = {

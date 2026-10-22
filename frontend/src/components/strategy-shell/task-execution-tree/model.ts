@@ -5,6 +5,8 @@ import type { StrategyTaskStepJson as TaskStep } from 'agent/strategy-agent/agen
 import { Result } from 'neverthrow'
 import { parse as parseYaml } from 'yaml'
 
+import { isSavedCodeOperationPhase } from '#lib/agent-graph-phase'
+
 export type { TaskStep }
 
 // フェーズが output で宣言する JSON Schema 相当のゆるい構造。中身の property 名
@@ -52,7 +54,13 @@ export type PhaseNode =
     }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+export function readTaskStartAgentGraph(snapshot: unknown): string | null {
+  if (!isRecord(snapshot) || !isRecord(snapshot['agent_config'])) return null
+  const agentGraph = snapshot['agent_config']['agent_graph']
+  return typeof agentGraph === 'string' ? agentGraph : null
 }
 
 // steps (jsonb) は backend が中身を解釈せず素通しするため unknown で届く。必須フィールドの
@@ -96,13 +104,7 @@ export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
     const forEach = p['for_each']
     if (typeof key !== 'string' || typeof label !== 'string') continue
     if (p['kind'] === 'operation') {
-      if (
-        p['operation'] !== 'evaluate_saved_code' ||
-        typeof p['code_id'] !== 'string' ||
-        (model !== undefined && model !== null)
-      ) {
-        continue
-      }
+      if (!isSavedCodeOperationPhase(p)) continue
       result.push({
         key,
         label,

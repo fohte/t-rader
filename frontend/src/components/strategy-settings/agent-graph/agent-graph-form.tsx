@@ -141,12 +141,6 @@ export function AgentGraphForm({
                       onChange(setPhaseCodeId(value, i, event.target.value))
                     }}
                   />
-                  <InputBindingsField
-                    value={phase.input}
-                    onChange={(next) => {
-                      onChange(setPhaseInput(value, i, next))
-                    }}
-                  />
                 </>
               ) : (
                 <>
@@ -163,6 +157,8 @@ export function AgentGraphForm({
                     value={phase.forEach}
                     onChange={(next) => {
                       let updated = setPhaseForEach(value, i, next)
+                      // 参照先の配列が変わると items の形も変わるので、旧参照先の
+                      // property 名が残った label_field は無効な値になりうる
                       if (next != null && next !== phase.forEach) {
                         updated = setPhaseLabelField(updated, i, undefined)
                       }
@@ -207,14 +203,14 @@ export function AgentGraphForm({
                     }}
                     options={skillNames}
                   />
-                  <InputBindingsField
-                    value={phase.input}
-                    onChange={(next) => {
-                      onChange(setPhaseInput(value, i, next))
-                    }}
-                  />
                 </>
               )}
+              <InputBindingsField
+                value={phase.input}
+                onChange={(next) => {
+                  onChange(setPhaseInput(value, i, next))
+                }}
+              />
               <OutputField
                 value={phase.output}
                 onChange={(next) => {

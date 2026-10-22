@@ -66,6 +66,7 @@ function renderPhase(args: Story['args']) {
       referencedLabel={args.referencedLabel}
       hasError={args.hasError}
       onLabelChange={args.onLabelChange}
+      onKindChange={args.onKindChange}
       onMoveUp={args.onMoveUp}
       onMoveDown={args.onMoveDown}
       onRemove={args.onRemove}
@@ -93,6 +94,7 @@ export const Default: Story = {
     total: 2,
     phase: ALPHA_PHASE,
     onLabelChange: () => {},
+    onKindChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
@@ -109,6 +111,7 @@ export const ForEach: Story = {
     phase: BETA_PHASE,
     referencedLabel: 'サンプル',
     onLabelChange: () => {},
+    onKindChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
@@ -125,6 +128,7 @@ export const WithError: Story = {
     phase: ALPHA_PHASE,
     hasError: true,
     onLabelChange: () => {},
+    onKindChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
@@ -140,6 +144,7 @@ export const ModelUnset: Story = {
     total: 2,
     phase: UNSET_MODEL_PHASE,
     onLabelChange: () => {},
+    onKindChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
@@ -155,6 +160,7 @@ export const Operation: Story = {
     total: 1,
     phase: OPERATION_PHASE,
     onLabelChange: () => {},
+    onKindChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},

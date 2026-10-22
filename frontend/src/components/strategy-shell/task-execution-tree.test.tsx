@@ -88,6 +88,19 @@ function getDefaultSelectedStepOutput() {
   }
 }
 
+function readOperationStepDetailOutput(
+  step: TaskStep,
+  selectedPayload: unknown,
+) {
+  return {
+    operation: screen.getByText('evaluate_saved_code').textContent,
+    model: screen.getByText('—').textContent,
+    definitionHeading: screen.getByText('固定したフェーズ定義').textContent,
+    payloadReferences: listStepPayloadReferences(step),
+    selectedPayload,
+  }
+}
+
 function getTaskStepStatusLabels() {
   return [
     screen.getByText('実行中').textContent,
@@ -658,37 +671,36 @@ describe('StepDetail', () => {
       />,
     )
 
-    const payloadReferences = listStepPayloadReferences(step)
     await user.click(
       screen.getByRole('button', { name: '→ input: sourceを開く' }),
     )
-    expect(screen.getByText('evaluate_saved_code').textContent).toBe(
-      'evaluate_saved_code',
-    )
-    expect(screen.getByText('—').textContent).toBe('—')
-    expect(screen.getByText('固定したフェーズ定義').textContent).toBe(
-      '固定したフェーズ定義',
-    )
-    expect(payloadReferences).toEqual([
-      {
+    expect(
+      readOperationStepDetailOutput(step, onSelectPayload.mock.lastCall?.[0]),
+    ).toEqual({
+      operation: 'evaluate_saved_code',
+      model: '—',
+      definitionHeading: '固定したフェーズ定義',
+      payloadReferences: [
+        {
+          payloadId: '00000000-0000-4000-8000-000000000001',
+          label: 'input: source',
+          pointer: '/records',
+          cursor: 0,
+          limit: 20,
+        },
+        {
+          payloadId: '00000000-0000-4000-8000-000000000002',
+          label: '出力',
+          pointer: '/value',
+        },
+      ],
+      selectedPayload: {
         payloadId: '00000000-0000-4000-8000-000000000001',
         label: 'input: source',
         pointer: '/records',
         cursor: 0,
         limit: 20,
       },
-      {
-        payloadId: '00000000-0000-4000-8000-000000000002',
-        label: '出力',
-        pointer: '/value',
-      },
-    ])
-    expect(onSelectPayload.mock.lastCall?.[0]).toEqual({
-      payloadId: '00000000-0000-4000-8000-000000000001',
-      label: 'input: source',
-      pointer: '/records',
-      cursor: 0,
-      limit: 20,
     })
   })
 })

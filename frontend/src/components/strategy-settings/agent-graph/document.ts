@@ -8,6 +8,7 @@ import {
 } from 'yaml'
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
+import { isSavedCodeOperationPhase } from '#lib/agent-graph-phase'
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -44,9 +45,7 @@ function toPhaseForm(v: unknown): AgentGraphPhaseForm | null {
   }
   if (v['kind'] === 'operation') {
     if (
-      v['operation'] !== 'evaluate_saved_code' ||
-      typeof v['code_id'] !== 'string' ||
-      (v['model'] !== undefined && v['model'] !== null) ||
+      !isSavedCodeOperationPhase(v) ||
       v['prompt'] !== undefined ||
       [
         'for_each',

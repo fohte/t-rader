@@ -22,7 +22,7 @@ interface PhaseCardProps {
   referencedLabel?: string
   hasError?: boolean
   onLabelChange: (next: string) => void
-  onKindChange?: (next: 'llm' | 'operation') => void
+  onKindChange: (next: 'llm' | 'operation') => void
   onMoveUp: () => void
   onMoveDown: () => void
   onRemove: () => void
@@ -36,7 +36,7 @@ export function PhaseCard({
   referencedLabel,
   hasError = false,
   onLabelChange,
-  onKindChange = () => {},
+  onKindChange,
   onMoveUp,
   onMoveDown,
   onRemove,

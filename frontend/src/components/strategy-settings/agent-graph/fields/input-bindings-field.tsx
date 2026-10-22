@@ -1,10 +1,9 @@
-import { Chip } from '@fohte/ui/chip'
 import { Result } from 'neverthrow'
 import { useRef, useState } from 'react'
 import { parse as parseYaml, stringify } from 'yaml'
 
-import { CodeEditor } from '#components/indicators/code-editor'
 import { isRecord } from '#components/strategy-settings/agent-graph/document'
+import { InputBindingsFieldView } from '#components/strategy-settings/agent-graph/fields/input-bindings-field-view'
 
 interface InputBindingsFieldProps {
   value: Record<string, unknown> | undefined
@@ -52,25 +51,10 @@ export function InputBindingsField({
   }
 
   return (
-    <>
-      <Chip>入力 binding</Chip>
-      <div className="border border-border">
-        <div className="flex items-center gap-2 border-b border-border bg-bg-tertiary px-2 py-1 font-mono text-2xs text-muted-foreground">
-          <Chip>input (YAML)</Chip>
-          <span className="ml-auto text-muted-foreground">
-            {invalidInput
-              ? 'mapping を確認してください'
-              : 'phase 入力の割り当て'}
-          </span>
-        </div>
-        <CodeEditor
-          language="yaml"
-          value={rawText}
-          onChange={handleChange}
-          ariaLabel="入力 binding"
-          height={140}
-        />
-      </div>
-    </>
+    <InputBindingsFieldView
+      value={rawText}
+      invalidInput={invalidInput}
+      onChange={handleChange}
+    />
   )
 }

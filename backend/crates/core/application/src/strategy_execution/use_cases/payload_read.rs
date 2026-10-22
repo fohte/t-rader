@@ -23,9 +23,7 @@ impl StrategyExecutionUseCases {
         task_id: Uuid,
         query: ReadPayloadQuery,
     ) -> Result<PayloadPage, StrategyExecutionUseCaseError> {
-        if !(1..=MAX_PAYLOAD_PAGE_ITEMS).contains(&query.limit) {
-            return Err(StrategyExecutionUseCaseError::InvalidPageLimit);
-        }
+        validate_page_limit(query.limit)?;
         let manifest = self
             .repository
             .find_payload(task_id, query.payload_id)
@@ -34,12 +32,26 @@ impl StrategyExecutionUseCases {
         if manifest.status != PayloadStatus::Sealed {
             return Err(StrategyExecutionUseCaseError::PayloadNotSealed);
         }
+        self.read_sealed_payload_page(task_id, &manifest, query)
+            .await
+    }
+
+    // Use the already fetched manifest so the page and its digest use the same sealed record.
+    pub(super) async fn read_sealed_payload_page(
+        &self,
+        task_id: Uuid,
+        manifest: &PayloadManifest,
+        query: ReadPayloadQuery,
+    ) -> Result<PayloadPage, StrategyExecutionUseCaseError> {
+        if manifest.id != query.payload_id {
+            return Err(StrategyExecutionUseCaseError::PayloadNotFound);
+        }
         let (data, next_cursor, total_count) = if manifest.root_is_array {
             if query.pointer.is_empty() {
                 read_array_page(
                     self.repository.as_ref(),
                     task_id,
-                    &manifest,
+                    manifest,
                     query.cursor,
                     query.limit,
                 )
@@ -73,7 +85,7 @@ impl StrategyExecutionUseCases {
                 .repository
                 .list_payload_chunks(task_id, query.payload_id)
                 .await?;
-            let root = assemble_payload(&manifest, &chunks)?;
+            let root = assemble_payload(manifest, &chunks)?;
             let selected = if query.pointer.is_empty() {
                 root
             } else {
@@ -99,9 +111,17 @@ impl StrategyExecutionUseCases {
             total_count,
             digest: manifest
                 .digest
+                .clone()
                 .ok_or(StrategyExecutionUseCaseError::PayloadNotSealed)?,
         })
     }
+}
+
+pub(super) fn validate_page_limit(limit: usize) -> Result<(), StrategyExecutionUseCaseError> {
+    if !(1..=MAX_PAYLOAD_PAGE_ITEMS).contains(&limit) {
+        return Err(StrategyExecutionUseCaseError::InvalidPageLimit);
+    }
+    Ok(())
 }
 
 async fn read_array_page(

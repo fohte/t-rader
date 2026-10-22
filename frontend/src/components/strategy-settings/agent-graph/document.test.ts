@@ -565,6 +565,42 @@ phases:
     })
   })
 
+  it('operation から LLM に切り替えると種別固有項目を置き換える', () => {
+    const operationYaml = `timeout_minutes: 60
+execution_limits: { max_model_calls: 9 }
+phases:
+  - key: calculate
+    label: 計算
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: sample-code
+    timeout_minutes: 12
+    label_field: sample-label
+    input: { request: { literal: { count: 2 } } }
+    output: { result: { type: number } }
+`
+    const changed = setPhaseKind(operationYaml, 0, 'llm')
+
+    expect(parseDocument(changed).toJS()).toEqual({
+      timeout_minutes: 60,
+      execution_limits: { max_model_calls: 9 },
+      phases: [
+        {
+          key: 'calculate',
+          label: '計算',
+          timeout_minutes: 12,
+          label_field: 'sample-label',
+          input: { request: { literal: { count: 2 } } },
+          output: { result: { type: 'number' } },
+          kind: 'llm',
+          model: '',
+          prompt: '',
+          skills: [],
+        },
+      ],
+    })
+  })
+
   it('入力 binding を更新してもほかの定義を保つ', () => {
     const operationYaml = setPhaseCodeId(
       setPhaseKind(yaml, 0, 'operation'),

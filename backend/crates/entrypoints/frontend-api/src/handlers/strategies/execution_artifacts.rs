@@ -1,7 +1,8 @@
 use axum::Json;
 use axum::extract::State;
 use core_application::strategy_execution::{
-    ReadPayloadQuery, StrategyExecutionRepositoryError, StrategyExecutionUseCaseError,
+    DEFAULT_PAYLOAD_PAGE_ITEMS, ReadPayloadQuery, StrategyExecutionRepositoryError,
+    StrategyExecutionUseCaseError,
 };
 use core_application::strategy_task::StrategyTaskRepositoryError;
 use serde::Deserialize;
@@ -19,6 +20,7 @@ use crate::models::{ExecutionArtifactsResponse, ExecutionPayloadResponse};
 pub struct ReadExecutionPayloadQuery {
     pub pointer: Option<String>,
     pub cursor: Option<u64>,
+    #[param(minimum = 1, maximum = 1000)]
     pub limit: Option<usize>,
 }
 
@@ -106,7 +108,7 @@ pub async fn get_task_execution_payload(
                 payload_id,
                 pointer: query.pointer.unwrap_or_default(),
                 cursor: query.cursor.unwrap_or_default(),
-                limit: query.limit.unwrap_or(100),
+                limit: query.limit.unwrap_or(DEFAULT_PAYLOAD_PAGE_ITEMS),
             },
         )
         .await

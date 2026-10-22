@@ -4,26 +4,16 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   type ExecutionPayloadReference,
   parseAgentGraphPhases,
+  readTaskStartAgentGraph,
   readTaskSteps,
 } from '#components/strategy-shell/task-execution-tree'
 import { TaskRunView } from '#components/strategy-shell/task-run-view'
 import { $api } from '#lib/api/client'
 
 const POLL_INTERVAL_MS = 2000
-const PAYLOAD_PAGE_LIMIT = 100
 
 function isTaskActive(phase: string | undefined): boolean {
   return phase === 'pending' || phase === 'running'
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readTaskStartAgentGraph(snapshot: unknown): string | null {
-  if (!isRecord(snapshot) || !isRecord(snapshot['agent_config'])) return null
-  const agentGraph = snapshot['agent_config']['agent_graph']
-  return typeof agentGraph === 'string' ? agentGraph : null
 }
 
 export const Route = createFileRoute('/strategies/$id/runs/$taskId')({
@@ -73,7 +63,9 @@ function TaskRunPage() {
         query: {
           pointer: selectedPayload?.pointer ?? '',
           cursor: selectedPayload?.cursor ?? 0,
-          limit: selectedPayload?.limit ?? PAYLOAD_PAGE_LIMIT,
+          ...(selectedPayload?.limit == null
+            ? {}
+            : { limit: selectedPayload.limit }),
         },
       },
     },
@@ -180,10 +172,6 @@ function TaskRunPage() {
         setSelectedPayload({
           ...reference,
           cursor: reference.cursor ?? 0,
-          limit: Math.max(
-            1,
-            Math.min(reference.limit ?? PAYLOAD_PAGE_LIMIT, 1000),
-          ),
         })
       }}
       onNextPayloadPage={(cursor) => {

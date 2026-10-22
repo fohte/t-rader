@@ -1,3 +1,10 @@
+/**
+ * agent_graph (YAML) の 1 フェーズをフォームで編集するための型。
+ *
+ * backend の `AgentGraphPhase` と同じ形だが、`runs` は含めない。
+ * `for_each` の有無で実行回数が決まり、`runs` は実行時に読み捨てられるため、
+ * フォームの型としても前提にしない。
+ */
 export interface AgentGraphPhaseBaseForm {
   key: string
   label: string

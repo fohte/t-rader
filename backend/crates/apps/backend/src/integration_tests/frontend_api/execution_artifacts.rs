@@ -336,6 +336,13 @@ mod tests {
             ))
             .await;
         let cross_strategy_body: Value = cross_strategy_response.json();
+        let invalid_limit_response = server
+            .get(&format!(
+                "/api/strategies/{strategy_id}/tasks/{task_id}/execution-artifacts/payloads/{}?limit=0",
+                sealed.id
+            ))
+            .await;
+        let invalid_limit_body: Value = invalid_limit_response.json();
 
         assert_eq!(
             (
@@ -348,6 +355,8 @@ mod tests {
                 cross_task_body,
                 cross_strategy_response.status_code(),
                 cross_strategy_body,
+                invalid_limit_response.status_code(),
+                invalid_limit_body,
             ),
             (
                 "payload source revision changed between pages".to_string(),
@@ -413,6 +422,8 @@ mod tests {
                 json!({ "error": "task execution artifact not found" }),
                 StatusCode::NOT_FOUND,
                 json!({ "error": "task execution artifact not found" }),
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "invalid execution payload page request" }),
             ),
         );
     }

@@ -23,7 +23,7 @@ use crate::{
     unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction},
 };
 
-use self::payload_read::assemble_payload;
+use self::payload_read::{assemble_payload, validate_page_limit};
 use super::{
     DefinitionSnapshot, MAX_PAYLOAD_PAGE_ITEMS, PayloadKind, PayloadStatus,
     StrategyExecutionRepository, StrategyExecutionUseCaseError, TaskStartSnapshotter,
@@ -87,7 +87,11 @@ impl StrategyExecutionUseCases {
             .await?
             .ok_or(StrategyExecutionUseCaseError::PayloadNotFound)?;
         let page = if manifest.status == PayloadStatus::Sealed {
-            Some(self.read_payload_by_task_id(task_id, query).await?)
+            validate_page_limit(query.limit)?;
+            Some(
+                self.read_sealed_payload_page(task_id, &manifest, query)
+                    .await?,
+            )
         } else {
             None
         };
