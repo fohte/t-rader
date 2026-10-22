@@ -7,7 +7,8 @@ use crate::unit_of_work::UnitOfWorkTransaction;
 
 use super::error::StrategyExecutionRepositoryError;
 use super::types::{
-    DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk, PayloadManifest, PayloadSeal,
+    DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk, PayloadManifest,
+    PayloadManifestCursor, PayloadSeal,
 };
 
 #[async_trait]
@@ -100,3 +101,38 @@ pub trait StrategyExecutionRepository: Send + Sync {
 }
 
 pub type SharedStrategyExecutionRepository = Arc<dyn StrategyExecutionRepository + Send + Sync>;
+
+#[async_trait]
+pub trait StrategyExecutionManifestQueryRepository: Send + Sync {
+    async fn count_payload_manifests(
+        &self,
+        task_id: Uuid,
+    ) -> Result<u64, StrategyExecutionRepositoryError>;
+
+    async fn list_payload_manifests(
+        &self,
+        task_id: Uuid,
+        cursor: Option<PayloadManifestCursor>,
+        limit: usize,
+    ) -> Result<Vec<PayloadManifest>, StrategyExecutionRepositoryError>;
+}
+
+pub type SharedStrategyExecutionManifestQueryRepository =
+    Arc<dyn StrategyExecutionManifestQueryRepository + Send + Sync>;
+
+pub struct StrategyExecutionRepositories {
+    pub(crate) payloads: SharedStrategyExecutionRepository,
+    pub(crate) manifests: SharedStrategyExecutionManifestQueryRepository,
+}
+
+impl StrategyExecutionRepositories {
+    pub fn new(
+        payloads: SharedStrategyExecutionRepository,
+        manifests: SharedStrategyExecutionManifestQueryRepository,
+    ) -> Self {
+        Self {
+            payloads,
+            manifests,
+        }
+    }
+}

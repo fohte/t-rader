@@ -1,7 +1,8 @@
 use axum::Json;
 use axum::extract::State;
 use core_application::strategy_execution::{
-    DEFAULT_PAYLOAD_PAGE_ITEMS, ReadPayloadQuery, StrategyExecutionRepositoryError,
+    DEFAULT_PAYLOAD_MANIFEST_PAGE_ITEMS, DEFAULT_PAYLOAD_PAGE_ITEMS, ListPayloadManifestsQuery,
+    PayloadManifestCursor, ReadPayloadQuery, StrategyExecutionRepositoryError,
     StrategyExecutionUseCaseError,
 };
 use core_application::strategy_task::StrategyTaskRepositoryError;
@@ -13,7 +14,17 @@ use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::handlers::strategies::strategy_scope_or_404;
-use crate::models::{ExecutionArtifactsResponse, ExecutionPayloadResponse};
+use crate::models::{
+    ExecutionArtifactsResponse, ExecutionPayloadManifestPageResponse, ExecutionPayloadResponse,
+};
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ListExecutionPayloadManifestsQuery {
+    pub cursor: Option<String>,
+    #[param(minimum = 1, maximum = 100)]
+    pub limit: Option<usize>,
+}
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -33,6 +44,7 @@ fn map_execution_read_error(error: StrategyExecutionUseCaseError) -> AppError {
         }
         StrategyExecutionUseCaseError::InvalidPayloadPointer
         | StrategyExecutionUseCaseError::InvalidPageLimit
+        | StrategyExecutionUseCaseError::InvalidPayloadManifestPageLimit
         | StrategyExecutionUseCaseError::PayloadPageTooLarge => {
             AppError::Validation("invalid execution payload page request".into())
         }
@@ -44,6 +56,25 @@ fn map_execution_read_error(error: StrategyExecutionUseCaseError) -> AppError {
         )) => error.into(),
         error => AppError::Internal(error.to_string()),
     }
+}
+
+fn parse_manifest_cursor(
+    cursor: Option<String>,
+) -> Result<Option<PayloadManifestCursor>, AppError> {
+    cursor
+        .map(|cursor| {
+            let (created_at, id) = cursor.split_once('|').ok_or_else(|| {
+                AppError::Validation("invalid execution payload manifest cursor".into())
+            })?;
+            let created_at = chrono::DateTime::parse_from_rfc3339(created_at).map_err(|_| {
+                AppError::Validation("invalid execution payload manifest cursor".into())
+            })?;
+            let id = Uuid::parse_str(id).map_err(|_| {
+                AppError::Validation("invalid execution payload manifest cursor".into())
+            })?;
+            Ok(PayloadManifestCursor { created_at, id })
+        })
+        .transpose()
 }
 
 /// task 開始時点で固定した定義を取得する。
@@ -114,4 +145,45 @@ pub async fn get_task_execution_payload(
         .await
         .map_err(map_execution_read_error)?;
     Ok(Json(ExecutionPayloadResponse::from(payload)))
+}
+
+/// task に属する payload manifest を安定した cursor で一覧取得する。
+#[utoipa::path(
+    get,
+    path = "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads",
+    tag = "strategies",
+    params(
+        ("id" = Uuid, Path, description = "戦略 ID"),
+        ("task_id" = Uuid, Path, description = "戦略タスク ID"),
+        ListExecutionPayloadManifestsQuery,
+    ),
+    responses(
+        (status = 200, body = ExecutionPayloadManifestPageResponse),
+        (status = 400, description = "パスまたは page パラメータが不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_task_execution_payload_manifests(
+    State(state): State<FrontendApiState>,
+    JsonPath((strategy_id, task_id)): JsonPath<(Uuid, Uuid)>,
+    JsonQuery(query): JsonQuery<ListExecutionPayloadManifestsQuery>,
+) -> Result<Json<ExecutionPayloadManifestPageResponse>, AppError> {
+    let scope = strategy_scope_or_404(&state, strategy_id).await?;
+    let cursor = parse_manifest_cursor(query.cursor)?;
+    let page = state
+        .strategy_execution_use_cases
+        .list_task_execution_payload_manifests(
+            scope,
+            task_id,
+            ListPayloadManifestsQuery {
+                cursor,
+                limit: query.limit.unwrap_or(DEFAULT_PAYLOAD_MANIFEST_PAGE_ITEMS),
+            },
+        )
+        .await
+        .map_err(map_execution_read_error)?;
+    Ok(Json(ExecutionPayloadManifestPageResponse::new(
+        task_id, page,
+    )))
 }

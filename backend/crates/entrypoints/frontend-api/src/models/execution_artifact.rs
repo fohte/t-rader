@@ -1,6 +1,7 @@
 use chrono::{DateTime, FixedOffset};
 use core_application::strategy_execution::{
-    DefinitionSnapshot, ExecutionPayloadRead, PayloadCaptureMetadata, PayloadManifest, PayloadPage,
+    DefinitionSnapshot, ExecutionPayloadRead, PayloadCaptureMetadata, PayloadManifest,
+    PayloadManifestCursor, PayloadManifestPage, PayloadPage,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -23,6 +24,35 @@ impl ExecutionArtifactsResponse {
                 .collect(),
         }
     }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ExecutionPayloadManifestPageResponse {
+    pub task_id: Uuid,
+    pub cursor: Option<String>,
+    pub next_cursor: Option<String>,
+    pub total_count: u64,
+    pub items: Vec<ExecutionPayloadManifestResponse>,
+}
+
+impl ExecutionPayloadManifestPageResponse {
+    pub fn new(task_id: Uuid, page: PayloadManifestPage) -> Self {
+        Self {
+            task_id,
+            cursor: page.cursor.as_ref().map(encode_manifest_cursor),
+            next_cursor: page.next_cursor.as_ref().map(encode_manifest_cursor),
+            total_count: page.total_count,
+            items: page
+                .manifests
+                .into_iter()
+                .map(ExecutionPayloadManifestResponse::from)
+                .collect(),
+        }
+    }
+}
+
+fn encode_manifest_cursor(cursor: &PayloadManifestCursor) -> String {
+    format!("{}|{}", cursor.created_at.to_rfc3339(), cursor.id)
 }
 
 #[derive(Debug, Serialize, ToSchema)]

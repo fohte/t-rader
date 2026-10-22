@@ -17,6 +17,8 @@ pub const MAX_PAYLOAD_CHUNK_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_PAYLOAD_PAGE_BYTES: usize = 1024 * 1024;
 pub const MAX_PAYLOAD_PAGE_ITEMS: usize = 1_000;
 pub const DEFAULT_PAYLOAD_PAGE_ITEMS: usize = 100;
+pub const MAX_PAYLOAD_MANIFEST_PAGE_ITEMS: usize = 100;
+pub const DEFAULT_PAYLOAD_MANIFEST_PAGE_ITEMS: usize = 50;
 pub const MAX_DATASET_PAGE_SIZE: usize = 1_000;
 pub const MAX_PAYLOAD_PAGES: usize = 10_000;
 
@@ -114,6 +116,26 @@ pub struct PayloadManifest {
     pub incomplete_reason: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub sealed_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PayloadManifestCursor {
+    pub created_at: DateTime<FixedOffset>,
+    pub id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayloadManifestPage {
+    pub cursor: Option<PayloadManifestCursor>,
+    pub next_cursor: Option<PayloadManifestCursor>,
+    pub total_count: u64,
+    pub manifests: Vec<PayloadManifest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListPayloadManifestsQuery {
+    pub cursor: Option<PayloadManifestCursor>,
+    pub limit: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,8 +1,21 @@
 import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
+import {
+  ExecutionPayloadManifestList,
+  type ExecutionPayloadManifestPageState,
+  type ExecutionPayloadManifestSummary,
+} from '#components/strategy-shell/execution-payload-manifest-list'
 import {
   type AgentGraphOutputSchema,
   type AgentGraphPhaseSummary,
@@ -33,14 +46,12 @@ export interface TaskRunViewProps {
   notes: { id: string; title: string }[]
   notesState: TaskRunNotesState
   traceUrlTemplate?: string
-  executionDefinition?: {
-    status: 'loading' | 'error' | 'missing' | 'ready'
-    digest?: string
-    createdAt?: string
-    definition?: unknown
-  }
-  executionDefinitionOpen?: boolean
+  definitionSnapshots?: TaskRunDefinitionSnapshot[]
+  definitionSnapshotsState?: 'loading' | 'error' | 'ready'
+  defaultSelectedDefinitionKey?: string
+  definitionSnapshotOpen?: boolean
   selectedPayload?: ExecutionPayloadReference | null
+  initialPayloadPointerDraft?: string
   payloadRead?:
     | { status: 'loading' | 'error' }
     | {
@@ -58,8 +69,19 @@ export interface TaskRunViewProps {
       }
   onSelectPayload?: (reference: ExecutionPayloadReference) => void
   onNextPayloadPage?: (cursor: number) => void
+  executionPayloadManifests?: ExecutionPayloadManifestPageState
+  onSelectPayloadManifest?: (manifest: ExecutionPayloadManifestSummary) => void
+  onNextPayloadManifestPage?: (cursor: string) => void
   /** task の取得に失敗したか (`task` が null の間、ロード中との表示を出し分けるために使う) */
   taskLoadError?: boolean
+}
+
+export interface TaskRunDefinitionSnapshot {
+  definitionKey: string
+  taskId: string
+  digest: string
+  createdAt: string
+  definition: unknown
 }
 
 // source は backend が定義する投入経路の固定値
@@ -115,12 +137,18 @@ export function TaskRunView({
   notes,
   notesState,
   traceUrlTemplate,
-  executionDefinition,
-  executionDefinitionOpen = false,
+  definitionSnapshots = [],
+  definitionSnapshotsState,
+  defaultSelectedDefinitionKey,
+  definitionSnapshotOpen = false,
   selectedPayload = null,
+  initialPayloadPointerDraft,
   payloadRead,
   onSelectPayload,
   onNextPayloadPage,
+  executionPayloadManifests,
+  onSelectPayloadManifest,
+  onNextPayloadManifestPage,
   taskLoadError = false,
 }: TaskRunViewProps): React.ReactElement {
   const [selectedStep, setSelectedStep] = useState<{
@@ -128,6 +156,18 @@ export function TaskRunView({
     outputSchema?: AgentGraphOutputSchema
     phaseDefinition?: Record<string, unknown>
   } | null>(null)
+  const [selectedDefinitionKey, setSelectedDefinitionKey] = useState<
+    string | null
+  >(defaultSelectedDefinitionKey ?? null)
+  const selectedDefinitionSnapshot =
+    definitionSnapshots.find(
+      (snapshot) => snapshot.definitionKey === selectedDefinitionKey,
+    ) ??
+    definitionSnapshots.find(
+      (snapshot) => snapshot.definitionKey === 'task_start',
+    ) ??
+    definitionSnapshots[0] ??
+    null
 
   return (
     <div className="space-y-4 font-sans text-foreground">
@@ -193,7 +233,7 @@ export function TaskRunView({
 
           <TaskRunNotes notes={notes} state={notesState} />
 
-          {executionDefinition != null && (
+          {definitionSnapshotsState != null && (
             <section
               aria-label="実行時の固定定義"
               className="border border-border bg-card p-4"
@@ -201,30 +241,71 @@ export function TaskRunView({
               <h2 className="mb-2 font-mono text-xs font-bold uppercase tracking-wider">
                 実行時の固定定義
               </h2>
-              {executionDefinition.status === 'loading' ? (
+              {definitionSnapshotsState === 'loading' ? (
                 <p className="font-mono text-xs text-muted-foreground">
                   固定定義を読み込み中です。
                 </p>
-              ) : executionDefinition.status === 'error' ? (
+              ) : definitionSnapshotsState === 'error' ? (
                 <p className="font-mono text-xs text-destructive">
                   固定定義を取得できませんでした。
                 </p>
-              ) : executionDefinition.status === 'missing' ? (
+              ) : selectedDefinitionSnapshot == null ? (
                 <p className="font-mono text-xs text-muted-foreground">
                   固定定義の記録がありません。
                 </p>
               ) : (
                 <>
-                  <p className="font-mono text-2xs text-muted-foreground">
-                    SHA-256 {executionDefinition.digest} ·{' '}
-                    {executionDefinition.createdAt}
-                  </p>
-                  <details open={executionDefinitionOpen} className="mt-2">
+                  <Select
+                    value={selectedDefinitionSnapshot.definitionKey}
+                    onValueChange={setSelectedDefinitionKey}
+                  >
+                    <SelectTrigger aria-label="固定定義 snapshot">
+                      <SelectValue>
+                        {selectedDefinitionSnapshot.definitionKey}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {definitionSnapshots.map((snapshot) => (
+                        <SelectItem
+                          key={snapshot.definitionKey}
+                          value={snapshot.definitionKey}
+                        >
+                          {snapshot.definitionKey}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <dl
+                    data-testid="definition-snapshot-metadata"
+                    className="mt-2 grid grid-cols-(--grid-cols-step-detail) gap-x-2.5 gap-y-1 font-mono text-2xs text-muted-foreground"
+                  >
+                    <dt>定義キー</dt>
+                    <dd className="break-all text-foreground">
+                      {selectedDefinitionSnapshot.definitionKey}
+                    </dd>
+                    <dt>SHA-256</dt>
+                    <dd className="break-all text-foreground">
+                      {selectedDefinitionSnapshot.digest}
+                    </dd>
+                    <dt>記録日時</dt>
+                    <dd className="break-all text-foreground">
+                      {selectedDefinitionSnapshot.createdAt}
+                    </dd>
+                    <dt>task ID</dt>
+                    <dd className="break-all text-foreground">
+                      {selectedDefinitionSnapshot.taskId}
+                    </dd>
+                  </dl>
+                  <details open={definitionSnapshotOpen} className="mt-2">
                     <summary className="cursor-pointer font-mono text-xs text-foreground">
-                      定義 snapshot を表示
+                      固定定義本文を表示
                     </summary>
                     <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-2xs">
-                      {JSON.stringify(executionDefinition.definition, null, 2)}
+                      {JSON.stringify(
+                        selectedDefinitionSnapshot.definition,
+                        null,
+                        2,
+                      )}
                     </pre>
                   </details>
                 </>
@@ -265,9 +346,19 @@ export function TaskRunView({
               )}
               {selectedPayload != null && (
                 <ExecutionPayloadPanel
+                  key={`${selectedPayload.payloadId}:${selectedPayload.pointer}`}
                   reference={selectedPayload}
                   payloadRead={payloadRead}
+                  initialPointerDraft={initialPayloadPointerDraft}
+                  onSelectPayload={onSelectPayload}
                   onNextPayloadPage={onNextPayloadPage}
+                />
+              )}
+              {executionPayloadManifests != null && (
+                <ExecutionPayloadManifestList
+                  state={executionPayloadManifests}
+                  onSelectManifest={onSelectPayloadManifest}
+                  onNextPage={onNextPayloadManifestPage}
                 />
               )}
             </aside>
@@ -281,14 +372,21 @@ export function TaskRunView({
 function ExecutionPayloadPanel({
   reference,
   payloadRead,
+  initialPointerDraft,
+  onSelectPayload,
   onNextPayloadPage,
 }: {
   reference: ExecutionPayloadReference
   payloadRead: TaskRunViewProps['payloadRead']
+  initialPointerDraft?: string
+  onSelectPayload?: (reference: ExecutionPayloadReference) => void
   onNextPayloadPage?: (cursor: number) => void
 }): React.ReactElement {
   const page = payloadRead?.status === 'ready' ? payloadRead.page : null
   const nextCursor = page?.nextCursor
+  const [pointerDraft, setPointerDraft] = useState(
+    initialPointerDraft ?? reference.pointer,
+  )
 
   return (
     <section
@@ -299,6 +397,35 @@ function ExecutionPayloadPanel({
       <p className="mb-2 break-all font-mono text-2xs text-muted-foreground">
         {reference.payloadId} · pointer {reference.pointer || '/'}
       </p>
+      <form
+        className="mb-3 flex items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (onSelectPayload == null) return
+          onSelectPayload({ ...reference, pointer: pointerDraft, cursor: 0 })
+        }}
+      >
+        <label className="min-w-0 flex-1 font-mono text-2xs text-muted-foreground-strong">
+          JSON Pointer
+          <Input
+            aria-label="JSON Pointer"
+            value={pointerDraft}
+            onChange={(event) => {
+              setPointerDraft(event.currentTarget.value)
+            }}
+          />
+        </label>
+        <Button
+          type="submit"
+          variant="plain"
+          size="sm"
+          disabled={
+            onSelectPayload == null || pointerDraft === reference.pointer
+          }
+        >
+          pointer を適用
+        </Button>
+      </form>
       {payloadRead?.status === 'loading' ? (
         <p className="font-mono text-xs text-muted-foreground">
           payload を読み込み中です。

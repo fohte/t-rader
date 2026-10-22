@@ -8030,6 +8030,97 @@
         }
       }
     },
+    "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "task に属する payload manifest を安定した cursor で一覧取得する。",
+        "operationId": "list_task_execution_payload_manifests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPayloadManifestPageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスまたは page パラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}": {
       "get": {
         "tags": [
@@ -11237,6 +11328,43 @@
               "integer",
               "null"
             ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionPayloadManifestPageResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "total_count",
+          "items"
+        ],
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionPayloadManifestResponse"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_count": {
+            "type": "integer",
             "format": "int64",
             "minimum": 0
           }

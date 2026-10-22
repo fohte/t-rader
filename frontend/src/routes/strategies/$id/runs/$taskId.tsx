@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
+import type { ExecutionPayloadManifestSummary } from '#components/strategy-shell/execution-payload-manifest-list'
 import {
   type ExecutionPayloadReference,
   parseAgentGraphPhases,
@@ -50,6 +51,27 @@ function TaskRunPage() {
   const configQuery = $api.useQuery('get', '/api/config')
   const [selectedPayload, setSelectedPayload] =
     useState<ExecutionPayloadReference | null>(null)
+  const [payloadManifestCursor, setPayloadManifestCursor] = useState<
+    string | undefined
+  >(undefined)
+  const payloadManifestsQuery = $api.useQuery(
+    'get',
+    '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads',
+    {
+      params: {
+        path: { id, task_id: taskId },
+        query:
+          payloadManifestCursor == null
+            ? {}
+            : { cursor: payloadManifestCursor },
+      },
+    },
+    {
+      enabled: task != null,
+      refetchInterval: () =>
+        isTaskActive(taskPhase) ? POLL_INTERVAL_MS : false,
+    },
+  )
   const payloadQuery = $api.useQuery(
     'get',
     '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}',
@@ -89,21 +111,42 @@ function TaskRunPage() {
     [agentGraphContent],
   )
   const payload = payloadQuery.data
-  const executionDefinition =
-    taskStartSnapshot == null
-      ? {
-          status: artifactsQuery.isPending
-            ? ('loading' as const)
-            : artifactsQuery.isError
-              ? ('error' as const)
-              : ('missing' as const),
-        }
-      : {
-          status: 'ready' as const,
-          digest: taskStartSnapshot.digest,
-          createdAt: taskStartSnapshot.created_at,
-          definition: taskStartSnapshot.definition,
-        }
+  const payloadManifestPage = payloadManifestsQuery.data
+  const payloadManifestState = payloadManifestsQuery.isPending
+    ? ({ status: 'loading' } as const)
+    : payloadManifestsQuery.isError
+      ? ({ status: 'error' } as const)
+      : ({
+          status: 'ready',
+          items: (payloadManifestPage?.items ?? []).map((manifest) => ({
+            id: manifest.id,
+            kind: manifest.kind,
+            source: manifest.source,
+            status: manifest.status,
+            itemCount: manifest.item_count,
+            byteCount: manifest.byte_count,
+            digest: manifest.digest ?? null,
+            incompleteReason: manifest.incomplete_reason ?? null,
+            createdAt: manifest.created_at,
+          })),
+          totalCount: payloadManifestPage?.total_count ?? 0,
+          nextCursor: payloadManifestPage?.next_cursor ?? null,
+          selectedPayloadId: selectedPayload?.payloadId ?? null,
+        } as const)
+  const definitionSnapshots = (artifacts?.definition_snapshots ?? []).map(
+    (snapshot) => ({
+      definitionKey: snapshot.definition_key,
+      taskId: snapshot.task_id,
+      digest: snapshot.digest,
+      createdAt: snapshot.created_at,
+      definition: snapshot.definition,
+    }),
+  )
+  const definitionSnapshotsState = artifactsQuery.isPending
+    ? ('loading' as const)
+    : artifactsQuery.isError
+      ? ('error' as const)
+      : ('ready' as const)
   const payloadRead =
     selectedPayload == null
       ? undefined
@@ -165,7 +208,8 @@ function TaskRunPage() {
       }
       steps={steps}
       configPhases={configPhases}
-      executionDefinition={executionDefinition}
+      definitionSnapshots={definitionSnapshots}
+      definitionSnapshotsState={definitionSnapshotsState}
       selectedPayload={selectedPayload}
       payloadRead={payloadRead}
       onSelectPayload={(reference) => {
@@ -178,6 +222,18 @@ function TaskRunPage() {
         setSelectedPayload((current) =>
           current == null ? current : { ...current, cursor },
         )
+      }}
+      executionPayloadManifests={payloadManifestState}
+      onSelectPayloadManifest={(manifest: ExecutionPayloadManifestSummary) => {
+        setSelectedPayload({
+          payloadId: manifest.id,
+          label: `${manifest.kind}: ${manifest.source}`,
+          pointer: '',
+          cursor: 0,
+        })
+      }}
+      onNextPayloadManifestPage={(cursor) => {
+        setPayloadManifestCursor(cursor)
       }}
       notes={notesQuery.data ?? []}
       notesState={

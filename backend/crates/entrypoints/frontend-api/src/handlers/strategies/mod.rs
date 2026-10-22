@@ -29,7 +29,8 @@ pub use earnings_targets::{
 };
 pub use execution_artifacts::{
     __path_get_task_execution_artifacts, __path_get_task_execution_payload,
-    get_task_execution_artifacts, get_task_execution_payload,
+    __path_list_task_execution_payload_manifests, get_task_execution_artifacts,
+    get_task_execution_payload, list_task_execution_payload_manifests,
 };
 pub use investable_amount::{
     __path_get_investable_amount, __path_put_investable_amount, get_investable_amount,

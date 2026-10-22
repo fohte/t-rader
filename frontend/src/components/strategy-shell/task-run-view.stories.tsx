@@ -48,12 +48,16 @@ function artifactStateView(overrides: Partial<TaskRunViewProps>) {
         configPhases: CONFIG_PHASES,
         notes: [],
         notesState: 'success',
-        executionDefinition: {
-          status: 'ready',
-          digest: 'synthetic-digest',
-          createdAt: '2026-08-16T09:00:00.000Z',
-          definition: { agent_config: { agent_graph: 'phases: []' } },
-        },
+        definitionSnapshotsState: 'ready',
+        definitionSnapshots: [
+          {
+            definitionKey: 'task_start',
+            taskId: 'task-0001',
+            digest: 'synthetic-digest',
+            createdAt: '2026-08-16T09:00:00.000Z',
+            definition: { agent_config: { agent_graph: 'phases: []' } },
+          },
+        ],
         ...overrides,
       })}
     />
@@ -190,17 +194,34 @@ export const OperationWithPayload: Story = {
         ],
         notes: [],
         notesState: 'success',
-        executionDefinition: {
-          status: 'ready',
-          digest: 'synthetic-digest',
-          createdAt: '2026-08-16T09:00:00.000Z',
-          definition: {
-            agent_config: {
-              agent_graph: 'phases:\n  - key: calculate\n    kind: operation',
+        definitionSnapshotsState: 'ready',
+        definitionSnapshots: [
+          {
+            definitionKey: 'task_start',
+            taskId: 'task-0001',
+            digest: 'synthetic-digest',
+            createdAt: '2026-08-16T09:00:00.000Z',
+            definition: {
+              agent_config: {
+                agent_graph: 'phases:\n  - key: calculate\n    kind: operation',
+              },
             },
           },
-        },
-        executionDefinitionOpen: true,
+          {
+            definitionKey: 'custom_indicator:sample-indicator',
+            taskId: 'task-0001',
+            digest: 'synthetic-indicator-digest',
+            createdAt: '2026-08-16T08:59:59.000Z',
+            definition: {
+              name: 'sample-indicator',
+              code: 'synthetic code body',
+              metadata: { revision: 'synthetic-r1' },
+            },
+          },
+        ],
+        definitionSnapshotOpen: true,
+        defaultSelectedDefinitionKey: 'task_start',
+        onSelectPayload: () => {},
         selectedPayload: {
           payloadId: '00000000-0000-4000-8000-000000000002',
           label: '出力',
@@ -222,6 +243,93 @@ export const OperationWithPayload: Story = {
       })}
     />
   ),
+}
+
+export const CustomIndicatorDefinition: Story = {
+  name: 'shows a selected custom indicator snapshot and its saved metadata.',
+  render: () =>
+    artifactStateView({
+      definitionSnapshotsState: 'ready',
+      definitionSnapshots: [
+        {
+          definitionKey: 'task_start',
+          taskId: 'task-0001',
+          digest: 'synthetic-task-digest',
+          createdAt: '2026-08-16T09:00:00.000Z',
+          definition: { agent_config: { agent_graph: 'phases: []' } },
+        },
+        {
+          definitionKey: 'custom_indicator:sample-indicator',
+          taskId: 'task-0001',
+          digest: 'synthetic-indicator-digest',
+          createdAt: '2026-08-16T08:59:59.000Z',
+          definition: {
+            name: 'sample-indicator',
+            code: 'synthetic code body',
+            metadata: { revision: 'synthetic-r1' },
+          },
+        },
+      ],
+      defaultSelectedDefinitionKey: 'custom_indicator:sample-indicator',
+      definitionSnapshotOpen: true,
+    }),
+}
+
+export const NestedArrayPayloadPointer: Story = {
+  name: 'shows a bounded page selected from a nested array pointer.',
+  render: () =>
+    artifactStateView({
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000005',
+        label: '出力',
+        pointer: '/value/items',
+        cursor: 0,
+        limit: 2,
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'sealed',
+          itemCount: 3,
+          incompleteReason: null,
+        },
+        page: {
+          data: [{ value: 'synthetic-a' }, { value: 'synthetic-b' }],
+          totalCount: 3,
+          nextCursor: 2,
+        },
+      },
+      onSelectPayload: () => {},
+    }),
+}
+
+export const NestedArrayPointerCanBeChanged: Story = {
+  name: 'shows an edited nested pointer before its first page is requested.',
+  render: () =>
+    artifactStateView({
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000006',
+        label: '出力',
+        pointer: '/value',
+        cursor: 6,
+        limit: 2,
+      },
+      initialPayloadPointerDraft: '/value/items',
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'sealed',
+          itemCount: 10,
+          incompleteReason: null,
+        },
+        page: {
+          data: { items: ['synthetic-a', 'synthetic-b'] },
+          totalCount: 1,
+          nextCursor: null,
+        },
+      },
+      onSelectPayload: () => {},
+    }),
 }
 
 export const IncompletePayload: Story = {
@@ -259,13 +367,12 @@ export const IncompletePayload: Story = {
 
 export const DefinitionLoading: Story = {
   name: 'shows the loading state while the fixed definition is fetched.',
-  render: () =>
-    artifactStateView({ executionDefinition: { status: 'loading' } }),
+  render: () => artifactStateView({ definitionSnapshotsState: 'loading' }),
 }
 
 export const DefinitionError: Story = {
   name: 'shows an error when the fixed definition cannot be fetched.',
-  render: () => artifactStateView({ executionDefinition: { status: 'error' } }),
+  render: () => artifactStateView({ definitionSnapshotsState: 'error' }),
 }
 
 export const DefinitionMissing: Story = {
@@ -274,7 +381,8 @@ export const DefinitionMissing: Story = {
     artifactStateView({
       task: baseTask({ phase: 'completed' }),
       configPhases: [],
-      executionDefinition: { status: 'missing' },
+      definitionSnapshotsState: 'ready',
+      definitionSnapshots: [],
     }),
 }
 

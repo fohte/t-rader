@@ -162,6 +162,7 @@ mod config;
 mod custom_indicators;
 mod dashboards;
 mod execution_artifacts;
+mod execution_payload_manifests;
 mod group_axes;
 mod history;
 mod ingest_status;

@@ -57,7 +57,9 @@ pub use custom_indicator::{
 };
 pub use custom_indicator_evaluation::CustomIndicatorEvaluationResponse;
 pub use dashboard::{CreateDashboardRequest, DashboardResponse, UpdateDashboardRequest};
-pub use execution_artifact::{ExecutionArtifactsResponse, ExecutionPayloadResponse};
+pub use execution_artifact::{
+    ExecutionArtifactsResponse, ExecutionPayloadManifestPageResponse, ExecutionPayloadResponse,
+};
 pub use group_axis::GroupAxisResponse;
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiPreviewIssue, SbiPreviewResponse, SbiPreviewRow,

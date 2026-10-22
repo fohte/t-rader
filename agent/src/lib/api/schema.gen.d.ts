@@ -1447,6 +1447,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** task に属する payload manifest を安定した cursor で一覧取得する。 */
+    get: operations['list_task_execution_payload_manifests']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}': {
     parameters: {
       query?: never
@@ -2133,6 +2150,15 @@ export interface components {
       received_count: number
       /** Format: int64 */
       unretrieved_count?: number | null
+    }
+    ExecutionPayloadManifestPageResponse: {
+      cursor?: string | null
+      items: components['schemas']['ExecutionPayloadManifestResponse'][]
+      next_cursor?: string | null
+      /** Format: uuid */
+      task_id: string
+      /** Format: int64 */
+      total_count: number
     }
     ExecutionPayloadManifestResponse: {
       /** Format: int64 */
@@ -9290,6 +9316,58 @@ export interface operations {
         }
       }
       /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_task_execution_payload_manifests: {
+    parameters: {
+      query?: {
+        cursor?: string
+        limit?: number
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExecutionPayloadManifestPageResponse']
+        }
+      }
+      /** @description パスまたは page パラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown

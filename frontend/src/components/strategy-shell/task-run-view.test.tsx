@@ -12,6 +12,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -116,7 +117,24 @@ function readPayloadPanelOutput(section: HTMLElement) {
       paragraph.textContent.trim(),
     ),
     content: section.querySelector('pre')?.textContent ?? null,
-    nextPage: section.querySelector('button')?.textContent ?? null,
+    nextPage:
+      Array.from(section.querySelectorAll('button')).find((button) =>
+        button.textContent.includes('次のページを表示'),
+      )?.textContent ?? null,
+  }
+}
+
+function readDefinitionSnapshotOutput() {
+  const section = screen.getByRole('region', { name: '実行時の固定定義' })
+  return {
+    selectedKey: screen.getByRole('combobox', { name: '固定定義 snapshot' })
+      .textContent,
+    metadata: Array.from(
+      section.querySelectorAll(
+        '[data-testid="definition-snapshot-metadata"] dt, [data-testid="definition-snapshot-metadata"] dd',
+      ),
+    ).map((element) => element.textContent),
+    definition: section.querySelector('pre')?.textContent ?? null,
   }
 }
 
@@ -231,6 +249,106 @@ describe('TaskRunView', () => {
       content:
         '[\n  {\n    "value": "sample-a"\n  },\n  {\n    "value": "sample-b"\n  }\n]',
       nextPage: '次のページを表示',
+    })
+  })
+
+  it('ネスト配列 pointer を適用すると cursor を先頭に戻して bounded page を選び直す', async () => {
+    const user = userEvent.setup()
+    const onSelectPayload = vi.fn()
+    await renderTaskView(makeTask(), [], 'success', {
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000003',
+        label: '出力',
+        pointer: '/value',
+        cursor: 8,
+        limit: 2,
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'sealed',
+          itemCount: 3,
+          incompleteReason: null,
+        },
+        page: {
+          data: { items: [{ value: 'synthetic-a' }, { value: 'synthetic-b' }] },
+          totalCount: 1,
+          nextCursor: null,
+        },
+      },
+      onSelectPayload,
+    })
+
+    await user.clear(screen.getByRole('textbox', { name: 'JSON Pointer' }))
+    await user.type(
+      screen.getByRole('textbox', { name: 'JSON Pointer' }),
+      '/value/items',
+    )
+    await user.click(screen.getByRole('button', { name: 'pointer を適用' }))
+
+    expect(onSelectPayload.mock.calls).toEqual([
+      [
+        {
+          payloadId: '00000000-0000-4000-8000-000000000003',
+          label: '出力',
+          pointer: '/value/items',
+          cursor: 0,
+          limit: 2,
+        },
+      ],
+    ])
+  })
+
+  it('保存済み definition_snapshots から custom_indicator を選んで本文と metadata を表示する', async () => {
+    const user = userEvent.setup()
+    await renderTaskView(makeTask(), [], 'success', {
+      definitionSnapshotsState: 'ready',
+      definitionSnapshots: [
+        {
+          definitionKey: 'task_start',
+          taskId: 'sample-task',
+          digest: 'synthetic-task-digest',
+          createdAt: '2026-08-15T00:00:00.000Z',
+          definition: { config: 'synthetic task definition' },
+        },
+        {
+          definitionKey: 'custom_indicator:sample-indicator',
+          taskId: 'sample-task',
+          digest: 'synthetic-indicator-digest',
+          createdAt: '2026-08-15T00:00:01.000Z',
+          definition: {
+            name: 'sample-indicator',
+            code: 'synthetic code body',
+            metadata: { revision: 'synthetic-r1' },
+          },
+        },
+      ],
+      definitionSnapshotOpen: true,
+    })
+
+    await user.click(
+      screen.getByRole('combobox', { name: '固定定義 snapshot' }),
+    )
+    await user.click(
+      await screen.findByRole('option', {
+        name: 'custom_indicator:sample-indicator',
+      }),
+    )
+
+    expect(readDefinitionSnapshotOutput()).toEqual({
+      selectedKey: 'custom_indicator:sample-indicator',
+      metadata: [
+        '定義キー',
+        'custom_indicator:sample-indicator',
+        'SHA-256',
+        'synthetic-indicator-digest',
+        '記録日時',
+        '2026-08-15T00:00:01.000Z',
+        'task ID',
+        'sample-task',
+      ],
+      definition:
+        '{\n  "name": "sample-indicator",\n  "code": "synthetic code body",\n  "metadata": {\n    "revision": "synthetic-r1"\n  }\n}',
     })
   })
 
