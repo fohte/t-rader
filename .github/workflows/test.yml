@@ -831,7 +831,7 @@ jobs:
     needs: unit-test-backend
     if: needs.unit-test-backend.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     permissions:
       contents: read
       packages: read
@@ -916,10 +916,30 @@ jobs:
             exit 1
           fi
 
+      - name: Verify perf DB profile
+        run: |
+          docker exec -i query-perf-db psql \
+            -X \
+            -q \
+            -U t_rader \
+            -d t_rader \
+            -v ON_ERROR_STOP=1 \
+            -v record_profile=false \
+            < backend/perf-db/verify-profile.sql
+
       - name: Replay backend SELECT queries
         env:
           DATABASE_URL: postgres://t_rader:t_rader@127.0.0.1:5432/t_rader
-        run: cargo run --manifest-path backend/Cargo.toml -p query-perf -- --log-file backend-query-log/postgresql.json
+        run: |
+          replay_started_seconds=$SECONDS
+          replay_status=0
+          cargo run --manifest-path backend/Cargo.toml -p query-perf -- --log-file backend-query-log/postgresql.json || replay_status=$?
+          replay_elapsed_seconds=$((SECONDS - replay_started_seconds))
+          printf 'Existing SQL replay elapsed: %s seconds.\n' "$replay_elapsed_seconds"
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            printf '\nExisting SQL replay elapsed: %s seconds\n' "$replay_elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$replay_status"
 
       - name: Remove perf DB container
         if: always()

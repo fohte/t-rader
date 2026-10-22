@@ -26,11 +26,12 @@ fi
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/../.." && pwd)"
 seed_sql="$repo_root/backend/perf-db/seed.sql"
+profile_sql="$repo_root/backend/perf-db/verify-profile.sql"
 
 source_hash=$(
   {
     find "$repo_root/backend/migration" -type f -print
-    printf '%s\n' "$seed_sql" "$script_dir/build-perf-db-image.sh"
+    printf '%s\n' "$seed_sql" "$profile_sql" "$script_dir/build-perf-db-image.sh"
   } |
     LC_ALL=C sort |
     while IFS= read -r path; do
@@ -46,6 +47,7 @@ if [[ "$print_image_ref" == true ]]; then
 fi
 container_name="t-rader-perf-db-build-$$"
 container_started=false
+build_started_seconds=$SECONDS
 
 if [[ "$push_image" == true ]]; then
   if manifest_output=$(docker manifest inspect "$image_ref" 2>&1); then
@@ -68,6 +70,12 @@ cleanup() {
   if [[ "$container_started" == true ]]; then
     docker stop --timeout 60 "$container_name" > /dev/null 2>&1 || true
     docker rm "$container_name" > /dev/null 2>&1 || true
+  fi
+
+  local elapsed_seconds=$((SECONDS - build_started_seconds))
+  printf 'Perf DB image build elapsed: %s seconds.\n' "$elapsed_seconds"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    printf '\n### Perf DB image build\n\nElapsed: %s seconds\n' "$elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"
   fi
 }
 trap cleanup EXIT
@@ -172,6 +180,7 @@ docker run \
   -c shared_buffers=128MB \
   -c work_mem=4MB \
   -c maintenance_work_mem=64MB \
+  -c timescaledb.max_background_workers=0 \
   -c max_parallel_workers=0 \
   -c max_parallel_workers_per_gather=0 \
   -c autovacuum_max_workers=2 > /dev/null
@@ -185,6 +194,7 @@ docker exec "$container_name" psql \
   -v ON_ERROR_STOP=1 \
   -c "ALTER SYSTEM SET max_wal_size = '1GB'" \
   -c "ALTER SYSTEM SET min_wal_size = '32MB'" \
+  -c "ALTER SYSTEM SET timescaledb.max_background_workers = '0'" \
   -c 'SELECT pg_reload_conf()' > /dev/null
 
 port="$(docker port "$container_name" 5432/tcp | sed 's/.*://')"
@@ -194,10 +204,17 @@ port="$(docker port "$container_name" 5432/tcp | sed 's/.*://')"
     cargo run -p migration -- up
 )
 
-docker exec -i "$container_name" psql \
+{
+  cat "$seed_sql"
+  printf '\n'
+  cat "$profile_sql"
+} | docker exec -i "$container_name" psql \
+  -X \
+  -q \
   -U "$POSTGRES_USER" \
   -d "$POSTGRES_DATABASE" \
-  -v ON_ERROR_STOP=1 < "$seed_sql"
+  -v ON_ERROR_STOP=1 \
+  -v record_profile=true
 
 shrink_wal
 docker stop --timeout 60 "$container_name" > /dev/null
