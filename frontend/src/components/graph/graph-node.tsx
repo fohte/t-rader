@@ -1,8 +1,11 @@
 import { Handle, type NodeProps } from '@xyflow/react'
-import type { CSSProperties } from 'react'
 
 import { CiteBadge } from '#components/graph/cite-badge'
-import type { GraphFlowNode } from '#components/graph/flow-types'
+import type {
+  GraphFlowNode,
+  GraphNodeStyle,
+} from '#components/graph/flow-types'
+import { getGraphHighlightClass } from '#components/graph/graph-highlight'
 import { useGraphRenderContext } from '#components/graph/graph-render-context'
 import {
   handlePositions,
@@ -26,7 +29,6 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
 
   const showBar =
     layout === 'chain' && typeof data.value === 'number' && maxNodeValue > 0
-  const isHighlighted = highlightedNodeIds == null || highlightedNodeIds.has(id)
   const dagreHeight =
     layout === 'flow' || layout === 'tree' ? nodeHeight(data) : undefined
   // 値の大小を棒の高さで比較するため、計算結果を CSS 変数に渡す。
@@ -44,17 +46,14 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
       data-slot="graph-node"
       className={cn(
         'border-border bg-card text-card-foreground relative flex w-(--graph-node-width) min-h-(--graph-node-min-height) flex-col gap-1.5 border px-3 py-2 text-sm',
-        isHighlighted ? 'opacity-100' : 'opacity-30 transition-opacity',
+        getGraphHighlightClass(id, highlightedNodeIds),
       )}
       style={
         {
           '--graph-node-width': `${String(nodeWidth(data))}px`,
           '--graph-node-min-height':
             dagreHeight == null ? 'auto' : `${String(dagreHeight)}px`,
-        } as CSSProperties & {
-          '--graph-node-width': string
-          '--graph-node-min-height': string
-        }
+        } as GraphNodeStyle
       }
     >
       <Handle
@@ -82,7 +81,7 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
           style={
             {
               '--graph-node-bar-height': `${String(chainBarHeight)}px`,
-            } as CSSProperties & { '--graph-node-bar-height': string }
+            } as GraphNodeStyle
           }
         />
       )}

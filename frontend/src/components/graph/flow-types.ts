@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 
 import type { GraphEdge, GraphNode } from '#components/graph/types'
 
-type GraphNodeStyle = CSSProperties & {
+export type GraphNodeStyle = CSSProperties & {
   [property: `--graph-${string}`]: string
 }
 
