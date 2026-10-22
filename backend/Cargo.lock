@@ -573,6 +573,7 @@ dependencies = [
  "serde_yaml_ng",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
  "utoipa",
@@ -958,6 +959,7 @@ dependencies = [
  "sha2 0.11.1",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tracing",
  "unicode-normalization",
  "uuid",
@@ -1448,6 +1450,7 @@ name = "entrypoint-agent-mcp"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "chrono",
  "core-application",
  "core-domain",
@@ -1459,6 +1462,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "tokio",
+ "tokio-util",
  "tracing",
  "uuid",
 ]
@@ -5748,6 +5753,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",

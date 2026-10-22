@@ -8,8 +8,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
-    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, execution_task_id_from_ctx,
-    internal_error, invalid_params, strategy_task_id_from_ctx,
+    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx,
+    execution_task_id_for_read_from_ctx, execution_task_id_from_ctx, internal_error,
+    invalid_params, strategy_task_id_from_ctx,
 };
 
 impl StrategyServer {
@@ -24,44 +25,57 @@ impl StrategyServer {
                 .await;
         }
 
-        let reserved_call = if let Some(access) = self.authorize_budget_execution(&context).await? {
-            let execution_id = execution_id_from_ctx(&context).ok_or_else(|| {
-                invalid_params("x-execution-id is required for budgeted tool calls")
-            })?;
-            let call_id = format!("{execution_id}:{}", context.id);
-            let subagent = subagent_identity_from_ctx(&context)?;
-            let fingerprint = request_fingerprint(&serde_json::json!({
-                "name": request.name.as_ref(),
-                "arguments": request.arguments.clone(),
-            }))?;
-            let default_limit = match request.name.as_ref() {
-                super::read_page::TOOL_NAME => {
-                    Some(u64::from(super::read_page::READ_PAGE_MAX_CALLS_PER_TASK))
-                }
-                super::web_search::TOOL_NAME => {
-                    Some(u64::from(super::web_search::SEARCH_WEB_MAX_CALLS_PER_TASK))
-                }
-                _ => None,
-            };
-            let reservation = self
-                .dependencies
-                .execution_budgets
-                .reserve_tool_call(
-                    &access,
-                    call_id.clone(),
-                    fingerprint,
-                    request.name.as_ref(),
-                    default_limit,
-                    subagent.as_ref().map(|(id, key)| {
-                        core_application::execution_budget::SubagentExecutionIdentity {
-                            execution_id: id,
-                            definition_key: key,
-                        }
-                    }),
-                )
-                .await
-                .map_err(execution_budget_error_to_mcp)?;
-            Some((access, call_id, reservation))
+        let allow_task_only_read = matches!(
+            request.name.as_ref(),
+            "read_task_execution_snapshot" | "read_execution_payload"
+        );
+        let is_step_scoped = execution_step_id_from_ctx(&context).is_some();
+        let reserved_call = if let Some(access) = self
+            .authorize_budget_execution(&context, allow_task_only_read)
+            .await?
+        {
+            // Task-only readers use independent MCP clients whose request IDs can repeat.
+            if allow_task_only_read && !is_step_scoped {
+                None
+            } else {
+                let execution_id = execution_id_from_ctx(&context).ok_or_else(|| {
+                    invalid_params("x-execution-id is required for budgeted tool calls")
+                })?;
+                let call_id = format!("{execution_id}:{}", context.id);
+                let subagent = subagent_identity_from_ctx(&context)?;
+                let fingerprint = request_fingerprint(&serde_json::json!({
+                    "name": request.name.as_ref(),
+                    "arguments": request.arguments.clone(),
+                }))?;
+                let default_limit = match request.name.as_ref() {
+                    super::read_page::TOOL_NAME => {
+                        Some(u64::from(super::read_page::READ_PAGE_MAX_CALLS_PER_TASK))
+                    }
+                    super::web_search::TOOL_NAME => {
+                        Some(u64::from(super::web_search::SEARCH_WEB_MAX_CALLS_PER_TASK))
+                    }
+                    _ => None,
+                };
+                let reservation = self
+                    .dependencies
+                    .execution_budgets
+                    .reserve_tool_call(
+                        &access,
+                        call_id.clone(),
+                        fingerprint,
+                        request.name.as_ref(),
+                        default_limit,
+                        subagent.as_ref().map(|(id, key)| {
+                            core_application::execution_budget::SubagentExecutionIdentity {
+                                execution_id: id,
+                                definition_key: key,
+                            }
+                        }),
+                    )
+                    .await
+                    .map_err(execution_budget_error_to_mcp)?;
+                Some((access, call_id, reservation))
+            }
         } else {
             None
         };
@@ -149,6 +163,7 @@ impl StrategyServer {
     async fn authorize_budget_execution(
         &self,
         context: &RequestContext<RoleServer>,
+        allow_task_only_read: bool,
     ) -> Result<Option<core_application::strategy_execution::AuthorizedExecution>, McpError> {
         let parts = context
             .extensions
@@ -162,15 +177,25 @@ impl StrategyServer {
             }
             return Ok(None);
         }
-        let a2a_task_id = execution_task_id_from_ctx(context)
-            .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
+        let a2a_task_id = if allow_task_only_read {
+            execution_task_id_for_read_from_ctx(context)
+        } else {
+            execution_task_id_from_ctx(context)
+        }
+        .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
         let task_id = strategy_task_id_from_ctx(context)?
             .ok_or_else(|| invalid_params("missing x-strategy-task-id header"))?;
+        let execution_step_id = execution_step_id_from_ctx(context);
+        if !allow_task_only_read && execution_step_id.is_none() {
+            return Err(invalid_params(
+                "x-execution-id must include a valid execution step ID",
+            ));
+        }
         let scope = self.strategy_scope_from_ctx(context).await?;
         let access = self
             .dependencies
             .strategy_executions
-            .authorize_execution(scope, &a2a_task_id, execution_step_id_from_ctx(context))
+            .authorize_execution(scope, &a2a_task_id, execution_step_id)
             .await
             .map_err(strategy_execution_error_to_mcp)?;
         if access.task_id() != task_id {
@@ -187,7 +212,7 @@ impl StrategyServer {
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
         let access = self
-            .authorize_budget_execution(context)
+            .authorize_budget_execution(context, false)
             .await?
             .ok_or_else(|| invalid_params("budget operation requires an active task"))?;
         let arguments = serde_json::Value::Object(arguments.unwrap_or_default());
@@ -357,7 +382,8 @@ fn strategy_execution_error_to_mcp(
     match error {
         core_application::strategy_execution::StrategyExecutionUseCaseError::TaskNotFound
         | core_application::strategy_execution::StrategyExecutionUseCaseError::StrategyMismatch
-        | core_application::strategy_execution::StrategyExecutionUseCaseError::TaskNotRunning => {
+        | core_application::strategy_execution::StrategyExecutionUseCaseError::TaskNotRunning
+        | core_application::strategy_execution::StrategyExecutionUseCaseError::TaskDeadlineExpired => {
             invalid_params("execution does not match an active task")
         }
         other => {

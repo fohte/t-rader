@@ -11,8 +11,7 @@ use super::pod_api::{PodApi, PodAttach, ReqwestPodApi};
 use super::stream;
 
 /// Pod 削除を `Drop` で fire-and-forget 予約する RAII ガード。
-/// 正常パスでは `disarm()` を呼んでから同期 `delete` する。disarm を忘れると
-/// 同期 `delete` と Drop の `spawn_delete` が二重発火するので注意。
+/// 正常パスは同期 `delete` の応答後に `disarm()` し、Drop の二重削除を防ぐ。
 pub(crate) struct PodExecution {
     api: Arc<dyn PodApi>,
     pod_name: String,
@@ -168,12 +167,21 @@ impl KataExecutor for HttpKataExecutor {
         );
 
         tracing::debug!(pod = %pod_name, "creating kata exec pod");
+        let mut execution = PodExecution::new(self.api.clone(), pod_name.clone());
         if let Err(e) = self.api.create(&manifest).await {
             tracing::warn!(pod = %pod_name, error = %e, "failed to create kata exec pod");
+            // 4xx は作成拒否を示すため、名前が衝突した既存 Pod を削除しない。
+            if matches!(
+                &e,
+                KataExecError::Api {
+                    status: 400..=499,
+                    ..
+                }
+            ) {
+                execution.disarm();
+            }
             return Err(e);
         }
-
-        let mut execution = PodExecution::new(self.api.clone(), pod_name.clone());
 
         let outcome = tokio::time::timeout(wall_clock_timeout, async {
             if request.input_files.is_some() {
@@ -193,8 +201,8 @@ impl KataExecutor for HttpKataExecutor {
         })
         .await;
         // 正常パスでは同期的に削除し、結果をログに残す。Drop 側の fire-and-forget は冗長になるので disarm。
-        execution.disarm();
         self.api.delete(&pod_name).await;
+        execution.disarm();
 
         match outcome {
             Ok(Ok(result)) => Ok(result),
@@ -228,11 +236,26 @@ mod tests {
         Oversized,
     }
 
+    #[derive(Clone, Copy)]
+    enum CreateBehavior {
+        Succeed,
+        Pending,
+        Reject,
+        FailAfterAccept,
+    }
+
     struct MockPodApi {
         phase: PodPhase,
         terminated_reason: Option<String>,
         log_reply: Mutex<Option<LogReply>>,
         attach_hangs: bool,
+        create_behavior: CreateBehavior,
+        create_started: Option<Arc<tokio::sync::Notify>>,
+        delete_started: Option<Arc<tokio::sync::Notify>>,
+        delete_hangs: bool,
+        created_names: Mutex<Vec<String>>,
+        delete_names: Mutex<Vec<String>>,
+        spawn_delete_names: Mutex<Vec<String>>,
         create_count: AtomicUsize,
         delete_count: AtomicUsize,
         spawn_delete_count: AtomicUsize,
@@ -339,35 +362,77 @@ mod tests {
 
     impl MockPodApi {
         fn succeeded(log: impl Into<String>) -> Self {
-            Self {
-                phase: PodPhase::Succeeded,
-                terminated_reason: None,
-                log_reply: Mutex::new(Some(LogReply::Body(log.into()))),
-                attach_hangs: false,
-                create_count: AtomicUsize::new(0),
-                delete_count: AtomicUsize::new(0),
-                spawn_delete_count: AtomicUsize::new(0),
-            }
+            Self::new(PodPhase::Succeeded, Some(LogReply::Body(log.into())))
         }
 
         fn running() -> Self {
-            Self {
-                phase: PodPhase::Running,
-                terminated_reason: None,
-                log_reply: Mutex::new(Some(LogReply::Body(String::new()))),
-                attach_hangs: false,
-                create_count: AtomicUsize::new(0),
-                delete_count: AtomicUsize::new(0),
-                spawn_delete_count: AtomicUsize::new(0),
-            }
+            Self::new(PodPhase::Running, Some(LogReply::Body(String::new())))
         }
 
         fn oversize() -> Self {
+            Self::new(PodPhase::Succeeded, Some(LogReply::Oversized))
+        }
+
+        fn pending_create(started: Arc<tokio::sync::Notify>) -> Self {
+            let mut api = Self::running();
+            api.create_behavior = CreateBehavior::Pending;
+            api.create_started = Some(started);
+            api
+        }
+
+        fn pending_delete(started: Arc<tokio::sync::Notify>) -> Self {
+            let mut api = Self::succeeded(envelope_log("", "", 0));
+            api.delete_started = Some(started);
+            api.delete_hangs = true;
+            api
+        }
+
+        fn rejected_create() -> Self {
+            let mut api = Self::running();
+            api.create_behavior = CreateBehavior::Reject;
+            api
+        }
+
+        fn failed_create_after_accept() -> Self {
+            let mut api = Self::running();
+            api.create_behavior = CreateBehavior::FailAfterAccept;
+            api
+        }
+
+        fn created_names(&self) -> Vec<String> {
+            self.created_names
+                .lock()
+                .expect("mock created_names mutex poisoned")
+                .clone()
+        }
+
+        fn deleted_names(&self) -> Vec<String> {
+            self.delete_names
+                .lock()
+                .expect("mock delete_names mutex poisoned")
+                .clone()
+        }
+
+        fn spawn_deleted_names(&self) -> Vec<String> {
+            self.spawn_delete_names
+                .lock()
+                .expect("mock spawn_delete_names mutex poisoned")
+                .clone()
+        }
+
+        fn new(phase: PodPhase, log_reply: Option<LogReply>) -> Self {
             Self {
-                phase: PodPhase::Succeeded,
+                phase,
                 terminated_reason: None,
-                log_reply: Mutex::new(Some(LogReply::Oversized)),
+                log_reply: Mutex::new(log_reply),
                 attach_hangs: false,
+                create_behavior: CreateBehavior::Succeed,
+                create_started: None,
+                delete_started: None,
+                delete_hangs: false,
+                created_names: Mutex::new(Vec::new()),
+                delete_names: Mutex::new(Vec::new()),
+                spawn_delete_names: Mutex::new(Vec::new()),
                 create_count: AtomicUsize::new(0),
                 delete_count: AtomicUsize::new(0),
                 spawn_delete_count: AtomicUsize::new(0),
@@ -377,9 +442,46 @@ mod tests {
 
     #[async_trait]
     impl PodApi for MockPodApi {
-        async fn create(&self, _manifest: &serde_json::Value) -> Result<(), KataExecError> {
+        async fn create(&self, manifest: &serde_json::Value) -> Result<(), KataExecError> {
             self.create_count.fetch_add(1, Ordering::SeqCst);
-            Ok(())
+            let pod_name = manifest
+                .pointer("/metadata/name")
+                .and_then(serde_json::Value::as_str)
+                .expect("pod manifest has a name")
+                .to_string();
+            match self.create_behavior {
+                CreateBehavior::Succeed => {
+                    self.created_names
+                        .lock()
+                        .expect("mock created_names mutex poisoned")
+                        .push(pod_name);
+                    Ok(())
+                }
+                CreateBehavior::Pending => {
+                    self.created_names
+                        .lock()
+                        .expect("mock created_names mutex poisoned")
+                        .push(pod_name);
+                    if let Some(started) = &self.create_started {
+                        started.notify_one();
+                    }
+                    std::future::pending().await
+                }
+                CreateBehavior::Reject => Err(KataExecError::Api {
+                    status: 422,
+                    message: "mock create failure".to_string(),
+                }),
+                CreateBehavior::FailAfterAccept => {
+                    self.created_names
+                        .lock()
+                        .expect("mock created_names mutex poisoned")
+                        .push(pod_name);
+                    Err(KataExecError::Api {
+                        status: 500,
+                        message: "mock create server failure".to_string(),
+                    })
+                }
+            }
         }
 
         async fn get_status(&self, _name: &str) -> Result<PodStatusInfo, KataExecError> {
@@ -429,12 +531,26 @@ mod tests {
             })
         }
 
-        async fn delete(&self, _name: &str) {
+        async fn delete(&self, name: &str) {
             self.delete_count.fetch_add(1, Ordering::SeqCst);
+            self.delete_names
+                .lock()
+                .expect("mock delete_names mutex poisoned")
+                .push(name.to_string());
+            if let Some(started) = &self.delete_started {
+                started.notify_one();
+            }
+            if self.delete_hangs {
+                std::future::pending().await
+            }
         }
 
-        fn spawn_delete(&self, _name: &str) {
+        fn spawn_delete(&self, name: &str) {
             self.spawn_delete_count.fetch_add(1, Ordering::SeqCst);
+            self.spawn_delete_names
+                .lock()
+                .expect("mock spawn_delete_names mutex poisoned")
+                .push(name.to_string());
         }
     }
 
@@ -470,6 +586,169 @@ mod tests {
 
     fn executor_with(api: Arc<dyn PodApi>) -> HttpKataExecutor {
         HttpKataExecutor::from_parts(api, mock_config())
+    }
+
+    fn normalize_pod_names(names: &[String], pod_name: &str) -> Vec<&'static str> {
+        names
+            .iter()
+            .map(|name| {
+                if name == pod_name {
+                    "<pod-name>"
+                } else {
+                    "<unexpected-pod-name>"
+                }
+            })
+            .collect()
+    }
+
+    async fn abort_run(
+        exec: Arc<HttpKataExecutor>,
+        started: Arc<tokio::sync::Notify>,
+        started_message: &str,
+    ) -> Result<Result<(), KataExecError>, bool> {
+        let execution = tokio::spawn(async move { exec.run(ExecRequest::new("pass")).await });
+        tokio::time::timeout(Duration::from_secs(5), started.notified())
+            .await
+            .expect(started_message);
+        execution.abort();
+        execution
+            .await
+            .map(|result| result.map(|_| ()))
+            .map_err(|error| error.is_cancelled())
+    }
+
+    #[tokio::test]
+    async fn cancelling_while_create_response_is_pending_deletes_the_created_pod() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let api = Arc::new(MockPodApi::pending_create(Arc::clone(&started)));
+        let exec = Arc::new(executor_with(api.clone()));
+        let result = abort_run(
+            Arc::clone(&exec),
+            Arc::clone(&started),
+            "pod creation is accepted before its response is held",
+        )
+        .await;
+        let created_names = api.created_names();
+        let pod_name = created_names
+            .first()
+            .expect("pending create accepted a pod")
+            .clone();
+        let deleted_names = api.spawn_deleted_names();
+
+        assert_eq!(
+            (
+                result,
+                api.create_count.load(Ordering::SeqCst),
+                normalize_pod_names(&created_names, &pod_name),
+                api.delete_count.load(Ordering::SeqCst),
+                api.spawn_delete_count.load(Ordering::SeqCst),
+                normalize_pod_names(&deleted_names, &pod_name),
+            ),
+            (Err(true), 1, vec!["<pod-name>"], 0, 1, vec!["<pod-name>"],),
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_while_delete_response_is_pending_retries_pod_cleanup() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let api = Arc::new(MockPodApi::pending_delete(Arc::clone(&started)));
+        let exec = Arc::new(executor_with(api.clone()));
+        let result = abort_run(
+            Arc::clone(&exec),
+            Arc::clone(&started),
+            "pod deletion request starts",
+        )
+        .await;
+        let created_names = api.created_names();
+        let pod_name = created_names
+            .first()
+            .expect("operation created a pod")
+            .clone();
+        let deleted_names = api.deleted_names();
+        let retried_names = api.spawn_deleted_names();
+
+        assert_eq!(
+            (
+                result,
+                api.create_count.load(Ordering::SeqCst),
+                normalize_pod_names(&created_names, &pod_name),
+                api.delete_count.load(Ordering::SeqCst),
+                normalize_pod_names(&deleted_names, &pod_name),
+                api.spawn_delete_count.load(Ordering::SeqCst),
+                normalize_pod_names(&retried_names, &pod_name),
+            ),
+            (
+                Err(true),
+                1,
+                vec!["<pod-name>"],
+                1,
+                vec!["<pod-name>"],
+                1,
+                vec!["<pod-name>"],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn rejected_pod_creation_preserves_the_api_error_without_deleting_a_collision() {
+        let api = Arc::new(MockPodApi::rejected_create());
+        let exec = executor_with(api.clone());
+
+        assert_eq!(
+            (
+                exec.run(ExecRequest::new("pass")).await.map(|_| ()),
+                api.create_count.load(Ordering::SeqCst),
+                api.created_names().len(),
+                api.delete_count.load(Ordering::SeqCst),
+                api.spawn_delete_count.load(Ordering::SeqCst),
+            ),
+            (
+                Err(KataExecError::Api {
+                    status: 422,
+                    message: "mock create failure".to_string(),
+                }),
+                1,
+                0,
+                0,
+                0,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn server_error_after_pod_creation_schedules_cleanup_for_the_created_pod() {
+        let api = Arc::new(MockPodApi::failed_create_after_accept());
+        let exec = executor_with(api.clone());
+
+        let result = exec.run(ExecRequest::new("pass")).await.map(|_| ());
+        let created_names = api.created_names();
+        let pod_name = created_names
+            .first()
+            .expect("server error followed accepted pod creation")
+            .clone();
+        let cleanup_names = api.spawn_deleted_names();
+
+        assert_eq!(
+            (
+                result,
+                api.create_count.load(Ordering::SeqCst),
+                normalize_pod_names(&created_names, &pod_name),
+                api.delete_count.load(Ordering::SeqCst),
+                api.spawn_delete_count.load(Ordering::SeqCst),
+                normalize_pod_names(&cleanup_names, &pod_name),
+            ),
+            (
+                Err(KataExecError::Api {
+                    status: 500,
+                    message: "mock create server failure".to_string(),
+                }),
+                1,
+                vec!["<pod-name>"],
+                0,
+                1,
+                vec!["<pod-name>"],
+            ),
+        );
     }
 
     #[tokio::test]

@@ -50,6 +50,8 @@ pub enum StrategyExecutionUseCaseError {
     StrategyMismatch,
     #[error("task execution is not running")]
     TaskNotRunning,
+    #[error("task execution deadline has expired")]
+    TaskDeadlineExpired,
     #[error("definition snapshot is invalid")]
     InvalidDefinitionSnapshot,
     #[error("custom indicator definition was not found")]
@@ -76,6 +78,8 @@ pub enum StrategyExecutionUseCaseError {
     InvalidDatasetCompletion,
     #[error("dataset provider reported an incomplete capture")]
     DatasetCaptureIncomplete,
+    #[error("dataset capture was cancelled")]
+    DatasetCaptureCancelled,
     #[error(transparent)]
     DatasetProvider(#[from] DatasetProviderError),
     #[error("numeric projection is invalid")]

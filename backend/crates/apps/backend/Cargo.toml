@@ -89,6 +89,7 @@ gateway-postgres = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
 tokio = { workspace = true, features = ["test-util"] }
+tokio-util = { workspace = true }
 wiremock = { workspace = true }
 
 [lints]

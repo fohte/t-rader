@@ -1,6 +1,8 @@
 mod payload_read;
 mod payload_write;
 
+pub use payload_write::DatasetCaptureOptions;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use chrono::Utc;
@@ -76,12 +78,29 @@ impl StrategyExecutionUseCases {
         if task.phase != StrategyTaskPhase::Running {
             return Err(StrategyExecutionUseCaseError::TaskNotRunning);
         }
+        if task.deadline_at <= Utc::now().fixed_offset() {
+            return Err(StrategyExecutionUseCaseError::TaskDeadlineExpired);
+        }
         Ok(super::AuthorizedExecution {
             task_id: task.task_id,
             strategy_id: task.strategy_id,
             a2a_task_id: a2a_task_id.to_string(),
             execution_step_id,
         })
+    }
+
+    pub async fn read_task_start_snapshot(
+        &self,
+        access: &super::AuthorizedExecution,
+    ) -> Result<Option<DefinitionSnapshot>, StrategyExecutionUseCaseError> {
+        let snapshot = self
+            .repository
+            .find_definition_snapshot(access.task_id, "task_start")
+            .await?;
+        if let Some(snapshot) = &snapshot {
+            verify_definition_digest(snapshot)?;
+        }
+        Ok(snapshot)
     }
 
     pub async fn resolve_custom_indicator(

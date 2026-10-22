@@ -24,6 +24,7 @@ rust_decimal = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "sync", "time"] }
+tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4", "v5"] }
 unicode-normalization = { workspace = true }
 

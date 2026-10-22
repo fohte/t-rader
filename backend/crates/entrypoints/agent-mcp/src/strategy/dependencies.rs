@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use core_application::account_risk_policy::AccountRiskPolicyUseCases;
 use core_application::agent_config::AgentConfigUseCases;
@@ -31,7 +31,7 @@ use core_application::stock_group::StockGroupUseCases;
 use core_application::stock_registration::StockRegistrationUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
-use core_application::strategy_execution::StrategyExecutionUseCases;
+use core_application::strategy_execution::{SharedDatasetProvider, StrategyExecutionUseCases};
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
@@ -80,6 +80,7 @@ pub struct StrategyServerDependencies {
     pub strategy_scope: Arc<StrategyScopeUseCases>,
     pub strategy_tasks: StrategyTaskUseCases,
     pub strategy_executions: StrategyExecutionUseCases,
+    pub dataset_providers: BTreeMap<String, SharedDatasetProvider>,
     pub execution_budgets: core_application::execution_budget::ExecutionBudgetUseCases,
     pub subagent_definitions: SubagentDefinitionUseCases,
     pub strategy_task_step_evidence: StrategyTaskStepEvidenceUseCases,

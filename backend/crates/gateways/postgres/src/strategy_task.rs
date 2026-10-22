@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use core_application::strategy_task::{
     StrategyTask, StrategyTaskApplyResult, StrategyTaskOrigin, StrategyTaskPhase,
-    StrategyTaskRepository, StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskStepStatus,
-    StrategyTaskUpdate, TaskListQuery,
+    StrategyTaskRepository, StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskStepKind,
+    StrategyTaskStepStatus, StrategyTaskUpdate, TaskListQuery,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
@@ -416,15 +416,27 @@ fn task_from_model(model: strategy_task::Model) -> StrategyTask {
 }
 
 fn step_from_model(model: strategy_task_step::Model) -> StrategyTaskStep {
+    let kind = StrategyTaskStepKind::parse(&model.kind).unwrap_or_else(|| {
+        tracing::warn!(
+            execution_step_id = %model.execution_step_id,
+            kind = %model.kind,
+            "unknown strategy task step kind; reading as LLM step"
+        );
+        StrategyTaskStepKind::Llm
+    });
     StrategyTaskStep {
         execution_step_id: model.execution_step_id,
         task_id: model.task_id,
         phase_key: model.phase_key,
+        kind,
         label: model.label,
         model: model.model,
         status: step_status_from_db(model.status),
         item: model.item,
+        item_key: model.item_key,
         item_label: model.item_label,
+        input_ref: model.input_ref,
+        output_ref: model.output_ref,
         output: model.output,
         started_at: model.started_at,
         finished_at: model.finished_at,
@@ -435,17 +447,26 @@ fn step_from_model(model: strategy_task_step::Model) -> StrategyTaskStep {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, PartialEq, serde::Deserialize)]
 struct StepWire {
     execution_step_id: Uuid,
     phase_key: String,
+    #[serde(default = "default_step_kind")]
+    kind: String,
     label: String,
-    model: String,
+    #[serde(default)]
+    model: Option<String>,
     status: String,
     #[serde(default)]
     item: Option<serde_json::Value>,
     #[serde(default)]
+    item_key: Option<serde_json::Value>,
+    #[serde(default)]
     item_label: Option<String>,
+    #[serde(default)]
+    input_ref: Option<serde_json::Value>,
+    #[serde(default)]
+    output_ref: Option<serde_json::Value>,
     #[serde(default)]
     output: Option<serde_json::Value>,
     started_at: chrono::DateTime<chrono::FixedOffset>,
@@ -455,6 +476,10 @@ struct StepWire {
     span_id: String,
     #[serde(default)]
     error: Option<String>,
+}
+
+fn default_step_kind() -> String {
+    StrategyTaskStepKind::Llm.as_str().to_owned()
 }
 
 async fn upsert_steps(
@@ -484,8 +509,17 @@ async fn upsert_steps(
             tracing::warn!(status = wire.status, task_id = %task_id, "unknown strategy task step status; skipping");
             continue;
         };
+        let Some(kind) = StrategyTaskStepKind::parse(&wire.kind) else {
+            tracing::warn!(kind = wire.kind, task_id = %task_id, "unknown strategy task step kind; skipping");
+            continue;
+        };
         if let Some(row) = existing.get(&wire.execution_step_id)
+            && row.kind == kind.as_str()
+            && row.model == wire.model
             && row.status == step_status_to_db(status)
+            && row.item_key == wire.item_key
+            && row.input_ref == wire.input_ref
+            && row.output_ref == wire.output_ref
             && row.output == wire.output
             && row.finished_at == wire.finished_at
             && row.error == wire.error
@@ -496,11 +530,15 @@ async fn upsert_steps(
             execution_step_id: Set(wire.execution_step_id),
             task_id: Set(task_id),
             phase_key: Set(wire.phase_key),
+            kind: Set(kind.as_str().to_owned()),
             label: Set(wire.label),
             model: Set(wire.model),
             status: Set(step_status_to_db(status)),
             item: Set(wire.item),
+            item_key: Set(wire.item_key),
             item_label: Set(wire.item_label),
+            input_ref: Set(wire.input_ref),
+            output_ref: Set(wire.output_ref),
             output: Set(wire.output),
             started_at: Set(wire.started_at),
             finished_at: Set(wire.finished_at),
@@ -518,6 +556,9 @@ async fn upsert_steps(
             OnConflict::column(strategy_task_step::Column::ExecutionStepId)
                 .update_columns([
                     strategy_task_step::Column::Status,
+                    strategy_task_step::Column::ItemKey,
+                    strategy_task_step::Column::InputRef,
+                    strategy_task_step::Column::OutputRef,
                     strategy_task_step::Column::Output,
                     strategy_task_step::Column::FinishedAt,
                     strategy_task_step::Column::Error,
@@ -545,7 +586,7 @@ mod tests {
     use chrono::{DateTime, FixedOffset};
     use core_application::strategy_task::{
         StrategyTask, StrategyTaskPhase, StrategyTaskRepository, StrategyTaskStep,
-        StrategyTaskStepStatus,
+        StrategyTaskStepKind, StrategyTaskStepStatus,
     };
     use core_application::unit_of_work::UnitOfWork;
     use sea_orm::ActiveModelTrait;
@@ -582,6 +623,95 @@ mod tests {
 
     fn fixed_time() -> DateTime<FixedOffset> {
         (DateTime::<chrono::Utc>::UNIX_EPOCH + chrono::Duration::days(20_454)).fixed_offset()
+    }
+
+    #[test]
+    fn step_wire_defaults_legacy_payload_to_llm() {
+        let now = fixed_time();
+        let actual: super::StepWire = serde_json::from_value(serde_json::json!({
+            "execution_step_id": "00000000-0000-0000-0000-000000000451",
+            "phase_key": "fictional-phase",
+            "label": "Fictional phase",
+            "model": "fictional-model",
+            "status": "completed",
+            "started_at": now,
+            "trace_id": "fictional-trace",
+            "span_id": "fictional-span",
+        }))
+        .expect("parse legacy step wire");
+
+        assert_eq!(
+            actual,
+            super::StepWire {
+                execution_step_id: Uuid::from_u128(0x451),
+                phase_key: "fictional-phase".to_string(),
+                kind: "llm".to_string(),
+                label: "Fictional phase".to_string(),
+                model: Some("fictional-model".to_string()),
+                status: "completed".to_string(),
+                item: None,
+                item_key: None,
+                item_label: None,
+                input_ref: None,
+                output_ref: None,
+                output: None,
+                started_at: now,
+                finished_at: None,
+                trace_id: "fictional-trace".to_string(),
+                span_id: "fictional-span".to_string(),
+                error: None,
+            },
+        );
+    }
+
+    #[test]
+    fn step_wire_accepts_operation_references_without_a_model() {
+        let now = fixed_time();
+        let input_ref = serde_json::json!({ "payload_id": "00000000-0000-0000-0000-000000000452", "pointer": "/input" });
+        let output_ref = serde_json::json!({ "payload_id": "00000000-0000-0000-0000-000000000453", "pointer": "/value" });
+        let actual: super::StepWire = serde_json::from_value(serde_json::json!({
+            "execution_step_id": "00000000-0000-0000-0000-000000000454",
+            "phase_key": "fictional-operation",
+            "kind": "operation",
+            "label": "Fictional operation",
+            "model": null,
+            "status": "completed",
+            "item_key": { "payload_id": "00000000-0000-0000-0000-000000000455", "pointer": "/items", "index": 3 },
+            "input_ref": input_ref,
+            "output_ref": output_ref,
+            "output": { "count": 1 },
+            "started_at": now,
+            "trace_id": "fictional-trace",
+            "span_id": "fictional-span",
+        }))
+        .expect("parse operation step wire");
+
+        assert_eq!(
+            actual,
+            super::StepWire {
+                execution_step_id: Uuid::from_u128(0x454),
+                phase_key: "fictional-operation".to_string(),
+                kind: "operation".to_string(),
+                label: "Fictional operation".to_string(),
+                model: None,
+                status: "completed".to_string(),
+                item: None,
+                item_key: Some(serde_json::json!({
+                    "payload_id": "00000000-0000-0000-0000-000000000455",
+                    "pointer": "/items",
+                    "index": 3,
+                })),
+                item_label: None,
+                input_ref: Some(input_ref),
+                output_ref: Some(output_ref),
+                output: Some(serde_json::json!({ "count": 1 })),
+                started_at: now,
+                finished_at: None,
+                trace_id: "fictional-trace".to_string(),
+                span_id: "fictional-span".to_string(),
+                error: None,
+            },
+        );
     }
 
     fn task(
@@ -625,11 +755,15 @@ mod tests {
             execution_step_id: Set(execution_step_id),
             task_id: Set(task_id),
             phase_key: Set("fictional-phase".to_string()),
+            kind: Set("llm".to_string()),
             label: Set("Fictional phase".to_string()),
-            model: Set("fictional-model".to_string()),
+            model: Set(Some("fictional-model".to_string())),
             status: Set(status),
             item: Set(None),
+            item_key: Set(None),
             item_label: Set(None),
+            input_ref: Set(None),
+            output_ref: Set(None),
             output: Set(None),
             started_at: Set(fixed_time()),
             finished_at: Set(None),
@@ -902,11 +1036,15 @@ mod tests {
         execution_step_id: Uuid,
         task_id: Uuid,
         phase_key: String,
+        kind: StrategyTaskStepKind,
         label: String,
-        model: String,
+        model: Option<String>,
         status: StrategyTaskStepStatus,
         item: Option<serde_json::Value>,
+        item_key: Option<serde_json::Value>,
         item_label: Option<String>,
+        input_ref: Option<serde_json::Value>,
+        output_ref: Option<serde_json::Value>,
         output: Option<serde_json::Value>,
         started_at: DateTime<FixedOffset>,
         finished_at: Option<DateTime<FixedOffset>>,
@@ -922,11 +1060,15 @@ mod tests {
                 execution_step_id: step.execution_step_id,
                 task_id: step.task_id,
                 phase_key: step.phase_key,
+                kind: step.kind,
                 label: step.label,
                 model: step.model,
                 status: step.status,
                 item: step.item,
+                item_key: step.item_key,
                 item_label: step.item_label,
+                input_ref: step.input_ref,
+                output_ref: step.output_ref,
                 output: step.output,
                 started_at: step.started_at,
                 finished_at: step.finished_at,
@@ -977,11 +1119,25 @@ mod tests {
             execution_step_id: Set(first_step_id),
             task_id: Set(task_id),
             phase_key: Set("fictional-complete-phase".to_string()),
+            kind: Set("operation".to_string()),
             label: Set("Completed phase".to_string()),
-            model: Set("fictional-model".to_string()),
+            model: Set(None),
             status: Set(DbStepStatus::Completed),
             item: Set(Some(serde_json::json!({ "ticker": "FAKE" }))),
+            item_key: Set(Some(serde_json::json!({
+                "payload_id": "00000000-0000-0000-0000-000000000444",
+                "pointer": "/items",
+                "index": 2,
+            }))),
             item_label: Set(Some("Fictional item".to_string())),
+            input_ref: Set(Some(serde_json::json!({
+                "payload_id": "00000000-0000-0000-0000-000000000445",
+                "pointer": "/input",
+            }))),
+            output_ref: Set(Some(serde_json::json!({
+                "payload_id": "00000000-0000-0000-0000-000000000446",
+                "pointer": "/value",
+            }))),
             output: Set(Some(serde_json::json!({ "summary": "fictional output" }))),
             started_at: Set(first_started_at),
             finished_at: Set(Some(first_finished_at)),
@@ -997,11 +1153,15 @@ mod tests {
             execution_step_id: Set(second_step_id),
             task_id: Set(task_id),
             phase_key: Set("fictional-running-phase".to_string()),
+            kind: Set("llm".to_string()),
             label: Set("Running phase".to_string()),
-            model: Set("fictional-model".to_string()),
+            model: Set(Some("fictional-model".to_string())),
             status: Set(DbStepStatus::Running),
             item: Set(None),
+            item_key: Set(None),
             item_label: Set(None),
+            input_ref: Set(None),
+            output_ref: Set(None),
             output: Set(None),
             started_at: Set(second_started_at),
             finished_at: Set(None),
@@ -1032,11 +1192,15 @@ mod tests {
                     execution_step_id: second_step_id,
                     task_id,
                     phase_key: "fictional-running-phase".to_string(),
+                    kind: StrategyTaskStepKind::Llm,
                     label: "Running phase".to_string(),
-                    model: "fictional-model".to_string(),
+                    model: Some("fictional-model".to_string()),
                     status: StrategyTaskStepStatus::Running,
                     item: None,
+                    item_key: None,
                     item_label: None,
+                    input_ref: None,
+                    output_ref: None,
                     output: None,
                     started_at: second_started_at,
                     finished_at: None,
@@ -1049,11 +1213,25 @@ mod tests {
                     execution_step_id: first_step_id,
                     task_id,
                     phase_key: "fictional-complete-phase".to_string(),
+                    kind: StrategyTaskStepKind::Operation,
                     label: "Completed phase".to_string(),
-                    model: "fictional-model".to_string(),
+                    model: None,
                     status: StrategyTaskStepStatus::Completed,
                     item: Some(serde_json::json!({ "ticker": "FAKE" })),
+                    item_key: Some(serde_json::json!({
+                        "payload_id": "00000000-0000-0000-0000-000000000444",
+                        "pointer": "/items",
+                        "index": 2,
+                    })),
                     item_label: Some("Fictional item".to_string()),
+                    input_ref: Some(serde_json::json!({
+                        "payload_id": "00000000-0000-0000-0000-000000000445",
+                        "pointer": "/input",
+                    })),
+                    output_ref: Some(serde_json::json!({
+                        "payload_id": "00000000-0000-0000-0000-000000000446",
+                        "pointer": "/value",
+                    })),
                     output: Some(serde_json::json!({ "summary": "fictional output" })),
                     started_at: first_started_at,
                     finished_at: Some(first_finished_at),

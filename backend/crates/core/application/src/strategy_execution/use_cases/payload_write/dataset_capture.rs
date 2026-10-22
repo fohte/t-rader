@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use serde_json::Value as JsonValue;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::strategy_execution::{
@@ -12,6 +13,11 @@ use crate::strategy_scope::StrategyScope;
 
 use super::super::StrategyExecutionUseCases;
 
+pub struct DatasetCaptureOptions<'a> {
+    pub page_size: usize,
+    pub cancellation: &'a CancellationToken,
+}
+
 impl StrategyExecutionUseCases {
     pub async fn capture_dataset(
         &self,
@@ -20,15 +26,25 @@ impl StrategyExecutionUseCases {
         provider_name: String,
         provider: &dyn DatasetProvider,
         request: JsonValue,
-        page_size: usize,
+        options: DatasetCaptureOptions<'_>,
     ) -> Result<PayloadRef, StrategyExecutionUseCaseError> {
+        let DatasetCaptureOptions {
+            page_size,
+            cancellation,
+        } = options;
         if scope.id() != access.strategy_id {
             return Err(StrategyExecutionUseCaseError::StrategyMismatch);
         }
         if !(1..=MAX_DATASET_PAGE_SIZE).contains(&page_size) {
             return Err(StrategyExecutionUseCaseError::InvalidPageLimit);
         }
-        let snapshot = provider.open(scope, request).await?;
+        let snapshot = tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => {
+                return Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled);
+            }
+            result = provider.open(scope, request) => result?,
+        };
         if snapshot.source_revision.trim().is_empty() {
             return Err(StrategyExecutionUseCaseError::InvalidDefinitionSnapshot);
         }
@@ -46,6 +62,11 @@ impl StrategyExecutionUseCases {
                 true,
             )
             .await?;
+        if cancellation.is_cancelled() {
+            self.mark_incomplete(access.task_id, payload_id, "request_cancelled")
+                .await?;
+            return Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled);
+        }
         let mut capture_metadata = PayloadCaptureMetadata {
             captured_at: snapshot.captured_at,
             expected_count: snapshot.expected_count,
@@ -55,13 +76,20 @@ impl StrategyExecutionUseCases {
         };
         self.update_capture_metadata(access.task_id, payload_id, capture_metadata.clone())
             .await?;
+        self.ensure_capture_active(access.task_id, payload_id, cancellation)
+            .await?;
         let mut cursor: Option<String> = None;
         let mut seen_cursors = HashSet::new();
         for page_index in 0..MAX_PAYLOAD_PAGES {
-            let page = match provider
-                .read_page(&snapshot, cursor.as_deref(), page_size)
-                .await
-            {
+            let page = match tokio::select! {
+                biased;
+                _ = cancellation.cancelled() => {
+                    self.mark_incomplete(access.task_id, payload_id, "request_cancelled")
+                        .await?;
+                    return Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled);
+                }
+                result = provider.read_page(&snapshot, cursor.as_deref(), page_size) => result,
+            } {
                 Ok(page) => page,
                 Err(error) => {
                     self.mark_incomplete(access.task_id, payload_id, "provider_failed")
@@ -95,6 +123,8 @@ impl StrategyExecutionUseCases {
             let page_item_count = items.len();
             self.append_dataset_page(access, payload_id, &snapshot, items)
                 .await?;
+            self.ensure_capture_active(access.task_id, payload_id, cancellation)
+                .await?;
             self.record_received_count(
                 access.task_id,
                 payload_id,
@@ -102,6 +132,8 @@ impl StrategyExecutionUseCases {
                 page_item_count,
             )
             .await?;
+            self.ensure_capture_active(access.task_id, payload_id, cancellation)
+                .await?;
 
             let next = match completion {
                 DatasetPageCompletion::More => {
@@ -138,6 +170,8 @@ impl StrategyExecutionUseCases {
                             .await;
                     };
                     self.update_capture_metadata(access.task_id, payload_id, final_metadata)
+                        .await?;
+                    self.ensure_capture_active(access.task_id, payload_id, cancellation)
                         .await?;
                     return self.seal_payload(access, payload_id).await;
                 }
@@ -191,6 +225,20 @@ impl StrategyExecutionUseCases {
             .ok_or(StrategyExecutionUseCaseError::InvalidDatasetCompletion)?;
         self.update_capture_metadata(task_id, payload_id, metadata.clone())
             .await
+    }
+
+    async fn ensure_capture_active(
+        &self,
+        task_id: Uuid,
+        payload_id: Uuid,
+        cancellation: &CancellationToken,
+    ) -> Result<(), StrategyExecutionUseCaseError> {
+        if !cancellation.is_cancelled() {
+            return Ok(());
+        }
+        self.mark_incomplete(task_id, payload_id, "request_cancelled")
+            .await?;
+        Err(StrategyExecutionUseCaseError::DatasetCaptureCancelled)
     }
 
     async fn fail_invalid_provider_completion<T>(

@@ -1,4 +1,5 @@
-import { errAsync, okAsync, ResultAsync } from 'neverthrow'
+import type { Result } from 'neverthrow'
+import { err, errAsync, ok, okAsync, ResultAsync } from 'neverthrow'
 
 import type { components } from '#lib/api/schema.gen'
 import { isPlainObject } from '#strategy-agent/agent-graph/json'
@@ -59,6 +60,30 @@ export type FetchSubagentDefinition = (
   key: string,
 ) => ResultAsync<SubagentDefinition, Error>
 
+const toSubagentDefinition = (
+  body: SubagentDefinitionResponse,
+): SubagentDefinition => ({
+  key: body.key,
+  description: body.description,
+  model: body.model,
+  ...(body.reasoning_effort != null
+    ? { reasoningEffort: body.reasoning_effort }
+    : {}),
+  prompt: body.prompt,
+  tools: body.tools,
+  timeoutMinutes: body.timeout_minutes,
+  maxModelCalls: body.max_model_calls,
+  toolLimits: body.tool_limits,
+  output: body.output,
+})
+
+export const parseSubagentDefinition = (
+  value: unknown,
+): Result<SubagentDefinition, Error> =>
+  isSubagentDefinitionResponse(value)
+    ? ok(toSubagentDefinition(value))
+    : err(new SubagentDefinitionFetchError('malformed subagent definition'))
+
 export const createSubagentDefinitionFetcher = (
   backendApiBaseUrl: string,
 ): FetchSubagentDefinition => {
@@ -90,27 +115,17 @@ export const createSubagentDefinitionFetcher = (
         )
       })
       .andThen((body) => {
-        if (!isSubagentDefinitionResponse(body)) {
-          return errAsync(
-            new SubagentDefinitionFetchError(
-              `malformed subagent-definition response for key ${key}`,
+        const parsed = parseSubagentDefinition(body)
+        return parsed.match(
+          (definition) => okAsync(definition),
+          (error) =>
+            errAsync(
+              new SubagentDefinitionFetchError(
+                `malformed subagent-definition response for key ${key}`,
+                error,
+              ),
             ),
-          )
-        }
-        return okAsync({
-          key: body.key,
-          description: body.description,
-          model: body.model,
-          ...(body.reasoning_effort != null
-            ? { reasoningEffort: body.reasoning_effort }
-            : {}),
-          prompt: body.prompt,
-          tools: body.tools,
-          timeoutMinutes: body.timeout_minutes,
-          maxModelCalls: body.max_model_calls,
-          toolLimits: body.tool_limits,
-          output: body.output,
-        })
+        )
       })
   }
 }

@@ -8,8 +8,8 @@ use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentT
 use crate::execution_budget::test_support::FakeExecutionBudgetRepository;
 use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
-    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
-    StrategyTaskUseCases,
+    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepKind,
+    StrategyTaskStepStatus, StrategyTaskUseCases,
 };
 use crate::unit_of_work::FakeUnitOfWork;
 
@@ -270,11 +270,15 @@ fn step(
         execution_step_id,
         task_id,
         phase_key: phase_key.to_string(),
+        kind: StrategyTaskStepKind::Llm,
         label: phase_key.to_string(),
-        model: "fictional-model".to_string(),
+        model: Some("fictional-model".to_string()),
         status,
         item: None,
+        item_key: None,
         item_label: None,
+        input_ref: None,
+        output_ref: None,
         output: None,
         started_at: now,
         finished_at: None,
@@ -416,6 +420,7 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
                 resume_steps: Some(vec![
                     serde_json::json!({
                         "execution_step_id": completed_step_id,
+                        "kind": "llm",
                         "phase_key": "planning",
                         "label": "planning",
                         "model": "fictional-model",
@@ -426,6 +431,7 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
                     }),
                     serde_json::json!({
                         "execution_step_id": failed_step_id,
+                        "kind": "llm",
                         "phase_key": "research",
                         "label": "research",
                         "model": "fictional-model",

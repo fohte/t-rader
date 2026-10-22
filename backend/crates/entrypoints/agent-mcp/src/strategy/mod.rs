@@ -17,6 +17,7 @@ mod execution_budget_router;
 pub(super) mod execution_payload;
 pub(super) mod fin_summary;
 mod graph_dto;
+pub(super) mod graph_execution;
 pub(super) mod holdings;
 pub(super) mod macro_indicator;
 pub(super) mod margin;
@@ -70,10 +71,10 @@ pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 const STRATEGY_TASK_ID_HEADER: &str = "x-strategy-task-id";
-/// `x-execution-id` ヘッダ名。agent は `{a2a_task_id}:{step_id}` 形式の値を MCP tool 呼び出し
-/// ごとに送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列、`a2a_task_id` は
-/// resume のたびに新しくなる実行 (試行) の id)。`a2a_task_id` をそのままキーにすると resume の
-/// たびに別実行扱いになるため、`note.execution_id` には `step_id` 部分のみを保持し、
+/// `x-execution-id` ヘッダ名。task-only の読み取りは `a2a_task_id`、step 付き呼び出しは
+/// `{a2a_task_id}:{step_id}` を送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列、
+/// `a2a_task_id` は resume のたびに新しくなる実行 (試行) の id)。`a2a_task_id` をそのままキーにすると
+/// resume のたびに別実行扱いになるため、`note.execution_id` には `step_id` 部分のみを保持し、
 /// `annotation.execution_step_id` / `annotation.execution_task_id` には両者を分けて保持する。
 /// 保存時に外部キーは検証しない。レビュー却下時は実行ステップ ID から親の戦略タスクを解決する。
 /// 呼び出し元の `a2a_task_id` が現在アクティブな試行かどうかは検査しない。
@@ -151,6 +152,14 @@ pub struct StrategyServer {
 impl StrategyServer {
     pub fn new(dependencies: StrategyServerDependencies) -> Self {
         Self { dependencies }
+    }
+
+    pub fn with_dataset_providers(
+        mut self,
+        providers: BTreeMap<String, core_application::strategy_execution::SharedDatasetProvider>,
+    ) -> Self {
+        self.dependencies.dataset_providers = providers;
+        self
     }
 
     pub fn with_kata_executor(mut self, kata_executor: Option<SharedKataExecutor>) -> Self {
@@ -386,19 +395,33 @@ fn execution_step_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<Uuid> 
     execution_id_from_ctx(ctx).and_then(|id| execution_step_id_from_execution_id(&id))
 }
 
-/// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `a2a_task_id` 部分を取り出す。
+/// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `a2a_task_id` を取り出す。
 fn execution_task_id_from_execution_id(execution_id: &str) -> Option<&str> {
     let (task_id, _) = execution_id.rsplit_once(':')?;
-    if task_id.is_empty() {
-        None
-    } else {
-        Some(task_id)
-    }
+    (!task_id.is_empty()).then_some(task_id)
 }
 
 fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     let execution_id = execution_id_from_ctx(ctx)?;
     execution_task_id_from_execution_id(&execution_id).map(str::to_string)
+}
+
+/// task 内の読取では A2A task ID 単体と step 付き実行 ID のどちらも受け付ける。
+fn execution_task_id_for_read_from_execution_id(execution_id: &str) -> Option<&str> {
+    if execution_id.contains(':') {
+        let (task_id, step_id) = execution_id.rsplit_once(':')?;
+        Uuid::parse_str(step_id).ok()?;
+        (!task_id.is_empty()).then_some(task_id)
+    } else {
+        (!execution_id.is_empty()).then_some(execution_id)
+    }
+}
+
+pub(super) fn execution_task_id_for_read_from_ctx(
+    ctx: &RequestContext<RoleServer>,
+) -> Option<String> {
+    let execution_id = execution_id_from_ctx(ctx)?;
+    execution_task_id_for_read_from_execution_id(&execution_id).map(str::to_string)
 }
 
 pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
@@ -568,12 +591,29 @@ mod tests {
 
     #[rstest]
     #[case::valid("a2a-task-1:550e8400-e29b-41d4-a716-446655440000", Some("a2a-task-1"))]
-    #[case::no_colon("no-colon-here", None)]
+    #[case::no_step("a2a-task-1", None)]
+    #[case::empty("", None)]
     #[case::empty_task_id_part(":550e8400-e29b-41d4-a716-446655440000", None)]
     fn execution_task_id_from_execution_id_cases(
         #[case] execution_id: &str,
         #[case] expected: Option<&str>,
     ) {
         assert_eq!(execution_task_id_from_execution_id(execution_id), expected);
+    }
+
+    #[rstest]
+    #[case::step_scoped("a2a-task-1:550e8400-e29b-41d4-a716-446655440000", Some("a2a-task-1"))]
+    #[case::task_only("a2a-task-1", Some("a2a-task-1"))]
+    #[case::malformed_step("a2a-task-1:not-a-uuid", None)]
+    #[case::empty("", None)]
+    #[case::empty_task_id_part(":550e8400-e29b-41d4-a716-446655440000", None)]
+    fn execution_task_id_for_read_from_execution_id_cases(
+        #[case] execution_id: &str,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(
+            execution_task_id_for_read_from_execution_id(execution_id),
+            expected
+        );
     }
 }

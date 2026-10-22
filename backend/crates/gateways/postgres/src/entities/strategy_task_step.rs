@@ -14,8 +14,8 @@ pub struct Model {
     pub phase_key: String,
     #[sea_orm(column_type = "Text")]
     pub label: String,
-    #[sea_orm(column_type = "Text")]
-    pub model: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub model: Option<String>,
     pub status: StrategyTaskStepStatus,
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub item: Option<Json>,
@@ -32,6 +32,14 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub error: Option<String>,
     pub seq: i64,
+    #[sea_orm(column_type = "Text")]
+    pub kind: String,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub item_key: Option<Json>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub input_ref: Option<Json>,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub output_ref: Option<Json>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -5,6 +5,7 @@
 
 mod calendar;
 mod execution_payload;
+mod graph_execution;
 mod movers;
 mod news;
 mod paper_trade;
@@ -500,6 +501,7 @@ impl StrategyServer {
             + Self::news_tool_router()
             + Self::widget_tool_router()
             + Self::execution_payload_tool_router()
+            + Self::graph_execution_tool_router()
     }
 
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
@@ -591,6 +593,7 @@ mod tests {
                 ("add_earnings_target", None),
                 ("add_ref_terms", None),
                 ("add_stock_to_group", None),
+                ("capture_dataset", None),
                 ("check_buyable_qty", Some(true)),
                 ("create_annotation", None),
                 ("create_stock_group", None),
@@ -625,6 +628,7 @@ mod tests {
                 ("read_prediction_stats", Some(true)),
                 ("read_sector_short_ratio", Some(true)),
                 ("read_shareholding_structure", Some(true)),
+                ("read_task_execution_snapshot", Some(true)),
                 ("read_short_sale_reports", Some(true)),
                 ("read_trades", Some(true)),
                 ("read_valuation", Some(true)),
