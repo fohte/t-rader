@@ -176,6 +176,7 @@ interface BuildDepsOptions {
 
 interface McpClientCall {
   readonly executionId: string
+  readonly executionToolRequests?: ExecutionToolRequest[]
   readonly subagentExecution?: {
     readonly executionId: string
     readonly definitionKey: string
@@ -237,6 +238,7 @@ const buildDeps = (
       calls.mcpClientToolModels.push(toolModels)
       const client: McpClientCall = {
         executionId,
+        executionToolRequests: [],
         closed: false,
         ...(subagentExecution !== undefined ? { subagentExecution } : {}),
       }
@@ -245,6 +247,7 @@ const buildDeps = (
         getTools: () => Promise.resolve([...(options.tools ?? [])]),
         callExecutionTool: (request) => {
           calls.executionToolRequests.push(request)
+          client.executionToolRequests?.push(request)
           return Promise.resolve(
             ok(
               request.name === 'execute_operation'
@@ -254,7 +257,17 @@ const buildDeps = (
                     exit_code: 0,
                     stderr: '',
                   }
-                : {},
+                : request.name === 'read_execution_payload'
+                  ? {
+                      payload_id: request.arguments.payload_id,
+                      pointer: request.arguments.pointer,
+                      data: [],
+                      cursor: request.arguments.cursor,
+                      next_cursor: null,
+                      total_count: 0,
+                      digest: 'synthetic-digest',
+                    }
+                  : {},
             ),
           )
         },
@@ -421,6 +434,75 @@ describe('runStrategyAgent', () => {
       status: 'completed',
       message: '1フェーズの実行が完了しました (Work)',
     })
+  })
+
+  it('uses a task-only MCP execution ID when resolving a prior output', async () => {
+    const { deps, calls } = buildDeps({
+      agentGraph: `phases:
+  - key: source
+    label: Source
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-source
+    output: {}
+  - key: consume
+    label: Consume
+    model: demo-consumer-model
+    prompt: Read the selected payload page.
+    input:
+      rows:
+        prior_output:
+          phase: source
+          pointer: /value/items
+          cursor: 1
+          limit: 2
+    output: {}
+`,
+      buildPhaseAgentInvoke: () => Promise.resolve({ structuredResponse: {} }),
+    })
+
+    const result = await runStrategyAgent(deps, buildRunInput())
+    const label = createFirstOccurrenceLabeler('execution-step-id')
+    const taskOnlyClient = calls.mcpClients.find(
+      (client) => client.executionId === 'task-1',
+    )
+    const normalizeExecutionId = (executionId: string): string => {
+      const [taskId, stepId] = executionId.split(':')
+      if (stepId === undefined) return executionId
+      return UUID_PATTERN.test(stepId)
+        ? `${String(taskId)}:${label(stepId)}`
+        : `${String(taskId)}:<invalid-step-id>`
+    }
+    expect(
+      Array.of<unknown>(
+        result,
+        calls.mcpClients.map((client) =>
+          normalizeExecutionId(client.executionId),
+        ),
+        taskOnlyClient?.executionToolRequests ?? [],
+      ),
+    ).toEqual([
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Source → Consume)',
+      },
+      [
+        'task-1:<execution-step-id-1>',
+        'task-1',
+        'task-1:<execution-step-id-2>',
+      ],
+      [
+        {
+          name: 'read_execution_payload',
+          arguments: {
+            payload_id: 'synthetic-output-payload',
+            pointer: '/value/items',
+            cursor: 1,
+            limit: 2,
+          },
+        },
+      ],
+    ])
   })
 
   it('passes phase MCP tools to the compiled-agent builder', async () => {
@@ -990,6 +1072,28 @@ describe('createStrategyAgentDeps', () => {
             'x-strategy-id': 'strategy-1',
             'x-execution-id': 'task-1:step-1',
             'x-tool-models': '{"search_web":"example-model-search"}',
+          },
+        },
+      },
+    })
+  })
+
+  it('uses a task-only execution ID in the strategy MCP header', () => {
+    createStrategyAgentDeps(baseConfig).createMcpClient(
+      'strategy-1',
+      'task-1',
+      {},
+    )
+
+    expect(capturedMcpClientConfig).toEqual({
+      defaultToolTimeout: 150_000,
+      mcpServers: {
+        strategy: {
+          url: 'http://t-rader-backend/mcp/strategy',
+          headers: {
+            'x-strategy-id': 'strategy-1',
+            'x-execution-id': 'task-1',
+            'x-tool-models': '{}',
           },
         },
       },
