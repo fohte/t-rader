@@ -21,12 +21,14 @@ export type ExecutionPayloadManifestPageState =
       totalCount: number
       nextCursor: string | null
       selectedPayloadId: string | null
+      hasPreviousPage?: boolean
     }
 
 interface ExecutionPayloadManifestListProps {
   state: ExecutionPayloadManifestPageState
   onSelectManifest?: (manifest: ExecutionPayloadManifestSummary) => void
   onNextPage?: (cursor: string) => void
+  onPreviousPage?: () => void
 }
 
 function statusLabel(status: string): string {
@@ -57,6 +59,7 @@ export function ExecutionPayloadManifestList({
   state,
   onSelectManifest,
   onNextPage,
+  onPreviousPage,
 }: ExecutionPayloadManifestListProps): React.ReactElement {
   const nextCursor = state.status === 'ready' ? state.nextCursor : null
 
@@ -130,6 +133,19 @@ export function ExecutionPayloadManifestList({
                 </li>
               ))}
             </ul>
+          )}
+          {state.hasPreviousPage === true && onPreviousPage != null && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                onPreviousPage()
+              }}
+            >
+              前の記録を表示
+            </Button>
           )}
           {nextCursor != null && onNextPage != null && (
             <Button

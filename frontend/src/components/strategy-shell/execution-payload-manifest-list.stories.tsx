@@ -8,6 +8,7 @@ const meta = {
   args: {
     onSelectManifest: () => {},
     onNextPage: () => {},
+    onPreviousPage: () => {},
   },
 } satisfies Meta<typeof ExecutionPayloadManifestList>
 
@@ -46,6 +47,7 @@ export const UnreferencedIncompletePayload: Story = {
       totalCount: 9,
       nextCursor: 'sample-cursor',
       selectedPayloadId: '00000000-0000-4000-8000-000000000011',
+      hasPreviousPage: false,
     },
   },
 }
@@ -69,6 +71,7 @@ export const Empty: Story = {
       totalCount: 0,
       nextCursor: null,
       selectedPayloadId: null,
+      hasPreviousPage: false,
     },
   },
 }
@@ -94,6 +97,33 @@ export const Staging: Story = {
       totalCount: 1,
       nextCursor: null,
       selectedPayloadId: null,
+      hasPreviousPage: false,
+    },
+  },
+}
+
+export const PreviousPage: Story = {
+  name: 'an earlier page can be opened after moving forward.',
+  args: {
+    state: {
+      status: 'ready',
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000014',
+          kind: 'output',
+          source: 'sample-source',
+          status: 'sealed',
+          itemCount: 2,
+          byteCount: 16,
+          digest: 'synthetic-page-digest',
+          incompleteReason: null,
+          createdAt: '2030-01-02T03:04:05Z',
+        },
+      ],
+      totalCount: 4,
+      nextCursor: 'sample-next-cursor',
+      selectedPayloadId: null,
+      hasPreviousPage: true,
     },
   },
 }

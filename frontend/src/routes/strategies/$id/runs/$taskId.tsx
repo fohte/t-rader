@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
-import type { ExecutionPayloadManifestSummary } from '#components/strategy-shell/execution-payload-manifest-list'
 import {
   type ExecutionPayloadReference,
   parseAgentGraphPhases,
@@ -10,6 +9,17 @@ import {
 } from '#components/strategy-shell/task-execution-tree'
 import { TaskRunView } from '#components/strategy-shell/task-run-view'
 import { $api } from '#lib/api/client'
+import {
+  mapDefinitionSnapshots,
+  mapDefinitionSnapshotsState,
+  mapPayloadManifestPageState,
+  mapPayloadRead,
+  mapTaskRunTask,
+  nextPayloadManifestPagination,
+  type PayloadManifestPagination,
+  payloadManifestPaginationForTask,
+  previousPayloadManifestPagination,
+} from '#routes/strategies/$id/runs/-task-run-page-model'
 
 const POLL_INTERVAL_MS = 2000
 
@@ -51,9 +61,21 @@ function TaskRunPage() {
   const configQuery = $api.useQuery('get', '/api/config')
   const [selectedPayload, setSelectedPayload] =
     useState<ExecutionPayloadReference | null>(null)
-  const [payloadManifestCursor, setPayloadManifestCursor] = useState<
-    string | undefined
-  >(undefined)
+  const [payloadManifestPagination, setPayloadManifestPagination] =
+    useState<PayloadManifestPagination>(() => ({
+      taskId,
+      cursor: undefined,
+      previousCursors: [],
+    }))
+  const activePayloadManifestPagination = payloadManifestPaginationForTask(
+    payloadManifestPagination,
+    taskId,
+  )
+  useEffect(() => {
+    setPayloadManifestPagination((current) =>
+      payloadManifestPaginationForTask(current, taskId),
+    )
+  }, [taskId])
   const payloadManifestsQuery = $api.useQuery(
     'get',
     '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads',
@@ -61,9 +83,9 @@ function TaskRunPage() {
       params: {
         path: { id, task_id: taskId },
         query:
-          payloadManifestCursor == null
+          activePayloadManifestPagination.cursor == null
             ? {}
-            : { cursor: payloadManifestCursor },
+            : { cursor: activePayloadManifestPagination.cursor },
       },
     },
     {
@@ -110,69 +132,28 @@ function TaskRunPage() {
     () => parseAgentGraphPhases(agentGraphContent ?? ''),
     [agentGraphContent],
   )
-  const payload = payloadQuery.data
-  const payloadManifestPage = payloadManifestsQuery.data
-  const payloadManifestState = payloadManifestsQuery.isPending
-    ? ({ status: 'loading' } as const)
-    : payloadManifestsQuery.isError
-      ? ({ status: 'error' } as const)
-      : ({
-          status: 'ready',
-          items: (payloadManifestPage?.items ?? []).map((manifest) => ({
-            id: manifest.id,
-            kind: manifest.kind,
-            source: manifest.source,
-            status: manifest.status,
-            itemCount: manifest.item_count,
-            byteCount: manifest.byte_count,
-            digest: manifest.digest ?? null,
-            incompleteReason: manifest.incomplete_reason ?? null,
-            createdAt: manifest.created_at,
-          })),
-          totalCount: payloadManifestPage?.total_count ?? 0,
-          nextCursor: payloadManifestPage?.next_cursor ?? null,
-          selectedPayloadId: selectedPayload?.payloadId ?? null,
-        } as const)
-  const definitionSnapshots = (artifacts?.definition_snapshots ?? []).map(
-    (snapshot) => ({
-      definitionKey: snapshot.definition_key,
-      taskId: snapshot.task_id,
-      digest: snapshot.digest,
-      createdAt: snapshot.created_at,
-      definition: snapshot.definition,
-    }),
+  const payloadManifestState = mapPayloadManifestPageState(
+    payloadManifestsQuery.data,
+    {
+      isPending: payloadManifestsQuery.isPending,
+      isError: payloadManifestsQuery.isError,
+      selectedPayloadId: selectedPayload?.payloadId ?? null,
+      hasPreviousPage:
+        activePayloadManifestPagination.previousCursors.length > 0,
+    },
   )
-  const definitionSnapshotsState = artifactsQuery.isPending
-    ? ('loading' as const)
-    : artifactsQuery.isError
-      ? ('error' as const)
-      : ('ready' as const)
-  const payloadRead =
-    selectedPayload == null
-      ? undefined
-      : payload == null
-        ? {
-            status: payloadQuery.isError
-              ? ('error' as const)
-              : ('loading' as const),
-          }
-        : {
-            status: 'ready' as const,
-            manifest: {
-              status: payload.manifest.status,
-              itemCount: payload.manifest.item_count,
-              incompleteReason: payload.manifest.incomplete_reason ?? null,
-            },
-            page:
-              payload.page == null
-                ? null
-                : {
-                    data: payload.page.data,
-                    totalCount: payload.page.total_count,
-                    nextCursor: payload.page.next_cursor ?? null,
-                  },
-          }
+  const definitionSnapshots = mapDefinitionSnapshots(artifacts)
+  const definitionSnapshotsState = mapDefinitionSnapshotsState(
+    artifactsQuery.isPending,
+    artifactsQuery.isError,
+  )
+  const payloadRead = mapPayloadRead(
+    selectedPayload,
+    payloadQuery.data,
+    payloadQuery.isError,
+  )
 
+  const taskViewTask = mapTaskRunTask(task)
   const steps = readTaskSteps(task?.steps)
 
   const notesQuery = $api.useQuery(
@@ -193,19 +174,7 @@ function TaskRunPage() {
   return (
     <TaskRunView
       strategyId={id}
-      task={
-        task == null
-          ? null
-          : {
-              taskId: task.task_id,
-              prompt: task.prompt,
-              source: task.source,
-              phase: task.phase,
-              createdAt: task.created_at,
-              updatedAt: task.updated_at,
-              errorSummary: task.error_summary ?? null,
-            }
-      }
+      task={taskViewTask}
       steps={steps}
       configPhases={configPhases}
       definitionSnapshots={definitionSnapshots}
@@ -224,7 +193,7 @@ function TaskRunPage() {
         )
       }}
       executionPayloadManifests={payloadManifestState}
-      onSelectPayloadManifest={(manifest: ExecutionPayloadManifestSummary) => {
+      onSelectPayloadManifest={(manifest) => {
         setSelectedPayload({
           payloadId: manifest.id,
           label: `${manifest.kind}: ${manifest.source}`,
@@ -233,7 +202,14 @@ function TaskRunPage() {
         })
       }}
       onNextPayloadManifestPage={(cursor) => {
-        setPayloadManifestCursor(cursor)
+        setPayloadManifestPagination((current) =>
+          nextPayloadManifestPagination(current, taskId, cursor),
+        )
+      }}
+      onPreviousPayloadManifestPage={() => {
+        setPayloadManifestPagination((current) =>
+          previousPayloadManifestPagination(current, taskId),
+        )
       }}
       notes={notesQuery.data ?? []}
       notesState={

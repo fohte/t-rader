@@ -53,6 +53,7 @@ describe('ExecutionPayloadManifestList', () => {
           totalCount: 5,
           nextCursor: 'sample-cursor',
           selectedPayloadId: null,
+          hasPreviousPage: false,
         }}
         onSelectManifest={() => {}}
         onNextPage={() => {}}
@@ -87,6 +88,7 @@ describe('ExecutionPayloadManifestList', () => {
           totalCount: 1,
           nextCursor: null,
           selectedPayloadId: null,
+          hasPreviousPage: false,
         }}
         onSelectManifest={onSelectManifest}
       />,
@@ -122,6 +124,7 @@ describe('ExecutionPayloadManifestList', () => {
           totalCount: 5,
           nextCursor: 'sample-cursor',
           selectedPayloadId: null,
+          hasPreviousPage: false,
         }}
         onNextPage={onNextPage}
       />,
@@ -130,5 +133,27 @@ describe('ExecutionPayloadManifestList', () => {
     await user.click(screen.getByRole('button', { name: '次の記録を表示' }))
 
     expect(onNextPage.mock.calls).toEqual([['sample-cursor']])
+  })
+
+  it('requests the previous bounded manifest page', async () => {
+    const user = userEvent.setup()
+    const onPreviousPage = vi.fn()
+    render(
+      <ExecutionPayloadManifestList
+        state={{
+          status: 'ready',
+          items,
+          totalCount: 5,
+          nextCursor: 'sample-cursor',
+          selectedPayloadId: null,
+          hasPreviousPage: true,
+        }}
+        onPreviousPage={onPreviousPage}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '前の記録を表示' }))
+
+    expect(onPreviousPage.mock.calls).toEqual([[]])
   })
 })

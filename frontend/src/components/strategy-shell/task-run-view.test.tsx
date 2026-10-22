@@ -16,6 +16,8 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { TaskRunDefinitionSnapshotPanel } from '#components/strategy-shell/task-run-definition-snapshot-panel'
+import { TaskRunPayloadPanel } from '#components/strategy-shell/task-run-payload-panel'
 import {
   sourceLabel,
   TaskRunView,
@@ -323,7 +325,6 @@ describe('TaskRunView', () => {
           },
         },
       ],
-      definitionSnapshotOpen: true,
     })
 
     await user.click(
@@ -334,6 +335,7 @@ describe('TaskRunView', () => {
         name: 'custom_indicator:sample-indicator',
       }),
     )
+    await user.click(screen.getByText('固定定義本文を表示'))
 
     expect(readDefinitionSnapshotOutput()).toEqual({
       selectedKey: 'custom_indicator:sample-indicator',
@@ -380,5 +382,103 @@ describe('TaskRunView', () => {
       content: null,
       nextPage: null,
     })
+  })
+})
+
+describe('TaskRunDefinitionSnapshotPanel', () => {
+  it('initialSelectedKey で選んだ固定定義の本文を開いて表示する', () => {
+    render(
+      <TaskRunDefinitionSnapshotPanel
+        snapshots={[
+          {
+            definitionKey: 'task_start',
+            taskId: 'sample-task',
+            digest: 'synthetic-task-digest',
+            createdAt: '2026-08-15T00:00:00.000Z',
+            definition: { config: 'synthetic task definition' },
+          },
+          {
+            definitionKey: 'custom_indicator:sample-indicator',
+            taskId: 'sample-task',
+            digest: 'synthetic-indicator-digest',
+            createdAt: '2026-08-15T00:00:01.000Z',
+            definition: {
+              name: 'sample-indicator',
+              code: 'synthetic code body',
+              metadata: { revision: 'synthetic-r1' },
+            },
+          },
+        ]}
+        state="ready"
+        initialSelectedKey="custom_indicator:sample-indicator"
+        definitionBodyOpen
+      />,
+    )
+
+    expect(readDefinitionSnapshotOutput()).toEqual({
+      selectedKey: 'custom_indicator:sample-indicator',
+      metadata: [
+        '定義キー',
+        'custom_indicator:sample-indicator',
+        'SHA-256',
+        'synthetic-indicator-digest',
+        '記録日時',
+        '2026-08-15T00:00:01.000Z',
+        'task ID',
+        'sample-task',
+      ],
+      definition:
+        '{\n  "name": "sample-indicator",\n  "code": "synthetic code body",\n  "metadata": {\n    "revision": "synthetic-r1"\n  }\n}',
+    })
+  })
+})
+
+describe('TaskRunPayloadPanel', () => {
+  it('initialPointerDraft を表示して適用時に先頭 cursor を選ぶ', async () => {
+    const user = userEvent.setup()
+    const onSelectPayload = vi.fn()
+    render(
+      <TaskRunPayloadPanel
+        reference={{
+          payloadId: '00000000-0000-4000-8000-000000000004',
+          label: '出力',
+          pointer: '/value',
+          cursor: 8,
+          limit: 2,
+        }}
+        initialPointerDraft="/value/items"
+        payloadRead={{
+          status: 'ready',
+          manifest: {
+            status: 'sealed',
+            itemCount: 10,
+            incompleteReason: null,
+          },
+          page: {
+            data: { items: ['synthetic-a', 'synthetic-b'] },
+            totalCount: 1,
+            nextCursor: null,
+          },
+        }}
+        onSelectPayload={onSelectPayload}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'JSON Pointer' })).toHaveValue(
+      '/value/items',
+    )
+    await user.click(screen.getByRole('button', { name: 'pointer を適用' }))
+
+    expect(onSelectPayload.mock.calls).toEqual([
+      [
+        {
+          payloadId: '00000000-0000-4000-8000-000000000004',
+          label: '出力',
+          pointer: '/value/items',
+          cursor: 0,
+          limit: 2,
+        },
+      ],
+    ])
   })
 })
