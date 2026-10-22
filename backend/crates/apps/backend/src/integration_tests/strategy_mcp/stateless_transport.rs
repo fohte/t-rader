@@ -82,7 +82,7 @@ fn normalize_payload_ids_and_digests(value: &mut Value) {
         }
         Value::Object(fields) => {
             for (key, item) in fields {
-                if matches!(key.as_str(), "id" | "task_id" | "payload_id" | "purpose") {
+                if matches!(key.as_str(), "id" | "task_id" | "payload_id") {
                     if item.is_string() {
                         *item = json!(format!("<{key}>"));
                     }
