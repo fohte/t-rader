@@ -113,6 +113,31 @@ describe('GraphNodeView', () => {
     expect(container.querySelector('button')).toBeNull()
   })
 
+  it('dagre のノード幅と高さを CSS 変数に渡す', () => {
+    const { container } = renderNode({ id: 'a', label: 'A' })
+    const node = container.querySelector<HTMLElement>(
+      '[data-slot="graph-node"]',
+    )
+
+    expect(node?.style.cssText).toEqual(
+      '--graph-node-width: 160px; --graph-node-min-height: 38px;',
+    )
+  })
+
+  it('chain の値バーは高さを CSS 変数、幅を固定 class で表す', () => {
+    const { container } = renderNode(
+      { id: 'a', label: 'A', value: 50 },
+      { layout: 'chain', maxNodeValue: 100 },
+    )
+    const bar = container.querySelector<HTMLElement>(
+      '[data-slot="graph-node-value-bar"]',
+    )
+
+    expect(bar?.outerHTML).toEqual(
+      '<div data-slot="graph-node-value-bar" class="bg-muted-foreground h-(--graph-node-bar-height) w-2" style="--graph-node-bar-height: 32px;"></div>',
+    )
+  })
+
   it.each<[Layout, boolean]>([
     ['chain', true],
     ['flow', false],
@@ -125,9 +150,9 @@ describe('GraphNodeView', () => {
         { id: 'a', label: 'A', value: 50 },
         { layout, maxNodeValue: 100 },
       )
-      expect(container.querySelectorAll('.bg-primary').length).toBe(
-        expectBar ? 1 : 0,
-      )
+      expect(
+        container.querySelectorAll('[data-slot="graph-node-value-bar"]').length,
+      ).toBe(expectBar ? 1 : 0)
     },
   )
 
@@ -136,6 +161,8 @@ describe('GraphNodeView', () => {
       { id: 'a', label: 'A' },
       { layout: 'chain', maxNodeValue: 100 },
     )
-    expect(container.querySelectorAll('.bg-primary').length).toBe(0)
+    expect(
+      container.querySelectorAll('[data-slot="graph-node-value-bar"]').length,
+    ).toBe(0)
   })
 })

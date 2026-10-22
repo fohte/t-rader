@@ -103,8 +103,16 @@ export function buildDagreLayout(
       parentId: node.parent,
       extent: node.parent != null ? 'parent' : undefined,
       data: node,
-      // group ノードは React Flow が親ノードの自動サイズ調整をしないため、明示が必要
-      ...(isGroup ? { style: { width: abs.width, height: abs.height } } : {}),
+      // React Flow は親ノードを自動サイズ調整しないため、dagre の算出寸法を外枠の CSS 変数に渡す。
+      ...(isGroup
+        ? {
+            className: 'w-(--graph-group-width) h-(--graph-group-height)',
+            style: {
+              '--graph-group-width': `${String(abs.width)}px`,
+              '--graph-group-height': `${String(abs.height)}px`,
+            },
+          }
+        : {}),
     }
   })
 

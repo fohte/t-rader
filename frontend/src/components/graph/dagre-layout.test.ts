@@ -209,7 +209,11 @@ describe('buildDagreLayout', () => {
           parentId: undefined,
           extent: undefined,
           data: { id: 'group1', label: 'Group 1' },
-          style: { width: 250, height: 98 },
+          className: 'w-(--graph-group-width) h-(--graph-group-height)',
+          style: {
+            '--graph-group-width': '250px',
+            '--graph-group-height': '98px',
+          },
         },
         {
           id: 'child',
