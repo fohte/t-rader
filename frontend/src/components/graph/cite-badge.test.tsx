@@ -17,12 +17,16 @@ describe('CiteBadge', () => {
   it('クリックすると cite の全文を Popover に表示する', async () => {
     const user = userEvent.setup()
     render(<CiteBadge number={1} cite="架空の出典テキスト" />)
+    const citationTexts = [
+      screen.queryByText('架空の出典テキスト')?.textContent ?? null,
+    ]
 
     await user.click(screen.getByRole('button', { name: '出典 1 を表示' }))
-
-    expect(screen.getByText('架空の出典テキスト').textContent).toEqual(
-      '架空の出典テキスト',
+    citationTexts.push(
+      screen.queryByText('架空の出典テキスト')?.textContent ?? null,
     )
+
+    expect(citationTexts).toEqual([null, '架空の出典テキスト'])
   })
 
   it('クリックを親のグラフ操作へ伝播させない', async () => {
