@@ -12,8 +12,8 @@ use super::super::use_cases::UsStockBarsIngestUseCases;
 use super::super::write_throttle::WriteThrottle;
 use super::request_budget::RequestBudget;
 use super::{
-    BatchIngestContext, IngestContext, SIP_REFETCH_MAX_ROWS_PER_RUN, UsStockBarRange,
-    UsStockBarTimeframe,
+    BatchIngestContext, IngestContext, SIP_REFETCH_MAX_ROWS_PER_RUN, SipRefetchLimits,
+    UsStockBarRange, UsStockBarTimeframe,
 };
 
 const MAX_REQUESTS_PER_RUN: usize = usize::MAX;
@@ -53,23 +53,14 @@ impl UsStockBarsIngestUseCases {
             stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
             return Ok(UsStockBarsIngestResult::new(stats, None));
         }
-        let remaining = budget
-            .deadline()
-            .saturating_duration_since(self.clock.instant());
-        let lease = tokio::select! {
-            biased;
-            result = self.us_stock_sip_refetch_lease.acquire(Duration::ZERO) => result,
-            _ = self.clock.sleep(remaining) => Ok(None),
-        };
-        let _lease_guard = match lease {
+        let _lease_guard = match self
+            .us_stock_sip_refetch_lease
+            .acquire(Duration::ZERO)
+            .await
+        {
             Ok(Some(guard)) => guard,
             Ok(None) => {
-                if self.clock.instant() >= budget.deadline() {
-                    budget.mark_time_budget_exhausted();
-                    stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
-                } else {
-                    stats.interrupted_reason = Some("sip_refetch_lease_busy".to_owned());
-                }
+                stats.interrupted_reason = Some("sip_refetch_lease_busy".to_owned());
                 return Ok(UsStockBarsIngestResult::new(stats, None));
             }
             Err(error) => {
@@ -84,8 +75,10 @@ impl UsStockBarsIngestUseCases {
             budget,
             stats: UsStockBarsIngestStats::default(),
             write_throttle: WriteThrottle::default(),
-            sip_refetch_max_rows_per_hour: Some(config.max_rows_per_hour),
-            sip_refetch_max_rows_per_run: Some(SIP_REFETCH_MAX_ROWS_PER_RUN),
+            sip_refetch: Some(SipRefetchLimits {
+                max_rows_per_hour: config.max_rows_per_hour,
+                max_rows_per_run: SIP_REFETCH_MAX_ROWS_PER_RUN,
+            }),
         };
         let refetch_result = self
             .refetch_pending_targets(source, now, config, &mut context)
@@ -352,7 +345,7 @@ mod tests {
     use crate::{
         bars::clock::BarsIngestClock,
         bars::{
-            BarsUseCases, SharedBarsRepository, SharedUsStockBarsWriteLock,
+            BarsUseCases, SharedBarsRepository, SharedSipRefetchLease, SharedUsStockBarsWriteLock,
             SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
             UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsIngestUseCases,
             UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockSipBarRefetchConfig,
@@ -362,6 +355,12 @@ mod tests {
         persistence::PersistenceError,
         unit_of_work::{FakeUnitOfWork, SharedUnitOfWork},
     };
+
+    use super::super::{
+        BatchIngestContext, IngestContext, SIP_REFETCH_MAX_ROWS_PER_RUN, SipRefetchLimits,
+        SipRefetchProgressContext, UsStockBarRange, UsStockBarTimeframe,
+    };
+    use super::{RequestBudget, WriteThrottle};
 
     #[derive(Default)]
     struct FakeSource {
@@ -517,6 +516,8 @@ mod tests {
 
     struct ImmediateWriteLockGuard;
 
+    struct BusyWriteLock;
+
     struct TrackingWriteLock {
         active_write_locks: Arc<AtomicUsize>,
     }
@@ -545,6 +546,16 @@ mod tests {
     }
 
     #[async_trait]
+    impl UsStockBarsWriteLock for BusyWriteLock {
+        async fn acquire(
+            &self,
+            _wait_timeout: Duration,
+        ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
+            Ok(None)
+        }
+    }
+
+    #[async_trait]
     impl UsStockBarsWriteLock for TrackingWriteLock {
         async fn acquire(
             &self,
@@ -565,6 +576,10 @@ mod tests {
     }
 
     fn harness() -> Harness {
+        harness_with_lease(SharedSipRefetchLease::new(Arc::new(ImmediateWriteLock)))
+    }
+
+    fn harness_with_lease(lease: SharedSipRefetchLease) -> Harness {
         let repository = Arc::new(crate::bars::FakeBarsRepository::new());
         let repository_trait: SharedBarsRepository = repository.clone();
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
@@ -573,7 +588,6 @@ mod tests {
         let clock = Arc::new(FakeClock::new(active_write_locks.clone()));
         let write_lock: SharedUsStockBarsWriteLock =
             Arc::new(TrackingWriteLock { active_write_locks });
-        let lease: SharedUsStockBarsWriteLock = Arc::new(ImmediateWriteLock);
         Harness {
             use_cases: UsStockBarsIngestUseCases::with_clock(
                 BarsUseCases::new(unit_of_work_trait, repository_trait),
@@ -587,7 +601,8 @@ mod tests {
         }
     }
 
-    fn without_runtime_throttle_time(mut stats: UsStockBarsIngestStats) -> UsStockBarsIngestStats {
+    fn without_runtime_waits(mut stats: UsStockBarsIngestStats) -> UsStockBarsIngestStats {
+        stats.write_lock_wait_ms = 0;
         stats.write_throttle_wait_ms = 0;
         stats
     }
@@ -610,6 +625,156 @@ mod tests {
         Utc.with_ymd_and_hms(2026, 10, 18, 16, 30, 0)
             .single()
             .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn skips_source_requests_when_the_sip_lease_is_busy() {
+        let harness = harness_with_lease(SharedSipRefetchLease::new(Arc::new(BusyWriteLock)));
+        let result = harness
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &harness.source,
+                fixed_now(),
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 10,
+                },
+            )
+            .await
+            .map(|result| without_runtime_waits(result.stats))
+            .map_err(|error| error.to_string());
+        let source_requests = harness.source.calls.lock().await.clone();
+
+        assert_eq!(
+            (result, source_requests),
+            (
+                Ok::<_, String>(UsStockBarsIngestStats {
+                    interrupted_reason: Some("sip_refetch_lease_busy".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                }),
+                Vec::<UsStockBarQuery>::new(),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_page_that_would_exceed_the_sip_run_row_limit() {
+        let harness = harness();
+        let instrument_id = "DEMO-STOCK";
+        let range = UsStockBarRange {
+            from: fixed_now(),
+            to: fixed_now() + chrono::Duration::days(1),
+        };
+        let page_bars = (0..1_000)
+            .map(|index| {
+                bar(
+                    instrument_id,
+                    Timeframe::Minute,
+                    range.from + chrono::Duration::seconds(i64::from(index)),
+                )
+            })
+            .collect::<Vec<_>>();
+        harness
+            .source
+            .scripted_pages
+            .lock()
+            .await
+            .push(UsStockBarPage {
+                bars: page_bars,
+                next_page_token: Some("page-next".to_owned()),
+                skipped_instruments: Vec::new(),
+            });
+        let cursor = UsStockSipBarRefetchCursor {
+            timeframe: UsStockSipBarRefetchTimeframe::Minute,
+            range_from: range.from,
+            range_to: range.to,
+            page_token: Some("page-current".to_owned()),
+        };
+        harness
+            .repository
+            .us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .insert(instrument_id.to_owned(), cursor.clone());
+        let mut context = IngestContext {
+            budget: RequestBudget::new(10, Duration::from_secs(60 * 60), harness.clock.instant()),
+            stats: UsStockBarsIngestStats {
+                daily_bars_upserted: 999_500,
+                ..UsStockBarsIngestStats::default()
+            },
+            write_throttle: WriteThrottle::default(),
+            sip_refetch: Some(SipRefetchLimits {
+                max_rows_per_hour: 1_000_000,
+                max_rows_per_run: SIP_REFETCH_MAX_ROWS_PER_RUN,
+            }),
+        };
+        let outcome = {
+            let mut batch_context = BatchIngestContext::new(&mut context);
+            batch_context.sip_refetch_progress = Some(SipRefetchProgressContext {
+                instrument_id: instrument_id.to_owned(),
+                resume_after: Some(cursor.clone()),
+            });
+            batch_context.page_token = cursor.page_token.clone();
+            harness
+                .use_cases
+                .ingest_batch(
+                    &harness.source,
+                    &[instrument_id.to_owned()],
+                    UsStockBarTimeframe::Minute,
+                    range,
+                    &mut batch_context,
+                )
+                .await
+                .map(|outcome| (outcome.completed, outcome.requested))
+                .map_err(|error| error.to_string())
+        };
+        let reserved_rows = *harness
+            .repository
+            .us_stock_sip_refetch_rows_reserved
+            .lock()
+            .await;
+        let saved_cursors = harness
+            .repository
+            .us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .clone();
+        let stored_bars = harness.repository.bars.lock().await.clone();
+        let source_requests = harness.source.calls.lock().await.clone();
+        let page_limits = harness.source.page_limits.lock().await.clone();
+        let stats = without_runtime_waits(context.stats);
+
+        assert_eq!(
+            (
+                outcome,
+                stats,
+                reserved_rows,
+                saved_cursors,
+                stored_bars,
+                source_requests,
+                page_limits,
+            ),
+            (
+                Ok::<_, String>((false, true)),
+                UsStockBarsIngestStats {
+                    daily_bars_upserted: 999_500,
+                    requests_attempted: 1,
+                    interrupted_reason: Some("sip_refetch_run_row_limit_reached".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                0,
+                HashMap::from([(instrument_id.to_owned(), cursor)]),
+                Vec::new(),
+                vec![UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Minute,
+                    from: range.from,
+                    to: range.to,
+                    page_token: Some("page-current".to_owned()),
+                }],
+                vec![Some(1_000)],
+            ),
+        );
     }
 
     #[rstest]
@@ -700,7 +865,7 @@ mod tests {
 
         assert_eq!(
             (
-                without_runtime_throttle_time(result.stats),
+                without_runtime_waits(result.stats),
                 queries,
                 page_limits,
                 pacing_millis,
@@ -929,9 +1094,9 @@ mod tests {
         };
         assert_eq!(
             (
-                without_runtime_throttle_time(first.stats),
+                without_runtime_waits(first.stats),
                 cursor_after_first,
-                without_runtime_throttle_time(second.stats),
+                without_runtime_waits(second.stats),
                 queries,
                 completed,
             ),

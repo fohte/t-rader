@@ -27,7 +27,10 @@ pub use us_stock_source::{
     UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
 };
 pub use use_cases::{BarsUseCases, UsStockBarsIngestUseCases};
-pub use write_lock::{SharedUsStockBarsWriteLock, UsStockBarsWriteLock, UsStockBarsWriteLockGuard};
+pub use write_lock::{
+    SharedSipRefetchLease, SharedUsStockBarsWriteLock, UsStockBarsWriteLock,
+    UsStockBarsWriteLockGuard,
+};
 
 use chrono::{DateTime, Duration, Months, Timelike, Utc};
 

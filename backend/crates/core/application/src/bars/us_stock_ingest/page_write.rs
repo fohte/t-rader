@@ -5,9 +5,8 @@ use crate::bars::types::UsStockBarsIngestStats;
 use crate::bars::use_cases::UsStockBarsIngestUseCases;
 use crate::bars::write_throttle::WriteThrottle;
 
-use super::SipRefetchPageWrite;
-use super::UsStockBarTimeframe;
 use super::request_budget::RequestBudget;
+use super::{SIP_REFETCH_RUN_ROW_LIMIT_REACHED, SipRefetchPageWrite, UsStockBarTimeframe};
 
 impl UsStockBarsIngestUseCases {
     pub(super) async fn persist_bars(
@@ -31,14 +30,9 @@ impl UsStockBarsIngestUseCases {
         if let Some(write) = sip_refetch_write.as_ref()
             && count > 0
         {
-            let rows_written = stats
-                .daily_bars_upserted
-                .saturating_add(stats.hourly_bars_upserted)
-                .saturating_add(stats.minute_bars_upserted);
-            let rows_written = u64::try_from(rows_written).unwrap_or(u64::MAX);
             let rows = u64::try_from(count).unwrap_or(u64::MAX);
-            if rows_written.saturating_add(rows) > write.max_rows_per_run {
-                stats.interrupted_reason = Some("sip_refetch_run_row_limit_reached".to_owned());
+            if stats.total_rows_upserted().saturating_add(rows) > write.max_rows_per_run {
+                stats.interrupted_reason = Some(SIP_REFETCH_RUN_ROW_LIMIT_REACHED.to_owned());
                 return Ok(false);
             }
         }

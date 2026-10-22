@@ -10,7 +10,7 @@ use super::clock::{BarsIngestClock, SystemBarsIngestClock};
 use super::error::BarsUseCaseError;
 use super::repository::SharedBarsRepository;
 use super::types::{BarsByInstrumentsQuery, BarsQuery};
-use super::write_lock::SharedUsStockBarsWriteLock;
+use super::write_lock::{SharedSipRefetchLease, SharedUsStockBarsWriteLock};
 
 #[derive(Clone)]
 pub struct BarsUseCases {
@@ -45,7 +45,7 @@ impl BarsUseCases {
 pub struct UsStockBarsIngestUseCases {
     pub(super) bars: BarsUseCases,
     pub(super) us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
-    pub(super) us_stock_sip_refetch_lease: SharedUsStockBarsWriteLock,
+    pub(super) us_stock_sip_refetch_lease: SharedSipRefetchLease,
     pub(super) clock: Arc<dyn BarsIngestClock>,
     pub(super) ingest_run: Option<(Uuid, SharedIngestRunLog)>,
 }
@@ -54,7 +54,7 @@ impl UsStockBarsIngestUseCases {
     pub fn new(
         bars: BarsUseCases,
         us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
-        us_stock_sip_refetch_lease: SharedUsStockBarsWriteLock,
+        us_stock_sip_refetch_lease: SharedSipRefetchLease,
     ) -> Self {
         Self::with_clock(
             bars,
@@ -67,7 +67,7 @@ impl UsStockBarsIngestUseCases {
     pub(super) fn with_clock(
         bars: BarsUseCases,
         us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
-        us_stock_sip_refetch_lease: SharedUsStockBarsWriteLock,
+        us_stock_sip_refetch_lease: SharedSipRefetchLease,
         clock: Arc<dyn BarsIngestClock>,
     ) -> Self {
         Self {

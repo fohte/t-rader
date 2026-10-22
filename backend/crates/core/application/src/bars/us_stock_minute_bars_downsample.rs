@@ -113,8 +113,9 @@ mod tests {
     use std::time::Duration as StdDuration;
 
     use crate::bars::{
-        BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock, UsStockBarsIngestUseCases,
-        UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockMinuteBarsDownsampleStats,
+        BarsUseCases, FakeBarsRepository, SharedSipRefetchLease, SharedUsStockBarsWriteLock,
+        UsStockBarsIngestUseCases, UsStockBarsWriteLock, UsStockBarsWriteLockGuard,
+        UsStockMinuteBarsDownsampleStats,
     };
     use crate::persistence::PersistenceError;
 
@@ -219,7 +220,7 @@ mod tests {
         let use_cases = UsStockBarsIngestUseCases::new(
             bars_use_cases,
             shared_write_lock.clone(),
-            shared_write_lock,
+            SharedSipRefetchLease::new(shared_write_lock),
         );
         DownsampleFixture {
             use_cases,

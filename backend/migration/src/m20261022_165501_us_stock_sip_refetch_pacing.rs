@@ -1,17 +1,12 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
 enum UsStockSipBarRefetchWriteBudget {
     Table,
     NextAllowedAt,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261022_165501_us_stock_sip_refetch_pacing"
-    }
 }
 
 #[async_trait::async_trait]

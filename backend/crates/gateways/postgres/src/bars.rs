@@ -1757,7 +1757,7 @@ mod tests {
         let result = UsStockBarsIngestUseCases::new(
             BarsUseCases::new(unit_of_work, repository.clone()),
             write_lock.clone(),
-            write_lock,
+            core_application::bars::SharedSipRefetchLease::new(write_lock),
         )
         .downsample_old_us_stock_minute_bars(now)
         .await
