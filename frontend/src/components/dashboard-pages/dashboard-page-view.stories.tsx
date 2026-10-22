@@ -82,6 +82,22 @@ const tableQueries: WidgetQueryDefinitions = {
   metric_b: { metric: 'mkt_cap', by: 'stock' },
 }
 
+const tableResults: WidgetQueryResponse = {
+  as_of: '2099-01-05',
+  rows: [
+    {
+      key: 'stock:DEMO-A',
+      name: 'サンプル対象 A',
+      values: { metric_a: 1240, metric_b: 24 },
+    },
+    {
+      key: 'stock:DEMO-B',
+      name: 'サンプル対象 B',
+      values: { metric_a: null, metric_b: 18 },
+    },
+  ],
+}
+
 const tableWidget: DashboardWidgetPageState = {
   key: 'sample-table',
   title: 'サンプル表',
@@ -99,21 +115,12 @@ const tableWidget: DashboardWidgetPageState = {
   },
   isPending: false,
   errorMessage: null,
-  result: {
-    as_of: '2099-01-05',
-    rows: [
-      {
-        key: 'stock:DEMO-A',
-        name: 'サンプル対象 A',
-        values: { metric_a: 1240, metric_b: 24 },
-      },
-      {
-        key: 'stock:DEMO-B',
-        name: 'サンプル対象 B',
-        values: { metric_a: null, metric_b: 18 },
-      },
-    ],
-  },
+  result: tableResults,
+}
+
+const previewTableWidget: DashboardWidgetPageState = {
+  ...tableWidget,
+  result: { ...tableResults, as_of: '2099-01-19' },
 }
 
 const groupLineWidget: DashboardWidgetPageState = {
@@ -232,7 +239,7 @@ export const PreviewLineAndTable: Story = {
       ...readyState,
       title: '期間推移のプレビュー',
       asOf: '2099-01-19',
-      widgets: [groupLineWidget, tableWidget],
+      widgets: [groupLineWidget, previewTableWidget],
     },
     showDashboardListLink: false,
   },
