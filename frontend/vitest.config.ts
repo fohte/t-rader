@@ -5,37 +5,11 @@ import { BLOCK_EXTERNAL_REQUESTS_ARGS } from '@fohte/storybook-addon/vitest-plug
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig, mergeConfig } from 'vitest/config'
-import type { BrowserCommand } from 'vitest/node'
 
 import viteConfig from './vite.config'
+import { tapLinkOnTouch } from './vitest/browser-commands'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
-
-const tapLinkOnTouch: BrowserCommand<[selector: string]> = async (
-  context,
-  selector,
-) => {
-  if (context.provider.name !== 'playwright') {
-    return Promise.reject(new Error('Touch link tests require Playwright'))
-  }
-
-  const link = (await context.frame()).locator(selector)
-  const position = await link.evaluate((element) => {
-    const bounds = element.getBoundingClientRect()
-    const firstRect = element.getClientRects().item(0)
-    if (firstRect == null) return null
-
-    return {
-      x: firstRect.left - bounds.left + firstRect.width / 2,
-      y: firstRect.top - bounds.top + firstRect.height / 2,
-    }
-  })
-  if (position == null) {
-    return Promise.reject(new Error('The touch target has no visible bounds'))
-  }
-
-  await link.tap({ position })
-}
 
 export default mergeConfig(
   viteConfig,
@@ -57,9 +31,7 @@ export default mergeConfig(
           test: {
             name: 'browser',
             include: ['src/**/*.browser.test.{ts,tsx}'],
-            exclude: [
-              'src/components/note-detail/markdown-body-links.browser.test.tsx',
-            ],
+            exclude: ['src/**/*.touch.browser.test.{ts,tsx}'],
             browser: {
               enabled: true,
               provider: playwright({
@@ -75,9 +47,7 @@ export default mergeConfig(
           extends: true,
           test: {
             name: 'browser-touch',
-            include: [
-              'src/components/note-detail/markdown-body-links.browser.test.tsx',
-            ],
+            include: ['src/**/*.touch.browser.test.{ts,tsx}'],
             browser: {
               enabled: true,
               provider: playwright({
