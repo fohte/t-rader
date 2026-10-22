@@ -29,47 +29,53 @@ impl StrategyServer {
             request.name.as_ref(),
             "read_task_execution_snapshot" | "read_execution_payload"
         );
+        let is_step_scoped = execution_step_id_from_ctx(&context).is_some();
         let reserved_call = if let Some(access) = self
             .authorize_budget_execution(&context, allow_task_only_read)
             .await?
         {
-            let execution_id = execution_id_from_ctx(&context).ok_or_else(|| {
-                invalid_params("x-execution-id is required for budgeted tool calls")
-            })?;
-            let call_id = format!("{execution_id}:{}", context.id);
-            let subagent = subagent_identity_from_ctx(&context)?;
-            let fingerprint = request_fingerprint(&serde_json::json!({
-                "name": request.name.as_ref(),
-                "arguments": request.arguments.clone(),
-            }))?;
-            let default_limit = match request.name.as_ref() {
-                super::read_page::TOOL_NAME => {
-                    Some(u64::from(super::read_page::READ_PAGE_MAX_CALLS_PER_TASK))
-                }
-                super::web_search::TOOL_NAME => {
-                    Some(u64::from(super::web_search::SEARCH_WEB_MAX_CALLS_PER_TASK))
-                }
-                _ => None,
-            };
-            let reservation = self
-                .dependencies
-                .execution_budgets
-                .reserve_tool_call(
-                    &access,
-                    call_id.clone(),
-                    fingerprint,
-                    request.name.as_ref(),
-                    default_limit,
-                    subagent.as_ref().map(|(id, key)| {
-                        core_application::execution_budget::SubagentExecutionIdentity {
-                            execution_id: id,
-                            definition_key: key,
-                        }
-                    }),
-                )
-                .await
-                .map_err(execution_budget_error_to_mcp)?;
-            Some((access, call_id, reservation))
+            // Task-only readers use independent MCP clients whose request IDs can repeat.
+            if allow_task_only_read && !is_step_scoped {
+                None
+            } else {
+                let execution_id = execution_id_from_ctx(&context).ok_or_else(|| {
+                    invalid_params("x-execution-id is required for budgeted tool calls")
+                })?;
+                let call_id = format!("{execution_id}:{}", context.id);
+                let subagent = subagent_identity_from_ctx(&context)?;
+                let fingerprint = request_fingerprint(&serde_json::json!({
+                    "name": request.name.as_ref(),
+                    "arguments": request.arguments.clone(),
+                }))?;
+                let default_limit = match request.name.as_ref() {
+                    super::read_page::TOOL_NAME => {
+                        Some(u64::from(super::read_page::READ_PAGE_MAX_CALLS_PER_TASK))
+                    }
+                    super::web_search::TOOL_NAME => {
+                        Some(u64::from(super::web_search::SEARCH_WEB_MAX_CALLS_PER_TASK))
+                    }
+                    _ => None,
+                };
+                let reservation = self
+                    .dependencies
+                    .execution_budgets
+                    .reserve_tool_call(
+                        &access,
+                        call_id.clone(),
+                        fingerprint,
+                        request.name.as_ref(),
+                        default_limit,
+                        subagent.as_ref().map(|(id, key)| {
+                            core_application::execution_budget::SubagentExecutionIdentity {
+                                execution_id: id,
+                                definition_key: key,
+                            }
+                        }),
+                    )
+                    .await
+                    .map_err(execution_budget_error_to_mcp)?;
+                Some((access, call_id, reservation))
+            }
         } else {
             None
         };

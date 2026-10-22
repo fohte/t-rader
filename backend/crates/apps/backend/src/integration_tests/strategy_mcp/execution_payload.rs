@@ -2,6 +2,7 @@ use std::future::pending;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use axum::http::{HeaderMap, HeaderValue};
 use chrono::Utc;
 use core_application::{
     kata_exec::{ExecFile, ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor},
@@ -25,6 +26,7 @@ use sea_orm::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::super::mcp_tool::call_tool_output_with_headers_and_id;
 use super::{StrategyServer, tests_common};
 
 const DATASET_REVISION: &str = "sample-revision-a";
@@ -317,33 +319,42 @@ async fn task_only_mcp_reads_authorize_snapshot_and_sealed_payload_with_fixed_de
         .expect("write sealed synthetic payload");
     let server = tests_common::build_server(db.clone());
     let task_only_id = Some(a2a_task_id.clone());
-    let snapshot_read: Value = server
-        .invoke::<_, Value>(
-            "read_task_execution_snapshot",
-            strategy_id,
-            json!({}),
-            task_only_id.clone(),
-            None,
-        )
-        .await
-        .expect("read task-only execution snapshot")
-        .into_value();
-    let payload_page: Value = server
-        .invoke::<_, Value>(
-            "read_execution_payload",
-            strategy_id,
-            json!({
-                "payload_id": payload.id,
-                "pointer": "/value/items",
-                "cursor": 0,
-                "limit": 10,
-            }),
-            task_only_id.clone(),
-            None,
-        )
-        .await
-        .expect("read task-only sealed payload")
-        .into_value();
+    let mut task_only_headers = HeaderMap::new();
+    task_only_headers.insert(
+        "x-strategy-id",
+        HeaderValue::from_str(&strategy_id.to_string()).expect("valid strategy ID"),
+    );
+    task_only_headers.insert(
+        "x-execution-id",
+        HeaderValue::from_str(&a2a_task_id).expect("valid task-only execution ID"),
+    );
+    task_only_headers.insert(
+        "x-strategy-task-id",
+        HeaderValue::from_str(&task_id.to_string()).expect("valid task UUID"),
+    );
+    let snapshot_read: Value = call_tool_output_with_headers_and_id(
+        server.entrypoint_server(),
+        "read_task_execution_snapshot",
+        json!({}),
+        rmcp::model::NumberOrString::String("same-task-read-request-id".into()),
+        task_only_headers.clone(),
+    )
+    .await
+    .expect("read task-only execution snapshot");
+    let payload_page: Value = call_tool_output_with_headers_and_id(
+        server.entrypoint_server(),
+        "read_execution_payload",
+        json!({
+            "payload_id": payload.id,
+            "pointer": "/value/items",
+            "cursor": 0,
+            "limit": 10,
+        }),
+        rmcp::model::NumberOrString::String("same-task-read-request-id".into()),
+        task_only_headers,
+    )
+    .await
+    .expect("read task-only sealed payload");
     let unknown_task = server
         .invoke_with_strategy_task_id::<_, Value>(
             "read_task_execution_snapshot",
