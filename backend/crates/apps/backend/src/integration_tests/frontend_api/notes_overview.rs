@@ -416,6 +416,7 @@ async fn list_note_overviews_separates_representative_versions_and_filters_by_th
         get_json(&server, "/api/notes/overview?view=pending&tag=current-tag").await;
     let pending_by_latest_tag =
         get_json(&server, "/api/notes/overview?view=pending&tag=pending-tag").await;
+    let invalid_view = get_json(&server, "/api/notes/overview?view=unknown").await;
     let actual = vec![
         (all.0, normalize_note_overviews(all.1, &labels)),
         (pending.0, normalize_note_overviews(pending.1, &labels)),
@@ -436,6 +437,7 @@ async fn list_note_overviews_separates_representative_versions_and_filters_by_th
             pending_by_latest_tag.0,
             normalize_note_overviews(pending_by_latest_tag.1, &labels),
         ),
+        invalid_view,
     ];
 
     let current_only = expected_overview(
@@ -586,6 +588,10 @@ async fn list_note_overviews_separates_representative_versions_and_filters_by_th
         (axum::http::StatusCode::OK, json!([version_tag_current])),
         (axum::http::StatusCode::OK, json!([])),
         (axum::http::StatusCode::OK, json!([pending_version_tag])),
+        (
+            axum::http::StatusCode::BAD_REQUEST,
+            json!({ "error": "view must be all or pending" }),
+        ),
     ];
     assert_eq!(actual, expected);
 }
