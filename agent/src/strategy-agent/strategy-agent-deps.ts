@@ -1,6 +1,7 @@
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
 
+import { isRecord } from '#errors'
 import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
 import { createDefaultBuildPhaseAgent } from '#strategy-agent/compiled-phase-agent'
 import { createReasoningContentAwareFetch } from '#strategy-agent/reasoning-content-middleware'
@@ -65,7 +66,7 @@ export const createStrategyAgentDeps = (
     })
     const callBudgetOperation = async (
       argumentsValue: Record<string, unknown>,
-    ): Promise<void> => {
+    ): Promise<Record<string, unknown>> => {
       const strategyClient = await client.getClient('strategy')
       if (strategyClient === undefined) {
         return Promise.reject(new Error('strategy MCP client is unavailable'))
@@ -77,25 +78,50 @@ export const createStrategyAgentDeps = (
       if (result.isError === true) {
         return Promise.reject(new Error('execution budget operation failed'))
       }
+      if (!isRecord(result.structuredContent)) {
+        return Promise.reject(new Error('execution budget response is invalid'))
+      }
+      return result.structuredContent
     }
     return {
       getTools: () => client.getTools(),
-      reserveModelCall: (callId) =>
-        callBudgetOperation({ action: 'reserve_model_call', call_id: callId }),
-      reserveSubagentRun: (input) =>
-        callBudgetOperation({
+      reserveModelCall: async (callId) => {
+        const result = await callBudgetOperation({
+          action: 'reserve_model_call',
+          call_id: callId,
+        })
+        if (result['available'] !== true) {
+          return Promise.reject(
+            new Error('model call reservation is unavailable'),
+          )
+        }
+      },
+      reserveSubagentRun: async (input) => {
+        const result = await callBudgetOperation({
           action: 'reserve_subagent_run',
           call_id: input.callId,
           phase_key: input.phaseKey,
           parent_execution_step_id: input.parentExecutionStepId,
           definition_key: input.definitionKey,
-        }),
-      transitionReservation: (callId, state) =>
-        callBudgetOperation({
+        })
+        if (result['available'] !== true) {
+          return Promise.reject(
+            new Error('subagent run reservation is unavailable'),
+          )
+        }
+      },
+      transitionReservation: async (callId, state) => {
+        const result = await callBudgetOperation({
           action: 'transition',
           call_id: callId,
           state,
-        }),
+        })
+        if (state === 'consumed' && result['transitioned'] !== true) {
+          return Promise.reject(
+            new Error('execution reservation was already claimed'),
+          )
+        }
+      },
       close: () => client.close(),
     }
   },

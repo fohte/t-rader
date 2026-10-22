@@ -2,7 +2,9 @@ use std::ops::Deref;
 
 use axum::http::{HeaderMap, HeaderValue};
 use core_application::strategy_scope::StrategyScope;
+use gateway_postgres::entities::strategy_task;
 use rmcp::ErrorData as McpError;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -17,11 +19,25 @@ use super::test_api::{earnings_targets, ref_terms, refs, stock_groups, stock_reg
 #[derive(Clone)]
 pub(super) struct StrategyServer {
     server: EntrypointStrategyServer,
+    db: gateway_postgres::DatabaseHandle,
+    default_execution_task_id: Option<String>,
 }
 
 impl StrategyServer {
-    pub(super) fn new(server: EntrypointStrategyServer) -> Self {
-        Self { server }
+    pub(super) fn new(
+        server: EntrypointStrategyServer,
+        db: gateway_postgres::DatabaseHandle,
+    ) -> Self {
+        Self {
+            server,
+            db,
+            default_execution_task_id: None,
+        }
+    }
+
+    pub(super) fn with_default_execution_task_id(mut self, a2a_task_id: String) -> Self {
+        self.default_execution_task_id = Some(a2a_task_id);
+        self
     }
 
     pub(super) fn entrypoint_server(&self) -> &EntrypointStrategyServer {
@@ -68,6 +84,19 @@ impl StrategyServer {
                 "x-execution-id",
                 HeaderValue::from_str(&execution_id).expect("execution ID header is valid"),
             );
+            if let Some((a2a_task_id, _)) = execution_id.rsplit_once(':')
+                && let Some(task) = strategy_task::Entity::find()
+                    .filter(strategy_task::Column::A2aTaskId.eq(a2a_task_id))
+                    .one(&self.db)
+                    .await
+                    .expect("resolve test execution task")
+            {
+                headers.insert(
+                    "x-strategy-task-id",
+                    HeaderValue::from_str(&task.task_id.to_string())
+                        .expect("strategy task UUID header is valid"),
+                );
+            }
         }
         if let Some(model) = model {
             let models = match name {
@@ -86,11 +115,13 @@ impl StrategyServer {
         Ok(ToolOutput { raw, value })
     }
 
-    fn execution_header(step_id: Option<Uuid>, task_id: Option<String>) -> Option<String> {
+    fn execution_header(&self, step_id: Option<Uuid>, task_id: Option<String>) -> Option<String> {
         step_id.map(|step_id| {
             format!(
                 "{}:{step_id}",
-                task_id.unwrap_or_else(|| "test-task".into())
+                task_id
+                    .or_else(|| self.default_execution_task_id.clone())
+                    .unwrap_or_else(|| "test-task".into())
             )
         })
     }
@@ -105,7 +136,7 @@ impl StrategyServer {
             "query_data",
             scope.into().id(),
             params,
-            Self::execution_header(execution_step_id, None),
+            self.execution_header(execution_step_id, None),
             None,
         )
         .await
@@ -132,7 +163,7 @@ impl StrategyServer {
         execution_step_id: Option<Uuid>,
         params: strategy_dto::WriteNoteParams,
     ) -> Result<ToolOutput<strategy_dto::WriteNoteResult>, McpError> {
-        let execution_id = execution_step_id.map(|step_id| format!("test-task:{step_id}"));
+        let execution_id = self.execution_header(execution_step_id, None);
         self.invoke("write_note", scope.into().id(), params, execution_id, None)
             .await
     }
@@ -166,7 +197,7 @@ impl StrategyServer {
             "create_annotation",
             scope.into().id(),
             params,
-            Self::execution_header(execution_step_id, execution_task_id),
+            self.execution_header(execution_step_id, execution_task_id),
             None,
         )
         .await

@@ -2,6 +2,10 @@
 mod tests {
     use chrono::NaiveDate;
     use core_application::paper_trade::NewPaperAccount;
+    use core_application::{
+        agent_task_client::FakeAgentTaskClient,
+        strategy_task::{DEFAULT_PURPOSE, TaskSource},
+    };
     use core_domain::bar::{Bar, Timeframe};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
@@ -9,7 +13,7 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    use gateway_postgres::entities::{instruments, paper_order, paper_order_result, strategy_task};
+    use gateway_postgres::entities::{instruments, paper_order, paper_order_result};
     use gateway_postgres::repositories::bars::upsert_bars;
 
     use super::super::StrategyServer;
@@ -45,24 +49,35 @@ mod tests {
         strategy_id: Uuid,
         purpose: Option<&str>,
     ) -> String {
-        let task_id = crate::testing::insert_test_strategy_task(
-            db,
-            strategy_id,
-            "paper trading task",
-            purpose,
-            ts_sentinel(),
-        )
-        .await;
-        let a2a_task_id = format!("paper-task-{}", Uuid::new_v4());
-        strategy_task::ActiveModel {
-            task_id: Set(task_id),
-            a2a_task_id: Set(Some(a2a_task_id.clone())),
-            ..Default::default()
+        let use_cases =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+        let purpose = purpose.unwrap_or(DEFAULT_PURPOSE);
+        let tasks = use_cases.strategy_tasks();
+        if !tasks
+            .agent_config_exists(purpose)
+            .await
+            .expect("check agent config for task")
+        {
+            use_cases
+                .agent_configs()
+                .create(purpose.to_string())
+                .await
+                .expect("create agent config for task");
         }
-        .update(db)
-        .await
-        .expect("set task execution id");
-        a2a_task_id
+        let fake = FakeAgentTaskClient::new();
+        let a2a_task_id = format!("paper-task-{}", Uuid::new_v4());
+        fake.set_next_task_id(&a2a_task_id).await;
+        tasks
+            .submit_task(
+                &fake,
+                strategy_id,
+                "synthetic paper task",
+                TaskSource::Review,
+                Some(purpose.to_string()),
+            )
+            .await
+            .expect("submit running task with execution budget")
+            .a2a_task_id
     }
 
     fn execution_id(a2a_task_id: &str) -> String {
@@ -792,10 +807,7 @@ mod tests {
 
         assert_eq!(
             error,
-            rmcp::ErrorData::invalid_params(
-                "x-execution-id refers to a task from another strategy",
-                None,
-            ),
+            rmcp::ErrorData::invalid_params("execution does not match an active task", None,),
         );
     }
 

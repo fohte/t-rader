@@ -426,6 +426,10 @@ async fn query_data_records_evidence_per_instrument_when_execution_step_id_prese
     db: gateway_postgres::DatabaseHandle,
 ) {
     let (db, server, strategy_id) = setup_server_with_bars(db).await;
+    let task =
+        super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+            .await;
+    let server = server.with_default_execution_task_id(task.a2a_task_id);
     let execution_step_id = Uuid::new_v4();
 
     server

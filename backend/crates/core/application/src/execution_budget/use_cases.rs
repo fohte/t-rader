@@ -13,8 +13,9 @@ use crate::{
 };
 
 use super::{
-    BudgetReservation, BudgetReservationCommand, BudgetReservationResult, BudgetReservationState,
-    BudgetResource, BudgetScopeLimit, ExecutionBudgetRepository, ExecutionBudgetUseCaseError,
+    BudgetReservationCommand, BudgetReservationResult, BudgetReservationState,
+    BudgetReservationTransition, BudgetResource, BudgetScopeLimit, ExecutionBudgetRepository,
+    ExecutionBudgetUseCaseError,
 };
 
 const DEFAULT_MODEL_CALLS_PER_STEP: u64 = 15;
@@ -58,6 +59,7 @@ impl ExecutionBudgetUseCases {
         &self,
         access: &AuthorizedExecution,
         call_id: String,
+        request_fingerprint: String,
         execution_step_id: &str,
         subagent_definition_key: Option<&str>,
         subagent_execution_id: Option<&str>,
@@ -67,7 +69,13 @@ impl ExecutionBudgetUseCases {
             .filter(|step_id| access.execution_step_id() == Some(*step_id))
             .ok_or(ExecutionBudgetUseCaseError::InvalidRequest)?;
         let snapshot = self.task_start_snapshot(access.task_id()).await?;
-        let (resource_key, scope_key, limit) =
+        let graph = task_graph(&snapshot.definition)?;
+        let task_limit = graph
+            .as_ref()
+            .and_then(|graph| graph.execution_limits.as_ref())
+            .and_then(|limits| limits.max_model_calls)
+            .map(u64::from);
+        let (resource_key, scope_key, local_limit) =
             match (subagent_definition_key, subagent_execution_id) {
                 (Some(definition_key), Some(subagent_execution_id)) => {
                     let subagent_execution_id =
@@ -90,16 +98,26 @@ impl ExecutionBudgetUseCases {
                 ),
                 _ => return Err(ExecutionBudgetUseCaseError::InvalidRequest),
             };
+        let mut charges = vec![BudgetScopeLimit {
+            resource_key,
+            scope_key,
+            amount: 1,
+            limit: local_limit,
+        }];
+        if let Some(limit) = task_limit {
+            charges.push(BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(limit),
+            });
+        }
         self.reserve(
             access.task_id(),
             call_id,
+            request_fingerprint,
             BudgetResource::ModelCall,
-            vec![BudgetScopeLimit {
-                resource_key,
-                scope_key,
-                amount: 1,
-                limit,
-            }],
+            charges,
         )
         .await
     }
@@ -108,10 +126,10 @@ impl ExecutionBudgetUseCases {
         &self,
         access: &AuthorizedExecution,
         call_id: String,
+        request_fingerprint: String,
         tool_name: &str,
         default_task_limit: Option<u64>,
-        subagent_execution_id: Option<&str>,
-        subagent_definition_key: Option<&str>,
+        subagent: Option<(&str, &str)>,
     ) -> Result<BudgetReservationResult, ExecutionBudgetUseCaseError> {
         let snapshot = self.task_start_snapshot(access.task_id()).await?;
         let graph = task_graph(&snapshot.definition)?;
@@ -119,24 +137,41 @@ impl ExecutionBudgetUseCases {
             .as_ref()
             .and_then(|graph| graph.tool_limits.get(tool_name))
             .map(|limit| u64::from(*limit));
-        let task_limit = minimum_limit(configured_task_limit, default_task_limit);
-        let subagent_identity = match (subagent_execution_id, subagent_definition_key) {
-            (Some(execution_id), Some(definition_key)) => {
+        let execution_limits = graph
+            .as_ref()
+            .and_then(|graph| graph.execution_limits.as_ref());
+        let subagent_identity = match subagent {
+            Some((execution_id, definition_key)) => {
                 let current_execution_id = access
                     .execution_step_id()
                     .ok_or(ExecutionBudgetUseCaseError::InvalidRequest)?;
                 let execution_id = matching_execution_id(execution_id, current_execution_id)?;
                 Some((execution_id, definition_key))
             }
-            (None, None) => None,
-            _ => return Err(ExecutionBudgetUseCaseError::InvalidRequest),
+            None => None,
         };
         let mut charges = vec![BudgetScopeLimit {
             resource_key: tool_name.to_string(),
             scope_key: "task".to_string(),
             amount: 1,
-            limit: task_limit,
+            limit: configured_task_limit,
         }];
+        if let Some(limit) = default_task_limit {
+            charges.push(BudgetScopeLimit {
+                resource_key: format!("__technical_tool:{tool_name}"),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(limit),
+            });
+        }
+        if let Some(limit) = execution_limits.and_then(|limits| limits.max_tool_calls) {
+            charges.push(BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(u64::from(limit)),
+            });
+        }
         if let Some((execution_id, definition_key)) = subagent_identity {
             let definition = find_subagent(&snapshot.definition, definition_key)?;
             if let Some(limit) = definition
@@ -152,14 +187,21 @@ impl ExecutionBudgetUseCases {
                 });
             }
         }
-        self.reserve(access.task_id(), call_id, BudgetResource::ToolCall, charges)
-            .await
+        self.reserve(
+            access.task_id(),
+            call_id,
+            request_fingerprint,
+            BudgetResource::ToolCall,
+            charges,
+        )
+        .await
     }
 
     pub async fn reserve_subagent_run(
         &self,
         access: &AuthorizedExecution,
         call_id: String,
+        request_fingerprint: String,
         phase_key: &str,
         parent_execution_step_id: &str,
         definition_key: &str,
@@ -183,16 +225,30 @@ impl ExecutionBudgetUseCases {
             .max_subagent_runs
             .map(u64::from)
             .ok_or(ExecutionBudgetUseCaseError::InvalidTaskStartSnapshot)?;
+        let mut charges = vec![BudgetScopeLimit {
+            resource_key: phase_key.to_string(),
+            scope_key: format!("step:{parent_execution_step_id}"),
+            amount: 1,
+            limit: Some(limit),
+        }];
+        if let Some(task_limit) = graph
+            .execution_limits
+            .as_ref()
+            .and_then(|limits| limits.max_subagent_runs)
+        {
+            charges.push(BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(u64::from(task_limit)),
+            });
+        }
         self.reserve(
             access.task_id(),
             call_id,
+            request_fingerprint,
             BudgetResource::SubagentRun,
-            vec![BudgetScopeLimit {
-                resource_key: phase_key.to_string(),
-                scope_key: format!("step:{parent_execution_step_id}"),
-                amount: 1,
-                limit: Some(limit),
-            }],
+            charges,
         )
         .await
     }
@@ -202,7 +258,7 @@ impl ExecutionBudgetUseCases {
         access: &AuthorizedExecution,
         call_id: &str,
         state: BudgetReservationState,
-    ) -> Result<Vec<BudgetReservation>, ExecutionBudgetUseCaseError> {
+    ) -> Result<BudgetReservationTransition, ExecutionBudgetUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
         let result = self
             .repository
@@ -218,15 +274,38 @@ impl ExecutionBudgetUseCases {
         Ok(result)
     }
 
+    pub async fn complete_call(
+        &self,
+        access: &AuthorizedExecution,
+        call_id: &str,
+        response: Value,
+    ) -> Result<(), ExecutionBudgetUseCaseError> {
+        let transaction = self.unit_of_work.begin().await?;
+        self.repository
+            .complete_call(
+                &transaction,
+                access.task_id(),
+                call_id,
+                response,
+                Utc::now().fixed_offset(),
+            )
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
+        Ok(())
+    }
+
     async fn reserve(
         &self,
         task_id: Uuid,
         call_id: String,
+        request_fingerprint: String,
         resource: BudgetResource,
         charges: Vec<BudgetScopeLimit>,
     ) -> Result<BudgetReservationResult, ExecutionBudgetUseCaseError> {
         if call_id.trim().is_empty()
             || call_id.len() > 255
+            || request_fingerprint.trim().is_empty()
+            || request_fingerprint.len() > 64
             || charges.is_empty()
             || charges.iter().any(|charge| {
                 charge.resource_key.trim().is_empty()
@@ -247,6 +326,7 @@ impl ExecutionBudgetUseCases {
                 BudgetReservationCommand {
                     task_id,
                     call_id,
+                    request_fingerprint,
                     resource,
                     charges,
                     now: Utc::now().fixed_offset(),
@@ -277,14 +357,6 @@ fn task_graph(definition: &Value) -> Result<Option<AgentGraphConfig>, ExecutionB
     parse_agent_graph(yaml).map_err(|_| ExecutionBudgetUseCaseError::InvalidTaskStartSnapshot)
 }
 
-fn minimum_limit(first: Option<u64>, second: Option<u64>) -> Option<u64> {
-    match (first, second) {
-        (Some(first), Some(second)) => Some(first.min(second)),
-        (Some(limit), None) | (None, Some(limit)) => Some(limit),
-        (None, None) => None,
-    }
-}
-
 fn matching_execution_id(value: &str, expected: Uuid) -> Result<Uuid, ExecutionBudgetUseCaseError> {
     Uuid::parse_str(value)
         .ok()
@@ -310,24 +382,9 @@ fn find_subagent<'a>(
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-
     use uuid::Uuid;
 
-    use super::{matching_execution_id, minimum_limit};
-
-    #[rstest]
-    #[case::configured_below_technical(Some(8), Some(20), Some(8))]
-    #[case::technical_below_configured(Some(30), Some(20), Some(20))]
-    #[case::configured_only(Some(8), None, Some(8))]
-    #[case::technical_only(None, Some(20), Some(20))]
-    #[case::unbounded(None, None, None)]
-    fn tool_limit_keeps_the_tighter_allocation(
-        #[case] configured: Option<u64>,
-        #[case] technical: Option<u64>,
-        #[case] expected: Option<u64>,
-    ) {
-        assert_eq!(minimum_limit(configured, technical), expected);
-    }
+    use super::matching_execution_id;
 
     #[rstest]
     #[case::matching("00000000-0000-0000-0000-000000000001", true)]

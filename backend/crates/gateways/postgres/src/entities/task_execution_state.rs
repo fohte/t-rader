@@ -9,6 +9,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub task_id: Uuid,
     pub deadline_at: DateTimeWithTimeZone,
+    pub usage_complete: bool,
     pub model_calls_used: i64,
     pub tool_calls_used: i64,
     pub subagent_runs_used: i64,

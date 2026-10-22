@@ -21,6 +21,11 @@ export interface AgentGraphPhase {
 export interface AgentGraphConfig {
   // 全体 timeout は backend が deadline_at に反映し、agent は signal として受け取る。
   readonly timeoutMinutes?: number
+  readonly executionLimits?: {
+    readonly maxModelCalls?: number
+    readonly maxToolCalls?: number
+    readonly maxSubagentRuns?: number
+  }
   readonly toolLimits?: Readonly<Record<string, number>>
   readonly toolModels?: Readonly<Record<string, string>>
   readonly phases: readonly AgentGraphPhase[]

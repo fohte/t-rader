@@ -13,7 +13,8 @@ use super::super::mcp_tool::call_tool_output_with_headers;
 use super::SEARCH_WEB_MAX_CALLS_PER_TASK;
 use super::dto::SearchWebParams;
 use super::tests_common::{
-    build_server, create_task_with_subagent_limits, insert_strategy, insert_subagent_headers,
+    TestExecutionContext, build_server, create_task_with_subagent_limits, insert_strategy,
+    insert_subagent_headers,
 };
 
 #[derive(Clone)]
@@ -166,14 +167,15 @@ async fn search_web_returns_article_results_without_tool_model_header(
 async fn search_web_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
     let (client, calls) = client(vec![example_result()], false);
+    let task_execution =
+        create_task_with_subagent_limits(&db, strategy_id, "researcher", "search_web", 1, 20).await;
     let server = build_server(db).with_web_search_client(Some(client));
-    let task_execution_id = format!("task-{}", Uuid::new_v4());
 
     for _ in 0..SEARCH_WEB_MAX_CALLS_PER_TASK {
         server
             .search_web(
                 strategy_id,
-                Some(task_execution_id.clone()),
+                Some(task_execution.a2a_task_id.clone()),
                 params("example query"),
             )
             .await
@@ -183,7 +185,7 @@ async fn search_web_enforces_per_task_call_limit(db: gateway_postgres::DatabaseH
     let err = server
         .search_web(
             strategy_id,
-            Some(task_execution_id.clone()),
+            Some(task_execution.a2a_task_id.clone()),
             params("example query"),
         )
         .await
@@ -192,9 +194,7 @@ async fn search_web_enforces_per_task_call_limit(db: gateway_postgres::DatabaseH
         (err, calls.lock().expect("record calls").len()),
         (
             rmcp::ErrorData::invalid_params(
-                format!(
-                    "search_web call limit ({SEARCH_WEB_MAX_CALLS_PER_TASK}) exceeded for this task execution"
-                ),
+                "execution budget limit was exceeded for search_web".to_string(),
                 None,
             ),
             SEARCH_WEB_MAX_CALLS_PER_TASK as usize,
@@ -203,43 +203,52 @@ async fn search_web_enforces_per_task_call_limit(db: gateway_postgres::DatabaseH
 }
 
 #[backend_test_macros::database_test]
-async fn search_web_releases_call_count_reservation_when_request_fails(
-    db: gateway_postgres::DatabaseHandle,
-) {
+async fn search_web_keeps_call_count_when_request_fails(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
     let (client, calls) = client(vec![], true);
+    let task_execution =
+        create_task_with_subagent_limits(&db, strategy_id, "researcher", "search_web", 1, 20).await;
     let server = build_server(db).with_web_search_client(Some(client));
-    let task_execution_id = format!("task-{}", Uuid::new_v4());
 
+    let mut errors = Vec::new();
     for _ in 0..(SEARCH_WEB_MAX_CALLS_PER_TASK * 2) {
-        let err = server
-            .search_web(
-                strategy_id,
-                Some(task_execution_id.clone()),
-                params("example query"),
-            )
-            .await
-            .expect_err("upstream failure should propagate");
-        assert_eq!(
-            err,
-            rmcp::ErrorData::internal_error(
-                "web search failed: web search API error (status 500): upstream error",
-                None,
-            ),
+        errors.push(
+            server
+                .search_web(
+                    strategy_id,
+                    Some(task_execution.a2a_task_id.clone()),
+                    params("example query"),
+                )
+                .await
+                .expect_err("request should either fail upstream or exceed its budget"),
         );
     }
     assert_eq!(
-        calls.lock().expect("record calls").len(),
-        (SEARCH_WEB_MAX_CALLS_PER_TASK * 2) as usize,
+        (errors, calls.lock().expect("record calls").len()),
+        (
+            (0..SEARCH_WEB_MAX_CALLS_PER_TASK)
+                .map(|_| rmcp::ErrorData::internal_error(
+                    "web search failed: web search API error (status 500): upstream error",
+                    None,
+                ))
+                .chain((0..SEARCH_WEB_MAX_CALLS_PER_TASK).map(|_| {
+                    rmcp::ErrorData::invalid_params(
+                        "execution budget limit was exceeded for search_web",
+                        None,
+                    )
+                }))
+                .collect::<Vec<_>>(),
+            SEARCH_WEB_MAX_CALLS_PER_TASK as usize,
+        ),
     );
 }
 
 #[backend_test_macros::database_test]
-async fn search_web_releases_subagent_call_count_reservation_when_request_fails(
+async fn search_web_keeps_subagent_call_count_when_request_fails(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
-    let task_execution_id =
+    let task_execution =
         create_task_with_subagent_limits(&db, strategy_id, "researcher", "search_web", 1, 4).await;
     let (client, calls) = client(vec![], true);
     let server = build_server(db).with_web_search_client(Some(client));
@@ -247,15 +256,15 @@ async fn search_web_releases_subagent_call_count_reservation_when_request_fails(
     let first_call = invoke_search(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("child-run-a", "researcher")),
+        &task_execution,
+        Some((&Uuid::from_u128(601).to_string(), "researcher")),
     )
     .await;
     let retry = invoke_search(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("child-run-a", "researcher")),
+        &task_execution,
+        Some((&Uuid::from_u128(601).to_string(), "researcher")),
     )
     .await;
 
@@ -266,11 +275,11 @@ async fn search_web_releases_subagent_call_count_reservation_when_request_fails(
                 "web search failed: web search API error (status 500): upstream error",
                 None,
             )),
-            Err(rmcp::ErrorData::internal_error(
-                "web search failed: web search API error (status 500): upstream error",
+            Err(rmcp::ErrorData::invalid_params(
+                "execution budget limit was exceeded for researcher:search_web",
                 None,
             )),
-            2,
+            1,
         ),
     );
 }
@@ -278,36 +287,37 @@ async fn search_web_releases_subagent_call_count_reservation_when_request_fails(
 #[backend_test_macros::database_test]
 async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
-    let task_execution_id =
+    let task_execution =
         create_task_with_subagent_limits(&db, strategy_id, "researcher", "search_web", 1, 4).await;
     let (client, calls) = client(vec![example_result()], false);
     let server = build_server(db).with_web_search_client(Some(client));
 
-    let phase_call = invoke_search(&server, strategy_id, &task_execution_id, None).await;
+    let child_run_a = Uuid::from_u128(602).to_string();
+    let child_run_b = Uuid::from_u128(603).to_string();
+    let phase_call = invoke_search(&server, strategy_id, &task_execution, None).await;
     let first_subagent_call = invoke_search(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("child-run-a", "researcher")),
+        &task_execution,
+        Some((&child_run_a, "researcher")),
     )
     .await;
     let repeated_subagent_call = invoke_search(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("child-run-a", "researcher")),
+        &task_execution,
+        Some((&child_run_a, "researcher")),
     )
     .await;
     let other_subagent_call = invoke_search(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("child-run-b", "researcher")),
+        &task_execution,
+        Some((&child_run_b, "researcher")),
     )
     .await;
-    let second_phase_call = invoke_search(&server, strategy_id, &task_execution_id, None).await;
-    let call_beyond_task_limit =
-        invoke_search(&server, strategy_id, &task_execution_id, None).await;
+    let second_phase_call = invoke_search(&server, strategy_id, &task_execution, None).await;
+    let call_beyond_task_limit = invoke_search(&server, strategy_id, &task_execution, None).await;
 
     assert_eq!(
         (
@@ -333,7 +343,7 @@ async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::Data
                 "snippet": "Example snippet",
             }]})),
             Err(rmcp::ErrorData::invalid_params(
-                "search_web call limit (1) exceeded for this subagent execution",
+                "execution budget limit was exceeded for researcher:search_web",
                 None,
             )),
             Ok(json!({"results": [{
@@ -349,7 +359,7 @@ async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::Data
                 "snippet": "Example snippet",
             }]})),
             Err(rmcp::ErrorData::invalid_params(
-                "search_web call limit (4) exceeded for this task execution",
+                "execution budget limit was exceeded for search_web",
                 None,
             )),
             4,
@@ -360,7 +370,7 @@ async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::Data
 #[backend_test_macros::database_test]
 async fn search_web_rejects_unknown_subagent_definition_key(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
-    let task_execution_id =
+    let task_execution =
         create_task_with_subagent_limits(&db, strategy_id, "researcher", "search_web", 1, 4).await;
     let (client, calls) = client(vec![example_result()], false);
     let server = build_server(db).with_web_search_client(Some(client));
@@ -368,8 +378,8 @@ async fn search_web_rejects_unknown_subagent_definition_key(db: gateway_postgres
     let result = invoke_search(
         &server,
         strategy_id,
-        &task_execution_id,
-        Some(("child-run-a", "unknown-researcher")),
+        &task_execution,
+        Some((&Uuid::from_u128(604).to_string(), "unknown-researcher")),
     )
     .await;
 
@@ -377,7 +387,7 @@ async fn search_web_rejects_unknown_subagent_definition_key(db: gateway_postgres
         (result, calls.lock().expect("record calls").len()),
         (
             Err(rmcp::ErrorData::invalid_params(
-                "subagent definition 'unknown-researcher' not found",
+                "execution budget request is invalid",
                 None,
             )),
             0,
@@ -388,9 +398,12 @@ async fn search_web_rejects_unknown_subagent_definition_key(db: gateway_postgres
 async fn invoke_search(
     server: &super::test_server::StrategyServer,
     strategy_id: Uuid,
-    task_execution_id: &str,
+    task_execution: &TestExecutionContext,
     subagent: Option<(&str, &str)>,
 ) -> Result<serde_json::Value, rmcp::ErrorData> {
+    let execution_step_id = subagent
+        .map(|(execution_id, _)| execution_id.to_string())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let mut headers = HeaderMap::new();
     headers.insert(
         "x-strategy-id",
@@ -398,8 +411,15 @@ async fn invoke_search(
     );
     headers.insert(
         "x-execution-id",
-        HeaderValue::from_str(&format!("{task_execution_id}:{}", Uuid::new_v4()))
-            .expect("valid execution ID"),
+        HeaderValue::from_str(&format!(
+            "{}:{execution_step_id}",
+            task_execution.a2a_task_id
+        ))
+        .expect("valid execution ID"),
+    );
+    headers.insert(
+        "x-strategy-task-id",
+        HeaderValue::from_str(&task_execution.task_id.to_string()).expect("valid strategy task ID"),
     );
     insert_subagent_headers(&mut headers, subagent);
     call_tool_output_with_headers::<_, serde_json::Value>(

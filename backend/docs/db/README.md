@@ -72,8 +72,8 @@
 | [public.task_execution_definition_snapshot](public.task_execution_definition_snapshot.md)       | 5       | task 開始時の設定と初回参照した定義を不変 snapshot として保持する。                                                                                | BASE TABLE        |
 | [public.task_execution_payload](public.task_execution_payload.md)                               | 19      | task に属する input/output payload の revision、schema、完全性状態を保持する。                                                                     | BASE TABLE        |
 | [public.task_execution_payload_chunk](public.task_execution_payload_chunk.md)                   | 6       | payload の順序付き JSON chunk を追記専用で保持する。                                                                                               | BASE TABLE        |
-| [public.task_execution_state](public.task_execution_state.md)                                   | 7       | 戦略 task の固定期限と累計実行量を保持する。                                                                                                       | BASE TABLE        |
-| [public.execution_reservation](public.execution_reservation.md)                                 | 10      | task の実行量予約と送信状態を記録する。                                                                                                            | BASE TABLE        |
+| [public.task_execution_state](public.task_execution_state.md)                                   | 8       | 戦略 task の固定期限と累計実行量を保持する。                                                                                                       | BASE TABLE        |
+| [public.execution_reservation](public.execution_reservation.md)                                 | 12      | task の実行量予約と送信状態を記録する。                                                                                                            | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -929,6 +929,7 @@ erDiagram
 "public.task_execution_state" {
   uuid task_id FK
   timestamp_with_time_zone deadline_at
+  boolean usage_complete
   bigint model_calls_used
   bigint tool_calls_used
   bigint subagent_runs_used
@@ -943,7 +944,9 @@ erDiagram
   varchar_128_ resource_key
   varchar_128_ scope_key
   bigint amount
+  varchar_64_ request_fingerprint
   text state
+  jsonb response_json
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }

@@ -11,8 +11,8 @@ use uuid::Uuid;
 use crate::{
     execution_budget::{
         BudgetReservation, BudgetReservationCommand, BudgetReservationResult,
-        BudgetReservationState, BudgetResource, BudgetScopeLimit, ExecutionBudgetRepository,
-        ExecutionBudgetRepositoryError, ExecutionBudgetUseCases,
+        BudgetReservationState, BudgetReservationTransition, BudgetResource, BudgetScopeLimit,
+        ExecutionBudgetRepository, ExecutionBudgetRepositoryError, ExecutionBudgetUseCases,
     },
     strategy_execution::{
         AuthorizedExecution, DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk,
@@ -61,7 +61,14 @@ async fn reservation_uses_start_snapshot_and_shared_budget_port(#[case] case: Re
     match case {
         ReservationCase::ParentModelCall => {
             use_cases
-                .reserve_model_call(&access, call_id(case), &STEP_ID.to_string(), None, None)
+                .reserve_model_call(
+                    &access,
+                    call_id(case),
+                    fingerprint(case),
+                    &STEP_ID.to_string(),
+                    None,
+                    None,
+                )
                 .await
                 .expect("reserve parent model call");
         }
@@ -70,6 +77,7 @@ async fn reservation_uses_start_snapshot_and_shared_budget_port(#[case] case: Re
                 .reserve_model_call(
                     &access,
                     call_id(case),
+                    fingerprint(case),
                     &STEP_ID.to_string(),
                     Some(DEFINITION_KEY),
                     Some(&STEP_ID.to_string()),
@@ -79,19 +87,27 @@ async fn reservation_uses_start_snapshot_and_shared_budget_port(#[case] case: Re
         }
         ReservationCase::TaskToolCall => {
             use_cases
-                .reserve_tool_call(&access, call_id(case), TOOL_NAME, Some(8), None, None)
+                .reserve_tool_call(
+                    &access,
+                    call_id(case),
+                    fingerprint(case),
+                    TOOL_NAME,
+                    Some(8),
+                    None,
+                )
                 .await
                 .expect("reserve task tool call");
         }
         ReservationCase::SubagentToolCall => {
+            let execution_id = STEP_ID.to_string();
             use_cases
                 .reserve_tool_call(
                     &access,
                     call_id(case),
+                    fingerprint(case),
                     TOOL_NAME,
                     Some(8),
-                    Some(&STEP_ID.to_string()),
-                    Some(DEFINITION_KEY),
+                    Some((&execution_id, DEFINITION_KEY)),
                 )
                 .await
                 .expect("reserve subagent tool call");
@@ -101,6 +117,7 @@ async fn reservation_uses_start_snapshot_and_shared_budget_port(#[case] case: Re
                 .reserve_subagent_run(
                     &access,
                     call_id(case),
+                    fingerprint(case),
                     "phase_example",
                     &STEP_ID.to_string(),
                     DEFINITION_KEY,
@@ -123,6 +140,10 @@ async fn reservation_uses_start_snapshot_and_shared_budget_port(#[case] case: Re
     assert_eq!(actual, (normalize_command(expected_command(case)), 1),);
 }
 
+fn fingerprint(case: ReservationCase) -> String {
+    format!("fingerprint:{}", call_id(case))
+}
+
 fn call_id(case: ReservationCase) -> String {
     let suffix = match case {
         ReservationCase::ParentModelCall => "parent-model",
@@ -136,24 +157,54 @@ fn call_id(case: ReservationCase) -> String {
 
 fn expected_command(case: ReservationCase) -> BudgetReservationCommand {
     let charges = match case {
-        ReservationCase::ParentModelCall => vec![BudgetScopeLimit {
-            resource_key: "model_call".to_string(),
-            scope_key: format!("step:{STEP_ID}"),
-            amount: 1,
-            limit: Some(15),
-        }],
-        ReservationCase::SubagentModelCall => vec![BudgetScopeLimit {
-            resource_key: format!("subagent:{DEFINITION_KEY}"),
-            scope_key: format!("subagent_run:{STEP_ID}"),
-            amount: 1,
-            limit: Some(4),
-        }],
-        ReservationCase::TaskToolCall => vec![BudgetScopeLimit {
-            resource_key: TOOL_NAME.to_string(),
-            scope_key: "task".to_string(),
-            amount: 1,
-            limit: Some(4),
-        }],
+        ReservationCase::ParentModelCall => vec![
+            BudgetScopeLimit {
+                resource_key: "model_call".to_string(),
+                scope_key: format!("step:{STEP_ID}"),
+                amount: 1,
+                limit: Some(15),
+            },
+            BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(12),
+            },
+        ],
+        ReservationCase::SubagentModelCall => vec![
+            BudgetScopeLimit {
+                resource_key: format!("subagent:{DEFINITION_KEY}"),
+                scope_key: format!("subagent_run:{STEP_ID}"),
+                amount: 1,
+                limit: Some(4),
+            },
+            BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(12),
+            },
+        ],
+        ReservationCase::TaskToolCall => vec![
+            BudgetScopeLimit {
+                resource_key: TOOL_NAME.to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(4),
+            },
+            BudgetScopeLimit {
+                resource_key: format!("__technical_tool:{TOOL_NAME}"),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(8),
+            },
+            BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(13),
+            },
+        ],
         ReservationCase::SubagentToolCall => vec![
             BudgetScopeLimit {
                 resource_key: TOOL_NAME.to_string(),
@@ -162,18 +213,38 @@ fn expected_command(case: ReservationCase) -> BudgetReservationCommand {
                 limit: Some(4),
             },
             BudgetScopeLimit {
+                resource_key: format!("__technical_tool:{TOOL_NAME}"),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(8),
+            },
+            BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(13),
+            },
+            BudgetScopeLimit {
                 resource_key: format!("{DEFINITION_KEY}:{TOOL_NAME}"),
                 scope_key: format!("subagent_run:{STEP_ID}"),
                 amount: 1,
                 limit: Some(2),
             },
         ],
-        ReservationCase::SubagentRun => vec![BudgetScopeLimit {
-            resource_key: "phase_example".to_string(),
-            scope_key: format!("step:{STEP_ID}"),
-            amount: 1,
-            limit: Some(3),
-        }],
+        ReservationCase::SubagentRun => vec![
+            BudgetScopeLimit {
+                resource_key: "phase_example".to_string(),
+                scope_key: format!("step:{STEP_ID}"),
+                amount: 1,
+                limit: Some(3),
+            },
+            BudgetScopeLimit {
+                resource_key: "__task_total".to_string(),
+                scope_key: "task".to_string(),
+                amount: 1,
+                limit: Some(5),
+            },
+        ],
     };
     let resource = match case {
         ReservationCase::ParentModelCall | ReservationCase::SubagentModelCall => {
@@ -187,6 +258,7 @@ fn expected_command(case: ReservationCase) -> BudgetReservationCommand {
     BudgetReservationCommand {
         task_id: TASK_ID,
         call_id: call_id(case),
+        request_fingerprint: fingerprint(case),
         resource,
         charges,
         now: Utc::now().fixed_offset(),
@@ -211,6 +283,10 @@ fn snapshot_repository() -> SharedStrategyExecutionRepository {
                 "agent_graph": indoc! {"
                     tool_limits:
                       demo_tool: 4
+                    execution_limits:
+                      max_model_calls: 12
+                      max_tool_calls: 13
+                      max_subagent_runs: 5
                     phases:
                       - key: phase_example
                         label: Example phase
@@ -376,6 +452,7 @@ impl ExecutionBudgetRepository for CapturingBudgetRepository {
         self.commands.lock().await.push(command);
         Ok(BudgetReservationResult {
             reservations: Vec::<BudgetReservation>::new(),
+            completed_response: None,
         })
     }
 
@@ -386,7 +463,21 @@ impl ExecutionBudgetRepository for CapturingBudgetRepository {
         _call_id: &str,
         _state: BudgetReservationState,
         _now: DateTime<FixedOffset>,
-    ) -> Result<Vec<BudgetReservation>, ExecutionBudgetRepositoryError> {
-        Ok(Vec::new())
+    ) -> Result<BudgetReservationTransition, ExecutionBudgetRepositoryError> {
+        Ok(BudgetReservationTransition {
+            reservations: Vec::new(),
+            transitioned: false,
+        })
+    }
+
+    async fn complete_call(
+        &self,
+        _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+        _task_id: Uuid,
+        _call_id: &str,
+        _response: serde_json::Value,
+        _now: DateTime<FixedOffset>,
+    ) -> Result<(), ExecutionBudgetRepositoryError> {
+        Ok(())
     }
 }

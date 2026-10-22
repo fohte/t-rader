@@ -13,9 +13,10 @@ mod tests {
     };
     use super::super::graph_dto::{GraphDef, GraphEdge, GraphNode, Layout};
     use super::super::tests_common::{
-        build_server, current_note_version_id, insert_note_kind, insert_strategy,
-        normalize_comment_model, normalize_list_notes, normalize_note, seed_note,
-        seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
+        build_server, build_server_with_test_execution_task, current_note_version_id,
+        insert_note_kind, insert_strategy, normalize_comment_model, normalize_list_notes,
+        normalize_note, seed_note, seed_note_version_comment_with_anchor, set_note_status,
+        set_note_updated_at, ts_sentinel,
     };
     use super::super::{MAX_LIST_LIMIT, STRATEGY_AGENT_ACTOR};
     use crate::testing::find_current_note_version;
@@ -1208,7 +1209,10 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db.clone());
+        let task =
+            super::super::tests_common::create_test_execution_task(&db, strategy_id, "phases: []")
+                .await;
+        let server = build_server(db.clone()).with_default_execution_task_id(task.a2a_task_id);
 
         let error = server
             .write_note(
@@ -1243,7 +1247,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db.clone());
+        let (server, _) = build_server_with_test_execution_task(db.clone(), strategy_id).await;
         let execution_step_id = Uuid::from_u128(9001);
         let error = server
             .write_note(
@@ -3006,7 +3010,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db.clone());
+        let (server, _) = build_server_with_test_execution_task(db.clone(), strategy_id).await;
 
         let first = server
             .write_note(
@@ -3094,7 +3098,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db);
+        let (server, _) = build_server_with_test_execution_task(db, strategy_id).await;
 
         let first = server
             .write_note(
@@ -3210,7 +3214,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db);
+        let (server, _) = build_server_with_test_execution_task(db, strategy_id).await;
 
         // note B: step ID に紐づく既存ノート
         let note_b = server
@@ -3314,7 +3318,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db.clone());
+        let (server, _) = build_server_with_test_execution_task(db.clone(), strategy_id).await;
 
         let note_id = crate::testing::insert_test_note_with_execution_id(
             &db,

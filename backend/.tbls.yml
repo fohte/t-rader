@@ -105,6 +105,7 @@ comments:
     columnComments:
       task_id: '利用枠と期限を共有する戦略 task。'
       deadline_at: 'task 開始時に固定した実行期限。'
+      usage_complete: '移行前の累計実行量が完全に復元できているかを示す。false の task は予約と再開を拒否する。'
       model_calls_used: '予約済みまたは消費済みのモデル呼び出し数。'
       tool_calls_used: '予約済みまたは消費済みの tool 呼び出し数。'
       subagent_runs_used: '予約済みまたは消費済みの子実行数。'
@@ -114,11 +115,13 @@ comments:
       reservation_id: '予約レコードの識別子。'
       task_id: '利用枠を共有する戦略 task。'
       call_id: '通信再送を同じ予約へ対応させる呼び出し識別子。'
+      request_fingerprint: 'call_id に結び付けた要求内容の digest。'
       resource: '予約した量の種類。'
       resource_key: '上限を適用する対象キー。'
       scope_key: '上限を適用する task / step / run の範囲。'
       amount: '予約した量。'
       state: '予約、消費、または未送信確認済みの解放状態。'
+      response_json: '完了した tool 呼び出しを再送へ返す保存済み応答。'
   - table: group_axis
     tableComment: '銘柄グループを分類する軸を定義する。'
     columnComments:

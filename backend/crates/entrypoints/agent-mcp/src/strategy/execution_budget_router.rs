@@ -1,7 +1,10 @@
+use std::{fmt::Write as _, future::Future};
+
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::model::{CallToolRequestParams, CallToolResponse, CallToolResult};
 use rmcp::service::{RequestContext, RoleServer};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
@@ -27,6 +30,10 @@ impl StrategyServer {
             })?;
             let call_id = format!("{execution_id}:{}", context.id);
             let subagent = subagent_identity_from_ctx(&context)?;
+            let fingerprint = request_fingerprint(&serde_json::json!({
+                "name": request.name.as_ref(),
+                "arguments": request.arguments.clone(),
+            }))?;
             let default_limit = match request.name.as_ref() {
                 super::read_page::TOOL_NAME => {
                     Some(u64::from(super::read_page::READ_PAGE_MAX_CALLS_PER_TASK))
@@ -36,47 +43,70 @@ impl StrategyServer {
                 }
                 _ => None,
             };
-            self.dependencies
+            let reservation = self
+                .dependencies
                 .execution_budgets
                 .reserve_tool_call(
                     &access,
                     call_id.clone(),
+                    fingerprint,
                     request.name.as_ref(),
                     default_limit,
-                    subagent.as_ref().map(|(id, _)| id.as_str()),
                     subagent
                         .as_ref()
-                        .map(|(_, definition_key)| definition_key.as_str()),
+                        .map(|(id, key)| (id.as_str(), key.as_str())),
                 )
                 .await
                 .map_err(execution_budget_error_to_mcp)?;
-            Some((access, call_id))
+            Some((access, call_id, reservation))
         } else {
             None
         };
 
-        // MCP tool の結果だけでは外部送信の有無を判別できず、失敗時も消費扱いを維持する。
-        let result = Self::tool_router()
-            .call(ToolCallContext::new(self, request, context))
-            .await;
-        if let Some((access, call_id)) = reserved_call
-            && let Err(error) = self
-                .dependencies
-                .execution_budgets
-                .transition_call(
-                    &access,
-                    &call_id,
-                    core_application::execution_budget::BudgetReservationState::Consumed,
+        match reserved_call {
+            Some((access, call_id, reservation)) => {
+                dispatch_reserved_tool(
+                    reservation,
+                    || async {
+                        self.dependencies
+                        .execution_budgets
+                        .transition_call(
+                            &access,
+                            &call_id,
+                            core_application::execution_budget::BudgetReservationState::Consumed,
+                        )
+                        .await
+                        .map(|transition| transition.transitioned)
+                        .map_err(execution_budget_error_to_mcp)
+                    },
+                    || async {
+                        Self::tool_router()
+                            .call(ToolCallContext::new(self, request, context))
+                            .await
+                    },
+                    |response| async {
+                        if let Err(error) = self
+                            .dependencies
+                            .execution_budgets
+                            .complete_call(&access, &call_id, response)
+                            .await
+                        {
+                            tracing::error!(
+                                error = %error,
+                                call_id,
+                                "failed to persist strategy mcp tool response",
+                            );
+                        }
+                    },
                 )
                 .await
-        {
-            tracing::error!(
-                error = %error,
-                call_id,
-                "failed to mark strategy mcp tool reservation as consumed",
-            );
+            }
+            None => {
+                Self::tool_router()
+                    .call(ToolCallContext::new(self, request, context))
+                    .await
+            }
         }
-        result
     }
 
     async fn authorize_budget_execution(
@@ -124,6 +154,7 @@ impl StrategyServer {
             .await?
             .ok_or_else(|| invalid_params("budget operation requires an active task"))?;
         let arguments = serde_json::Value::Object(arguments.unwrap_or_default());
+        let fingerprint = request_fingerprint(&arguments)?;
         let action = required_string(&arguments, "action")?;
         let call_id = required_string(&arguments, "call_id")?;
         match action {
@@ -132,35 +163,39 @@ impl StrategyServer {
                     invalid_params("x-execution-id must include a valid execution step ID")
                 })?;
                 let subagent = subagent_identity_from_ctx(context)?;
-                let _ = self
+                let reservation = self
                     .dependencies
                     .execution_budgets
                     .reserve_model_call(
                         &access,
                         call_id.to_string(),
+                        fingerprint,
                         &execution_step_id.to_string(),
                         subagent.as_ref().map(|(_, key)| key.as_str()),
                         subagent.as_ref().map(|(id, _)| id.as_str()),
                     )
                     .await
                     .map_err(execution_budget_error_to_mcp)?;
+                Ok(reservation_availability_response(reservation))
             }
             "reserve_subagent_run" => {
                 let parent_step_id = required_string(&arguments, "parent_execution_step_id")?;
                 Uuid::parse_str(parent_step_id)
                     .map_err(|_| invalid_params("parent execution step ID is invalid"))?;
-                let _ = self
+                let reservation = self
                     .dependencies
                     .execution_budgets
                     .reserve_subagent_run(
                         &access,
                         call_id.to_string(),
+                        fingerprint,
                         required_string(&arguments, "phase_key")?,
                         parent_step_id,
                         required_string(&arguments, "definition_key")?,
                     )
                     .await
                     .map_err(execution_budget_error_to_mcp)?;
+                Ok(reservation_availability_response(reservation))
             }
             "transition" => {
                 let state = match required_string(&arguments, "state")? {
@@ -172,21 +207,100 @@ impl StrategyServer {
                     }
                     _ => return Err(invalid_params("reservation state is invalid")),
                 };
-                let _ = self
+                let transition = self
                     .dependencies
                     .execution_budgets
                     .transition_call(&access, call_id, state)
                     .await
                     .map_err(execution_budget_error_to_mcp)?;
+                Ok(CallToolResponse::Complete(CallToolResult::structured(
+                    serde_json::json!({"transitioned": transition.transitioned}),
+                )))
             }
-            _ => return Err(invalid_params("budget operation is invalid")),
-        };
-        Ok(CallToolResponse::Complete(CallToolResult::structured(
-            serde_json::json!({
-                "ok": true,
-            }),
-        )))
+            _ => Err(invalid_params("budget operation is invalid")),
+        }
     }
+}
+
+async fn dispatch_reserved_tool<
+    Claim,
+    ClaimFuture,
+    Dispatch,
+    DispatchFuture,
+    Complete,
+    CompleteFuture,
+>(
+    reservation: core_application::execution_budget::BudgetReservationResult,
+    claim: Claim,
+    dispatch: Dispatch,
+    complete: Complete,
+) -> Result<CallToolResponse, McpError>
+where
+    Claim: FnOnce() -> ClaimFuture,
+    ClaimFuture: Future<Output = Result<bool, McpError>>,
+    Dispatch: FnOnce() -> DispatchFuture,
+    DispatchFuture: Future<Output = Result<CallToolResponse, McpError>>,
+    Complete: FnOnce(serde_json::Value) -> CompleteFuture,
+    CompleteFuture: Future<Output = ()>,
+{
+    if let Some(response) = reservation.completed_response {
+        return serde_json::from_value(response)
+            .map(CallToolResponse::Complete)
+            .map_err(|error| {
+                internal_error(format!("cached strategy tool response is invalid: {error}"))
+            });
+    }
+    if reservation.reservations.is_empty()
+        || reservation.reservations.iter().any(|reservation| {
+            reservation.state
+                != core_application::execution_budget::BudgetReservationState::Reserved
+        })
+    {
+        return Err(invalid_params(
+            "tool call is already dispatched and its result is unavailable",
+        ));
+    }
+    if !claim().await? {
+        return Err(invalid_params("tool call dispatch is already claimed"));
+    }
+
+    match dispatch().await? {
+        CallToolResponse::Complete(response) => {
+            match serde_json::to_value(&response) {
+                Ok(serialized) => complete(serialized).await,
+                Err(error) => tracing::error!(
+                    error = %error,
+                    "failed to serialize strategy mcp tool response",
+                ),
+            }
+            Ok(CallToolResponse::Complete(response))
+        }
+        response => Ok(response),
+    }
+}
+
+fn reservation_availability_response(
+    reservation: core_application::execution_budget::BudgetReservationResult,
+) -> CallToolResponse {
+    CallToolResponse::Complete(CallToolResult::structured(serde_json::json!({
+        "available": reservation.completed_response.is_none()
+            && !reservation.reservations.is_empty()
+            && reservation.reservations.iter().all(|reservation| {
+                reservation.state
+                    == core_application::execution_budget::BudgetReservationState::Reserved
+            }),
+    })))
+}
+
+fn request_fingerprint(value: &serde_json::Value) -> Result<String, McpError> {
+    let serialized = serde_json::to_vec(value)
+        .map_err(|error| internal_error(format!("failed to encode budgeted request: {error}")))?;
+    let digest = Sha256::digest(serialized);
+    let mut fingerprint = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(fingerprint, "{byte:02x}");
+    }
+    Ok(fingerprint)
 }
 
 fn required_string<'a>(value: &'a serde_json::Value, key: &str) -> Result<&'a str, McpError> {
@@ -241,7 +355,10 @@ fn execution_budget_error_to_mcp(
             core_application::execution_budget::ExecutionBudgetRepositoryError::DeadlineExpired
             | core_application::execution_budget::ExecutionBudgetRepositoryError::LimitExceeded {
                 ..
-            },
+            }
+            | core_application::execution_budget::ExecutionBudgetRepositoryError::ReservationConflict
+            | core_application::execution_budget::ExecutionBudgetRepositoryError::InvalidReservationState
+            | core_application::execution_budget::ExecutionBudgetRepositoryError::UsageNotMeasured,
         ) => invalid_params(error.to_string()),
         other => {
             tracing::error!(error = %other, "strategy mcp execution budget operation failed");

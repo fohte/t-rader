@@ -283,6 +283,7 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             .select_only()
             .column(task_execution_state::Column::TaskId)
             .filter(task_execution_state::Column::DeadlineAt.gt(now))
+            .filter(Expr::cust("usage_complete = TRUE"))
             .into_query();
         let failed_step_task_ids = strategy_task_step::Entity::find()
             .select_only()

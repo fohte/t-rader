@@ -173,52 +173,44 @@ export const createModelCallRetryMiddleware = (
           .then(() => reserveModelCall?.(callId))
           .then(() => {
             reservationMade = reserveModelCall !== undefined
-            return handler(delegated)
+            return transitionReservation === undefined || !reservationMade
+              ? handler(delegated)
+              : transitionReservation(callId, 'consumed').then(() =>
+                  handler(delegated),
+                )
           })
-          .then(
-            (result) =>
-              reservationMade && transitionReservation !== undefined
-                ? transitionReservation(callId, 'consumed').then(() => result)
-                : result,
-            (caught: unknown) => {
-              if (reserveModelCall !== undefined && !reservationMade) {
-                return Promise.reject(
-                  caught instanceof Error ? caught : new Error(String(caught)),
-                )
+          .catch((caught: unknown) => {
+            if (reserveModelCall !== undefined && !reservationMade) {
+              return Promise.reject(
+                caught instanceof Error ? caught : new Error(String(caught)),
+              )
+            }
+            return Promise.resolve().then(async () => {
+              const error =
+                caught instanceof Error ? caught : new Error(String(caught))
+              const isCallDuration = isCallDurationAbort(error)
+
+              if (
+                !isRetryableModelCallError(error) ||
+                retriesMade >= MAX_RETRIES ||
+                (isCallDuration &&
+                  callDurationRetriesMade >= MAX_CALL_DURATION_RETRIES)
+              ) {
+                return Promise.reject(error)
               }
-              const settleReservation =
-                reservationMade && transitionReservation !== undefined
-                  ? transitionReservation(callId, 'consumed').catch(
-                      () => undefined,
-                    )
-                  : Promise.resolve()
-              return settleReservation.then(async () => {
-                const error =
-                  caught instanceof Error ? caught : new Error(String(caught))
-                const isCallDuration = isCallDurationAbort(error)
 
-                if (
-                  !isRetryableModelCallError(error) ||
-                  retriesMade >= MAX_RETRIES ||
-                  (isCallDuration &&
-                    callDurationRetriesMade >= MAX_CALL_DURATION_RETRIES)
-                ) {
-                  return Promise.reject(error)
-                }
+              logger.warn(
+                { err: getOriginalError(error) },
+                'model call failed with a retryable error',
+              )
+              await waitForRetry(getRetryDelay(error, retriesMade))
 
-                logger.warn(
-                  { err: getOriginalError(error) },
-                  'model call failed with a retryable error',
-                )
-                await waitForRetry(getRetryDelay(error, retriesMade))
-
-                return callModel(
-                  retriesMade + 1,
-                  callDurationRetriesMade + Number(isCallDuration),
-                )
-              })
-            },
-          )
+              return callModel(
+                retriesMade + 1,
+                callDurationRetriesMade + Number(isCallDuration),
+              )
+            })
+          })
       }
 
       return callModel(0, 0)

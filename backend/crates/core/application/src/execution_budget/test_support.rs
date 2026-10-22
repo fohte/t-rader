@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use crate::{
     execution_budget::{
-        BudgetReservation, BudgetReservationCommand, BudgetReservationResult,
-        BudgetReservationState, ExecutionBudgetRepository, ExecutionBudgetRepositoryError,
+        BudgetReservationCommand, BudgetReservationResult, BudgetReservationState,
+        BudgetReservationTransition, ExecutionBudgetRepository, ExecutionBudgetRepositoryError,
     },
     unit_of_work::UnitOfWorkTransaction,
 };
@@ -61,7 +61,18 @@ impl ExecutionBudgetRepository for FakeExecutionBudgetRepository {
         _call_id: &str,
         _state: BudgetReservationState,
         _now: DateTime<FixedOffset>,
-    ) -> Result<Vec<BudgetReservation>, ExecutionBudgetRepositoryError> {
+    ) -> Result<BudgetReservationTransition, ExecutionBudgetRepositoryError> {
+        Err(ExecutionBudgetRepositoryError::StateNotFound)
+    }
+
+    async fn complete_call(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _task_id: Uuid,
+        _call_id: &str,
+        _response: serde_json::Value,
+        _now: DateTime<FixedOffset>,
+    ) -> Result<(), ExecutionBudgetRepositoryError> {
         Err(ExecutionBudgetRepositoryError::StateNotFound)
     }
 }

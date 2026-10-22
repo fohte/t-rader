@@ -101,7 +101,7 @@ async fn submit_posts_body_and_returns_task_id() {
     let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
 
     Mock::given(method("POST"))
-        .and(path("/internal/tasks"))
+        .and(path("/internal/v2/tasks"))
         .and(header("authorization", "Bearer test-token"))
         .and(body_json(json!({
             "task_id": "87654321-4321-6789-4321-678987654321",
@@ -144,7 +144,7 @@ async fn submit_body_includes_purpose_only_when_some(
     let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
 
     Mock::given(method("POST"))
-        .and(path("/internal/tasks"))
+        .and(path("/internal/v2/tasks"))
         .and(body_json(expected_body))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "task_id": "task-abc",
@@ -180,7 +180,7 @@ async fn submit_body_includes_as_of_only_when_some(
     let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
 
     Mock::given(method("POST"))
-        .and(path("/internal/tasks"))
+        .and(path("/internal/v2/tasks"))
         .and(body_json(expected_body))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "task_id": "task-abc",
@@ -225,7 +225,7 @@ async fn submit_body_includes_resume_steps_only_when_some(
     let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
 
     Mock::given(method("POST"))
-        .and(path("/internal/tasks"))
+        .and(path("/internal/v2/tasks"))
         .and(body_json(expected_body))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "task_id": "task-abc",
@@ -253,9 +253,11 @@ async fn submit_body_includes_resume_steps_only_when_some(
 async fn submit_maps_error_response() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
+        .and(path("/internal/v2/tasks"))
         .respond_with(ResponseTemplate::new(422).set_body_json(json!({
             "error": "invalid request body",
         })))
+        .expect(1)
         .mount(&server)
         .await;
 
@@ -276,6 +278,47 @@ async fn submit_maps_error_response() {
         err.to_string(),
         "agent task api error (status 422): invalid request body"
     );
+}
+
+#[tokio::test]
+async fn submit_fails_on_versioned_path_not_found_without_legacy_fallback() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/internal/v2/tasks"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "error": "not found",
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/internal/tasks"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "task_id": "legacy-task",
+        })))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let client = http_client(&server);
+    let err = client
+        .submit(SubmitAgentTask {
+            task_id: uuid::Uuid::new_v4(),
+            strategy_id: uuid::Uuid::new_v4(),
+            prompt: "hello".into(),
+            purpose: None,
+            resume_steps: None,
+            deadline_at: test_deadline_at(),
+            as_of: None,
+        })
+        .await
+        .expect_err("the legacy route must not be used as a fallback");
+
+    assert_eq!(
+        err.to_string(),
+        "agent task api error (status 404): unexpected response status: 404 Not Found"
+    );
+    server.verify().await;
 }
 
 #[tokio::test]

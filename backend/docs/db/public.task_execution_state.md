@@ -6,15 +6,16 @@
 
 ## Columns
 
-| Name               | Type                     | Default | Nullable | Children                                                        | Parents                                         | Comment                                    |
-| ------------------ | ------------------------ | ------- | -------- | --------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------ |
-| task_id            | uuid                     |         | false    | [public.execution_reservation](public.execution_reservation.md) | [public.strategy_task](public.strategy_task.md) | 利用枠と期限を共有する戦略 task。          |
-| deadline_at        | timestamp with time zone |         | false    |                                                                 |                                                 | task 開始時に固定した実行期限。            |
-| model_calls_used   | bigint                   | 0       | false    |                                                                 |                                                 | 予約済みまたは消費済みのモデル呼び出し数。 |
-| tool_calls_used    | bigint                   | 0       | false    |                                                                 |                                                 | 予約済みまたは消費済みの tool 呼び出し数。 |
-| subagent_runs_used | bigint                   | 0       | false    |                                                                 |                                                 | 予約済みまたは消費済みの子実行数。         |
-| created_at         | timestamp with time zone |         | false    |                                                                 |                                                 |                                            |
-| updated_at         | timestamp with time zone |         | false    |                                                                 |                                                 |                                            |
+| Name               | Type                     | Default | Nullable | Children                                                        | Parents                                         | Comment                                                                                  |
+| ------------------ | ------------------------ | ------- | -------- | --------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| task_id            | uuid                     |         | false    | [public.execution_reservation](public.execution_reservation.md) | [public.strategy_task](public.strategy_task.md) | 利用枠と期限を共有する戦略 task。                                                        |
+| deadline_at        | timestamp with time zone |         | false    |                                                                 |                                                 | task 開始時に固定した実行期限。                                                          |
+| usage_complete     | boolean                  | true    | false    |                                                                 |                                                 | 移行前の累計実行量が完全に復元できているかを示す。false の task は予約と再開を拒否する。 |
+| model_calls_used   | bigint                   | 0       | false    |                                                                 |                                                 | 予約済みまたは消費済みのモデル呼び出し数。                                               |
+| tool_calls_used    | bigint                   | 0       | false    |                                                                 |                                                 | 予約済みまたは消費済みの tool 呼び出し数。                                               |
+| subagent_runs_used | bigint                   | 0       | false    |                                                                 |                                                 | 予約済みまたは消費済みの子実行数。                                                       |
+| created_at         | timestamp with time zone |         | false    |                                                                 |                                                 |                                                                                          |
+| updated_at         | timestamp with time zone |         | false    |                                                                 |                                                 |                                                                                          |
 
 ## Constraints
 
@@ -30,6 +31,7 @@
 | task_execution_state_tool_calls_used_check       | CHECK       | CHECK ((tool_calls_used >= 0))                                            |
 | task_execution_state_tool_calls_used_not_null    | n           | NOT NULL tool_calls_used                                                  |
 | task_execution_state_updated_at_not_null         | n           | NOT NULL updated_at                                                       |
+| task_execution_state_usage_complete_not_null     | n           | NOT NULL usage_complete                                                   |
 | task_execution_state_task_id_fkey                | FOREIGN KEY | FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE |
 | task_execution_state_pkey                        | PRIMARY KEY | PRIMARY KEY (task_id)                                                     |
 
@@ -50,6 +52,7 @@ erDiagram
 "public.task_execution_state" {
   uuid task_id FK
   timestamp_with_time_zone deadline_at
+  boolean usage_complete
   bigint model_calls_used
   bigint tool_calls_used
   bigint subagent_runs_used
@@ -82,7 +85,9 @@ erDiagram
   varchar_128_ resource_key
   varchar_128_ scope_key
   bigint amount
+  varchar_64_ request_fingerprint
   text state
+  jsonb response_json
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }

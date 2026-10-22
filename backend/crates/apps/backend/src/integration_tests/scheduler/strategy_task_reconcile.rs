@@ -824,6 +824,111 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn manual_resume_rejects_unmeasured_legacy_usage(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic-unmeasured-manual"),
+            StrategyTaskPhase::Failed,
+            FAR_FUTURE,
+        )
+        .await;
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE task_execution_state SET usage_complete = false WHERE task_id = $1",
+            [task_id.into()],
+        ))
+        .await
+        .unwrap();
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            Arc::new(PostgresStrategyTaskRepository::new(db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+        );
+        let fake = FakeAgentTaskClient::new();
+
+        let result = strategy_tasks.resume(&fake, task_id).await;
+        let task = fetch_task(&db, task_id).await;
+
+        assert_eq!(
+            (
+                matches!(
+                    result,
+                    Err(core_application::strategy_task::ResumeTaskError::NotResumable(_, _))
+                ),
+                fake.submitted.lock().await.len(),
+                task.phase,
+            ),
+            (true, 0, StrategyTaskPhase::Failed),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn automatic_resume_rejects_unmeasured_legacy_usage(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic-unmeasured-auto"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE task_execution_state SET usage_complete = false WHERE task_id = $1",
+            [task_id.into()],
+        ))
+        .await
+        .unwrap();
+        let fake = FakeAgentTaskClient::new();
+        fake.set_status(
+            "synthetic-unmeasured-auto",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_message: None,
+                error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        let repository = Arc::new(PostgresStrategyTaskRepository::new(db.clone()));
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            repository.clone(),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+        );
+        let task = repository.find_by_id(task_id).await.unwrap().unwrap();
+
+        let updated = strategy_tasks
+            .reconcile_task(&fake, task, Utc::now().fixed_offset())
+            .await
+            .unwrap();
+        let task = fetch_task(&db, task_id).await;
+
+        assert_eq!(
+            (
+                updated,
+                task.phase,
+                task.a2a_task_id,
+                task.auto_resumed_at.is_some(),
+                fake.submitted.lock().await.len(),
+            ),
+            (
+                true,
+                StrategyTaskPhase::Failed,
+                Some("synthetic-unmeasured-auto".to_string()),
+                false,
+                0,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn input_required_maps_to_failed(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(

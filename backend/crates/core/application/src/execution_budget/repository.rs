@@ -7,8 +7,8 @@ use uuid::Uuid;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 use super::{
-    BudgetReservation, BudgetReservationCommand, BudgetReservationResult, BudgetReservationState,
-    ExecutionBudgetRepositoryError,
+    BudgetReservationCommand, BudgetReservationResult, BudgetReservationState,
+    BudgetReservationTransition, ExecutionBudgetRepositoryError,
 };
 
 #[async_trait]
@@ -33,7 +33,16 @@ pub trait ExecutionBudgetRepository: Send + Sync {
         call_id: &str,
         state: BudgetReservationState,
         now: DateTime<FixedOffset>,
-    ) -> Result<Vec<BudgetReservation>, ExecutionBudgetRepositoryError>;
+    ) -> Result<BudgetReservationTransition, ExecutionBudgetRepositoryError>;
+
+    async fn complete_call(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        task_id: Uuid,
+        call_id: &str,
+        response: serde_json::Value,
+        now: DateTime<FixedOffset>,
+    ) -> Result<(), ExecutionBudgetRepositoryError>;
 }
 
 pub type SharedExecutionBudgetRepository = Arc<dyn ExecutionBudgetRepository + Send + Sync>;

@@ -18,8 +18,11 @@ pub struct Model {
     #[sea_orm(unique_key = "execution_reservation_task_id_call_id_resource_key_scope_ke_key")]
     pub scope_key: String,
     pub amount: i64,
+    pub request_fingerprint: String,
     #[sea_orm(column_type = "Text")]
     pub state: String,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub response_json: Option<Json>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

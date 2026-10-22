@@ -108,7 +108,7 @@
     "parameters": {}
   },
   "paths": {
-    "/internal/tasks": {
+    "/internal/v2/tasks": {
       "post": {
         "operationId": "submitTask",
         "requestBody": {

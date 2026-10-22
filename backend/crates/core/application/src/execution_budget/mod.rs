@@ -10,6 +10,6 @@ pub use error::{ExecutionBudgetRepositoryError, ExecutionBudgetUseCaseError};
 pub use repository::{ExecutionBudgetRepository, SharedExecutionBudgetRepository};
 pub use types::{
     BudgetReservation, BudgetReservationCommand, BudgetReservationResult, BudgetReservationState,
-    BudgetResource, BudgetScopeLimit,
+    BudgetReservationTransition, BudgetResource, BudgetScopeLimit,
 };
 pub use use_cases::ExecutionBudgetUseCases;

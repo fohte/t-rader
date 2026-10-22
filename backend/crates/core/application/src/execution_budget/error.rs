@@ -10,6 +10,8 @@ pub enum ExecutionBudgetRepositoryError {
     InvalidTransaction,
     #[error("execution budget state was not found")]
     StateNotFound,
+    #[error("execution budget state has incomplete historical usage")]
+    UsageNotMeasured,
     #[error("execution budget deadline has expired")]
     DeadlineExpired,
     #[error("execution reservation identifier conflicts with an existing call")]

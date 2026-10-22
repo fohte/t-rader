@@ -133,6 +133,7 @@ erDiagram
 "public.task_execution_state" {
   uuid task_id FK
   timestamp_with_time_zone deadline_at
+  boolean usage_complete
   bigint model_calls_used
   bigint tool_calls_used
   bigint subagent_runs_used

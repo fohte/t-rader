@@ -173,7 +173,7 @@ const isTaskNotFoundError = (err: unknown): boolean =>
 const submitTaskRoute = createRoute({
   operationId: 'submitTask',
   method: 'post',
-  path: '/internal/tasks',
+  path: '/internal/v2/tasks',
   request: {
     body: {
       content: { 'application/json': { schema: submitTaskBodySchema } },

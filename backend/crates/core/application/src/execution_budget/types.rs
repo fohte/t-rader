@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +69,7 @@ pub struct BudgetScopeLimit {
 pub struct BudgetReservationCommand {
     pub task_id: Uuid,
     pub call_id: String,
+    pub request_fingerprint: String,
     pub resource: BudgetResource,
     pub charges: Vec<BudgetScopeLimit>,
     pub now: DateTime<FixedOffset>,
@@ -78,11 +80,13 @@ pub struct BudgetReservation {
     pub reservation_id: Uuid,
     pub task_id: Uuid,
     pub call_id: String,
+    pub request_fingerprint: String,
     pub resource: BudgetResource,
     pub resource_key: String,
     pub scope_key: String,
     pub amount: u64,
     pub state: BudgetReservationState,
+    pub completed_response: Option<Value>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
 }
@@ -90,4 +94,11 @@ pub struct BudgetReservation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetReservationResult {
     pub reservations: Vec<BudgetReservation>,
+    pub completed_response: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetReservationTransition {
+    pub reservations: Vec<BudgetReservation>,
+    pub transitioned: bool,
 }

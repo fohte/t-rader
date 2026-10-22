@@ -3,8 +3,8 @@ use chrono::{DateTime, FixedOffset};
 use core_application::{
     execution_budget::{
         BudgetReservation, BudgetReservationCommand, BudgetReservationResult,
-        BudgetReservationState, BudgetResource, ExecutionBudgetRepository,
-        ExecutionBudgetRepositoryError,
+        BudgetReservationState, BudgetReservationTransition, BudgetResource,
+        ExecutionBudgetRepository, ExecutionBudgetRepositoryError,
     },
     unit_of_work::UnitOfWorkTransaction,
 };
@@ -35,8 +35,8 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "INSERT INTO task_execution_state (task_id, deadline_at, created_at, updated_at) \
-                 VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) \
+                "INSERT INTO task_execution_state (task_id, deadline_at, usage_complete, created_at, updated_at) \
+                 VALUES ($1, $2, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) \
                  ON CONFLICT (task_id) DO NOTHING",
                 [task_id.into(), deadline_at.into()],
             ))
@@ -45,7 +45,7 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT deadline_at FROM task_execution_state WHERE task_id = $1",
+                "SELECT deadline_at, usage_complete FROM task_execution_state WHERE task_id = $1",
                 [task_id.into()],
             ))
             .await
@@ -54,6 +54,12 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let stored_deadline = row
             .try_get::<DateTime<FixedOffset>>("", "deadline_at")
             .map_err(database_error)?;
+        let usage_complete = row
+            .try_get::<bool>("", "usage_complete")
+            .map_err(database_error)?;
+        if !usage_complete {
+            return Err(ExecutionBudgetRepositoryError::UsageNotMeasured);
+        }
         if stored_deadline.timestamp_micros() != deadline_at.timestamp_micros() {
             return Err(ExecutionBudgetRepositoryError::ReservationConflict);
         }
@@ -70,7 +76,7 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let state = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT deadline_at FROM task_execution_state WHERE task_id = $1 FOR UPDATE",
+                "SELECT deadline_at, usage_complete FROM task_execution_state WHERE task_id = $1 FOR UPDATE",
                 [command.task_id.into()],
             ))
             .await
@@ -79,6 +85,12 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let deadline_at = state
             .try_get::<DateTime<FixedOffset>>("", "deadline_at")
             .map_err(database_error)?;
+        if !state
+            .try_get::<bool>("", "usage_complete")
+            .map_err(database_error)?
+        {
+            return Err(ExecutionBudgetRepositoryError::UsageNotMeasured);
+        }
         if deadline_at <= command.now {
             return Err(ExecutionBudgetRepositoryError::DeadlineExpired);
         }
@@ -87,7 +99,7 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         let existing = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT reservation_id, task_id, call_id, resource, resource_key, scope_key, amount, state, created_at, updated_at \
+                "SELECT reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at \
                  FROM execution_reservation WHERE task_id = $1 AND call_id = $2 ORDER BY resource_key, scope_key",
                 [command.task_id.into(), command.call_id.clone().into()],
             ))
@@ -100,11 +112,13 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
             if existing.iter().any(|reservation| {
                 reservation.state == BudgetReservationState::Released
                     || reservation.resource != command.resource
+                    || reservation.request_fingerprint != command.request_fingerprint
             }) || !same_charges(&existing, &command)
             {
                 return Err(ExecutionBudgetRepositoryError::ReservationConflict);
             }
             return Ok(BudgetReservationResult {
+                completed_response: common_response(&existing)?,
                 reservations: existing,
             });
         }
@@ -154,12 +168,13 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
                 .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "INSERT INTO execution_reservation \
-                     (reservation_id, task_id, call_id, resource, resource_key, scope_key, amount, state, created_at, updated_at) \
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, 'reserved', $8, $8)",
+                     (reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at) \
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'reserved', NULL, $9, $9)",
                     [
                         id.into(),
                         command.task_id.into(),
                         command.call_id.clone().into(),
+                        command.request_fingerprint.clone().into(),
                         command.resource.as_str().into(),
                         charge.resource_key.clone().into(),
                         charge.scope_key.clone().into(),
@@ -173,16 +188,21 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
                 reservation_id: id,
                 task_id: command.task_id,
                 call_id: command.call_id.clone(),
+                request_fingerprint: command.request_fingerprint.clone(),
                 resource: command.resource,
                 resource_key: charge.resource_key.clone(),
                 scope_key: charge.scope_key.clone(),
                 amount: charge.amount,
                 state: BudgetReservationState::Reserved,
+                completed_response: None,
                 created_at: command.now,
                 updated_at: command.now,
             });
         }
-        Ok(BudgetReservationResult { reservations })
+        Ok(BudgetReservationResult {
+            reservations,
+            completed_response: None,
+        })
     }
 
     async fn transition_call(
@@ -192,13 +212,13 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
         call_id: &str,
         state: BudgetReservationState,
         now: DateTime<FixedOffset>,
-    ) -> Result<Vec<BudgetReservation>, ExecutionBudgetRepositoryError> {
+    ) -> Result<BudgetReservationTransition, ExecutionBudgetRepositoryError> {
         let transaction = transaction_ref(transaction)
             .ok_or(ExecutionBudgetRepositoryError::InvalidTransaction)?;
         let rows = transaction
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT reservation_id, task_id, call_id, resource, resource_key, scope_key, amount, state, created_at, updated_at \
+                "SELECT reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at \
                  FROM execution_reservation WHERE task_id = $1 AND call_id = $2 ORDER BY resource_key, scope_key FOR UPDATE",
                 [task_id.into(), call_id.to_string().into()],
             ))
@@ -211,7 +231,10 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
             return Err(ExecutionBudgetRepositoryError::InvalidReservationState);
         }
         if rows.iter().all(|reservation| reservation.state == state) {
-            return Ok(rows);
+            return Ok(BudgetReservationTransition {
+                reservations: rows,
+                transitioned: false,
+            });
         }
         if rows
             .iter()
@@ -247,14 +270,72 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
             ))
             .await
             .map_err(database_error)?;
-        Ok(rows
+        Ok(BudgetReservationTransition {
+            reservations: rows
+                .into_iter()
+                .map(|mut reservation| {
+                    reservation.state = state;
+                    reservation.updated_at = now;
+                    reservation
+                })
+                .collect(),
+            transitioned: true,
+        })
+    }
+
+    async fn complete_call(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        task_id: Uuid,
+        call_id: &str,
+        response: serde_json::Value,
+        now: DateTime<FixedOffset>,
+    ) -> Result<(), ExecutionBudgetRepositoryError> {
+        let transaction = transaction_ref(transaction)
+            .ok_or(ExecutionBudgetRepositoryError::InvalidTransaction)?;
+        let rows = transaction
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT reservation_id, task_id, call_id, request_fingerprint, resource, resource_key, scope_key, amount, state, response_json, created_at, updated_at \
+                 FROM execution_reservation WHERE task_id = $1 AND call_id = $2 ORDER BY resource_key, scope_key FOR UPDATE",
+                [task_id.into(), call_id.to_string().into()],
+            ))
+            .await
+            .map_err(database_error)?
             .into_iter()
-            .map(|mut reservation| {
-                reservation.state = state;
-                reservation.updated_at = now;
-                reservation
-            })
-            .collect())
+            .map(reservation_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        if rows.is_empty()
+            || rows
+                .iter()
+                .any(|row| row.state != BudgetReservationState::Consumed)
+        {
+            return Err(ExecutionBudgetRepositoryError::InvalidReservationState);
+        }
+        if rows
+            .iter()
+            .all(|row| row.completed_response.as_ref() == Some(&response))
+        {
+            return Ok(());
+        }
+        if rows.iter().any(|row| row.completed_response.is_some()) {
+            return Err(ExecutionBudgetRepositoryError::ReservationConflict);
+        }
+        let result = transaction
+            .execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE execution_reservation SET response_json = $3, updated_at = $4 WHERE task_id = $1 AND call_id = $2 AND state = 'consumed' AND response_json IS NULL",
+                [task_id.into(), call_id.to_string().into(), response.into(), now.into()],
+            ))
+            .await
+            .map_err(database_error)?;
+        if result.rows_affected()
+            != u64::try_from(rows.len())
+                .map_err(|_| ExecutionBudgetRepositoryError::ReservationConflict)?
+        {
+            return Err(ExecutionBudgetRepositoryError::ReservationConflict);
+        }
+        Ok(())
     }
 }
 
@@ -285,6 +366,16 @@ fn same_charges(rows: &[BudgetReservation], command: &BudgetReservationCommand) 
         })
 }
 
+fn common_response(
+    rows: &[BudgetReservation],
+) -> Result<Option<serde_json::Value>, ExecutionBudgetRepositoryError> {
+    let response = rows.first().and_then(|row| row.completed_response.clone());
+    if rows.iter().any(|row| row.completed_response != response) {
+        return Err(ExecutionBudgetRepositoryError::ReservationConflict);
+    }
+    Ok(response)
+}
+
 fn reservation_from_row(
     row: sea_orm::QueryResult,
 ) -> Result<BudgetReservation, ExecutionBudgetRepositoryError> {
@@ -296,6 +387,9 @@ fn reservation_from_row(
         reservation_id: row.try_get("", "reservation_id").map_err(database_error)?,
         task_id: row.try_get("", "task_id").map_err(database_error)?,
         call_id: row.try_get("", "call_id").map_err(database_error)?,
+        request_fingerprint: row
+            .try_get("", "request_fingerprint")
+            .map_err(database_error)?,
         resource: BudgetResource::parse(&resource_text)
             .ok_or(ExecutionBudgetRepositoryError::ReservationConflict)?,
         resource_key: row.try_get("", "resource_key").map_err(database_error)?,
@@ -304,6 +398,7 @@ fn reservation_from_row(
             .map_err(|_| ExecutionBudgetRepositoryError::ReservationConflict)?,
         state: BudgetReservationState::parse(&state_text)
             .ok_or(ExecutionBudgetRepositoryError::ReservationConflict)?,
+        completed_response: row.try_get("", "response_json").map_err(database_error)?,
         created_at: row.try_get("", "created_at").map_err(database_error)?,
         updated_at: row.try_get("", "updated_at").map_err(database_error)?,
     })
@@ -346,8 +441,9 @@ mod tests {
     use chrono::{DateTime, FixedOffset, SubsecRound, Utc};
     use core_application::{
         execution_budget::{
-            BudgetReservationCommand, BudgetReservationState, BudgetResource, BudgetScopeLimit,
-            ExecutionBudgetRepository, ExecutionBudgetRepositoryError,
+            BudgetReservationCommand, BudgetReservationState, BudgetReservationTransition,
+            BudgetResource, BudgetScopeLimit, ExecutionBudgetRepository,
+            ExecutionBudgetRepositoryError,
         },
         unit_of_work::UnitOfWork,
     };
@@ -378,15 +474,18 @@ mod tests {
         replay_matches_original: bool,
         second_reservations: usize,
         over_limit_rejected: bool,
+        changed_request_rejected: bool,
         duplicate_release_is_idempotent: bool,
         released_call_cannot_be_reused: bool,
         consumed_call_cannot_be_released: bool,
         retry_has_distinct_reservation: bool,
         separate_task_reservations: usize,
         expired_call_rejected: bool,
+        unmeasured_task_rejected: bool,
         first_task_counter: i64,
         separate_task_counter: i64,
         expired_task_counter: i64,
+        unmeasured_task_counter: i64,
         first_task_ledger: LedgerCounts,
     }
 
@@ -397,6 +496,7 @@ mod tests {
         let task_id = Uuid::new_v4();
         let other_task_id = Uuid::new_v4();
         let expired_task_id = Uuid::new_v4();
+        let unmeasured_task_id = Uuid::new_v4();
         let repository = PostgresExecutionBudgetRepository::new();
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         insert_strategy(&db, strategy_id).await;
@@ -421,10 +521,18 @@ mod tests {
             now - chrono::Duration::seconds(1),
         )
         .await;
+        insert_task(
+            &db,
+            strategy_id,
+            unmeasured_task_id,
+            now + chrono::Duration::minutes(2),
+        )
+        .await;
         for (id, deadline) in [
             (task_id, now + chrono::Duration::minutes(2)),
             (other_task_id, now + chrono::Duration::minutes(2)),
             (expired_task_id, now - chrono::Duration::seconds(1)),
+            (unmeasured_task_id, now + chrono::Duration::minutes(2)),
         ] {
             let transaction = unit_of_work.begin().await.expect("begin budget setup");
             repository
@@ -436,6 +544,13 @@ mod tests {
                 .await
                 .expect("commit budget setup");
         }
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE task_execution_state SET usage_complete = false WHERE task_id = $1",
+            [unmeasured_task_id.into()],
+        ))
+        .await
+        .expect("mark legacy usage as unmeasured");
 
         let first = reserve(
             &repository,
@@ -464,6 +579,9 @@ mod tests {
             command(task_id, "call-three-before-release", now, 2),
         )
         .await;
+        let mut changed_request = command(task_id, "call-one", now, 2);
+        changed_request.request_fingerprint = "different-request-content".to_string();
+        let changed_request = reserve(&repository, &unit_of_work, changed_request).await;
         transition(
             &repository,
             &unit_of_work,
@@ -528,6 +646,12 @@ mod tests {
             command(expired_task_id, "expired-call", now, 2),
         )
         .await;
+        let unmeasured = reserve(
+            &repository,
+            &unit_of_work,
+            command(unmeasured_task_id, "unmeasured-call", now, 2),
+        )
+        .await;
 
         let actual = ReservationObservation {
             first_reservations: first.reservations.len(),
@@ -536,6 +660,10 @@ mod tests {
             over_limit_rejected: matches!(
                 over_limit,
                 Err(ExecutionBudgetRepositoryError::LimitExceeded { .. })
+            ),
+            changed_request_rejected: matches!(
+                changed_request,
+                Err(ExecutionBudgetRepositoryError::ReservationConflict)
             ),
             duplicate_release_is_idempotent: duplicate_release.is_ok(),
             released_call_cannot_be_reused: matches!(
@@ -553,9 +681,14 @@ mod tests {
                 expired,
                 Err(ExecutionBudgetRepositoryError::DeadlineExpired)
             ),
+            unmeasured_task_rejected: matches!(
+                unmeasured,
+                Err(ExecutionBudgetRepositoryError::UsageNotMeasured)
+            ),
             first_task_counter: task_counter(&db, task_id).await,
             separate_task_counter: task_counter(&db, other_task_id).await,
             expired_task_counter: task_counter(&db, expired_task_id).await,
+            unmeasured_task_counter: task_counter(&db, unmeasured_task_id).await,
             first_task_ledger: ledger_counts(&db, task_id).await,
         };
 
@@ -566,15 +699,18 @@ mod tests {
                 replay_matches_original: true,
                 second_reservations: 1,
                 over_limit_rejected: true,
+                changed_request_rejected: true,
                 duplicate_release_is_idempotent: true,
                 released_call_cannot_be_reused: true,
                 consumed_call_cannot_be_released: true,
                 retry_has_distinct_reservation: true,
                 separate_task_reservations: 1,
                 expired_call_rejected: true,
+                unmeasured_task_rejected: true,
                 first_task_counter: 2,
                 separate_task_counter: 1,
                 expired_task_counter: 0,
+                unmeasured_task_counter: 0,
                 first_task_ledger: LedgerCounts {
                     reserved: 1,
                     consumed: 1,
@@ -707,6 +843,7 @@ mod tests {
         BudgetReservationCommand {
             task_id,
             call_id: call_id.to_string(),
+            request_fingerprint: format!("fingerprint-{call_id}"),
             resource: BudgetResource::ModelCall,
             charges: vec![BudgetScopeLimit {
                 resource_key: "model_call".to_string(),
@@ -747,10 +884,7 @@ mod tests {
         call_id: &str,
         state: BudgetReservationState,
         now: DateTime<FixedOffset>,
-    ) -> Result<
-        Vec<core_application::execution_budget::BudgetReservation>,
-        ExecutionBudgetRepositoryError,
-    > {
+    ) -> Result<BudgetReservationTransition, ExecutionBudgetRepositoryError> {
         let transaction = unit_of_work
             .begin()
             .await

@@ -59,6 +59,11 @@ const buildTestApp = (sql: Sql) =>
     },
   })
 
+const responseObservation = async (response: Response) => ({
+  status: response.status,
+  body: await response.json(),
+})
+
 describe('createApp', () => {
   it('returns ok on /health without touching the DB', async () => {
     const queries: string[][] = []
@@ -102,9 +107,9 @@ describe('createApp', () => {
     expect(res.status).toBe(200)
   })
 
-  it('rejects /internal/tasks without the internal API bearer token', async () => {
+  it('rejects /internal/v2/tasks without the internal API bearer token', async () => {
     const sql = fakeSql(() => Promise.resolve([]))
-    const res = await buildTestApp(sql).request('/internal/tasks', {
+    const res = await buildTestApp(sql).request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ strategy_id: '1', prompt: 'hi' }),
@@ -112,9 +117,9 @@ describe('createApp', () => {
     expect(res.status).toBe(401)
   })
 
-  it('accepts /internal/tasks with the internal API bearer token', async () => {
+  it('accepts /internal/v2/tasks with the internal API bearer token', async () => {
     const sql = fakeSql(() => Promise.resolve([]))
-    const res = await buildTestApp(sql).request('/internal/tasks', {
+    const res = await buildTestApp(sql).request('/internal/v2/tasks', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -126,8 +131,10 @@ describe('createApp', () => {
         prompt: 'hi',
       }),
     })
-    expect(res.status).toBe(201)
-    expect(await res.json()).toEqual({ task_id: 'task-1' })
+    expect(await responseObservation(res)).toEqual({
+      status: 201,
+      body: { task_id: 'task-1' },
+    })
   })
 
   it('forwards A2A JSON-RPC requests to the request handler', async () => {
