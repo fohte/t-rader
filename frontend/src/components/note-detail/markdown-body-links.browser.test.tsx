@@ -162,13 +162,6 @@ function getMainFramePoint(element: HTMLElement) {
   }
 }
 
-function serializeLinkTarget(
-  nodeName: string,
-  href: string | null | undefined,
-) {
-  return JSON.stringify({ nodeName, href })
-}
-
 function readMobileViewportState() {
   return {
     width: window.innerWidth,
@@ -179,24 +172,38 @@ function readMobileViewportState() {
   }
 }
 
-async function tapLink(session: CdpSession, name: string) {
-  const link = await screen.findByRole('link', { name })
-  const { x, y } = getMainFramePoint(link)
+async function expectTapTargetIsLink(
+  session: CdpSession,
+  link: HTMLElement,
+  point: { x: number; y: number },
+) {
   const { backendNodeId } = await session.send('DOM.getNodeForLocation', {
-    x: Math.round(x),
-    y: Math.round(y),
+    x: point.x,
+    y: point.y,
     includeUserAgentShadowDOM: true,
   })
   const { node } = await session.send('DOM.describeNode', {
     backendNodeId,
   })
   const hrefIndex = node.attributes.indexOf('href')
-  expect(
-    serializeLinkTarget(node.nodeName, node.attributes[hrefIndex + 1]),
-  ).toEqual(serializeLinkTarget('A', link.getAttribute('href')))
+  const actual = JSON.stringify({
+    nodeName: node.nodeName,
+    href: node.attributes[hrefIndex + 1],
+  })
+  const expected = JSON.stringify({
+    nodeName: 'A',
+    href: link.getAttribute('href'),
+  })
+  expect(actual).toBe(expected)
+}
+
+async function tapLink(session: CdpSession, name: string) {
+  const link = await screen.findByRole('link', { name })
+  const point = getMainFramePoint(link)
+  const roundedPoint = { x: Math.round(point.x), y: Math.round(point.y) }
+  await expectTapTargetIsLink(session, link, roundedPoint)
   await session.send('Input.synthesizeTapGesture', {
-    x,
-    y,
+    ...roundedPoint,
     gestureSourceType: 'touch',
   })
 }
