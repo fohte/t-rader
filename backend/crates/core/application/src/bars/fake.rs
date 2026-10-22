@@ -20,7 +20,6 @@ pub struct FakeBarsRepository {
     pub bars: Mutex<Vec<Bar>>,
     pub ingested_dates: Mutex<HashSet<NaiveDate>>,
     pub instruments: Mutex<HashSet<String>>,
-    pub us_stock_instrument_ids: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_daily_targets: Mutex<HashSet<String>>,
     pub us_stock_minute_targets: Mutex<HashSet<String>>,
@@ -35,6 +34,7 @@ pub struct FakeBarsRepository {
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
     pub minute_bar_downsample_instruments: Mutex<Vec<String>>,
+    pub minute_bar_downsample_candidate_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub minute_bar_downsample_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub minute_bar_downsample_cutoffs: Mutex<Vec<DateTime<Utc>>>,
     minute_bar_downsample_stats: Mutex<UsStockMinuteBarsDownsampleStats>,
@@ -58,13 +58,6 @@ impl FakeBarsRepository {
 
     pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
         self.us_stock_targets.lock().await.extend(instrument_ids);
-    }
-
-    pub async fn seed_us_stock_instrument_ids(&self, instrument_ids: Vec<String>) {
-        self.us_stock_instrument_ids
-            .lock()
-            .await
-            .extend(instrument_ids);
     }
 
     pub async fn seed_us_stock_daily_targets(&self, instrument_ids: Vec<String>) {
@@ -255,13 +248,29 @@ impl BarsRepository for FakeBarsRepository {
             .min())
     }
 
-    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
-        let mut instrument_ids = self
-            .us_stock_instrument_ids
+    async fn find_us_stock_minute_bar_instrument_ids(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError> {
+        self.minute_bar_downsample_candidate_ranges
             .lock()
             .await
+            .push((from, until));
+        let bars = self.bars.lock().await;
+        let mut instrument_ids = bars
             .iter()
-            .cloned()
+            .filter(|bar| {
+                bar.instrument_id.starts_with("US:")
+                    && bar.timeframe == Timeframe::Minute
+                    && bar.timestamp >= from
+                    && bar.timestamp < until
+                    && bar.timestamp < cutoff
+            })
+            .map(|bar| bar.instrument_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
             .collect::<Vec<_>>();
         instrument_ids.sort();
         Ok(instrument_ids)

@@ -11,8 +11,8 @@ use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter,
-    QueryOrder, Set, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
+    Statement,
 };
 
 use crate::DatabaseHandle;
@@ -240,19 +240,17 @@ impl BarsRepository for PostgresBarsRepository {
             .map_err(repository_error)
     }
 
-    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
-        instruments::Entity::find()
-            .filter(instruments::Column::Market.eq(Market::Us.to_string()))
-            .order_by_asc(instruments::Column::Id)
-            .all(&self.db)
-            .await
-            .map(|instruments| {
-                instruments
-                    .into_iter()
-                    .map(|instrument| instrument.id)
-                    .collect()
-            })
-            .map_err(repository_error)
+    async fn find_us_stock_minute_bar_instrument_ids(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError> {
+        us_stock_minute_bars_downsample::find_instrument_ids_with_minute_bars(
+            &self.db, from, until, cutoff,
+        )
+        .await
+        .map_err(repository_error)
     }
 
     async fn downsample_us_stock_minute_bar_range(
@@ -1470,9 +1468,9 @@ mod tests {
             .await
             .expect("find earliest old US minute bar");
         let instrument_ids = repository
-            .find_us_stock_instrument_ids()
+            .find_us_stock_minute_bar_instrument_ids(timestamp(6, 0), timestamp(10, 0), cutoff)
             .await
-            .expect("find US stock instruments");
+            .expect("find US stocks with minute bars in the target range");
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         let stats = repository
             .downsample_us_stock_minute_bar_range(
@@ -1637,7 +1635,6 @@ mod tests {
                     timestamp(9, 0).fixed_offset(),
                     vec![
                         us_instrument_id.clone(),
-                        empty_us_instrument_id,
                         fully_deleted_instrument_id.clone(),
                         partial_bucket_instrument_id.clone(),
                     ],
@@ -1748,7 +1745,7 @@ mod tests {
             BarsUseCases::new(unit_of_work, repository.clone()),
             write_lock,
         )
-        .downsample_old_us_stock_minute_bars(now)
+        .downsample_old_us_stock_minute_bars(now, Default::default())
         .await
         .map_err(|_| ());
         let mut remaining_minutes = Vec::new();
