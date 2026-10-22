@@ -90,14 +90,14 @@ export function NoteHistoryPanel({
                   }}
                   className="h-auto w-full flex-col whitespace-normal text-left"
                 >
-                  <span className="flex flex-col items-center gap-2">
+                  <span className="flex w-full flex-col items-center gap-2">
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-mono text-xs font-bold text-foreground">
                         v{String(version.version_no)}
                       </span>
                       {version.is_current && <Chip>現行</Chip>}
                     </span>
-                    <span className="line-clamp-2 text-sm leading-snug text-foreground">
+                    <span className="line-clamp-2 w-full text-center text-sm leading-snug text-foreground">
                       {version.title}
                     </span>
                     <span className="flex flex-wrap items-center justify-between gap-2">
