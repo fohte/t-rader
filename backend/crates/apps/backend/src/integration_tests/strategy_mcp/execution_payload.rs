@@ -14,8 +14,8 @@ use core_application::{
     strategy_scope::StrategyScope,
 };
 use gateway_postgres::entities::{
-    custom_indicator, custom_indicator_evaluation, strategy_task,
-    task_execution_definition_snapshot, task_execution_payload,
+    custom_indicator, custom_indicator_evaluation, sea_orm_active_enums::StrategyTaskPhase,
+    strategy_task, task_execution_definition_snapshot, task_execution_payload,
 };
 use indoc::indoc;
 use sea_orm::{
@@ -198,17 +198,41 @@ async fn create_running_task(
     (task.task_id, task.a2a_task_id)
 }
 
+async fn create_running_task_without_snapshot(
+    db: &gateway_postgres::DatabaseHandle,
+    strategy_id: Uuid,
+) -> (Uuid, String) {
+    let task_id = crate::testing::insert_test_strategy_task(
+        db,
+        strategy_id,
+        "synthetic snapshot task",
+        None,
+        Utc::now().fixed_offset(),
+    )
+    .await;
+    let a2a_task_id = format!("sample-task-{}", Uuid::new_v4());
+    strategy_task::ActiveModel {
+        task_id: Set(task_id),
+        a2a_task_id: Set(Some(a2a_task_id.clone())),
+        phase: Set(StrategyTaskPhase::Running),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("mark synthetic task as running");
+    (task_id, a2a_task_id)
+}
+
 #[backend_test_macros::database_test]
 async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
-    let (valid_task_id, valid_a2a_task_id) = create_running_task(&db, strategy_id).await;
-    let (invalid_task_id, invalid_a2a_task_id) = create_running_task(&db, strategy_id).await;
-    let (_, missing_a2a_task_id) = create_running_task(&db, strategy_id).await;
-    let valid_execution_id = format!("{valid_a2a_task_id}:{}", Uuid::from_u128(709));
-    let invalid_execution_id = format!("{invalid_a2a_task_id}:{}", Uuid::from_u128(710));
-    let missing_execution_id = format!("{missing_a2a_task_id}:{}", Uuid::from_u128(711));
+    let (valid_task_id, valid_a2a_task_id) =
+        create_running_task_without_snapshot(&db, strategy_id).await;
+    let (invalid_task_id, invalid_a2a_task_id) =
+        create_running_task_without_snapshot(&db, strategy_id).await;
+    let (_, missing_a2a_task_id) = create_running_task_without_snapshot(&db, strategy_id).await;
     let definition = json!({"phase": "synthetic"});
     for (task_id, digest) in [
         (valid_task_id, TASK_START_SNAPSHOT_DIGEST),
@@ -219,11 +243,11 @@ async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
             definition_key: Set("task_start".into()),
             definition: Set(definition.clone()),
             digest: Set(digest.into()),
-            ..Default::default()
+            created_at: Set(Utc::now().fixed_offset()),
         }
-        .update(&db)
+        .insert(&db)
         .await
-        .expect("update synthetic definition snapshot");
+        .expect("insert synthetic definition snapshot");
     }
 
     let server = tests_common::build_server(db);
@@ -232,7 +256,7 @@ async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
             "read_task_execution_snapshot",
             strategy_id,
             json!({}),
-            Some(valid_execution_id),
+            Some(valid_a2a_task_id),
             None,
         )
         .await
@@ -243,7 +267,7 @@ async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
             "read_task_execution_snapshot",
             strategy_id,
             json!({}),
-            Some(missing_execution_id),
+            Some(missing_a2a_task_id),
             None,
         )
         .await
@@ -254,7 +278,7 @@ async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
             "read_task_execution_snapshot",
             strategy_id,
             json!({}),
-            Some(invalid_execution_id),
+            Some(invalid_a2a_task_id),
             None,
         )
         .await
