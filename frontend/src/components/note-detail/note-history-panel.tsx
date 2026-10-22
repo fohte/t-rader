@@ -90,7 +90,7 @@ export function NoteHistoryPanel({
                   }}
                   className="h-auto w-full flex-col whitespace-normal text-left"
                 >
-                  <span className="flex flex-col gap-2">
+                  <span className="flex flex-col items-center gap-2">
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-mono text-xs font-bold text-foreground">
                         v{String(version.version_no)}
