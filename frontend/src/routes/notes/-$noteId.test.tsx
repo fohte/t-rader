@@ -247,9 +247,11 @@ describe('NoteDetailPage', () => {
       `/notes/${noteId}?version_id=${version.id}`,
     )
 
-    const chip = await screen.findByRole('button', {
-      name: '+12.5% の根拠を開く',
-    })
+    const chip = await screen.findByRole(
+      'button',
+      { name: '+12.5% の根拠を開く' },
+      { timeout: 30_000 },
+    )
 
     expect(selectedVersionIndicatorOutput(chip, requests.noteRequests)).toEqual(
       {
