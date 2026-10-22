@@ -7,6 +7,7 @@ import {
   type NoteEvaluationEvidenceState,
 } from '#components/note-detail/note-evaluation-evidence-card-view'
 import { NoteEvidenceCardView } from '#components/note-detail/note-evidence-card-view'
+import { useNoteIndicatorChangeEvidence } from '#hooks/use-note-indicator-change-evidence'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { fetchClient } from '#lib/api/client'
 import {
@@ -15,7 +16,11 @@ import {
   type NoteEvidenceDetails,
   resolveNoteChangeEvidence,
 } from '#lib/note-change-evidence'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
+import type {
+  ParsedIndicatorChangeReference,
+  ParsedNoteChangeReference,
+  ParsedStockChangeReference,
+} from '#lib/note-change-reference'
 import type { ParsedNotePriceReference } from '#lib/note-price-reference'
 import type {
   ParsedNoteIndicatorObservationReference,
@@ -164,20 +169,34 @@ export function NoteEvaluationEvidenceReference({
   )
 }
 
-export function NoteChangeReference({
-  instrumentId,
-  start,
-  end,
-  field,
-  token,
-  value,
-}: ParsedNoteChangeReference & { token: string; value?: string }) {
+export function NoteChangeReference(
+  reference: ParsedNoteChangeReference & { token: string; value?: string },
+) {
+  if (reference.kind === 'indicator') {
+    if (reference.value == null) {
+      return (
+        <span className="font-mono font-medium tabular-nums">
+          {reference.token}
+        </span>
+      )
+    }
+
+    return (
+      <ResolvedNoteIndicatorChangeReference
+        {...reference}
+        value={reference.value}
+      />
+    )
+  }
+
+  const { instrumentId, start, end, field, token, value } = reference
   if (value == null) {
     return <span className="font-mono font-medium tabular-nums">{token}</span>
   }
 
   return (
     <ResolvedNoteChangeReference
+      kind="stock"
       instrumentId={instrumentId}
       start={start}
       end={end}
@@ -193,8 +212,9 @@ function ResolvedNoteChangeReference({
   end,
   field,
   value,
-}: ParsedNoteChangeReference & { value: string }) {
-  const reference: ParsedNoteChangeReference = {
+}: ParsedStockChangeReference & { value: string }) {
+  const reference: ParsedStockChangeReference = {
+    kind: 'stock',
     instrumentId,
     start,
     end,
@@ -220,6 +240,33 @@ function ResolvedNoteChangeReference({
       instrumentId={instrumentId}
       displayValue={`${formatNoteEvidencePercentage(numericValue, 0)}%`}
       evidence={{ kind: 'change', start, end, barsState, field }}
+    />
+  )
+}
+
+function ResolvedNoteIndicatorChangeReference({
+  indicatorId,
+  start,
+  end,
+  value,
+}: ParsedIndicatorChangeReference & { value: string }) {
+  const [open, setOpen] = useState(false)
+  const indicator = useResolveRef(`indicator:${indicatorId}`)
+  const state = useNoteIndicatorChangeEvidence(indicator.id, start, end, open)
+
+  return (
+    <NoteEvidenceCardView
+      open={open}
+      onOpenChange={setOpen}
+      displayValue={`${formatNoteEvidencePercentage(Number(value), 0)}%`}
+      reference={{
+        kind: 'indicator-change',
+        start,
+        end,
+        state,
+        indicatorName: indicator.name,
+        indicatorId: indicator.id,
+      }}
     />
   )
 }

@@ -121,13 +121,15 @@ function setupFetch(
       const refs: Record<string, string> = {
         'stock:DEMO-A': '架空工業',
         'stock:DEMO-B': '架空商事',
+        'indicator:demo-indicator': 'デモ指標',
       }
       const name = link == null ? undefined : refs[link]
+      const separator = link?.indexOf(':') ?? -1
       return Promise.resolve(
         Response.json([
           {
-            kind: 'stock',
-            id: link?.slice('stock:'.length) ?? '',
+            kind: separator < 0 ? 'stock' : link?.slice(0, separator),
+            id: separator < 0 ? (link ?? '') : link?.slice(separator + 1),
             name: name ?? null,
           },
         ]),
@@ -193,6 +195,17 @@ function displayedBodyText(): string | null {
   return paragraphs.length === 0 ? null : paragraphs.join('\n')
 }
 
+function selectedVersionIndicatorOutput(
+  chip: HTMLElement,
+  noteRequests: NoteRequest[],
+) {
+  return {
+    body: displayedBodyText(),
+    chip: chip.textContent,
+    requests: noteRequests,
+  }
+}
+
 function notePageOutput(noteRequests: NoteRequest[]) {
   return [
     screen.queryByRole('heading', { level: 1 })?.textContent ?? null,
@@ -219,6 +232,42 @@ afterEach(() => {
 })
 
 describe('NoteDetailPage', () => {
+  it('shows the selected version’s saved indicator change as a percentage chip', async () => {
+    const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
+    const version: NoteVersion = {
+      ...historicalVersion,
+      body_md: token,
+      resolved_price_references_json: { [token]: { value: 12.5 } },
+    }
+    const note = noteForVersion(version, token)
+    note.resolved_price_references_json = { [token]: { value: 12.5 } }
+    const requests = await renderNoteDetail(
+      [version, currentVersion],
+      () => Promise.resolve(Response.json(note)),
+      `/notes/${noteId}?version_id=${version.id}`,
+    )
+
+    const chip = await screen.findByRole(
+      'button',
+      { name: '+12.5% の根拠を開く' },
+      { timeout: 30_000 },
+    )
+
+    expect(selectedVersionIndicatorOutput(chip, requests.noteRequests)).toEqual(
+      {
+        body: '+12.5%',
+        chip: '+12.5%',
+        requests: [
+          {
+            method: 'GET',
+            path: `/api/notes/${noteId}`,
+            versionId: version.id,
+          },
+        ],
+      },
+    )
+  }, 30_000)
+
   it('shows the selected historical version with its corrected display body', async () => {
     const requests = await renderNoteDetail(
       [historicalVersion, currentVersion],
