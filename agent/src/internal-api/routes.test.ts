@@ -55,7 +55,27 @@ const buildApp = (
   return app
 }
 
-describe('POST /internal/tasks', () => {
+const submitObservation = async (
+  response: Response,
+  capturedParams: MessageSendParams | undefined,
+) => ({
+  status: response.status,
+  body: await response.json(),
+  message: {
+    metadata: capturedParams?.message.metadata,
+    parts: capturedParams?.message.parts,
+  },
+  blocking: capturedParams?.configuration?.blocking,
+})
+
+const dispatchObservation = (status: number, sendMessageCalled: boolean) => ({
+  status,
+  sendMessageCalled,
+})
+
+describe('POST /internal/v2/tasks', () => {
+  const taskId = '00000000-0000-4000-8000-000000000001'
+
   it('submits the prompt as an A2A message scoped by strategy_id and returns the task id', async () => {
     let capturedParams: MessageSendParams | undefined
     const app = buildApp(
@@ -67,25 +87,28 @@ describe('POST /internal/tasks', () => {
       }),
     )
 
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
       }),
     })
 
-    expect.soft(res.status).toBe(201)
-    expect.soft(await res.json()).toEqual({ task_id: 'task-1' })
-    expect.soft(capturedParams?.message.metadata).toEqual({
-      strategy_id: '11111111-1111-1111-1111-111111111111',
+    expect(await submitObservation(res, capturedParams)).toEqual({
+      status: 201,
+      body: { task_id: 'task-1' },
+      message: {
+        metadata: {
+          task_id: taskId,
+          strategy_id: '11111111-1111-1111-1111-111111111111',
+        },
+        parts: [{ kind: 'text', text: 'do the thing' }],
+      },
+      blocking: false,
     })
-    expect.soft(capturedParams?.message.parts[0]).toEqual({
-      kind: 'text',
-      text: 'do the thing',
-    })
-    expect.soft(capturedParams?.configuration?.blocking).toBe(false)
   })
 
   it('includes deadline_at in the message metadata when present in the request body', async () => {
@@ -99,10 +122,11 @@ describe('POST /internal/tasks', () => {
       }),
     )
 
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
         deadline_at: '2026-01-01T00:15:00.000Z',
@@ -111,6 +135,7 @@ describe('POST /internal/tasks', () => {
 
     expect(res.status).toBe(201)
     expect(capturedParams?.message.metadata).toEqual({
+      task_id: taskId,
       strategy_id: '11111111-1111-1111-1111-111111111111',
       deadline_at: '2026-01-01T00:15:00.000Z',
     })
@@ -127,10 +152,11 @@ describe('POST /internal/tasks', () => {
       }),
     )
 
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
         deadline_at: '2026-01-01T00:15:00.000Z',
@@ -140,6 +166,7 @@ describe('POST /internal/tasks', () => {
 
     expect(res.status).toBe(201)
     expect(capturedParams?.message.metadata).toEqual({
+      task_id: taskId,
       strategy_id: '11111111-1111-1111-1111-111111111111',
       deadline_at: '2026-01-01T00:15:00.000Z',
       as_of: '2026-01-01T00:00:00.000Z',
@@ -159,11 +186,12 @@ describe('POST /internal/tasks', () => {
       () => shuttingDown,
     )
     const requestBody = JSON.stringify({
+      task_id: taskId,
       strategy_id: '11111111-1111-1111-1111-111111111111',
       prompt: 'do the thing',
     })
 
-    const beforeRes = await app.request('/internal/tasks', {
+    const beforeRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: requestBody,
@@ -173,7 +201,7 @@ describe('POST /internal/tasks', () => {
 
     shuttingDown = true
     sendMessageCalled = false
-    const afterRes = await app.request('/internal/tasks', {
+    const afterRes = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: requestBody,
@@ -188,7 +216,7 @@ describe('POST /internal/tasks', () => {
 
   it('returns 400 for a malformed JSON body', async () => {
     const app = buildApp(buildStubHandler())
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: 'not json',
@@ -202,9 +230,10 @@ describe('POST /internal/tasks', () => {
         sendMessage: () => Promise.resolve(buildTask({ id: 'task-1' })),
       }),
     )
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
       }),
@@ -214,7 +243,7 @@ describe('POST /internal/tasks', () => {
 
   it('returns 422 when strategy_id is missing', async () => {
     const app = buildApp(buildStubHandler())
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ prompt: 'do the thing' }),
@@ -222,9 +251,86 @@ describe('POST /internal/tasks', () => {
     expect(res.status).toBe(422)
   })
 
+  it('rejects an empty strategy_id before starting an agent task', async () => {
+    let sendMessageCalled = false
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: () => {
+          sendMessageCalled = true
+          return Promise.resolve(buildTask({ id: 'task-1' }))
+        },
+      }),
+    )
+    const res = await app.request('/internal/v2/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        task_id: taskId,
+        strategy_id: '',
+        prompt: 'do the thing',
+      }),
+    })
+
+    expect(dispatchObservation(res.status, sendMessageCalled)).toEqual({
+      status: 422,
+      sendMessageCalled: false,
+    })
+  })
+
+  it('rejects submissions without the stable task id before dispatch', async () => {
+    let sendMessageCalled = false
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: () => {
+          sendMessageCalled = true
+          return Promise.resolve(buildTask({ id: 'task-1' }))
+        },
+      }),
+    )
+    const res = await app.request('/internal/v2/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+        prompt: 'do the thing',
+      }),
+    })
+
+    expect(dispatchObservation(res.status, sendMessageCalled)).toEqual({
+      status: 422,
+      sendMessageCalled: false,
+    })
+  })
+
+  it('rejects the legacy submit path before starting an agent task', async () => {
+    let sendMessageCalled = false
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: () => {
+          sendMessageCalled = true
+          return Promise.resolve(buildTask({ id: 'task-1' }))
+        },
+      }),
+    )
+    const res = await app.request('/internal/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        task_id: taskId,
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+        prompt: 'do the thing',
+      }),
+    })
+
+    expect(dispatchObservation(res.status, sendMessageCalled)).toEqual({
+      status: 404,
+      sendMessageCalled: false,
+    })
+  })
+
   it('returns 422 when prompt is missing', async () => {
     const app = buildApp(buildStubHandler())
-    const res = await app.request('/internal/tasks', {
+    const res = await app.request('/internal/v2/tasks', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

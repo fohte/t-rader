@@ -30,7 +30,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 | `get_note_status_change_counts` | `from`, `to` (RFC 3339)             | `[from, to)` におけるノートの `approved` / `rejected` 遷移件数                                                              |
 | `preview_dashboard`             | `yaml`                              | ダッシュボード YAML を検証し、エラー一覧、または各ウィジェットの計算結果と `/dashboards/preview#...` URL を返す。保存しない |
 
-`submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。port は `backend/crates/core/application/`、クライアント実装は `backend/crates/gateways/t-rader-agent/` を参照。投入処理は `backend/crates/core/application/src/strategy_task/submit.rs` と `backend/crates/entrypoints/control-plane-mcp/src/mgmt/strategies.rs`、決着照合は `backend/crates/entrypoints/scheduler/src/jobs/strategy_task_reconcile.rs` を参照。
+`submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/v2/tasks`) 経由でタスクを投入する。port は `backend/crates/core/application/`、クライアント実装は `backend/crates/gateways/t-rader-agent/` を参照。投入処理は `backend/crates/core/application/src/strategy_task/submit.rs` と `backend/crates/entrypoints/control-plane-mcp/src/mgmt/strategies.rs`、決着照合は `backend/crates/entrypoints/scheduler/src/jobs/strategy_task_reconcile.rs` を参照。
 
 `preview_dashboard` は `title` と `widgets[]` を含む YAML を受け取り、各 widget を既存の定義型で検証する。入力 YAML や widget 定義が不正なら path と理由の一覧を返す。設定が有効なら、計算結果、widget ごとのエラー、および YAML を URL-safe Base64 でエンコードした `/dashboards/preview#...` を返す。preview URL は frontend origin から開く相対パスで、後続の画面から利用する。データがない widget は `errors` に記録し、他の widget の計算を続ける。データベースエラーは MCP エラーとして返す。ダッシュボードは保存しない。
 

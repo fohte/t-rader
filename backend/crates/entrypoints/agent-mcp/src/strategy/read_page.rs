@@ -7,7 +7,6 @@ use core_application::web_search::WebSearchError;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{ReadPageParams, ReadPageResult};
-use super::tool_call_limit::ToolCallLimitContext;
 use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
 
 pub(super) const TOOL_NAME: &str = "read_page";
@@ -18,7 +17,6 @@ impl StrategyServer {
     pub(super) async fn read_page_inner(
         &self,
         scope: impl Into<StrategyScope>,
-        call_limits: ToolCallLimitContext,
         model: String,
         params: ReadPageParams,
     ) -> Result<ReadPageResult, McpError> {
@@ -41,9 +39,6 @@ impl StrategyServer {
             .llm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
-        self.reserve_tool_call_limits(&call_limits, TOOL_NAME)
-            .await?;
-
         let (page_content, page_content_truncated) = match page_client.extract_page(&url).await {
             Ok(content) => {
                 let mut chars = content.chars();
@@ -60,7 +55,6 @@ impl StrategyServer {
                     error = %error,
                     "read_page: page extraction failed"
                 );
-                self.release_tool_call_limits(&call_limits, TOOL_NAME).await;
                 return Err(page_extraction_error_to_mcp(error));
             }
         };

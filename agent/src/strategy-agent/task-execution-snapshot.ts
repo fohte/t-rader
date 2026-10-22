@@ -24,12 +24,14 @@ interface SnapshotMcpClient {
 
 export type CreateSnapshotMcpClient = (
   strategyId: string,
+  strategyTaskId: string,
   executionId: string,
   toolModels: Readonly<Record<string, string>>,
 ) => SnapshotMcpClient
 
 export type FetchTaskExecutionSnapshot = (
   strategyId: string,
+  strategyTaskId: string,
   taskId: string,
 ) => Promise<Result<TaskExecutionSnapshot | undefined, Error>>
 
@@ -97,9 +99,9 @@ const toError = (error: unknown): Error =>
 
 export const createTaskExecutionSnapshotFetcher =
   (createMcpClient: CreateSnapshotMcpClient): FetchTaskExecutionSnapshot =>
-  async (strategyId, taskId) =>
+  async (strategyId, strategyTaskId, taskId) =>
     Promise.resolve()
-      .then(() => createMcpClient(strategyId, taskId, {}))
+      .then(() => createMcpClient(strategyId, strategyTaskId, taskId, {}))
       .then((client) => {
         const callExecutionTool = client.callExecutionTool
         const result: Promise<Result<unknown, Error>> =

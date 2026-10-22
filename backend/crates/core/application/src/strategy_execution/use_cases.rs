@@ -78,6 +78,9 @@ impl StrategyExecutionUseCases {
         if task.phase != StrategyTaskPhase::Running {
             return Err(StrategyExecutionUseCaseError::TaskNotRunning);
         }
+        if task.deadline_at <= Utc::now().fixed_offset() {
+            return Err(StrategyExecutionUseCaseError::TaskDeadlineExpired);
+        }
         Ok(super::AuthorizedExecution {
             task_id: task.task_id,
             strategy_id: task.strategy_id,

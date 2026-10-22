@@ -92,6 +92,7 @@ fn strategy_execution_error(error: StrategyExecutionUseCaseError) -> McpError {
         error @ (StrategyExecutionUseCaseError::TaskNotFound
         | StrategyExecutionUseCaseError::StrategyMismatch
         | StrategyExecutionUseCaseError::TaskNotRunning
+        | StrategyExecutionUseCaseError::TaskDeadlineExpired
         | StrategyExecutionUseCaseError::InvalidPageLimit
         | StrategyExecutionUseCaseError::InvalidDatasetCursor
         | StrategyExecutionUseCaseError::DatasetCaptureIncomplete

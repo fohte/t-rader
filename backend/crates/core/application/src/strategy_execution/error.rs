@@ -50,6 +50,8 @@ pub enum StrategyExecutionUseCaseError {
     StrategyMismatch,
     #[error("task execution is not running")]
     TaskNotRunning,
+    #[error("task execution deadline has expired")]
+    TaskDeadlineExpired,
     #[error("definition snapshot is invalid")]
     InvalidDefinitionSnapshot,
     #[error("custom indicator definition was not found")]

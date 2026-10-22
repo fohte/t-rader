@@ -26,6 +26,26 @@ pub(crate) async fn call_tool_with_headers<S>(
 where
     S: ServerHandler + Clone + 'static,
 {
+    call_tool_with_headers_and_id(
+        server,
+        name,
+        arguments,
+        NumberOrString::String(uuid::Uuid::new_v4().to_string().into()),
+        headers,
+    )
+    .await
+}
+
+pub(crate) async fn call_tool_with_headers_and_id<S>(
+    server: &S,
+    name: &'static str,
+    arguments: Value,
+    request_id: NumberOrString,
+    headers: HeaderMap,
+) -> Result<CallToolResponse, McpError>
+where
+    S: ServerHandler + Clone + 'static,
+{
     let arguments = arguments
         .as_object()
         .cloned()
@@ -41,7 +61,7 @@ where
 
     let mut parts = Request::new(()).into_parts().0;
     parts.headers = headers;
-    let mut context = RequestContext::new(NumberOrString::Number(1), running.peer().clone());
+    let mut context = RequestContext::new(request_id, running.peer().clone());
     context.extensions.insert(parts);
     let response = server
         .call_tool(
@@ -77,6 +97,22 @@ where
     T: DeserializeOwned,
 {
     let response = call_tool_with_headers(server, name, arguments, headers).await?;
+    decode_tool_output(response)
+}
+
+pub(crate) async fn call_tool_output_with_headers_and_id<S, T>(
+    server: &S,
+    name: &'static str,
+    arguments: Value,
+    request_id: NumberOrString,
+    headers: HeaderMap,
+) -> Result<T, McpError>
+where
+    S: ServerHandler + Clone + 'static,
+    T: DeserializeOwned,
+{
+    let response =
+        call_tool_with_headers_and_id(server, name, arguments, request_id, headers).await?;
     decode_tool_output(response)
 }
 

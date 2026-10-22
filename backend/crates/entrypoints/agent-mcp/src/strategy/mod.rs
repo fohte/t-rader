@@ -13,6 +13,7 @@ pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
+mod execution_budget_router;
 pub(super) mod execution_payload;
 pub(super) mod fin_summary;
 mod graph_dto;
@@ -39,7 +40,6 @@ pub(super) mod short_sale_report;
 pub(super) mod stock_groups;
 pub(super) mod stock_registration;
 pub(super) mod strategy_earnings_targets;
-mod tool_call_limit;
 mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;
@@ -51,7 +51,6 @@ use std::collections::BTreeMap;
 
 use core_application::kata_exec::{KataExecError, SharedKataExecutor};
 use core_application::llm_client::LlmClientError as LiteLlmError;
-use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
 use core_application::persistence::PersistenceError;
 use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
 use core_application::web_search::SharedWebSearchClient;
@@ -71,6 +70,7 @@ const MAX_LIST_LIMIT: u64 = 200;
 pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
+const STRATEGY_TASK_ID_HEADER: &str = "x-strategy-task-id";
 /// `x-execution-id` ヘッダ名。task-only の読み取りは `a2a_task_id`、step 付き呼び出しは
 /// `{a2a_task_id}:{step_id}` を送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列、
 /// `a2a_task_id` は resume のたびに新しくなる実行 (試行) の id)。`a2a_task_id` をそのままキーにすると
@@ -141,18 +141,6 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
             internal_error(format!("failed to parse litellm response: {msg}"))
         }
         LiteLlmError::Init(msg) => internal_error(format!("litellm client init error: {msg}")),
-    }
-}
-
-pub(super) fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
-    match error {
-        error @ McpToolCallCountUseCaseError::CallLimitExceeded { .. } => {
-            invalid_params(error.to_string())
-        }
-        error => {
-            tracing::error!(error = %error, "strategy mcp db error");
-            internal_error(format!("database error: {error}"))
-        }
     }
 }
 
@@ -348,6 +336,25 @@ fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     execution_id_from_headers(&parts.headers)
 }
 
+fn strategy_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Option<Uuid>, McpError> {
+    let Some(parts) = ctx.extensions.get::<axum::http::request::Parts>() else {
+        return Ok(None);
+    };
+    let Some(header) = parts.headers.get(STRATEGY_TASK_ID_HEADER) else {
+        return Ok(None);
+    };
+    let raw = header.to_str().map_err(|_| {
+        invalid_params(format!(
+            "{STRATEGY_TASK_ID_HEADER} header is not valid ASCII"
+        ))
+    })?;
+    Uuid::parse_str(raw.trim()).map(Some).map_err(|_| {
+        invalid_params(format!(
+            "{STRATEGY_TASK_ID_HEADER} header is not a valid uuid"
+        ))
+    })
+}
+
 fn tool_model_from_headers(
     headers: &axum::http::HeaderMap,
     tool_name: &str,
@@ -402,13 +409,17 @@ fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String
 /// task 内の読取では A2A task ID 単体と step 付き実行 ID のどちらも受け付ける。
 fn execution_task_id_for_read_from_execution_id(execution_id: &str) -> Option<&str> {
     if execution_id.contains(':') {
-        execution_task_id_from_execution_id(execution_id)
+        let (task_id, step_id) = execution_id.rsplit_once(':')?;
+        Uuid::parse_str(step_id).ok()?;
+        (!task_id.is_empty()).then_some(task_id)
     } else {
         (!execution_id.is_empty()).then_some(execution_id)
     }
 }
 
-fn execution_task_id_for_read_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
+pub(super) fn execution_task_id_for_read_from_ctx(
+    ctx: &RequestContext<RoleServer>,
+) -> Option<String> {
     let execution_id = execution_id_from_ctx(ctx)?;
     execution_task_id_for_read_from_execution_id(&execution_id).map(str::to_string)
 }
@@ -593,6 +604,7 @@ mod tests {
     #[rstest]
     #[case::step_scoped("a2a-task-1:550e8400-e29b-41d4-a716-446655440000", Some("a2a-task-1"))]
     #[case::task_only("a2a-task-1", Some("a2a-task-1"))]
+    #[case::malformed_step("a2a-task-1:not-a-uuid", None)]
     #[case::empty("", None)]
     #[case::empty_task_id_part(":550e8400-e29b-41d4-a716-446655440000", None)]
     fn execution_task_id_for_read_from_execution_id_cases(

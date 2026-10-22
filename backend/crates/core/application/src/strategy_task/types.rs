@@ -95,6 +95,7 @@ pub struct StrategyTask {
     pub phase: StrategyTaskPhase,
     pub error_summary: Option<String>,
     pub result_text: Option<String>,
+    /// task_execution_state には予算予約と claim の原子判定に使う同じ固定期限を保存する。
     pub deadline_at: DateTime<FixedOffset>,
     pub purpose: Option<String>,
     pub as_of: Option<DateTime<FixedOffset>>,

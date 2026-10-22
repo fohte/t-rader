@@ -15,10 +15,23 @@ pub struct AgentGraphConfig {
     #[serde(default)]
     pub timeout_minutes: Option<u32>,
     #[serde(default)]
+    pub execution_limits: Option<AgentGraphExecutionLimits>,
+    #[serde(default)]
     pub tool_limits: BTreeMap<String, u32>,
     #[serde(default)]
     pub tool_models: BTreeMap<String, String>,
     pub phases: Vec<AgentGraphPhase>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentGraphExecutionLimits {
+    #[serde(default)]
+    pub max_model_calls: Option<u32>,
+    #[serde(default)]
+    pub max_tool_calls: Option<u32>,
+    #[serde(default)]
+    pub max_subagent_runs: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -407,6 +420,7 @@ mod tests {
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
                 timeout_minutes: None,
+                execution_limits: None,
                 tool_limits: BTreeMap::from([("search_web".to_string(), 4)]),
                 tool_models: BTreeMap::from([(
                     "query_youtube".to_string(),
@@ -481,6 +495,55 @@ mod tests {
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
                 timeout_minutes: None,
+                execution_limits: None,
+                tool_limits: BTreeMap::new(),
+                tool_models: BTreeMap::new(),
+                phases: vec![AgentGraphPhase {
+                    key: "plan".to_string(),
+                    label: "Plan".to_string(),
+                    kind: AgentGraphPhaseKind::Llm,
+                    model: Some("example-model-plan".to_string()),
+                    timeout_minutes: None,
+                    reasoning_effort: None,
+                    prompt: Some("Make a plan".to_string()),
+                    operation: None,
+                    code_id: None,
+                    for_each: None,
+                    label_field: None,
+                    max_parallel: None,
+                    skills: vec![],
+                    subagents: vec![],
+                    max_subagent_runs: None,
+                    tools: vec![],
+                    input: BTreeMap::new(),
+                    output: serde_json::Map::new(),
+                }],
+            })),
+        );
+    }
+
+    #[rstest]
+    fn parse_task_execution_limits_without_changing_legacy_defaults() {
+        let yaml = indoc! {"
+            execution_limits:
+              max_model_calls: 9
+              max_tool_calls: 13
+            phases:
+              - key: plan
+                label: Plan
+                model: example-model-plan
+                prompt: Make a plan
+        "};
+
+        assert_eq!(
+            parse_agent_graph(yaml),
+            Ok(Some(AgentGraphConfig {
+                timeout_minutes: None,
+                execution_limits: Some(AgentGraphExecutionLimits {
+                    max_model_calls: Some(9),
+                    max_tool_calls: Some(13),
+                    max_subagent_runs: None,
+                }),
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
@@ -546,6 +609,7 @@ mod tests {
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
                 timeout_minutes: None,
+                execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
                 phases: vec![
@@ -809,6 +873,7 @@ mod tests {
             parse_agent_graph(&yaml),
             Ok(Some(AgentGraphConfig {
                 timeout_minutes: Some(timeout_minutes),
+                execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {

@@ -22,7 +22,9 @@ use std::borrow::Cow;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
-use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{
+    CallToolRequestParams, CallToolResponse, Implementation, ServerCapabilities, ServerInfo,
+};
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 
@@ -41,13 +43,11 @@ use super::dto::{
     WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
-use super::read_page::READ_PAGE_MAX_CALLS_PER_TASK;
 use super::read_page::TOOL_NAME as READ_PAGE_TOOL_NAME;
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
-use super::web_search::{SEARCH_WEB_MAX_CALLS_PER_TASK, TOOL_NAME as SEARCH_WEB_TOOL_NAME};
 use super::youtube::TOOL_NAME as QUERY_YOUTUBE_TOOL_NAME;
 use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
@@ -269,16 +269,7 @@ impl StrategyServer {
     ) -> Result<Json<ReadPageResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let model = tool_model_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
-        let call_limits = self
-            .tool_call_limit_context_from_ctx(
-                &ctx,
-                READ_PAGE_TOOL_NAME,
-                READ_PAGE_MAX_CALLS_PER_TASK,
-            )
-            .await?;
-        self.read_page_inner(scope, call_limits, model, params)
-            .await
-            .map(Json)
+        self.read_page_inner(scope, model, params).await.map(Json)
     }
 
     /// Tavily で web 検索し、記事の出典とスニペットを返す
@@ -293,16 +284,7 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let call_limits = self
-            .tool_call_limit_context_from_ctx(
-                &ctx,
-                SEARCH_WEB_TOOL_NAME,
-                SEARCH_WEB_MAX_CALLS_PER_TASK,
-            )
-            .await?;
-        self.search_web_inner(scope, call_limits, params)
-            .await
-            .map(Json)
+        self.search_web_inner(scope, params).await.map(Json)
     }
 
     /// 口座全体 (全戦略横断) の保有銘柄と実現損益、および接続元戦略のスライスを時価で返す
@@ -505,7 +487,7 @@ impl StrategyServer {
 }
 
 impl StrategyServer {
-    fn tool_router() -> ToolRouter<Self> {
+    pub(super) fn tool_router() -> ToolRouter<Self> {
         Self::base_tool_router()
             + Self::stock_groups_tool_router()
             + Self::strategy_earnings_targets_tool_router()
@@ -540,6 +522,14 @@ impl StrategyServer {
 
 #[tool_handler]
 impl ServerHandler for StrategyServer {
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        self.call_tool_with_execution_budget(request, context).await
+    }
+
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
             Implementation::new("t-rader-strategy", env!("CARGO_PKG_VERSION")),

@@ -40,7 +40,11 @@ const fetchSnapshotResponse = (response: unknown) => {
     callExecutionTool: () => Promise.resolve(ok(response)),
     close: () => Promise.resolve(),
   }))
-  return fetchSnapshot('strategy-synthetic', 'task-synthetic')
+  return fetchSnapshot(
+    'strategy-synthetic',
+    '22222222-2222-2222-2222-222222222222',
+    'task-synthetic',
+  )
 }
 
 describe('createTaskExecutionSnapshotFetcher', () => {
@@ -118,7 +122,11 @@ describe('createTaskExecutionSnapshotFetcher', () => {
     }
     const createMcpClient = vi.fn(() => client)
     const fetchSnapshot = createTaskExecutionSnapshotFetcher(createMcpClient)
-    const result = await fetchSnapshot('strategy-synthetic', 'task-synthetic')
+    const result = await fetchSnapshot(
+      'strategy-synthetic',
+      '22222222-2222-2222-2222-222222222222',
+      'task-synthetic',
+    )
 
     expect(result).toEqual(
       ok({
@@ -127,7 +135,12 @@ describe('createTaskExecutionSnapshotFetcher', () => {
       }),
     )
     expect(createMcpClient.mock.calls).toEqual([
-      ['strategy-synthetic', 'task-synthetic', {}],
+      [
+        'strategy-synthetic',
+        '22222222-2222-2222-2222-222222222222',
+        'task-synthetic',
+        {},
+      ],
     ])
     expect(client.callExecutionTool.mock.calls).toEqual([
       [{ name: 'read_task_execution_snapshot', arguments: {} }],

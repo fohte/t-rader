@@ -72,6 +72,9 @@ const createContext = (
     const client: McpToolsClient = {
       getTools: () => Promise.resolve([]),
       callExecutionTool: call,
+      reserveModelCall: () => Promise.resolve(),
+      reserveSubagentRun: () => Promise.resolve(),
+      transitionReservation: () => Promise.resolve(),
       close: () => Promise.resolve(),
     }
     return client

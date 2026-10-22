@@ -46,6 +46,10 @@ phases: []`,
   it('parses a valid multi-phase config into camelCase phases', () => {
     const yaml = `
 timeout_minutes: 30
+execution_limits:
+  max_model_calls: 21
+  max_tool_calls: 34
+  max_subagent_runs: 8
 tool_limits:
   tool_a: 4
 tool_models:
@@ -78,6 +82,11 @@ phases:
     expect(parseAgentGraph(yaml)).toEqual(
       ok({
         timeoutMinutes: 30,
+        executionLimits: {
+          maxModelCalls: 21,
+          maxToolCalls: 34,
+          maxSubagentRuns: 8,
+        },
         toolLimits: { tool_a: 4 },
         toolModels: {
           tool_a: 'demo-model-tool-a',
@@ -331,6 +340,27 @@ phases:
         (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
       ),
     ).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
+  it('leaves task execution limits unconfigured for legacy YAML', () => {
+    expect(parseAgentGraph('phases: []')).toEqual(ok({ phases: [] }))
+  })
+
+  it('rejects unknown fields in task execution limits', () => {
+    const result = parseAgentGraph(`execution_limits:
+  max_model_calls: 2
+  unknown_limit: 3
+phases: []`).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+
+    expect(result).toEqual(
       err(
         new AgentGraphParseError(
           'agent_graph does not match the expected shape: <zod-issues>',

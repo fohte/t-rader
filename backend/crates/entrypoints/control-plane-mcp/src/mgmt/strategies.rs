@@ -107,6 +107,10 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
             tracing::error!(error = %error, "failed to capture task execution definitions");
             McpError::internal_error("failed to capture task execution definitions", None)
         }
+        SubmitTaskError::ExecutionBudget(error) => {
+            tracing::error!(error = %error, "failed to initialize task execution budget");
+            McpError::internal_error("failed to initialize task execution budget", None)
+        }
     }
 }
 

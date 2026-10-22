@@ -1,18 +1,12 @@
 import type { Message } from '@a2a-js/sdk'
-import { createGenAiTracingMiddleware } from '@fohte/service-kit/langchain-genai'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { BaseMessage, SystemMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
-import { ChatOpenAI } from '@langchain/openai'
-import { createAgent, toolStrategy } from 'langchain'
-import { errAsync, okAsync, ResultAsync } from 'neverthrow'
+import { errAsync, okAsync, type Result, ResultAsync } from 'neverthrow'
 
 import { extractMessageText } from '#a2a/message-text'
 import { logger } from '#logger'
 import type { FetchAgentConfig } from '#strategy-agent/agent-config-client'
-import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
-import { isPlainObject } from '#strategy-agent/agent-graph/json'
 import { parseAgentGraph } from '#strategy-agent/agent-graph/parse'
 import type {
   BuildPhaseAgentOptions,
@@ -25,45 +19,12 @@ import {
   strategyTaskStepJsonSchema,
 } from '#strategy-agent/agent-graph/step'
 import { withAsOf } from '#strategy-agent/as-of'
-import { createCallDurationMiddleware } from '#strategy-agent/call-duration-middleware'
-import { createDeadlineMiddleware } from '#strategy-agent/deadline-middleware'
-import {
-  createFinalTurnMiddleware,
-  finalTurnMiddleware,
-  MAX_MODEL_CALLS_PER_INVOKE,
-  type ModelCallBudget,
-} from '#strategy-agent/final-turn-middleware'
-import { malformedToolCallResponseMiddleware } from '#strategy-agent/malformed-tool-call-response-middleware'
-import { createMcpToolJsonEnvelopeMiddleware } from '#strategy-agent/mcp-tool-json-envelope-middleware'
-import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
-import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
-import { nonAssistantModelResponseMiddleware } from '#strategy-agent/non-assistant-model-response-middleware'
-import {
-  createReasoningContentAwareFetch,
-  reasoningContentMiddleware,
-} from '#strategy-agent/reasoning-content-middleware'
-import {
-  type CreateStrategyMcpClient,
-  createStrategyMcpClient,
-} from '#strategy-agent/strategy-mcp-client'
-import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
+import type { ExecutionToolRequest } from '#strategy-agent/execution-tool-client'
 import type { FetchSubagentDefinition } from '#strategy-agent/subagent-definition-client'
-import { createSubagentDefinitionFetcher } from '#strategy-agent/subagent-definition-client'
 import { createRunSubagentTool } from '#strategy-agent/subagent-tool'
 import type { FetchTaskExecutionSnapshot } from '#strategy-agent/task-execution-snapshot'
-import {
-  createSnapshotSubagentDefinitionFetcher,
-  createTaskExecutionSnapshotFetcher,
-} from '#strategy-agent/task-execution-snapshot'
-import {
-  createToolCallCapMiddleware,
-  MAX_TOOL_CALLS_PER_MODEL_CALL,
-} from '#strategy-agent/tool-call-cap-middleware'
-import { createStrategyToolErrorMiddleware } from '#strategy-agent/tool-error-middleware'
+import { createSnapshotSubagentDefinitionFetcher } from '#strategy-agent/task-execution-snapshot'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
-
-// OpenCode Go's OpenAI-compatible endpoint.
-const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
 const DEFAULT_PURPOSE = 'default'
 
@@ -77,13 +38,42 @@ export interface StrategyAgentResult {
   readonly errorKind?: 'usage_limit' | 'agent_error'
 }
 
-export type { McpToolsClient } from '#strategy-agent/strategy-mcp-client'
+export interface McpToolsClient {
+  getTools(): Promise<DynamicStructuredTool[]>
+  callExecutionTool?(
+    request: ExecutionToolRequest,
+    signal?: AbortSignal,
+  ): Promise<Result<unknown, Error>>
+  reserveModelCall(callId: string): Promise<void>
+  reserveSubagentRun(input: {
+    readonly callId: string
+    readonly phaseKey: string
+    readonly parentExecutionStepId: string
+    readonly definitionKey: string
+  }): Promise<void>
+  transitionReservation(
+    callId: string,
+    state: 'consumed' | 'released',
+  ): Promise<void>
+  close(): Promise<void>
+}
+
+interface SubagentExecutionIdentity {
+  readonly executionId: string
+  readonly definitionKey: string
+}
 
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
   readonly fetchTaskExecutionSnapshot: FetchTaskExecutionSnapshot
   readonly fetchSubagentDefinition: FetchSubagentDefinition
-  readonly createMcpClient: CreateStrategyMcpClient
+  readonly createMcpClient: (
+    strategyId: string,
+    strategyTaskId: string,
+    executionId: string,
+    toolModels: Readonly<Record<string, string>>,
+    subagentExecution?: SubagentExecutionIdentity,
+  ) => McpToolsClient
   readonly createChatModel: (
     model: string,
     options?: { reasoningEffort?: string },
@@ -101,204 +91,7 @@ export interface StrategyAgentConfig {
   readonly llmCallTimeoutMs: number
 }
 
-// createAgent の型推論は response schema に関わらず
-// `Record<string, unknown>` に collapse するため、その形で返す。
-const buildCompiledAgent = (
-  genAiProviderName: string,
-  llmCallTimeoutMs: number,
-  options: {
-    model: BaseChatModel
-    tools: readonly DynamicStructuredTool[]
-    mcpTools: readonly DynamicStructuredTool[]
-    systemPrompt: string
-    responseFormat: ReturnType<typeof toolStrategy>
-    deadlineSignal?: AbortSignal
-    agentSignal?: AbortSignal
-    phaseTimeout?: BuildPhaseAgentOptions['phaseTimeout']
-    modelCallBudget?: ModelCallBudget
-    captureMessagesOnAbort?: boolean
-  },
-): CompiledPhaseAgent => {
-  const maxModelCalls =
-    options.modelCallBudget?.maxModelCalls ?? MAX_MODEL_CALLS_PER_INVOKE
-  const modelCallMiddleware =
-    options.modelCallBudget !== undefined
-      ? createFinalTurnMiddleware(maxModelCalls, options.modelCallBudget)
-      : finalTurnMiddleware
-  const agent = createAgent({
-    model: options.model,
-    tools: [...options.tools],
-    // createAgent は string の systemPrompt を content parts 配列に変換するが、
-    // 上流 API の一部は system ロールの配列 content を拒否するため文字列のまま渡す。
-    systemPrompt: new SystemMessage(options.systemPrompt),
-    responseFormat: options.responseFormat,
-    middleware: [
-      createGenAiTracingMiddleware({ providerName: genAiProviderName }),
-      // tracing middleware の wrapToolCall は tool error を自動復旧しないため、
-      // 通常の ToolMessage に戻しつつ MCP の通信障害を記録する。
-      createStrategyToolErrorMiddleware(),
-      modelCallMiddleware,
-      // finalTurnMiddleware より内側に置き、
-      // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
-      modelResponseGuardMiddleware,
-      ...(options.mcpTools.length > 0
-        ? [createMcpToolJsonEnvelopeMiddleware(options.mcpTools)]
-        : []),
-      stripMessageNameMiddleware,
-      // 再試行ごとに呼び出し時間上限と tool 呼び出し上限の状態を作り直す。
-      createModelCallRetryMiddleware(),
-      malformedToolCallResponseMiddleware,
-      // 実際の HTTP リクエストに一番近い位置で signal / callback を差し込む。
-      createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
-      createCallDurationMiddleware(llmCallTimeoutMs),
-      ...(options.deadlineSignal !== undefined
-        ? [
-            createDeadlineMiddleware(
-              options.deadlineSignal,
-              options.phaseTimeout,
-            ),
-          ]
-        : []),
-      reasoningContentMiddleware,
-      // LangChain の戻り値検証前に assistant 以外の message を再試行可能なエラーへ変える。
-      nonAssistantModelResponseMiddleware,
-    ],
-    ...(options.agentSignal !== undefined
-      ? { signal: options.agentSignal }
-      : {}),
-  })
-  return {
-    invoke: async (input) => {
-      const recursionLimit = maxModelCalls * 3
-      if (options.captureMessagesOnAbort === true) {
-        let latestState: {
-          readonly messages: readonly BaseMessage[]
-          readonly structuredResponse?: Record<string, unknown>
-        } = { messages: [...input.messages] }
-        const stream = agent
-          .stream(
-            { messages: [...input.messages] },
-            { streamMode: 'values', recursionLimit },
-          )
-          .then(async (values) => {
-            for await (const value of values) {
-              latestState = parseAgentState(value) ?? latestState
-            }
-            return latestState
-          })
-        return stream.then(
-          (state) => state,
-          (error: unknown) => {
-            if (options.deadlineSignal?.aborted === true) return latestState
-            return Promise.reject(
-              error instanceof Error ? error : new Error(String(error)),
-            )
-          },
-        )
-      }
-      const result = await agent.invoke(
-        { messages: [...input.messages] },
-        {
-          // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
-          // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
-          // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
-          recursionLimit,
-        },
-      )
-      // createAgent の推論型では structuredResponse は常に存在する扱いだが、
-      // 実行時はモデルが structured-output tool を呼び出さないこともある。
-      // このキャストでその可能性を型上に戻し、直後の undefined チェックが
-      // unreachable と判定されないようにする。
-      const structuredResponse = result.structuredResponse as
-        Record<string, unknown> | undefined
-      // exactOptionalPropertyTypes により optional property に対して
-      // `{ structuredResponse: undefined }` を渡すことは許されないため、
-      // エージェントが返さなかった場合はキー自体を省略する。
-      if (structuredResponse === undefined) return {}
-      return { structuredResponse }
-    },
-  }
-}
-
-const parseAgentState = (
-  value: unknown,
-):
-  | {
-      readonly messages: readonly BaseMessage[]
-      readonly structuredResponse?: Record<string, unknown>
-    }
-  | undefined => {
-  if (!isPlainObject(value)) return undefined
-  const record = value
-  const messages = Array.isArray(record['messages'])
-    ? record['messages'].filter(
-        (message): message is BaseMessage => message instanceof BaseMessage,
-      )
-    : []
-  const structuredResponse = record['structuredResponse']
-  return {
-    messages,
-    ...(isPlainObject(structuredResponse) ? { structuredResponse } : {}),
-  }
-}
-
-// response schema は agent_graph の `output` 設定からフェーズごとに組み立てる。
-const createDefaultBuildPhaseAgent =
-  (genAiProviderName: string, llmCallTimeoutMs: number) =>
-  (options: BuildPhaseAgentOptions): CompiledPhaseAgent =>
-    buildCompiledAgent(genAiProviderName, llmCallTimeoutMs, {
-      ...options,
-      responseFormat: toolStrategy(options.responseSchema),
-    })
-
-type ReasoningEffort = NonNullable<
-  NonNullable<
-    NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['reasoning']
-  >['effort']
->
-
-// Real wiring for production use; tests inject StrategyAgentDeps directly.
-export const createStrategyAgentDeps = (
-  config: StrategyAgentConfig,
-): StrategyAgentDeps => {
-  const createMcpClient = createStrategyMcpClient(config.backendApiBaseUrl)
-  return {
-    fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
-    fetchTaskExecutionSnapshot:
-      createTaskExecutionSnapshotFetcher(createMcpClient),
-    fetchSubagentDefinition: createSubagentDefinitionFetcher(
-      config.backendApiBaseUrl,
-    ),
-    createMcpClient,
-    createChatModel: (model, options) =>
-      new ChatOpenAI({
-        apiKey: config.llmApiKey,
-        model,
-        // model 引数によっては上流 backend が非ストリーミングの応答から
-        // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
-        streaming: true,
-        timeout: config.llmCallTimeoutMs,
-        // SDK 内の再試行によるタイムアウトの累積を防ぎ、再試行を middleware に集約する。
-        maxRetries: 0,
-        configuration: {
-          baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
-          fetch: createReasoningContentAwareFetch(),
-        },
-        ...(options?.reasoningEffort !== undefined
-          ? {
-              reasoning: {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent_graph 由来の reasoningEffort は model と同じ自由文字列として持ち回っており、ChatOpenAI 側のリテラル型に合わせ込むための意図的な narrowing。
-                effort: options.reasoningEffort as ReasoningEffort,
-              },
-            }
-          : {}),
-      }),
-    buildPhaseAgent: createDefaultBuildPhaseAgent(
-      config.genAiProviderName,
-      config.llmCallTimeoutMs,
-    ),
-  }
-}
+export { createStrategyAgentDeps } from '#strategy-agent/strategy-agent-deps'
 
 // パースに失敗した要素は無視し、正常にパースできたステップのみ再開情報として扱う。
 const parseResumeSteps = (
@@ -331,6 +124,7 @@ export interface RunStrategyAgentInput {
   readonly strategyId: string
   readonly purpose: string | undefined
   readonly taskId: string
+  readonly strategyTaskId: string
   readonly userMessage: Message
   readonly resumeSteps: unknown[] | undefined
   readonly asOf: Date | undefined
@@ -346,6 +140,7 @@ export const runStrategyAgent = async (
     strategyId,
     purpose,
     taskId,
+    strategyTaskId,
     userMessage,
     resumeSteps,
     asOf,
@@ -375,7 +170,9 @@ export const runStrategyAgent = async (
   }
 
   return Promise.resolve()
-    .then(() => deps.fetchTaskExecutionSnapshot(strategyId, taskId))
+    .then(() =>
+      deps.fetchTaskExecutionSnapshot(strategyId, strategyTaskId, taskId),
+    )
     .then((snapshotResult) => {
       if (snapshotResult.isErr()) return toErrorResult(snapshotResult.error)
       const snapshot = snapshotResult.value
@@ -401,6 +198,7 @@ export const runStrategyAgent = async (
               createStepMcpClient: (executionStepId) =>
                 deps.createMcpClient(
                   strategyId,
+                  strategyTaskId,
                   executionStepId === undefined
                     ? taskId
                     : `${taskId}:${executionStepId}`,
@@ -411,15 +209,18 @@ export const runStrategyAgent = async (
                 parentExecutionStepId,
                 recorder,
                 phaseContext,
+                parentMcpClient,
               ) => {
                 return createRunSubagentTool({
                   phase,
                   parentExecutionStepId,
                   recorder,
+                  parentMcpClient,
                   fetchDefinition: fetchSubagentDefinition,
                   createMcpClient: (executionStepId, definitionKey) =>
                     deps.createMcpClient(
                       strategyId,
+                      strategyTaskId,
                       `${taskId}:${executionStepId}`,
                       parsedGraph.value.toolModels ?? {},
                       { executionId: executionStepId, definitionKey },

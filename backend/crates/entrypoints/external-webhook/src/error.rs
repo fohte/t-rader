@@ -94,6 +94,10 @@ pub(crate) fn map_submit_error(error: SubmitTaskError) -> AppError {
             tracing::error!(error = %error, "failed to capture task execution definitions");
             AppError::Internal("failed to capture task execution definitions".into())
         }
+        SubmitTaskError::ExecutionBudget(error) => {
+            tracing::error!(error = %error, "failed to initialize task execution budget");
+            AppError::Internal("failed to initialize task execution budget".into())
+        }
     }
 }
 

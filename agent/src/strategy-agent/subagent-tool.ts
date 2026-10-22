@@ -119,6 +119,14 @@ const runWithDefinition = (
           timeoutMinutes: definition.timeoutMinutes,
         },
         modelCallBudget,
+        reserveModelCall: (callId) =>
+          mcpClient === undefined
+            ? Promise.reject(new Error('subagent MCP client is unavailable'))
+            : mcpClient.reserveModelCall(callId),
+        transitionReservation: (callId, state) =>
+          mcpClient === undefined
+            ? Promise.reject(new Error('subagent MCP client is unavailable'))
+            : mcpClient.transitionReservation(callId, state),
       })
       return agent.invoke({
         messages: [new HumanMessage(brief)],
@@ -210,6 +218,14 @@ export const createRunSubagentTool = (
           ),
         )
       }
+      const callId = crypto.randomUUID()
+      await options.parentMcpClient.reserveSubagentRun({
+        callId,
+        phaseKey: options.phase.key,
+        parentExecutionStepId: options.parentExecutionStepId,
+        definitionKey: key,
+      })
+      await options.parentMcpClient.transitionReservation(callId, 'consumed')
       runCounter.count += 1
       const executionStepId = crypto.randomUUID()
       const spanName = `Subagent ${key}`

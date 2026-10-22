@@ -38,6 +38,8 @@ pub enum AgentTaskState {
 
 #[derive(Debug, Clone)]
 pub struct SubmitAgentTask {
+    /// backend の分析 task UUID。A2A task ID とは別の安定した識別子。
+    pub task_id: Uuid,
     pub strategy_id: Uuid,
     pub prompt: String,
     /// タスク実行に使う `agent_config` テーブルの purpose キー。`StrategyTaskUseCases::submit_task` が既定値を補うため、通常は `None` にならない。

@@ -8,7 +8,7 @@ use core_application::strategy_task::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
-use sea_orm::sea_query::{Expr, LockType, OnConflict};
+use sea_orm::sea_query::{Condition, Expr, LockType, OnConflict};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
@@ -18,7 +18,9 @@ use crate::DatabaseHandle;
 use crate::entities::sea_orm_active_enums::{
     StrategyTaskPhase as DbPhase, StrategyTaskStepStatus as DbStepStatus,
 };
-use crate::entities::{agent_config, strategy, strategy_task, strategy_task_step};
+use crate::entities::{
+    agent_config, strategy, strategy_task, strategy_task_step, task_execution_state,
+};
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
@@ -274,34 +276,38 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         transaction: &UnitOfWorkTransaction,
         task_id: Uuid,
         now: chrono::DateTime<chrono::FixedOffset>,
-        deadline_at: chrono::DateTime<chrono::FixedOffset>,
         mark_auto_resumed: bool,
     ) -> Result<bool, StrategyTaskRepositoryError> {
         let transaction = transaction_ref(transaction)?;
+        let unexpired_task_ids = task_execution_state::Entity::find()
+            .select_only()
+            .column(task_execution_state::Column::TaskId)
+            .filter(task_execution_state::Column::DeadlineAt.gt(now))
+            .filter(task_execution_state::Column::UsageComplete.eq(true))
+            .into_query();
         let failed_step_task_ids = strategy_task_step::Entity::find()
             .select_only()
             .column(strategy_task_step::Column::TaskId)
-            .filter(strategy_task_step::Column::TaskId.eq(task_id))
             .filter(strategy_task_step::Column::Status.eq(DbStepStatus::Failed))
             .into_query();
-        let resumable = sea_orm::Condition::any()
+        let resumable = Condition::any()
             .add(strategy_task::Column::Phase.eq(DbPhase::Failed))
             .add(
-                sea_orm::Condition::all()
+                Condition::all()
                     .add(strategy_task::Column::Phase.eq(DbPhase::Completed))
                     .add(strategy_task::Column::TaskId.in_subquery(failed_step_task_ids)),
             );
+        let mut filter = Condition::all()
+            .add(strategy_task::Column::TaskId.eq(task_id))
+            .add(strategy_task::Column::TaskId.in_subquery(unexpired_task_ids))
+            .add(resumable);
         let mut update = strategy_task::Entity::update_many()
             .col_expr(strategy_task::Column::Phase, Expr::value(DbPhase::Running))
             .col_expr(
                 strategy_task::Column::A2aTaskId,
                 Expr::value(None::<String>),
             )
-            .col_expr(strategy_task::Column::DeadlineAt, Expr::value(deadline_at))
             .col_expr(strategy_task::Column::UpdatedAt, Expr::value(now));
-        let mut filter = sea_orm::Condition::all()
-            .add(strategy_task::Column::TaskId.eq(task_id))
-            .add(resumable);
         if mark_auto_resumed {
             update = update.col_expr(strategy_task::Column::AutoResumedAt, Expr::value(now));
             filter = filter.add(strategy_task::Column::AutoResumedAt.is_null());
@@ -585,6 +591,7 @@ mod tests {
     use core_application::unit_of_work::UnitOfWork;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
     use uuid::Uuid;
 
     use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus as DbStepStatus;
@@ -608,6 +615,7 @@ mod tests {
         step_status: Option<StrategyTaskStepStatus>,
         auto_resumed_at: Option<DateTime<FixedOffset>>,
         mark_auto_resumed: bool,
+        deadline_expired: bool,
         expected_claimed: bool,
         expected_phase: StrategyTaskPhase,
         expected_auto_resumed_at: Option<DateTime<FixedOffset>>,
@@ -826,6 +834,7 @@ mod tests {
                 step_status: None,
                 auto_resumed_at: None,
                 mark_auto_resumed: false,
+                deadline_expired: false,
                 expected_claimed: true,
                 expected_phase: StrategyTaskPhase::Running,
                 expected_auto_resumed_at: None,
@@ -836,6 +845,7 @@ mod tests {
                 step_status: Some(StrategyTaskStepStatus::Failed),
                 auto_resumed_at: None,
                 mark_auto_resumed: false,
+                deadline_expired: false,
                 expected_claimed: true,
                 expected_phase: StrategyTaskPhase::Running,
                 expected_auto_resumed_at: None,
@@ -846,6 +856,7 @@ mod tests {
                 step_status: None,
                 auto_resumed_at: None,
                 mark_auto_resumed: false,
+                deadline_expired: false,
                 expected_claimed: false,
                 expected_phase: StrategyTaskPhase::Completed,
                 expected_auto_resumed_at: None,
@@ -856,6 +867,7 @@ mod tests {
                 step_status: Some(StrategyTaskStepStatus::Completed),
                 auto_resumed_at: None,
                 mark_auto_resumed: false,
+                deadline_expired: false,
                 expected_claimed: false,
                 expected_phase: StrategyTaskPhase::Completed,
                 expected_auto_resumed_at: None,
@@ -866,6 +878,7 @@ mod tests {
                 step_status: Some(StrategyTaskStepStatus::Failed),
                 auto_resumed_at: None,
                 mark_auto_resumed: false,
+                deadline_expired: false,
                 expected_claimed: false,
                 expected_phase: StrategyTaskPhase::Running,
                 expected_auto_resumed_at: None,
@@ -876,6 +889,7 @@ mod tests {
                 step_status: Some(StrategyTaskStepStatus::Failed),
                 auto_resumed_at: None,
                 mark_auto_resumed: false,
+                deadline_expired: false,
                 expected_claimed: false,
                 expected_phase: StrategyTaskPhase::Pending,
                 expected_auto_resumed_at: None,
@@ -886,6 +900,7 @@ mod tests {
                 step_status: None,
                 auto_resumed_at: Some(previous_auto_resume),
                 mark_auto_resumed: true,
+                deadline_expired: false,
                 expected_claimed: false,
                 expected_phase: StrategyTaskPhase::Failed,
                 expected_auto_resumed_at: Some(previous_auto_resume),
@@ -896,9 +911,32 @@ mod tests {
                 step_status: None,
                 auto_resumed_at: Some(previous_auto_resume),
                 mark_auto_resumed: false,
+                deadline_expired: false,
                 expected_claimed: true,
                 expected_phase: StrategyTaskPhase::Running,
                 expected_auto_resumed_at: Some(previous_auto_resume),
+            },
+            ClaimCase {
+                name: "expired task is not manually resumable",
+                phase: StrategyTaskPhase::Failed,
+                step_status: None,
+                auto_resumed_at: None,
+                mark_auto_resumed: false,
+                deadline_expired: true,
+                expected_claimed: false,
+                expected_phase: StrategyTaskPhase::Failed,
+                expected_auto_resumed_at: None,
+            },
+            ClaimCase {
+                name: "expired task is not automatically resumable",
+                phase: StrategyTaskPhase::Failed,
+                step_status: None,
+                auto_resumed_at: None,
+                mark_auto_resumed: true,
+                deadline_expired: true,
+                expected_claimed: false,
+                expected_phase: StrategyTaskPhase::Failed,
+                expected_auto_resumed_at: None,
             },
         ];
 
@@ -907,13 +945,31 @@ mod tests {
         let transaction = unit_of_work.begin().await.expect("begin setup transaction");
         for (index, case) in cases.iter().enumerate() {
             let task_id = Uuid::from_u128(200 + index as u128);
+            let mut strategy_task = task(task_id, strategy_id, case.phase, case.auto_resumed_at);
+            strategy_task.deadline_at = if case.deadline_expired {
+                now
+            } else {
+                deadline_at
+            };
             repository
-                .insert(
-                    &transaction,
-                    task(task_id, strategy_id, case.phase, case.auto_resumed_at),
-                )
+                .insert(&transaction, strategy_task)
                 .await
                 .expect("insert test task");
+            let setup_transaction = transaction
+                .downcast_ref::<sea_orm::DatabaseTransaction>()
+                .expect("postgres transaction");
+            setup_transaction
+                .execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "INSERT INTO task_execution_state (task_id, deadline_at, created_at, updated_at) VALUES ($1, $2, $3, $3)",
+                    [
+                        task_id.into(),
+                        if case.deadline_expired { now } else { deadline_at }.into(),
+                        now.into(),
+                    ],
+                ))
+                .await
+                .expect("insert test execution state");
             if let Some(status) = case.step_status {
                 step_model(task_id, Uuid::from_u128(300 + index as u128), status)
                     .insert(
@@ -935,13 +991,7 @@ mod tests {
             let task_id = Uuid::from_u128(200 + index as u128);
             let transaction = unit_of_work.begin().await.expect("begin claim transaction");
             let claimed = repository
-                .claim_resumable(
-                    &transaction,
-                    task_id,
-                    now,
-                    deadline_at,
-                    case.mark_auto_resumed,
-                )
+                .claim_resumable(&transaction, task_id, now, case.mark_auto_resumed)
                 .await
                 .expect("claim resumable task");
             unit_of_work
@@ -971,10 +1021,10 @@ mod tests {
                     claimed: case.expected_claimed,
                     phase: case.expected_phase,
                     auto_resumed_at: case.expected_auto_resumed_at,
-                    deadline_at: if case.expected_claimed {
-                        deadline_at
-                    } else {
+                    deadline_at: if case.deadline_expired {
                         now
+                    } else {
+                        deadline_at
                     },
                 })
                 .collect::<Vec<_>>(),

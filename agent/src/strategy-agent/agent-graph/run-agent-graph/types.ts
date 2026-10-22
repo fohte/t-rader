@@ -19,6 +19,11 @@ export interface BuildPhaseAgentOptions {
   readonly agentSignal?: AbortSignal
   readonly phaseTimeout?: PhaseTimeout
   readonly modelCallBudget?: ModelCallBudget
+  readonly reserveModelCall?: (callId: string) => Promise<void>
+  readonly transitionReservation?: (
+    callId: string,
+    state: 'consumed' | 'released',
+  ) => Promise<void>
   readonly captureMessagesOnAbort?: boolean
 }
 
@@ -57,6 +62,7 @@ export interface RunAgentGraphContext {
     parentExecutionStepId: string,
     recorder: StepRecorder,
     context: RunAgentGraphContext,
+    parentMcpClient: McpToolsClient,
   ) => DynamicStructuredTool
   readonly originalPromptText: string
   // 実行中のフェーズ/for_each 要素ごとの進捗を都度通知する。呼び出し側は

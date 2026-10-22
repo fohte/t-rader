@@ -13,9 +13,10 @@ use core_application::{
     strategy_scope::StrategyScope,
 };
 use gateway_postgres::entities::{
-    custom_indicator, custom_indicator_evaluation, sea_orm_active_enums::StrategyTaskPhase,
-    strategy_task, task_execution_definition_snapshot, task_execution_payload,
+    custom_indicator, custom_indicator_evaluation, strategy_task,
+    task_execution_definition_snapshot, task_execution_payload,
 };
+use indoc::indoc;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
@@ -191,25 +192,8 @@ async fn create_running_task(
     db: &gateway_postgres::DatabaseHandle,
     strategy_id: Uuid,
 ) -> (Uuid, String) {
-    let task_id = crate::testing::insert_test_strategy_task(
-        db,
-        strategy_id,
-        "synthetic task prompt",
-        None,
-        Utc::now().fixed_offset(),
-    )
-    .await;
-    let a2a_task_id = format!("sample-task-{}", Uuid::new_v4());
-    strategy_task::ActiveModel {
-        task_id: Set(task_id),
-        a2a_task_id: Set(Some(a2a_task_id.clone())),
-        phase: Set(StrategyTaskPhase::Running),
-        ..Default::default()
-    }
-    .update(db)
-    .await
-    .expect("update synthetic task");
-    (task_id, a2a_task_id)
+    let task = tests_common::create_test_execution_task(db, strategy_id, "phases: []").await;
+    (task.task_id, task.a2a_task_id)
 }
 
 #[backend_test_macros::database_test]
@@ -291,6 +275,191 @@ async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
 }
 
 #[backend_test_macros::database_test]
+async fn task_only_mcp_reads_authorize_snapshot_and_sealed_payload_with_fixed_deadline(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let other_strategy_id = tests_common::insert_strategy(&db, "other-sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let snapshot = task_execution_definition_snapshot::Entity::find()
+        .filter(task_execution_definition_snapshot::Column::TaskId.eq(task_id))
+        .filter(task_execution_definition_snapshot::Column::DefinitionKey.eq("task_start"))
+        .one(&db)
+        .await
+        .expect("query task start snapshot")
+        .expect("task start snapshot exists");
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+    let access = use_cases
+        .strategy_executions()
+        .authorize_execution(
+            StrategyScope::from(strategy_id),
+            &a2a_task_id,
+            Some(Uuid::from_u128(703)),
+        )
+        .await
+        .expect("authorize synthetic task");
+    let payload = use_cases
+        .strategy_executions()
+        .write_payload(
+            &access,
+            PayloadDefinition {
+                kind: PayloadKind::Output,
+                source: "synthetic-operation".into(),
+                source_revision: Some("sample-revision-a".into()),
+                source_locator: None,
+                source_metadata: json!({}),
+                schema: json!({"type": "object"}),
+            },
+            json!({"value": {"items": [{"key": "synthetic"}]}}),
+        )
+        .await
+        .expect("write sealed synthetic payload");
+    let server = tests_common::build_server(db.clone());
+    let task_only_id = Some(a2a_task_id.clone());
+    let snapshot_read: Value = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            task_only_id.clone(),
+            None,
+        )
+        .await
+        .expect("read task-only execution snapshot")
+        .into_value();
+    let payload_page: Value = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({
+                "payload_id": payload.id,
+                "pointer": "/value/items",
+                "cursor": 0,
+                "limit": 10,
+            }),
+            task_only_id.clone(),
+            None,
+        )
+        .await
+        .expect("read task-only sealed payload")
+        .into_value();
+    let unknown_task = server
+        .invoke_with_strategy_task_id::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some("synthetic-unknown-task".into()),
+            None,
+            Some(task_id),
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    let other_strategy = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            other_strategy_id,
+            json!({}),
+            task_only_id.clone(),
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    strategy_task::ActiveModel {
+        task_id: Set(task_id),
+        deadline_at: Set((Utc::now() - chrono::Duration::seconds(1)).fixed_offset()),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .expect("expire synthetic task deadline");
+    let expired_task = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({
+                "payload_id": payload.id,
+                "pointer": "/value/items",
+                "cursor": 0,
+                "limit": 10,
+            }),
+            task_only_id,
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    let mut normalized_page = payload_page;
+    normalized_page["payload_id"] = json!("<payload-id>");
+
+    assert_eq!(
+        (
+            snapshot_read,
+            normalized_page,
+            unknown_task,
+            other_strategy,
+            expired_task,
+        ),
+        (
+            json!({
+                "definition": snapshot.definition,
+                "digest": snapshot.digest,
+            }),
+            json!({
+                "payload_id": "<payload-id>",
+                "pointer": "/value/items",
+                "data": [{"key": "synthetic"}],
+                "cursor": 0,
+                "next_cursor": null,
+                "total_count": 1,
+                "digest": payload.digest,
+            }),
+            Err("execution does not match an active task".into()),
+            Err("execution does not match an active task".into()),
+            Err("execution does not match an active task".into()),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn operation_mcp_call_consumes_the_task_tool_budget(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let task = tests_common::create_test_execution_task(
+        &db,
+        strategy_id,
+        indoc! {"
+            execution_limits:
+              max_tool_calls: 0
+            phases: []
+        "},
+    )
+    .await;
+    let execution_id = format!("{}:{}", task.a2a_task_id, Uuid::from_u128(712));
+    let result = tests_common::build_server(db)
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            json!({
+                "name": "synthetic-operation",
+                "args": {},
+                "payload_inputs": [],
+            }),
+            Some(execution_id),
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+
+    assert_eq!(
+        result,
+        Err("execution budget limit was exceeded for __task_total".into()),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn mcp_operation_materializes_selected_payload_as_an_input_file(
     db: gateway_postgres::DatabaseHandle,
 ) {
@@ -345,6 +514,7 @@ async fn mcp_operation_materializes_selected_payload_as_an_input_file(
                 "synthetic-provider".to_string(),
                 provider,
             )])),
+        db.clone(),
     )
     .with_kata_executor(Some(executor.clone()));
     let execution_id = format!("{a2a_task_id}:{execution_step_id}");
@@ -651,6 +821,7 @@ async fn mcp_capture_dataset_uses_registered_provider_and_returns_sealed_pages(
                 "synthetic-provider".to_string(),
                 provider,
             )])),
+        db.clone(),
     );
     let execution_id = format!("{a2a_task_id}:{execution_step_id}");
     let captured: Value = server
@@ -1281,6 +1452,10 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
     });
     let definition_snapshots = task_execution_definition_snapshot::Entity::find()
         .filter(task_execution_definition_snapshot::Column::TaskId.eq(task_id))
+        .filter(
+            task_execution_definition_snapshot::Column::DefinitionKey
+                .eq("custom_indicator:sample-operation"),
+        )
         .all(&db)
         .await
         .expect("query definition snapshots");
@@ -1791,7 +1966,7 @@ async fn execution_scope_rejects_another_strategy_before_running_saved_code(
     assert_eq!(
         (result, requests),
         (
-            Err("-32602: task execution is outside the requested strategy scope".to_string()),
+            Err("-32602: execution does not match an active task".to_string()),
             Vec::<ExecRequest>::new(),
         ),
     );
