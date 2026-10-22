@@ -76,6 +76,24 @@ function makeProps(
   }
 }
 
+function getDefaultSelectedStepOutput() {
+  return {
+    expanded: screen
+      .getByRole('button', { name: /項目確認/ })
+      .getAttribute('aria-expanded'),
+    detailSections: screen
+      .getAllByText(/^(input|output)$/)
+      .map((element) => element.textContent),
+  }
+}
+
+function getTaskStepStatusLabels() {
+  return [
+    screen.getByText('実行中').textContent,
+    screen.getByText('失敗').textContent,
+  ]
+}
+
 describe('readTaskSteps', () => {
   it('keeps a step with all required fields', () => {
     const step = makeStep({ phase_key: 'plan' })
@@ -242,24 +260,41 @@ describe('TaskExecutionTree', () => {
     expect(screen.queryByTestId('step-subtitle')).not.toBeInTheDocument()
   })
 
-  it('running と failed で行の色が異なる', () => {
+  it('実行中と失敗の状態を表示する', () => {
     const runningStep = makeStep({
       phase_key: 'investigate',
       status: 'running',
     })
     const failedStep = makeStep({ phase_key: 'other', status: 'failed' })
 
-    const { container } = render(
+    render(
       <TaskExecutionTree
         {...makeProps({ steps: [runningStep, failedStep] })}
       />,
     )
-    const dots = container.querySelectorAll(
-      '[data-testid="task-execution-tree"] button span > span:first-child',
+
+    expect(getTaskStepStatusLabels()).toEqual(['実行中', '失敗'])
+  })
+
+  it('defaultSelectedStepId が指定された step の詳細を初期表示する', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      execution_step_id: 'sample-step-001',
+      item: { value: 'sample-input' },
+      output: { value: 'sample-output' },
+    })
+
+    render(
+      <TaskExecutionTree
+        {...makeProps({ steps: [step] })}
+        defaultSelectedStepId="sample-step-001"
+      />,
     )
 
-    expect(dots[0]?.className).toBe('text-status-task-running animate-pulse')
-    expect(dots[1]?.className).toBe('text-primary')
+    expect(getDefaultSelectedStepOutput()).toEqual({
+      expanded: 'true',
+      detailSections: ['input', 'output'],
+    })
   })
 
   it('ノードをクリックすると item/output の詳細が開閉する', async () => {

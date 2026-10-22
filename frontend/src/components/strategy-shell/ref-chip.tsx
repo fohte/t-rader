@@ -1,9 +1,11 @@
+import { Button } from '@fohte/ui/button'
 import { type ReactNode, useEffect } from 'react'
 
 import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { parseGroupRefId } from '#lib/ref-id'
 import { REF_KIND_JP } from '#lib/strategy-mock'
+import { cn } from '#lib/utils'
 
 interface RefChipProps {
   // `stock:demo-code` のような prefix 付き token (markdown 中の [[...]] と同形式)
@@ -47,14 +49,11 @@ export function RefChip({
         (ref.kind !== 'group' || parseGroupRefId(ref.id) != null)))
 
   const baseInner =
-    'inline-flex items-baseline gap-1 font-mono text-em-88 leading-tight whitespace-nowrap text-foreground'
+    'inline-flex items-baseline gap-1 font-mono text-em-88 leading-tight whitespace-nowrap'
   const underline = 'border-b border-dotted border-muted-foreground pb-px'
-  const pillCls = 'border border-border px-2 py-0.5 rounded-none'
+  const pillCls = 'rounded-none border border-border px-2 py-0.5'
   const wrapper = pill ? pillCls : underline
-  const interactive = canOpenRef
-    ? 'cursor-pointer hover:text-primary hover:border-primary'
-    : ''
-  const className = `${baseInner} ${wrapper} ${interactive}`.trim()
+  const className = cn(baseInner, wrapper, 'text-foreground')
   const title = resolved ? `[[${token}]]` : `[[${token}]] (未解決)`
 
   const highlightedText = (text: string, segmentStart: number): ReactNode => {
@@ -68,7 +67,7 @@ export function RefChip({
         {text.slice(0, localStart)}
         <mark
           data-comment-text-highlight="true"
-          className="bg-primary/20 text-inherit"
+          className="bg-muted text-inherit"
         >
           {text.slice(localStart, localEnd)}
         </mark>
@@ -79,14 +78,19 @@ export function RefChip({
   const nameStart = showKind ? kindJP.length : 0
   const subStart = nameStart + displayName.length
 
-  const inner = (
+  const inner = (interactive: boolean) => (
     <>
       {showKind && (
         <span className="text-em-78 tracking-wide text-muted-foreground">
           {highlightedText(kindJP, 0)}
         </span>
       )}
-      <span className={resolved ? undefined : 'italic text-muted-foreground'}>
+      <span
+        className={cn(
+          !resolved && 'italic text-muted-foreground',
+          interactive && !resolved && 'group-hover/button:text-destructive',
+        )}
+      >
         {highlightedText(displayName, nameStart)}
       </span>
       {sub != null && sub !== '' && (
@@ -99,7 +103,8 @@ export function RefChip({
 
   if (canOpenRef) {
     return (
-      <button
+      <Button
+        variant="plain"
         type="button"
         data-kind={ref.kind}
         title={title}
@@ -107,16 +112,15 @@ export function RefChip({
           e.stopPropagation()
           onOpenRef(token, ref)
         }}
-        className={`${className} bg-transparent p-0`}
       >
-        {inner}
-      </button>
+        <span className={cn(baseInner, wrapper)}>{inner(true)}</span>
+      </Button>
     )
   }
 
   return (
     <span data-kind={ref.kind} title={title} className={className}>
-      {inner}
+      {inner(false)}
     </span>
   )
 }

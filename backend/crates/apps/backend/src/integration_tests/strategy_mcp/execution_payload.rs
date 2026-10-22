@@ -573,6 +573,7 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
             stdout: "[{\"score\":12.5},{\"score\":20},{\"score\":30}]\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: vec![],
         }))
         .await;
     let shared_executor: SharedKataExecutor = executor.clone();
@@ -623,6 +624,7 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
             stdout: "[{\"score\":12.5},{\"score\":20},{\"score\":30}]\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: vec![],
         }))
         .await;
     let second: Value = server
@@ -641,6 +643,7 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
             stdout: "synthetic output".into(),
             stderr: "synthetic failure".into(),
             exit_code: 17,
+            files: vec![],
         }))
         .await;
     let failure: Value = server
@@ -886,18 +889,21 @@ async fn execute_operation_seals_payloads_and_preserves_numeric_eval_shape(
                     stdin: Some(r#"{"args":{"sample":"value"}}"#.into()),
                     timeout: None,
                     max_output_bytes: Some(1024 * 1024),
+                    input_files: None,
                 },
                 ExecRequest {
                     code: "synthetic source A".into(),
                     stdin: Some(r#"{"args":{"sample":"value"}}"#.into()),
                     timeout: None,
                     max_output_bytes: Some(1024 * 1024),
+                    input_files: None,
                 },
                 ExecRequest {
                     code: "synthetic source A".into(),
                     stdin: Some(r#"{"args":{"sample":"value"}}"#.into()),
                     timeout: None,
                     max_output_bytes: Some(1024 * 1024),
+                    input_files: None,
                 },
             ],
         ),
@@ -951,6 +957,7 @@ async fn operation_projection_is_optional_and_cannot_cite_wrapper_metadata(
             stdout: "13\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: vec![],
         }))
         .await;
     let wrapper_projection: Value = server
@@ -991,6 +998,7 @@ async fn operation_projection_is_optional_and_cannot_cite_wrapper_metadata(
             stdout: "\"fictional result\"\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: vec![],
         }))
         .await;
     let text_output: Value = server
@@ -1141,6 +1149,7 @@ async fn projection_recording_failure_keeps_the_saved_output_reference(
             stdout: "13\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: vec![],
         }))
         .await;
     let server = tests_common::build_server(db.clone())

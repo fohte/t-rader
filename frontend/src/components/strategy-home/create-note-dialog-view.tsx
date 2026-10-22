@@ -1,6 +1,18 @@
 import { Button } from '@fohte/ui/button'
 import { Input } from '@fohte/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
+import { Textarea } from '@fohte/ui/textarea'
 
+import {
+  decodePrefixedSelectValue,
+  encodePrefixedSelectValue,
+} from '#components/strategy-home/prefixed-select-value'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +25,26 @@ import type { components } from '#lib/api/schema.gen'
 
 type NoteKind = components['schemas']['NoteKind']
 
+const NO_KIND_VALUE = '__no-kind__'
+const LOADING_KIND_VALUE = '__loading-kind__'
+const KIND_VALUE_PREFIX = 'kind:'
+const NO_KIND_LABEL = '種別なし'
+const LOADING_KIND_LABEL = '読み込み中…'
+
+function getSelectedKindLabel(
+  kind: string,
+  noteKinds: NoteKind[],
+  noteKindsPending: boolean,
+) {
+  if (kind === '') {
+    return noteKindsPending ? LOADING_KIND_LABEL : NO_KIND_LABEL
+  }
+
+  return (
+    noteKinds.find((noteKind) => noteKind.key === kind)?.display_name ?? kind
+  )
+}
+
 export interface CreateNoteDialogViewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -23,6 +55,7 @@ export interface CreateNoteDialogViewProps {
   noteKinds: NoteKind[]
   noteKindsPending: boolean
   noteKindsError: boolean
+  kindSelectDefaultOpen?: boolean
   formError: string | null
   isSubmitting: boolean
   onTitleChange: (value: string) => void
@@ -41,6 +74,7 @@ export function CreateNoteDialogView({
   noteKinds,
   noteKindsPending,
   noteKindsError,
+  kindSelectDefaultOpen,
   formError,
   isSubmitting,
   onTitleChange,
@@ -48,6 +82,12 @@ export function CreateNoteDialogView({
   onKindChange,
   onSubmit,
 }: CreateNoteDialogViewProps) {
+  const selectedKindLabel = getSelectedKindLabel(
+    kind,
+    noteKinds,
+    noteKindsPending,
+  )
+
   return (
     <>
       {showTrigger && (
@@ -93,7 +133,7 @@ export function CreateNoteDialogView({
               >
                 本文 (Markdown) *
               </label>
-              <textarea
+              <Textarea
                 id="create-note-body"
                 rows={7}
                 required
@@ -102,7 +142,6 @@ export function CreateNoteDialogView({
                   onBodyChange(e.target.value)
                 }}
                 placeholder="本文を入力"
-                className="w-full border border-border bg-bg-secondary px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-muted-foreground"
               />
             </div>
             <div className="space-y-2">
@@ -112,26 +151,54 @@ export function CreateNoteDialogView({
               >
                 種別
               </label>
-              <select
-                id="create-note-kind"
-                value={kind}
-                onChange={(e) => {
-                  onKindChange(e.target.value)
+              <Select
+                value={encodePrefixedSelectValue(
+                  kind,
+                  KIND_VALUE_PREFIX,
+                  noteKindsPending ? LOADING_KIND_VALUE : NO_KIND_VALUE,
+                )}
+                defaultOpen={kindSelectDefaultOpen}
+                onValueChange={(value) => {
+                  onKindChange(
+                    decodePrefixedSelectValue(value, KIND_VALUE_PREFIX, [
+                      NO_KIND_VALUE,
+                      LOADING_KIND_VALUE,
+                    ]) ?? '',
+                  )
                 }}
-                disabled={noteKindsPending}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
               >
-                <option value="">
-                  {noteKindsPending ? '読み込み中…' : '種別なし'}
-                </option>
-                {noteKinds.map((noteKind) => (
-                  <option key={noteKind.key} value={noteKind.key}>
-                    {noteKind.display_name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id="create-note-kind"
+                  disabled={noteKindsPending}
+                >
+                  <SelectValue>{selectedKindLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {noteKindsPending ? (
+                    <SelectItem value={LOADING_KIND_VALUE} disabled>
+                      {LOADING_KIND_LABEL}
+                    </SelectItem>
+                  ) : (
+                    <SelectItem value={NO_KIND_VALUE}>
+                      {NO_KIND_LABEL}
+                    </SelectItem>
+                  )}
+                  {noteKinds.map((noteKind) => (
+                    <SelectItem
+                      key={noteKind.key}
+                      value={encodePrefixedSelectValue(
+                        noteKind.key,
+                        KIND_VALUE_PREFIX,
+                        NO_KIND_VALUE,
+                      )}
+                    >
+                      {noteKind.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {noteKindsError ? (
-                <p className="text-xs text-primary">
+                <p className="text-xs text-destructive">
                   種別一覧を読み込めませんでした
                 </p>
               ) : (
@@ -144,7 +211,7 @@ export function CreateNoteDialogView({
               )}
             </div>
             {formError != null && (
-              <p role="alert" className="text-xs text-primary">
+              <p role="alert" className="text-xs text-destructive">
                 {formError}
               </p>
             )}

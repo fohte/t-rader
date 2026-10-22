@@ -1,3 +1,4 @@
+import { Chip } from '@fohte/ui/chip'
 import { Link } from '@tanstack/react-router'
 
 import type { components } from '#lib/api/schema.gen'
@@ -35,9 +36,11 @@ export function StockPageGroups({
             key={`${axis.key}/${group.key}`}
             to="/groups/$axisKey/$groupKey"
             params={{ axisKey: axis.key, groupKey: group.key }}
-            className="border border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground-strong"
+            className="inline-flex"
           >
-            {axis.name} / {group.name}
+            <Chip size="md">
+              {axis.name} / {group.name}
+            </Chip>
           </Link>
         ))
       )}

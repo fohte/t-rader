@@ -340,7 +340,7 @@ describe('MarkdownBody', () => {
       ...container.querySelectorAll('li[data-source-block="true"]'),
     ].map((item) => ({
       line: item.getAttribute('data-source-start-line'),
-      highlighted: item.classList.contains('bg-primary/10'),
+      highlighted: item.classList.contains('bg-muted-foreground/10'),
     }))
     const highlightedText = [
       ...container.querySelectorAll('mark[data-comment-text-highlight="true"]'),
@@ -386,7 +386,7 @@ describe('MarkdownBody', () => {
       ].map((mark) => mark.textContent),
       paragraphText: paragraph?.textContent ?? null,
       paragraphHasBlockHighlight:
-        paragraph?.classList.contains('bg-primary/10') ?? false,
+        paragraph?.classList.contains('bg-muted-foreground/10') ?? false,
     })
     expect(getHighlightState()).toEqual({
       segments: ['の', '対象', '箇所'],
@@ -428,7 +428,7 @@ describe('MarkdownBody', () => {
         paragraph?.querySelector('mark[data-comment-text-highlight="true"]')
           ?.previousSibling?.textContent ?? null,
       paragraphHasBlockHighlight:
-        paragraph?.classList.contains('bg-primary/10') ?? false,
+        paragraph?.classList.contains('bg-muted-foreground/10') ?? false,
     })
     expect(getHighlightState()).toEqual({
       segments: ['対象'],
@@ -458,8 +458,9 @@ describe('MarkdownBody', () => {
         ) ?? []),
       ].map((mark) => mark.textContent),
       paragraphHasBlockHighlight:
-        container.querySelector('p')?.classList.contains('bg-primary/10') ??
-        false,
+        container
+          .querySelector('p')
+          ?.classList.contains('bg-muted-foreground/10') ?? false,
     })
     await waitFor(() => {
       expect(getHighlightState()).toEqual({
@@ -487,7 +488,7 @@ describe('MarkdownBody', () => {
         paragraph?.querySelectorAll('mark[data-comment-text-highlight="true"]')
           .length ?? 0,
       paragraphHasBlockHighlight:
-        paragraph?.classList.contains('bg-primary/10') ?? false,
+        paragraph?.classList.contains('bg-muted-foreground/10') ?? false,
     })
     expect(getFallbackState()).toEqual({
       textHighlightCount: 0,
@@ -542,25 +543,51 @@ describe('MarkdownBody', () => {
     )
 
     const getListItems = () =>
-      [...container.querySelectorAll('li')].map((item) => ({
-        gutters: [...item.children]
-          .filter(
-            (child): child is HTMLButtonElement => child.tagName === 'BUTTON',
-          )
-          .map((button) => ({
-            label: button.getAttribute('aria-label'),
-            left: button.style.left,
-          })),
-        parentTag: item.parentElement?.tagName ?? null,
-      }))
+      [...container.querySelectorAll('li')].map((item) => {
+        const button = item.querySelector<HTMLButtonElement>(
+          ':scope > div > button[data-source-gutter-button="true"]',
+        )
+        const position = button?.parentElement
+        return {
+          gutters:
+            button == null
+              ? []
+              : [
+                  {
+                    label: button.getAttribute('aria-label'),
+                    listOffset:
+                      position?.style.getPropertyValue(
+                        '--markdown-body-list-offset',
+                      ) ?? '',
+                    usesListOffset:
+                      position?.classList.contains(
+                        'translate-x-(--markdown-body-list-offset)',
+                      ) ?? false,
+                  },
+                ],
+          parentTag: item.parentElement?.tagName ?? null,
+        }
+      })
 
     expect(getListItems()).toEqual([
       {
-        gutters: [{ label: '行 1 から 2 にコメント', left: 'calc(-4rem)' }],
+        gutters: [
+          {
+            label: '行 1 から 2 にコメント',
+            listOffset: '-1.25rem',
+            usesListOffset: true,
+          },
+        ],
         parentTag: 'UL',
       },
       {
-        gutters: [{ label: '行 2 にコメント', left: 'calc(-5.25rem)' }],
+        gutters: [
+          {
+            label: '行 2 にコメント',
+            listOffset: '-2.5rem',
+            usesListOffset: true,
+          },
+        ],
         parentTag: 'OL',
       },
     ])

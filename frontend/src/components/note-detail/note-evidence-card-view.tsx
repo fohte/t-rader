@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 
 import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
@@ -108,26 +109,27 @@ function evidenceSource(reference: NoteEvidenceCardReference): string {
 
 function EvidenceRows({ reference }: { reference: NoteEvidenceCardReference }) {
   return (
-    <div
-      className="grid gap-x-3 gap-y-1"
-      style={{ gridTemplateColumns: '3.5rem minmax(0, 1fr)' }}
-    >
+    <dl className="space-y-1">
       {reference.kind === 'change' ? (
         <>
-          <span className="text-muted-foreground">期間</span>
-          <span className="whitespace-nowrap font-mono tabular-nums">
-            {reference.start} → {reference.end}
-          </span>
+          <div className="flex gap-x-3">
+            <dt className="w-14 shrink-0 text-muted-foreground">期間</dt>
+            <dd className="min-w-0 whitespace-nowrap font-mono tabular-nums">
+              {reference.start} → {reference.end}
+            </dd>
+          </div>
         </>
       ) : (
-        <>
-          <span className="text-muted-foreground">時点</span>
-          <span className="font-mono tabular-nums">{reference.date}</span>
-        </>
+        <div className="flex gap-x-3">
+          <dt className="w-14 shrink-0 text-muted-foreground">時点</dt>
+          <dd className="min-w-0 font-mono tabular-nums">{reference.date}</dd>
+        </div>
       )}
-      <span className="text-muted-foreground">出どころ</span>
-      <span>{evidenceSource(reference)}</span>
-    </div>
+      <div className="flex gap-x-3">
+        <dt className="w-14 shrink-0 text-muted-foreground">出どころ</dt>
+        <dd className="min-w-0">{evidenceSource(reference)}</dd>
+      </div>
+    </dl>
   )
 }
 
@@ -146,7 +148,7 @@ function ChangeCalculation({
   }
   if (barsState.status === 'error') {
     return (
-      <p role="alert" className="text-primary">
+      <p role="alert" className="text-destructive">
         日足を取得できませんでした
       </p>
     )
@@ -169,7 +171,7 @@ function ChangeCalculation({
         {formatNoteEvidencePercentage(barsState.evidence.changePercent)}%
       </p>
       {!barsState.evidence.matchesSavedValue && (
-        <p className="text-primary">
+        <p className="text-destructive">
           書いた時点の値と今の日足が合わない可能性があります
         </p>
       )}
@@ -189,7 +191,7 @@ function StockPageLink({
       to="/stocks/$stockId"
       params={{ stockId: reference.stockId }}
       search={{ date: linkDate }}
-      className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-primary hover:underline"
+      className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-foreground hover:underline"
     >
       銘柄ページで {linkDate} を見る <span aria-hidden="true">→</span>
     </Link>
@@ -207,20 +209,21 @@ export function NoteEvidenceCardView({
       <PopoverTrigger
         openOnHover
         render={
-          <button
+          <Button
             type="button"
+            variant="plain"
             aria-label={`${displayValue} の根拠を開く`}
             title="根拠を見る"
-            className="inline-flex cursor-pointer items-baseline border-b border-dotted border-primary/60 bg-transparent p-0 font-mono font-medium tabular-nums text-foreground hover:border-primary hover:text-primary"
+            className="inline-flex items-baseline"
           >
             {displayValue}
-          </button>
+          </Button>
         }
       />
       <PopoverContent
         align="start"
-        className="w-80 space-y-2 p-3 text-xs"
-        style={{ maxWidth: 'calc(100vw - 1.5rem)' }}
+        padding="md"
+        className="w-80 space-y-2 text-xs"
       >
         <p className="font-mono font-semibold text-foreground">
           {referenceTitle(reference)}
@@ -235,7 +238,7 @@ export function NoteEvidenceCardView({
           <Link
             to="/indicators/$indicatorId"
             params={{ indicatorId: reference.indicatorId }}
-            className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-primary hover:underline"
+            className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-foreground hover:underline"
           >
             指標ページを見る <span aria-hidden="true">→</span>
           </Link>

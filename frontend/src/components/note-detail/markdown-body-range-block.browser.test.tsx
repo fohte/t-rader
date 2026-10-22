@@ -38,7 +38,7 @@ describe('MarkdownBodyRangeBlock hover gutter', () => {
       name: '親項目に hover すると親だけに表示する',
       hoverTarget: '親項目',
       expected: [
-        { line: '1', opacity: '1', color: 'rgb(220, 38, 38)' },
+        { line: '1', opacity: '1', color: 'rgb(82, 82, 91)' },
         { line: '2', opacity: '0', color: 'rgb(82, 82, 91)' },
       ],
     },
@@ -47,7 +47,7 @@ describe('MarkdownBodyRangeBlock hover gutter', () => {
       hoverTarget: '子項目',
       expected: [
         { line: '1', opacity: '0', color: 'rgb(82, 82, 91)' },
-        { line: '2', opacity: '1', color: 'rgb(220, 38, 38)' },
+        { line: '2', opacity: '1', color: 'rgb(82, 82, 91)' },
       ],
     },
   ])('$name', async ({ hoverTarget, expected }) => {
@@ -67,7 +67,7 @@ describe('MarkdownBodyRangeBlock hover gutter', () => {
       ),
     ].map((item) => {
       const marker = item.querySelector(
-        ':scope > button[data-source-gutter-button="true"] > span[data-source-gutter-marker="true"]',
+        ':scope > div > button[data-source-gutter-button="true"] [data-source-gutter-marker="true"]',
       )
       return {
         line: item.getAttribute('data-source-start-line'),

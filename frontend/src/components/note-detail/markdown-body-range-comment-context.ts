@@ -5,7 +5,6 @@ import type { SourceLineRange } from '#components/note-detail/use-markdown-body-
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 
 export const NOTE_BODY_INDENT_REM = 1.25
-export const NOTE_BODY_GUTTER_GAP_REM = 0.5
 
 export interface MarkdownBodyRangeCommentProps {
   comments: NoteVersionComment[]

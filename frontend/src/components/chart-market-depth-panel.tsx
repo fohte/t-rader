@@ -23,16 +23,17 @@ export function ChartMarketDepthPanel({
   return (
     <div
       className={cn(
-        'flex w-72 shrink-0 flex-col rounded-md border bg-card p-4',
+        'flex w-72 shrink-0 flex-col border bg-card p-4',
         className,
       )}
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">板情報・歩み値</h2>
         <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onToggle}
+          variant="plain"
+          onClick={() => {
+            onToggle()
+          }}
           aria-label="パネルを閉じる"
         >
           <XIcon />

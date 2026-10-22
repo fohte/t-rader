@@ -7,6 +7,7 @@ import {
   formatRatioAsPercent,
 } from '#lib/stock-page-format'
 import type { StockPageListState } from '#lib/stock-page-model'
+import { cn } from '#lib/utils'
 
 type Position = components['schemas']['PositionSummary']
 type NextEarnings = components['schemas']['StockNextEarningsResponse']
@@ -41,7 +42,7 @@ function SectionHeading({ title, detail }: { title: string; detail?: string }) {
   return (
     <div className="flex items-center justify-between gap-2 border-b border-border px-3.5 py-2">
       <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
-        <span className="mr-2 text-primary">&gt;</span>
+        <span className="mr-2 text-muted-foreground">&gt;</span>
         {title}
       </h2>
       {detail != null && (
@@ -90,7 +91,10 @@ function QueryMessage({
 
   return (
     <p
-      className={`px-3.5 py-3 font-mono text-xs ${state === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}
+      className={cn(
+        'px-3.5 py-3 font-mono text-xs',
+        state === 'error' ? 'text-destructive' : 'text-muted-foreground',
+      )}
     >
       {state === 'error' ? error : empty}
     </p>

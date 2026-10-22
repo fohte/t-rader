@@ -1,3 +1,4 @@
+import { Chip } from '@fohte/ui/chip'
 import { Input } from '@fohte/ui/input'
 import {
   Select,
@@ -15,27 +16,31 @@ interface ModelFieldProps {
   value: string
   onChange: (next: string) => void
   models: AgentModel[]
+  /** Storybook で候補 popup を開いた状態を描画するための初期値 */
+  defaultOpen?: boolean
 }
 
-export function ModelField({ value, onChange, models }: ModelFieldProps) {
-  const label = (
-    <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
-      モデル
-    </span>
-  )
+export function ModelField({
+  value,
+  onChange,
+  models,
+  defaultOpen,
+}: ModelFieldProps) {
+  const label = <Chip>モデル</Chip>
 
   if (models.length === 0) {
     return (
       <>
         {label}
-        <Input
-          aria-label="モデル"
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value)
-          }}
-          className="h-auto w-full max-w-sm rounded-none border-border bg-background py-1 font-mono text-2xs text-foreground"
-        />
+        <div className="w-full max-w-sm font-mono">
+          <Input
+            aria-label="モデル"
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value)
+            }}
+          />
+        </div>
       </>
     )
   }
@@ -58,25 +63,25 @@ export function ModelField({ value, onChange, models }: ModelFieldProps) {
       {label}
       <Select
         value={value}
+        defaultOpen={defaultOpen}
         onValueChange={(next) => {
           // Base UI の Select.onValueChange は null を渡しうるが、この Select は常にいずれかの
           // モデルが選択された状態のため null は無視する
           if (next != null) onChange(next)
         }}
       >
-        <SelectTrigger
-          aria-label="モデル"
-          className="h-auto w-full max-w-sm justify-start rounded-none border-border bg-background py-1 font-mono text-2xs text-foreground"
-        >
-          <SelectValue placeholder="モデルを選択" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((m) => (
-            <SelectItem key={m.id} value={m.id} className="font-mono text-2xs">
-              {m.id}
-            </SelectItem>
-          ))}
-        </SelectContent>
+        <div className="w-full max-w-sm font-mono">
+          <SelectTrigger aria-label="モデル" className="w-full justify-start">
+            <SelectValue placeholder="モデルを選択" />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                <span className="font-mono">{m.id}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </div>
       </Select>
     </>
   )

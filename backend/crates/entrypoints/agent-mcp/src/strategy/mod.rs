@@ -121,6 +121,9 @@ pub(super) fn kata_exec_to_mcp_err(err: KataExecError) -> McpError {
         }
         KataExecError::Network(msg) => internal_error(format!("kube api network error: {msg}")),
         KataExecError::Parse(msg) => internal_error(format!("kube api parse error: {msg}")),
+        KataExecError::FileTransfer(msg) => {
+            internal_error(format!("kata file transfer error: {msg}"))
+        }
         KataExecError::Init(msg) => internal_error(format!("kata executor init error: {msg}")),
     }
 }

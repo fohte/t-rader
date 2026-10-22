@@ -6,6 +6,13 @@ import { TimeframeSelector } from '#components/timeframe-selector'
 const meta = {
   title: 'Components/TimeframeSelector',
   component: TimeframeSelector,
+  decorators: [
+    (Story) => (
+      <div className="grid min-h-screen place-items-center">
+        <Story />
+      </div>
+    ),
+  ],
   args: {
     value: '1d',
     onChange: fn(),

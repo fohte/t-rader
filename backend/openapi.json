@@ -9490,6 +9490,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -14435,7 +14445,7 @@
       },
       "WidgetMetricRequest": {
         "type": "string",
-        "description": "スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。",
+        "description": "`change`, `close`, `turnover`, `mkt_cap`, `per`, `pbr`, `indicator` に対応します。indicator は by=none、indicator ID 必須、集計なしで指定します。",
         "enum": [
           "change",
           "close",
@@ -14572,6 +14582,15 @@
             "items": {
               "$ref": "#/components/schemas/WidgetQueryResultRow"
             }
+          },
+          "series": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/WidgetSeriesDto"
+            }
           }
         }
       },
@@ -14653,6 +14672,76 @@
         },
         "additionalProperties": false
       },
+      "WidgetSeriesDto": {
+        "type": "object",
+        "required": [
+          "key",
+          "query",
+          "name",
+          "points"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WidgetSeriesPointDto"
+            }
+          },
+          "query": {
+            "type": "string"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetSeriesTargetDto"
+              }
+            ]
+          }
+        }
+      },
+      "WidgetSeriesPointDto": {
+        "type": "object",
+        "required": [
+          "date"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "WidgetSeriesTargetDto": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "WidgetTimeRequest": {
         "type": "object",
         "properties": {
@@ -14668,7 +14757,7 @@
               "string",
               "null"
             ],
-            "description": "時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。"
+            "description": "`line` では `3m`、`1y`、または両端を含む `YYYY-MM-DD..YYYY-MM-DD` を指定します。"
           }
         },
         "additionalProperties": false
@@ -14871,7 +14960,7 @@
             }
           }
         ],
-        "description": "スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。"
+        "description": "`treemap`, `toplist`, `table` に対応します。table は断面表示で、columns に query または formula の名前を指定します。line は予約済みです。"
       }
     }
   },

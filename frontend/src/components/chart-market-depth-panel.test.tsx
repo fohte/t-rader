@@ -1,18 +1,38 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ChartMarketDepthPanel } from '#components/chart-market-depth-panel'
 
+afterEach(cleanup)
+
 describe('ChartMarketDepthPanel', () => {
   it('isOpen が false のとき何も描画しない', () => {
-    render(
+    const { container } = render(
       <ChartMarketDepthPanel
-        instrumentId="7203"
+        instrumentId="demo-code"
         isOpen={false}
         onToggle={vi.fn()}
       />,
     )
 
-    expect(screen.queryByText('板情報・歩み値')).not.toBeInTheDocument()
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('closes the panel when its close action is clicked', async () => {
+    const onToggle = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <ChartMarketDepthPanel
+        instrumentId="demo-code"
+        isOpen={true}
+        onToggle={onToggle}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'パネルを閉じる' }))
+
+    expect(onToggle.mock.calls).toEqual([[]])
   })
 })

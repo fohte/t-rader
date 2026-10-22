@@ -1,3 +1,5 @@
+import { Button } from '@fohte/ui/button'
+
 interface NoteVersionChatActionProps {
   title: string
   onAsk: (title: string) => void
@@ -8,18 +10,19 @@ export function NoteVersionChatAction({
   onAsk,
 }: NoteVersionChatActionProps) {
   return (
-    <button
+    <Button
       type="button"
+      variant="plain"
       aria-label={`「${title}」についてアナリストに聞く`}
       onClick={() => {
         onAsk(title)
       }}
-      className="inline-flex items-center gap-1 border border-border px-2 py-1 font-mono text-2xs text-muted-foreground-strong hover:border-primary hover:text-primary"
+      className="inline-flex items-center gap-1"
     >
-      <span className="font-bold text-primary" aria-hidden="true">
+      <span className="font-bold text-foreground" aria-hidden="true">
         &gt;_
       </span>
       アナリストに聞く
-    </button>
+    </Button>
   )
 }

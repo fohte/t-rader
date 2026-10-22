@@ -1,9 +1,12 @@
 import '#lib/echarts/bar'
 
+import { Button } from '@fohte/ui/button'
 import { Link } from '@tanstack/react-router'
 import type { ECElementEvent } from 'echarts/core'
 import { useCallback, useMemo, useState } from 'react'
 
+import { WidgetCollapsibleSection } from '#components/widgets/widget-collapsible-section'
+import type { WidgetCSSProperties } from '#components/widgets/widget-css'
 import {
   createWidgetToplistModel,
   createWidgetToplistOption,
@@ -26,10 +29,11 @@ type WidgetToplistDefinition = Extract<
   components['schemas']['WidgetVisualizationRequest'],
   { type: 'toplist' }
 >
-
 const EMPTY_DISPLAY: WidgetDisplayDefinitions = {}
 const CHART_ROW_HEIGHT = 58
-const CHART_COLUMNS = '134px minmax(24px, 1fr) 104px'
+const DETAIL_STYLE: WidgetCSSProperties = {
+  '--widget-detail-columns': 'auto 1fr',
+}
 
 export function WidgetToplist({
   result,
@@ -37,12 +41,14 @@ export function WidgetToplist({
   queries,
   display,
   initialSelectedRowKey,
+  initialRankListExpanded,
 }: {
   result: WidgetQueryResponse
   viz: WidgetToplistDefinition
   queries: WidgetQueryDefinitions
   display?: WidgetDisplayDefinitions
   initialSelectedRowKey?: string
+  initialRankListExpanded?: boolean
 }) {
   const displayDefinitions = display ?? EMPTY_DISPLAY
   const model = useMemo(
@@ -57,6 +63,9 @@ export function WidgetToplist({
   )
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(
     initialSelectedRowKey ?? null,
+  )
+  const [rankListExpanded, setRankListExpanded] = useState(
+    initialRankListExpanded ?? false,
   )
   const option = useMemo(
     () => (palette: EChartsPalette) =>
@@ -113,7 +122,11 @@ export function WidgetToplist({
 
   const isEmpty = model.rows.length === 0
   const chartHeight = Math.max(112, model.rows.length * CHART_ROW_HEIGHT)
-  const chartRows = `repeat(${String(model.rows.length)}, minmax(0, 1fr))`
+  const chartStyle: WidgetCSSProperties = {
+    '--widget-chart-height': String(chartHeight) + 'px',
+    '--widget-chart-rows': `repeat(${String(model.rows.length)}, minmax(0, 1fr))`,
+    '--widget-chart-columns': '134px minmax(24px, 1fr) 104px',
+  }
 
   return (
     <div className="space-y-3">
@@ -137,16 +150,13 @@ export function WidgetToplist({
       <div
         className="w-full overflow-hidden border border-border bg-card"
         hidden={isEmpty}
+        style={chartStyle}
       >
-        <div
-          className="grid w-full"
-          style={{ gridTemplateColumns: CHART_COLUMNS, height: chartHeight }}
-        >
+        <div className="grid h-(--widget-chart-height) w-full grid-cols-(--widget-chart-columns)">
           <ol
             aria-hidden="true"
-            className="relative z-10 m-0 grid min-w-0 list-none bg-card p-0"
+            className="relative z-10 m-0 grid min-w-0 list-none bg-card p-0 grid-rows-(--widget-chart-rows)"
             data-column="identity"
-            style={{ gridTemplateRows: chartRows }}
           >
             {model.rows.map((row, index) => (
               <li
@@ -171,33 +181,34 @@ export function WidgetToplist({
           </ol>
           <div
             aria-label={model.ariaDescription}
-            className="min-w-0"
+            className="h-(--widget-chart-height) min-w-0"
             data-column="bars"
             ref={containerRef}
             role="img"
-            style={{ height: chartHeight }}
           />
           <ol
             aria-hidden="true"
-            className="m-0 grid min-w-0 list-none p-0"
+            className="m-0 grid min-w-0 list-none p-0 grid-rows-(--widget-chart-rows)"
             data-column="values"
-            style={{ gridTemplateRows: chartRows }}
           >
-            {model.rows.map((row) => (
-              <li
-                className="flex min-h-0 items-center justify-end whitespace-nowrap border-b border-border px-2 text-right font-mono tabular-nums text-xs last:border-b-0"
-                key={row.key}
-                style={{
-                  color: getWidgetToplistColor(
-                    row.value,
-                    palette,
-                    palette.foreground,
-                  ),
-                }}
-              >
-                {row.formattedValue}
-              </li>
-            ))}
+            {model.rows.map((row) => {
+              const valueStyle: WidgetCSSProperties = {
+                '--widget-value-color': getWidgetToplistColor(
+                  row.value,
+                  palette,
+                  palette.foreground,
+                ),
+              }
+              return (
+                <li
+                  className="flex min-h-0 items-center justify-end whitespace-nowrap border-b border-border px-2 text-right font-mono tabular-nums text-xs last:border-b-0 text-(color:--widget-value-color)"
+                  key={row.key}
+                  style={valueStyle}
+                >
+                  {row.formattedValue}
+                </li>
+              )
+            })}
           </ol>
         </div>
       </div>
@@ -218,8 +229,8 @@ export function WidgetToplist({
                 {selectedRow.name}
               </h3>
               <dl
-                className="mt-2 grid gap-x-4 gap-y-1 text-xs"
-                style={{ gridTemplateColumns: 'auto 1fr' }}
+                className="mt-2 grid grid-cols-(--widget-detail-columns) gap-x-4 gap-y-1 text-xs"
+                style={DETAIL_STYLE}
               >
                 <dt className="text-muted-foreground">順位</dt>
                 <dd className="text-right font-mono tabular-nums text-foreground">
@@ -241,62 +252,76 @@ export function WidgetToplist({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {stockId != null && (
-                <Link
-                  className="min-h-9 border border-border px-3 py-2 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                  params={{ stockId }}
-                  to="/stocks/$stockId"
+                <Button
+                  nativeButton={false}
+                  role="link"
+                  render={<Link params={{ stockId }} to="/stocks/$stockId" />}
+                  size="lg"
+                  variant="outline"
                 >
                   銘柄ページを開く
-                </Link>
+                </Button>
               )}
               {indicatorId != null && (
-                <Link
-                  className="min-h-9 border border-border px-3 py-2 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                  params={{ indicatorId }}
-                  to="/indicators/$indicatorId"
+                <Button
+                  nativeButton={false}
+                  role="link"
+                  render={
+                    <Link
+                      params={{ indicatorId }}
+                      to="/indicators/$indicatorId"
+                    />
+                  }
+                  size="lg"
+                  variant="outline"
                 >
                   指標ページを開く
-                </Link>
+                </Button>
               )}
               {groupTarget != null && (
-                <Link
-                  className="min-h-9 border border-border px-3 py-2 text-xs text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                  params={groupTarget}
-                  to="/groups/$axisKey/$groupKey"
+                <Button
+                  nativeButton={false}
+                  role="link"
+                  render={
+                    <Link
+                      params={groupTarget}
+                      to="/groups/$axisKey/$groupKey"
+                    />
+                  }
+                  size="lg"
+                  variant="outline"
                 >
                   分類ページを開く
-                </Link>
+                </Button>
               )}
-              <button
+              <Button
                 aria-label="詳細を閉じる"
-                className="min-h-9 px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 onClick={() => {
                   setSelectedRowKey(null)
                 }}
                 type="button"
+                variant="plain"
               >
                 閉じる
-              </button>
+              </Button>
             </div>
           </div>
         </section>
       )}
 
       {!isEmpty && (
-        <details className="border border-border bg-card">
-          <summary className="min-h-10 cursor-pointer px-3 py-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-            {`順位一覧から詳細を選ぶ (${String(model.rows.length)})`}
-          </summary>
-          <ol
-            aria-label="toplist の順位"
-            className="list-none border-t border-border"
-          >
+        <WidgetCollapsibleSection
+          expanded={rankListExpanded}
+          label={`順位一覧から詳細を選ぶ (${String(model.rows.length)})`}
+          onExpandedChange={setRankListExpanded}
+        >
+          <ol aria-label="toplist の順位" className="list-none">
             {model.rows.map((row, index) => (
               <li
                 className="border-t border-border first:border-t-0"
                 key={row.key}
               >
-                <button
+                <Button
                   aria-label={
                     String(index + 1) +
                     ' 位: ' +
@@ -307,31 +332,33 @@ export function WidgetToplist({
                     row.formattedValue +
                     '、詳細を表示'
                   }
-                  className="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                  className="min-h-12 w-full justify-start whitespace-normal text-left"
                   onClick={() => {
                     setSelectedRowKey(row.key)
                   }}
+                  size="lg"
                   type="button"
+                  variant="ghost"
                 >
-                  <span className="w-8 shrink-0 text-right font-mono text-muted-foreground">
+                  <span className="w-8 shrink-0 text-right text-muted-foreground">
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block break-words text-foreground">
                       {row.name}
                     </span>
-                    <span className="block break-all font-mono text-2xs text-muted-foreground">
+                    <span className="block break-all text-2xs text-muted-foreground">
                       {row.code}
                     </span>
                   </span>
-                  <span className="shrink-0 font-mono tabular-nums text-muted-foreground-strong">
+                  <span className="shrink-0 tabular-nums text-muted-foreground-strong">
                     {row.formattedValue}
                   </span>
-                </button>
+                </Button>
               </li>
             ))}
           </ol>
-        </details>
+        </WidgetCollapsibleSection>
       )}
     </div>
   )

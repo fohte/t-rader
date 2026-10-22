@@ -1,9 +1,16 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use core_application::kata_exec::KataExecError;
+use k8s_openapi::api::core::v1::Pod;
+use kube::Client;
+use kube::api::{Api, AttachParams, AttachedProcess};
+use kube::config::Config as KubeConfig;
 use reqwest::{Certificate, StatusCode, header::HeaderMap, header::HeaderValue};
 use serde::Deserialize;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::config::KataExecutorConfig;
 use super::manifest::{PodPhase, PodStatusInfo};
@@ -23,15 +30,27 @@ pub(crate) trait PodApi: Send + Sync {
     async fn create(&self, manifest: &serde_json::Value) -> Result<(), KataExecError>;
     async fn get_status(&self, name: &str) -> Result<PodStatusInfo, KataExecError>;
     async fn fetch_log(&self, name: &str, max_bytes: usize) -> Result<String, KataExecError>;
+    async fn attach(&self, name: &str) -> Result<PodAttach, KataExecError>;
     async fn delete(&self, name: &str);
     /// Drop 経路 (sync コンテキスト) からの fire-and-forget な削除。
     /// 実装側で `tokio::spawn` する前提。
     fn spawn_delete(&self, name: &str);
 }
 
+pub(crate) type AttachStatus = Pin<Box<dyn Future<Output = Result<(), KataExecError>> + Send>>;
+
+pub(crate) struct PodAttach {
+    pub(crate) stdin: Pin<Box<dyn AsyncWrite + Send>>,
+    pub(crate) stdout: Pin<Box<dyn AsyncRead + Send>>,
+    pub(crate) stderr: Pin<Box<dyn AsyncRead + Send>>,
+    pub(crate) status: AttachStatus,
+    pub(crate) keepalive: Option<AttachedProcess>,
+}
+
 pub(crate) struct ReqwestPodApi {
     http: reqwest::Client,
     pods_url: String,
+    pods: Api<Pod>,
 }
 
 impl ReqwestPodApi {
@@ -44,7 +63,7 @@ impl ReqwestPodApi {
             Some(token) => Some(token.clone()),
             None => read_optional_file(SA_TOKEN_PATH)?,
         };
-        if let Some(token) = token {
+        if let Some(token) = &token {
             let mut headers = HeaderMap::new();
             let value = HeaderValue::from_str(&format!("Bearer {token}"))
                 .map_err(|e| KataExecError::Init(format!("invalid bearer token: {e}")))?;
@@ -52,18 +71,19 @@ impl ReqwestPodApi {
             builder = builder.default_headers(headers);
         }
 
+        let ca_cert_path = config.ca_cert_path.clone().or_else(|| {
+            if std::path::Path::new(SA_CA_PATH).exists() {
+                Some(SA_CA_PATH.to_string())
+            } else {
+                None
+            }
+        });
+
         if config.insecure_tls {
             builder = builder.danger_accept_invalid_certs(true);
         } else {
-            let ca_path = config.ca_cert_path.clone().or_else(|| {
-                if std::path::Path::new(SA_CA_PATH).exists() {
-                    Some(SA_CA_PATH.to_string())
-                } else {
-                    None
-                }
-            });
-            if let Some(ca_path) = ca_path {
-                let pem = std::fs::read(&ca_path).map_err(|e| {
+            if let Some(ca_path) = &ca_cert_path {
+                let pem = std::fs::read(ca_path).map_err(|e| {
                     KataExecError::Init(format!("failed to read CA cert {ca_path}: {e}"))
                 })?;
                 let cert = Certificate::from_pem(&pem)
@@ -71,6 +91,9 @@ impl ReqwestPodApi {
                 builder = builder.add_root_certificate(cert);
             }
         }
+
+        let client = build_kube_client(config, token.as_deref(), ca_cert_path.as_deref())?;
+        let pods = Api::namespaced(client, &config.namespace);
 
         let http = builder
             .build()
@@ -80,7 +103,11 @@ impl ReqwestPodApi {
             base = config.api_base_url.trim_end_matches('/'),
             ns = config.namespace,
         );
-        Ok(Self { http, pods_url })
+        Ok(Self {
+            http,
+            pods_url,
+            pods,
+        })
     }
 
     fn pod_url(&self, name: &str) -> String {
@@ -175,6 +202,59 @@ impl PodApi for ReqwestPodApi {
         Ok(String::from_utf8_lossy(&body).into_owned())
     }
 
+    async fn attach(&self, name: &str) -> Result<PodAttach, KataExecError> {
+        let mut process = self
+            .pods
+            .attach(
+                name,
+                &AttachParams::default()
+                    .container("exec")
+                    .stdin(true)
+                    .stdout(true)
+                    .stderr(true)
+                    .tty(false),
+            )
+            .await
+            .map_err(|error| {
+                KataExecError::Network(format!("failed to attach to exec pod: {error}"))
+            })?;
+        let stdin = process.stdin().ok_or_else(|| {
+            KataExecError::Init("Kubernetes attach did not provide stdin".to_string())
+        })?;
+        let stdout = process.stdout().ok_or_else(|| {
+            KataExecError::Init("Kubernetes attach did not provide stdout".to_string())
+        })?;
+        let stderr = process.stderr().ok_or_else(|| {
+            KataExecError::Init("Kubernetes attach did not provide stderr".to_string())
+        })?;
+        let status = process.take_status().ok_or_else(|| {
+            KataExecError::Init("Kubernetes attach did not provide process status".to_string())
+        })?;
+        let status = Box::pin(async move {
+            let status = status.await.ok_or_else(|| {
+                KataExecError::PodFailed(
+                    "Kubernetes attach closed without a process status".to_string(),
+                )
+            })?;
+            if status.status.as_deref() == Some("Success") {
+                return Ok(());
+            }
+            Err(KataExecError::PodFailed(
+                status
+                    .message
+                    .or(status.reason)
+                    .unwrap_or_else(|| "Kubernetes attach reported a failed process".to_string()),
+            ))
+        });
+        Ok(PodAttach {
+            stdin: Box::pin(stdin),
+            stdout: Box::pin(stdout),
+            stderr: Box::pin(stderr),
+            status,
+            keepalive: Some(process),
+        })
+    }
+
     async fn delete(&self, name: &str) {
         Self::run_delete(
             &self.http,
@@ -199,6 +279,36 @@ impl PodApi for ReqwestPodApi {
             .await;
         });
     }
+}
+
+fn build_kube_client(
+    config: &KataExecutorConfig,
+    token: Option<&str>,
+    ca_cert_path: Option<&str>,
+) -> Result<Client, KataExecError> {
+    let cluster_url = config
+        .api_base_url
+        .parse()
+        .map_err(|error| KataExecError::Init(format!("invalid Kubernetes API URL: {error}")))?;
+    let mut kube_config = KubeConfig::new(cluster_url);
+    kube_config.default_namespace = config.namespace.clone();
+    kube_config.connect_timeout = Some(DEFAULT_CONNECT_TIMEOUT);
+    kube_config.read_timeout = None;
+    kube_config.write_timeout = None;
+    kube_config.accept_invalid_certs = config.insecure_tls;
+    if let Some(token) = token {
+        kube_config.auth_info.token = Some(token.to_string().into());
+    }
+    if let Some(ca_cert_path) = ca_cert_path
+        && !config.insecure_tls
+    {
+        kube_config.root_cert_file = Some(ca_cert_path.into());
+    }
+    Client::try_from(kube_config).map_err(|error| {
+        KataExecError::Init(format!(
+            "failed to configure Kubernetes attach client: {error}"
+        ))
+    })
 }
 
 fn read_optional_file(path: &str) -> Result<Option<String>, KataExecError> {
@@ -281,7 +391,7 @@ struct K8sStatusResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::super::config::PodResourceLimits;
+    use super::super::config::{FileTransferLimits, PodResourceLimits};
     use super::*;
     use serde_json::json;
     use wiremock::matchers::{method, path, path_regex};
@@ -297,6 +407,7 @@ mod tests {
             insecure_tls: true,
             default_timeout: Duration::from_millis(500),
             default_max_output_bytes: 1024,
+            file_transfer_limits: FileTransferLimits::default(),
             resource_limits: PodResourceLimits::default(),
             poll_interval: Duration::from_millis(10),
         }

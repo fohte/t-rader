@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
 
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
 import type { components } from '#lib/api/schema.gen'
@@ -38,18 +37,10 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// PhaseCard のフィールドグリッド (grid-cols-(--grid-cols-field-label)) を再現し、実際の見え方に合わせる
-function Interactive({
-  initial,
-  models,
-}: {
-  initial: string
-  models: AgentModel[]
-}) {
-  const [value, setValue] = useState(initial)
+function renderField(args: Story['args']) {
   return (
     <div className="grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
-      <ModelField value={value} onChange={setValue} models={models} />
+      <ModelField {...args} />
     </div>
   )
 }
@@ -57,24 +48,34 @@ function Interactive({
 export const Default: Story = {
   name: 'shows a selected model from the available options.',
   args: { value: 'fictional-model-maple', onChange: () => {}, models: MODELS },
-  render: () => <Interactive initial="fictional-model-maple" models={MODELS} />,
+  render: renderField,
 }
 
 export const Unset: Story = {
   name: 'shows the model field without a selection.',
   args: { value: '', onChange: () => {}, models: MODELS },
-  render: () => <Interactive initial="" models={MODELS} />,
+  render: renderField,
 }
 
 export const NoModelsAvailable: Story = {
   name: 'shows the model field when no choices are available.',
   args: { value: 'fictional-model-maple', onChange: () => {}, models: [] },
-  render: () => <Interactive initial="fictional-model-maple" models={[]} />,
+  render: renderField,
 }
 
-// 保存済みの値が一覧に無くても (typo・非推奨モデルなど) 選択肢から消えない
 export const ValueNotInList: Story = {
   name: 'preserves a selected model that is missing from the available options.',
   args: { value: 'retired-example-model', onChange: () => {}, models: MODELS },
-  render: () => <Interactive initial="retired-example-model" models={MODELS} />,
+  render: renderField,
+}
+
+export const ChoicesOpen: Story = {
+  name: 'shows the available model choices in the open popup.',
+  args: {
+    value: 'fictional-model-maple',
+    onChange: () => {},
+    models: MODELS,
+    defaultOpen: true,
+  },
+  render: renderField,
 }

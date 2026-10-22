@@ -67,10 +67,26 @@ const VALID_RESULT = {
   },
   asOf: '2099-01-05',
 }
+const TABLE_WIDGET_DEFINITION = VALID_WIDGET_DEFINITION.replace(
+  'type: toplist\n  value: doubled\n  order: desc\n  limit: 5\n  bar_scale:\n    min: -1\n    max: 1',
+  'type: table\n  columns:\n    - doubled\n    - daily',
+)
 
 describe('parseWidgetDefinition', () => {
   it('parses YAML into a widget query request', () => {
     expect(parseWidgetDefinition(VALID_WIDGET_DEFINITION)).toEqual(VALID_RESULT)
+  })
+
+  it('preserves the configured table column order', () => {
+    expect(parseWidgetDefinition(TABLE_WIDGET_DEFINITION)).toEqual({
+      ok: true,
+      request: {
+        ...VALID_RESULT.request,
+        viz: { type: 'table', columns: ['doubled', 'daily'] },
+      },
+      viz: { type: 'table', columns: ['doubled', 'daily'] },
+      asOf: '2099-01-05',
+    })
   })
 
   it.each([
@@ -208,6 +224,15 @@ describe('parseWidgetDefinition', () => {
       source: VALID_WIDGET_DEFINITION.replace(
         '  as_of: 2099-01-05',
         '  as_of: 2099-01-05\n  range: null',
+      ),
+      path: 'time.range',
+      message: 'time.range は現在のウィジェットでは使えません。',
+    },
+    {
+      name: 'a table with time.range',
+      source: TABLE_WIDGET_DEFINITION.replace(
+        '  as_of: 2099-01-05',
+        '  as_of: 2099-01-05\n  range: 1d',
       ),
       path: 'time.range',
       message: 'time.range は現在のウィジェットでは使えません。',

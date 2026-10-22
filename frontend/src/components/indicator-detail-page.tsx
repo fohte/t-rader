@@ -1,6 +1,7 @@
 import { IndicatorObservationChart } from '#components/indicator-observation-chart'
 import { ReferenceDetailState } from '#components/reference-detail-state'
 import { RelatedNotes } from '#components/related-notes'
+import { optionalPnlColorClass } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 import {
   getIndicatorObservationSummary,
@@ -73,12 +74,7 @@ export function IndicatorDetailPage(props: IndicatorDetailPageProps) {
               </span>
               {changeLabel != null && (
                 <span
-                  className={
-                    observationSummary.change != null &&
-                    observationSummary.change < 0
-                      ? 'font-mono text-sm tabular-nums text-destructive'
-                      : 'font-mono text-sm tabular-nums text-emerald-600 dark:text-emerald-400'
-                  }
+                  className={`font-mono text-sm tabular-nums ${optionalPnlColorClass(observationSummary.change)}`}
                 >
                   {changeLabel}
                 </span>

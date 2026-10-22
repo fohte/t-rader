@@ -28,7 +28,18 @@ const meta = {
   render: (args) => (
     <RouterProvider
       router={createCalendarRouter(() => (
-        <CalendarEventRow {...args} />
+        <div className="space-y-1">
+          <CalendarEventRow {...args} />
+          {args.titleAction?.expanded === true &&
+            args.titleAction.controlsId != null && (
+              <div
+                id={args.titleAction.controlsId}
+                className="border-l border-border px-3 py-2 text-muted-foreground"
+              >
+                追加の決算を表示しています。
+              </div>
+            )}
+        </div>
       ))}
     />
   ),
@@ -66,13 +77,29 @@ export const EmphasizedEvent: Story = {
 }
 
 export const OtherEarningsSummary: Story = {
-  name: '他社決算の件数を展開ボタンとして表示します。',
+  name: '他社決算の一覧を閉じた状態で表示します。',
   args: {
     time: '',
     title: '他 2 社',
     stockId: undefined,
     target: false,
     muted: true,
-    titleAction: { expanded: true, onClick: () => {} },
+    titleAction: { expanded: false, onClick: () => {} },
+  },
+}
+
+export const OtherEarningsSummaryExpanded: Story = {
+  name: '他社決算の一覧を開いた状態で表示します。',
+  args: {
+    time: '',
+    title: '他 2 社',
+    stockId: undefined,
+    target: false,
+    muted: true,
+    titleAction: {
+      expanded: true,
+      controlsId: 'calendar-other-earnings-details',
+      onClick: () => {},
+    },
   },
 }

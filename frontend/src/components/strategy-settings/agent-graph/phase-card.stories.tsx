@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
 
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
 import { PromptField } from '#components/strategy-settings/agent-graph/fields/prompt-field'
@@ -14,70 +13,49 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-const PLAN_PHASE: AgentGraphPhaseForm = {
-  key: 'plan',
-  label: '見出し案',
+const ALPHA_PHASE: AgentGraphPhaseForm = {
+  key: 'alpha',
+  label: 'サンプル',
   model: 'fictional-model-orbit',
-  prompt: '与えられたテーマを 2-4 個の見出しに分ける。',
+  prompt: 'sample prompt',
   skills: [],
   tools: [],
   output: {},
 }
 
-const COMPOSE_PHASE: AgentGraphPhaseForm = {
-  key: 'compose',
-  label: '節の作成',
+const BETA_PHASE: AgentGraphPhaseForm = {
+  key: 'beta',
+  label: '次の段階',
   model: 'fictional-model-lantern',
-  prompt: '割り当てられた見出しに沿って、説明文を作成する。',
-  forEach: 'plan.sections',
-  labelField: 'title',
+  prompt: 'sample prompt',
+  forEach: 'alpha.records',
+  labelField: 'name',
   skills: [],
   tools: [],
   output: {},
 }
 
 const UNSET_MODEL_PHASE: AgentGraphPhaseForm = {
-  ...PLAN_PHASE,
+  ...ALPHA_PHASE,
   model: '',
 }
 
-function Interactive({
-  initial,
-  referencedLabel,
-  hasError = false,
-}: {
-  initial: AgentGraphPhaseForm
-  referencedLabel?: string
-  hasError?: boolean
-}) {
-  const [phase, setPhase] = useState(initial)
+function renderPhase(args: Story['args']) {
+  const phase = args.phase
   return (
     <PhaseCard
-      index={0}
-      total={2}
+      index={args.index}
+      total={args.total}
       phase={phase}
-      referencedLabel={referencedLabel}
-      hasError={hasError}
-      onLabelChange={(label) => {
-        setPhase({ ...phase, label })
-      }}
-      onMoveUp={() => {}}
-      onMoveDown={() => {}}
-      onRemove={() => {}}
+      referencedLabel={args.referencedLabel}
+      hasError={args.hasError}
+      onLabelChange={args.onLabelChange}
+      onMoveUp={args.onMoveUp}
+      onMoveDown={args.onMoveDown}
+      onRemove={args.onRemove}
     >
-      <ModelField
-        value={phase.model}
-        onChange={(model) => {
-          setPhase({ ...phase, model })
-        }}
-        models={[]}
-      />
-      <PromptField
-        value={phase.prompt}
-        onChange={(prompt) => {
-          setPhase({ ...phase, prompt })
-        }}
-      />
+      <ModelField value={phase.model} onChange={() => {}} models={[]} />
+      <PromptField value={phase.prompt} onChange={() => {}} />
     </PhaseCard>
   )
 }
@@ -87,14 +65,14 @@ export const Default: Story = {
   args: {
     index: 0,
     total: 2,
-    phase: PLAN_PHASE,
+    phase: ALPHA_PHASE,
     onLabelChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
     children: null,
   },
-  render: () => <Interactive initial={PLAN_PHASE} />,
+  render: renderPhase,
 }
 
 export const ForEach: Story = {
@@ -102,17 +80,15 @@ export const ForEach: Story = {
   args: {
     index: 1,
     total: 2,
-    phase: COMPOSE_PHASE,
-    referencedLabel: '見出し案',
+    phase: BETA_PHASE,
+    referencedLabel: 'サンプル',
     onLabelChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
     children: null,
   },
-  render: () => (
-    <Interactive initial={COMPOSE_PHASE} referencedLabel="見出し案" />
-  ),
+  render: renderPhase,
 }
 
 export const WithError: Story = {
@@ -120,7 +96,7 @@ export const WithError: Story = {
   args: {
     index: 0,
     total: 2,
-    phase: PLAN_PHASE,
+    phase: ALPHA_PHASE,
     hasError: true,
     onLabelChange: () => {},
     onMoveUp: () => {},
@@ -128,7 +104,7 @@ export const WithError: Story = {
     onRemove: () => {},
     children: null,
   },
-  render: () => <Interactive initial={PLAN_PHASE} hasError />,
+  render: renderPhase,
 }
 
 export const ModelUnset: Story = {
@@ -143,5 +119,5 @@ export const ModelUnset: Story = {
     onRemove: () => {},
     children: null,
   },
-  render: () => <Interactive initial={UNSET_MODEL_PHASE} />,
+  render: renderPhase,
 }

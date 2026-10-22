@@ -114,7 +114,8 @@ function validateDashboard(value: unknown): DashboardConfigResult {
     if (!isSupportedWidgetVisualization(parsedDefinition.viz)) {
       issues.push({
         path: `${path}.viz`,
-        message: 'viz.type は treemap または toplist を指定してください。',
+        message:
+          'viz.type は treemap、toplist または table を指定してください。',
       })
       return
     }

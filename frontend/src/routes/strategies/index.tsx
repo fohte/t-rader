@@ -1,18 +1,20 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
+import { TabsPanel } from '@fohte/ui/tabs'
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 
 import { FilterBar, type FilterOption } from '#components/runs/filter-bar'
 import { RunsTabHeader } from '#components/runs/runs-tab-header'
+import { CreateStrategyCard } from '#components/strategy-home/create-strategy-card'
 import { CreateStrategyDialog } from '#components/strategy-home/create-strategy-dialog'
 import { StrategyCard } from '#components/strategy-home/strategy-card'
+import { StrategyListCount } from '#components/strategy-home/strategy-list-count'
 import { StrategyListIntroduction } from '#components/strategy-home/strategy-list-introduction'
+import { StrategyListLoading } from '#components/strategy-home/strategy-list-loading'
 import {
   StrategyListTabs,
   validateStrategyListSearch,
 } from '#components/strategy-home/strategy-list-tabs'
 import { TaskRunListView } from '#components/strategy-shell/task-run-list-view'
-import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/strategies/')({
@@ -31,10 +33,24 @@ const UNSPECIFIED_PURPOSE = '__unspecified__'
 function StrategyListPage() {
   const { strategyTab: requestedTab } = Route.useSearch()
   const tab = requestedTab ?? 'list'
+  const navigate = useNavigate({ from: '/strategies/' })
+
   return (
     <div className="font-sans text-foreground">
-      <StrategyListTabs activeTab={tab} />
-      {tab === 'list' ? <StrategyListContent /> : <RunsTab />}
+      <StrategyListTabs
+        activeTab={tab}
+        onChange={(nextTab) => {
+          void navigate({
+            to: '/strategies',
+            search: { strategyTab: nextTab },
+          })
+        }}
+      >
+        <TabsPanel value="list">
+          {tab === 'list' && <StrategyListContent />}
+        </TabsPanel>
+        <TabsPanel value="runs">{tab === 'runs' && <RunsTab />}</TabsPanel>
+      </StrategyListTabs>
     </div>
   )
 }
@@ -50,34 +66,19 @@ function StrategyListContent() {
       <StrategyListIntroduction />
 
       {isPending ? (
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-          <Skeleton className="h-47" />
-          <Skeleton className="h-47" />
-          <Skeleton className="h-47" />
-        </div>
+        <StrategyListLoading />
       ) : (
         <>
-          <div className="mb-2.5 flex items-baseline gap-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-            <span className="text-primary">&gt;</span>
-            <span>strategies</span>
-            <span className="text-muted-foreground-strong">
-              {strategies?.length ?? 0} 件
-            </span>
-          </div>
+          <StrategyListCount count={strategies?.length ?? 0} />
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
             {(strategies ?? []).map((strategy) => (
               <StrategyCard key={strategy.id} strategy={strategy} />
             ))}
-            <button
-              type="button"
+            <CreateStrategyCard
               onClick={() => {
                 setCreating(true)
               }}
-              className="flex min-h-47 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-border bg-transparent p-4 text-center text-muted-foreground hover:border-primary hover:text-primary"
-            >
-              <Plus className="size-6" />
-              <div className="font-mono text-sm">新しい戦略を作る</div>
-            </button>
+            />
           </div>
         </>
       )}

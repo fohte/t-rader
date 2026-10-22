@@ -1,8 +1,6 @@
-import { Button } from '@fohte/ui/button'
-import { Input } from '@fohte/ui/input'
 import { useEffect, useRef, useState } from 'react'
 
-import { CodeEditor } from '#components/indicators/code-editor'
+import { IndicatorEditorView } from '#components/indicators/indicator-editor-view'
 
 export interface IndicatorEditorValue {
   name: string
@@ -122,216 +120,19 @@ export function IndicatorEditor({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <label
-            htmlFor="indicator-name"
-            className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
-          >
-            name
-          </label>
-          <Input
-            id="indicator-name"
-            value={value.name}
-            readOnly={nameReadOnly}
-            onChange={(e) => {
-              patch({ name: e.target.value })
-            }}
-            className="w-64 font-mono text-sm"
-          />
-        </div>
-        <div
-          data-testid="indicator-scope"
-          className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
-        >
-          scope: {scope}
-        </div>
-        {dirty && (
-          <span
-            data-testid="dirty-indicator"
-            className="font-mono text-2xs text-primary"
-          >
-            未保存の変更あり
-          </span>
-        )}
-      </div>
-
-      <div className="space-y-1.5">
-        <label
-          htmlFor="indicator-description"
-          className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
-        >
-          description
-        </label>
-        <Input
-          id="indicator-description"
-          value={value.description}
-          onChange={(e) => {
-            patch({ description: e.target.value })
-          }}
-          className="w-full font-mono text-sm"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          code (Python)
-        </div>
-        <CodeEditor
-          language="python"
-          value={value.code}
-          onChange={(next) => {
-            patch({ code: next })
-          }}
-          testId="indicator-code-editor"
-          ariaLabel="indicator code"
-          height={360}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="space-y-1.5">
-          <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-            input_schema (JSON Schema)
-          </div>
-          <CodeEditor
-            language="json"
-            value={value.inputSchema}
-            onChange={(next) => {
-              patch({ inputSchema: next })
-            }}
-            testId="indicator-input-schema-editor"
-            ariaLabel="input_schema"
-            height={200}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-            output_schema (JSON Schema)
-          </div>
-          <CodeEditor
-            language="json"
-            value={value.outputSchema}
-            onChange={(next) => {
-              patch({ outputSchema: next })
-            }}
-            testId="indicator-output-schema-editor"
-            ariaLabel="output_schema"
-            height={200}
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!dirty || isSaving}
-        >
-          {isSaving ? '保存中…' : '保存'}
-        </Button>
-        {saveError != null && (
-          <span className="font-mono text-xs text-primary">{saveError}</span>
-        )}
-      </div>
-
-      <div className="space-y-2 border-t border-border pt-4">
-        <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          preview
-        </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor="indicator-args"
-            className="font-mono text-2xs text-muted-foreground"
-          >
-            args (JSON)
-          </label>
-          <CodeEditor
-            language="json"
-            value={argsJson}
-            onChange={setArgsJson}
-            testId="indicator-args-editor"
-            ariaLabel="preview args"
-            height={120}
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            onClick={handlePreview}
-            disabled={preview.isRunning}
-          >
-            {preview.isRunning ? '実行中…' : 'プレビュー実行'}
-          </Button>
-          {preview.error != null && (
-            <span
-              data-testid="preview-error"
-              className="font-mono text-xs text-primary"
-            >
-              {preview.error}
-            </span>
-          )}
-        </div>
-
-        {preview.result != null && (
-          <div
-            data-testid="preview-result"
-            className="space-y-2 border border-border bg-bg-secondary p-3"
-          >
-            <div className="flex items-center gap-4 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-              <span>
-                exit_code:{' '}
-                <span
-                  data-testid="preview-exit-code"
-                  className="text-foreground"
-                >
-                  {preview.result.exit_code}
-                </span>
-              </span>
-            </div>
-            {preview.result.output !== null && (
-              <div>
-                <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-                  output
-                </div>
-                <pre
-                  data-testid="preview-output"
-                  className="overflow-auto whitespace-pre-wrap font-mono text-xs text-foreground"
-                >
-                  {JSON.stringify(preview.result.output, null, 2)}
-                </pre>
-              </div>
-            )}
-            {preview.result.stdout !== '' && (
-              <div>
-                <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-                  stdout
-                </div>
-                <pre
-                  data-testid="preview-stdout"
-                  className="overflow-auto whitespace-pre-wrap font-mono text-xs text-foreground"
-                >
-                  {preview.result.stdout}
-                </pre>
-              </div>
-            )}
-            {preview.result.stderr !== '' && (
-              <div>
-                <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-                  stderr
-                </div>
-                <pre
-                  data-testid="preview-stderr"
-                  className="overflow-auto whitespace-pre-wrap font-mono text-xs text-primary"
-                >
-                  {preview.result.stderr}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+    <IndicatorEditorView
+      scope={scope}
+      value={value}
+      isDirty={dirty}
+      nameReadOnly={nameReadOnly}
+      onPatch={patch}
+      argsJson={argsJson}
+      onArgsJsonChange={setArgsJson}
+      onSave={handleSave}
+      isSaving={isSaving}
+      saveError={saveError}
+      onPreview={handlePreview}
+      preview={preview}
+    />
   )
 }

@@ -86,7 +86,7 @@ function withHighlight(
           {text.slice(0, highlightStart)}
           <mark
             data-comment-text-highlight="true"
-            className="bg-primary/20 text-inherit"
+            className="bg-muted-foreground/20 text-inherit"
           >
             {text.slice(highlightStart, highlightEnd)}
           </mark>

@@ -1,3 +1,5 @@
+import { Chip } from '@fohte/ui/chip'
+
 import { ExecutionOriginLinks } from '#components/execution-origin-links'
 import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
 import { StatusPill } from '#components/strategy-home/status-pill'
@@ -33,11 +35,11 @@ export function NoteVersionHeader({
               <ExecutionOriginLinks origin={executionOrigin} />
             </>
           )}
-          <span>
-            {hasNoteError
-              ? '種別を読み込めませんでした'
-              : (noteKindLabel ?? '種別なし')}
-          </span>
+          {hasNoteError ? (
+            <span className="text-destructive">種別を読み込めませんでした</span>
+          ) : (
+            <Chip>{noteKindLabel ?? '種別なし'}</Chip>
+          )}
           <span>v{String(version.version_no)}</span>
           <StatusPill status={version.status} />
         </div>
@@ -47,11 +49,7 @@ export function NoteVersionHeader({
         {version.title}
       </h1>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-2xs text-muted-foreground">
-        {version.is_current && (
-          <span className="border border-primary px-1.5 py-px text-primary">
-            現行
-          </span>
-        )}
+        {version.is_current && <Chip>現行</Chip>}
         <span>{formatRelative(version.created_at)} 作成</span>
       </div>
       {version.version_no > 1 &&

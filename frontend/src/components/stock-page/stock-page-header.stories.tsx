@@ -66,6 +66,13 @@ export const WithDailyQuote: Story = {
   name: '架空銘柄の名前と直近の日足騰落を表示する。',
 }
 
+export const DailyQuoteDecline: Story = {
+  name: '架空銘柄の直近の日足下落を down 色で表示する。',
+  args: {
+    quote: { ...quote, close: 3200, change: -50, changePercent: -1.56 },
+  },
+}
+
 export const WithoutHolding: Story = {
   name: '保有していない銘柄では保有印を表示しない。',
   args: { isHolding: false },

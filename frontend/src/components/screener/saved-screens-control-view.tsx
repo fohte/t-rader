@@ -1,5 +1,8 @@
 import { Button } from '@fohte/ui/button'
+import { ButtonGroup } from '@fohte/ui/button-group'
+import { FieldTrigger } from '@fohte/ui/field-trigger'
 import { Input } from '@fohte/ui/input'
+import { List, ListItem } from '@fohte/ui/list'
 import { ChevronDown, Pencil, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -83,46 +86,47 @@ export function SavedScreensControlView({
     return (
       <div className="flex flex-col gap-1 border-t border-border pt-2">
         {selectedScreen != null && selectedScreenHasChanges && (
-          <button
+          <Button
             type="button"
+            variant="outline"
             disabled={saveActionDisabled}
             onClick={() => {
               onOverwrite()
               onMenuOpenChange(false)
             }}
-            className="w-full px-2 py-2 text-left text-2xs text-muted-foreground-strong hover:bg-surface-strong hover:text-foreground disabled:opacity-50"
+            className="w-full justify-start"
           >
             上書き保存
-          </button>
+          </Button>
         )}
-        <button
+        <Button
           type="button"
+          variant="outline"
           disabled={saveActionDisabled}
           onClick={() => {
             onDialogChange({ type: 'save' })
             onMenuOpenChange(false)
           }}
-          className="w-full px-2 py-2 text-left text-2xs text-muted-foreground-strong hover:bg-surface-strong hover:text-foreground disabled:opacity-50"
+          className="w-full justify-start"
         >
           {savedScreensPending
             ? '読み込み中...'
             : selectedScreen == null
               ? 'この条件を保存'
               : '名前を付けて保存'}
-        </button>
+        </Button>
       </div>
     )
   }
 
   return (
     <>
-      <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-none">
         <div className="flex min-w-0 items-center gap-2">
           <Popover open={menuOpen} onOpenChange={onMenuOpenChange}>
             <PopoverTrigger
               render={
-                <button
-                  type="button"
+                <FieldTrigger
                   aria-label={
                     selectedScreen == null
                       ? savedScreensPending && selectedScreenId != null
@@ -130,99 +134,106 @@ export function SavedScreensControlView({
                         : '保存した条件を選ぶ'
                       : `保存した条件: ${selectedScreen.name}`
                   }
-                  className="inline-flex min-w-0 items-center gap-1.5 border border-border bg-background px-2.5 py-2 text-left text-2xs text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground"
+                  className="min-w-0 max-w-full flex-1 md:flex-none"
                 >
                   <span className="min-w-0 truncate">
-                    {selectedScreen == null ? (
-                      savedScreensPending && selectedScreenId != null ? (
-                        '読み込み中...'
-                      ) : (
-                        '保存した条件'
-                      )
-                    ) : (
-                      <>
-                        <span className="hidden md:inline">保存した条件: </span>
-                        {selectedScreen.name}
-                      </>
-                    )}
+                    {selectedScreen == null
+                      ? savedScreensPending && selectedScreenId != null
+                        ? '読み込み中...'
+                        : '保存した条件'
+                      : `保存した条件: ${selectedScreen.name}`}
                   </span>
                   <ChevronDown
                     aria-hidden="true"
                     className="size-3.5 shrink-0"
                   />
-                </button>
+                </FieldTrigger>
               }
             />
             <PopoverContent
               align="start"
               sideOffset={6}
-              className="w-80 space-y-2 p-2"
-              style={{ maxWidth: 'calc(100vw - 1.5rem)' }}
+              padding="sm"
+              className="w-80"
             >
-              <h3 className="px-2 py-1 font-mono text-2xs font-semibold text-muted-foreground">
-                保存した条件
-              </h3>
-              {savedScreensPending ? (
-                <p className="px-2 py-3 text-2xs text-muted-foreground">
-                  読み込み中...
-                </p>
-              ) : listError ? (
-                <p role="alert" className="px-2 py-3 text-2xs text-destructive">
-                  保存した条件を読み込めませんでした。
-                </p>
-              ) : savedScreens.length === 0 ? (
-                <p className="px-2 py-3 text-2xs text-muted-foreground">
-                  保存した条件はありません。
-                </p>
-              ) : (
-                <ul className="max-h-64 space-y-0.5 overflow-y-auto">
-                  {savedScreens.map((savedScreen) => (
-                    <li
-                      key={savedScreen.id}
-                      className="flex items-center gap-1"
-                    >
-                      <button
-                        type="button"
-                        aria-current={
-                          selectedScreenId === savedScreen.id
-                            ? 'true'
-                            : undefined
-                        }
-                        onClick={() => {
-                          onSelect(savedScreen)
-                          onMenuOpenChange(false)
-                        }}
-                        className={`min-w-0 flex-1 truncate px-2 py-2 text-left text-2xs hover:bg-surface-strong ${selectedScreenId === savedScreen.id ? 'bg-surface-strong text-foreground' : 'text-muted-foreground-strong'}`}
-                      >
-                        {savedScreen.name}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`${savedScreen.name} の名前を変更`}
-                        onClick={() => {
-                          onDialogChange({ type: 'rename', savedScreen })
-                          onMenuOpenChange(false)
-                        }}
-                        className="inline-flex size-8 shrink-0 items-center justify-center text-muted-foreground hover:bg-surface-strong hover:text-foreground"
-                      >
-                        <Pencil aria-hidden="true" className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`${savedScreen.name} を削除`}
-                        onClick={() => {
-                          onDialogChange({ type: 'delete', savedScreen })
-                          onMenuOpenChange(false)
-                        }}
-                        className="inline-flex size-8 shrink-0 items-center justify-center text-muted-foreground hover:bg-surface-strong hover:text-destructive"
-                      >
-                        <Trash2 aria-hidden="true" className="size-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="md:hidden">{renderSaveActions()}</div>
+              <div className="flex flex-col gap-2">
+                <h3 className="px-2 py-1 font-mono text-2xs font-semibold text-muted-foreground">
+                  保存した条件
+                </h3>
+                {savedScreensPending ? (
+                  <p className="px-2 py-3 text-2xs text-muted-foreground">
+                    読み込み中...
+                  </p>
+                ) : listError ? (
+                  <p
+                    role="alert"
+                    className="px-2 py-3 text-2xs text-destructive"
+                  >
+                    保存した条件を読み込めませんでした。
+                  </p>
+                ) : savedScreens.length === 0 ? (
+                  <p className="px-2 py-3 text-2xs text-muted-foreground">
+                    保存した条件はありません。
+                  </p>
+                ) : (
+                  <div className="flex max-h-64 gap-1 overflow-y-auto">
+                    <div className="min-w-0 flex-1">
+                      <List>
+                        {savedScreens.map((savedScreen) => (
+                          <ListItem
+                            key={savedScreen.id}
+                            aria-current={
+                              selectedScreenId === savedScreen.id
+                                ? 'true'
+                                : undefined
+                            }
+                            selected={selectedScreenId === savedScreen.id}
+                            onSelect={() => {
+                              onSelect(savedScreen)
+                              onMenuOpenChange(false)
+                            }}
+                          >
+                            <span className="min-w-0 flex-1 truncate">
+                              {savedScreen.name}
+                            </span>
+                          </ListItem>
+                        ))}
+                      </List>
+                    </div>
+                    <div className="flex shrink-0 flex-col">
+                      {savedScreens.map((savedScreen) => (
+                        <ButtonGroup key={savedScreen.id}>
+                          <Button
+                            type="button"
+                            variant="plain"
+                            aria-label={`${savedScreen.name} の名前を変更`}
+                            onClick={() => {
+                              onDialogChange({ type: 'rename', savedScreen })
+                              onMenuOpenChange(false)
+                            }}
+                            className="size-9 shrink-0 pointer-coarse:size-11"
+                          >
+                            <Pencil aria-hidden="true" className="size-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="plain"
+                            aria-label={`${savedScreen.name} を削除`}
+                            onClick={() => {
+                              onDialogChange({ type: 'delete', savedScreen })
+                              onMenuOpenChange(false)
+                            }}
+                            className="size-9 shrink-0 pointer-coarse:size-11"
+                          >
+                            <Trash2 aria-hidden="true" className="size-3.5" />
+                          </Button>
+                        </ButtonGroup>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="md:hidden">{renderSaveActions()}</div>
+              </div>
             </PopoverContent>
           </Popover>
           <div className="hidden shrink-0 items-center gap-2 md:flex">
@@ -230,7 +241,6 @@ export function SavedScreensControlView({
               <Button
                 type="button"
                 variant="outline"
-                className="text-2xs"
                 disabled={saveActionDisabled}
                 onClick={onOverwrite}
               >
@@ -240,7 +250,6 @@ export function SavedScreensControlView({
             <Button
               type="button"
               variant="outline"
-              className="text-2xs"
               disabled={saveActionDisabled}
               onClick={() => {
                 onDialogChange({ type: 'save' })

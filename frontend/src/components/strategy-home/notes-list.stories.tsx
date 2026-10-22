@@ -20,7 +20,7 @@ const notes: Note[] = [
     resolved_price_references_json: {},
     graphs_json: [],
     tags: ['架空タグ'],
-    kind: null,
+    kind: 'sample-kind',
     status: 'unread',
     trigger: null,
     trigger_label: null,
@@ -54,7 +54,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const WithTags: Story = {
-  name: 'The list shows tags for each note.',
+  name: 'shows a note with its kind, tags, and review status.',
 }
 
 export const Empty: Story = {

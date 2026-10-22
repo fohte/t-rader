@@ -3160,7 +3160,7 @@ export interface components {
       axis: string
     }
     /**
-     * @description スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。
+     * @description `change`, `close`, `turnover`, `mkt_cap`, `per`, `pbr`, `indicator` に対応します。indicator は by=none、indicator ID 必須、集計なしで指定します。
      * @enum {string}
      */
     WidgetMetricRequest:
@@ -3193,6 +3193,7 @@ export interface components {
       /** Format: date */
       as_of: string
       rows: components['schemas']['WidgetQueryResultRow'][]
+      series?: components['schemas']['WidgetSeriesDto'][] | null
     }
     WidgetQueryResultRow: {
       classification?:
@@ -3213,10 +3214,27 @@ export interface components {
       /** Format: double */
       min: number
     }
+    WidgetSeriesDto: {
+      key: string
+      name: string
+      points: components['schemas']['WidgetSeriesPointDto'][]
+      query: string
+      target?: null | components['schemas']['WidgetSeriesTargetDto']
+    }
+    WidgetSeriesPointDto: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      value?: number | null
+    }
+    WidgetSeriesTargetDto: {
+      key: string
+      name: string
+    }
     WidgetTimeRequest: {
       /** Format: date */
       as_of?: string | null
-      /** @description 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。 */
+      /** @description `line` では `3m`、`1y`、または両端を含む `YYYY-MM-DD..YYYY-MM-DD` を指定します。 */
       range?: string | null
     }
     WidgetUniverseGroupRequest: {
@@ -3236,7 +3254,7 @@ export interface components {
     WidgetValueFormatRequest: 'number' | 'percent'
     /** @enum {string} */
     WidgetVisualizationOrderRequest: 'asc' | 'desc'
-    /** @description スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。 */
+    /** @description `treemap`, `toplist`, `table` に対応します。table は断面表示で、columns に query または formula の名前を指定します。line は予約済みです。 */
     WidgetVisualizationRequest:
       | {
           color: string
@@ -10266,6 +10284,14 @@ export interface operations {
         }
       }
       500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      503: {
         headers: {
           [name: string]: unknown
         }

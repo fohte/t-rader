@@ -1041,6 +1041,7 @@ mod tests {
                     stdout: "{\"value\": 42}\n".into(),
                     stderr: String::new(),
                     exit_code: 0,
+                    files: Vec::new(),
                 }))
                 .await;
             let shared: SharedKataExecutor = executor.clone();
@@ -1074,6 +1075,7 @@ mod tests {
                     stdin: Some(r#"{"args":{"period":14}}"#.into()),
                     timeout: None,
                     max_output_bytes: None,
+                    input_files: None,
                 }],
             );
         }
@@ -1117,6 +1119,7 @@ mod tests {
                     stdout: String::new(),
                     stderr: "PermissionError: network access denied".into(),
                     exit_code: 1,
+                    files: Vec::new(),
                 }))
                 .await;
             let shared: SharedKataExecutor = executor;
@@ -1164,6 +1167,7 @@ mod tests {
                     stdout: "not-json\n".into(),
                     stderr: String::new(),
                     exit_code: 0,
+                    files: Vec::new(),
                 }))
                 .await;
             let shared: SharedKataExecutor = executor;

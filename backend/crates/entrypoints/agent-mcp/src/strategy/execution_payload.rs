@@ -150,6 +150,7 @@ impl StrategyServer {
                     .timeout_secs
                     .map(|seconds| Duration::from_secs(seconds.into())),
                 max_output_bytes: Some(max_output_bytes as usize),
+                input_files: None,
             })
             .await
             .map_err(|error| kata_exec_error(error, scope.id(), indicator))

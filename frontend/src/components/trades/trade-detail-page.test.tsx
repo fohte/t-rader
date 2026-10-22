@@ -24,7 +24,7 @@ function readTradeChatOpenOutput() {
   return {
     contextChip: screen.getByText('取引: 2099-02-10 売り 架空銘柄').textContent,
     chatSeed: screen.getByLabelText<HTMLInputElement>('メッセージ入力').value,
-    strategyId: screen.getByLabelText<HTMLSelectElement>('戦略').value,
+    strategyLabel: screen.getByRole('combobox', { name: '戦略' }).textContent,
   }
 }
 
@@ -156,7 +156,7 @@ describe('TradeDetailPage', () => {
       contextChip: '取引: 2099-02-10 売り 架空銘柄',
       chatSeed:
         'この取引について、売買時の判断とその後の結果を振り返ってください。',
-      strategyId: 'fake-strategy',
+      strategyLabel: '検証用戦略',
     })
   }, 30_000)
 

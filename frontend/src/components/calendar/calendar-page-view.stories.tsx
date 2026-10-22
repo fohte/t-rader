@@ -182,6 +182,16 @@ export const StrategyError: Story = {
   args: { strategyErrorMessage: '戦略一覧の取得に失敗しました' },
 }
 
+export const StrategyFilterOpen: Story = {
+  name: '戦略の選択肢を表示しています。',
+  args: { openFilter: 'strategy' },
+}
+
+export const CountryFilterOpen: Story = {
+  name: '国の選択肢を表示しています。',
+  args: { openFilter: 'country' },
+}
+
 export const OtherEarningsExpanded: Story = {
   name: '他社の決算一覧を展開しています。',
   args: {

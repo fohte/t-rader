@@ -1,11 +1,15 @@
 import { Button } from '@fohte/ui/button'
+import { Chip } from '@fohte/ui/chip'
 import { useEffect, useRef, useState } from 'react'
 
 import { CodeEditor } from '#components/indicators/code-editor'
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
 import { parseAgentGraphPhases } from '#components/strategy-settings/agent-graph/document'
 import { extractPhaseKeyFromSaveError } from '#components/strategy-settings/agent-graph/save-error'
-import { cn } from '#lib/utils'
+import {
+  type AgentGraphView,
+  AgentGraphViewSelector,
+} from '#components/strategy-settings/agent-graph/view-selector'
 
 interface AgentGraphEditorProps {
   purpose: string
@@ -25,7 +29,7 @@ export function AgentGraphEditor({
   saveError = null,
 }: AgentGraphEditorProps) {
   const [value, setValue] = useState(initialValue)
-  const [view, setView] = useState<'form' | 'yaml'>('form')
+  const [view, setView] = useState<AgentGraphView>('form')
   // 前回親から受け取った initialValue。これと value が一致していれば「ユーザー未編集」と判定できる。
   // dirty (= value !== initialValue) で判定すると、initialValue 変化と同 render で dirty=true になり
   // 「クリーンなのに追従しない」状態に陥るので別に保持する
@@ -66,48 +70,25 @@ export function AgentGraphEditor({
   // 構文が壊れている、またはフェーズが key/label/model/prompt を string で持たない場合は
   // フォームで表示できないので YAML ビューに固定する
   const formAvailable = parseAgentGraphPhases(value) != null
-  const effectiveView = formAvailable ? view : 'yaml'
+  const effectiveView: AgentGraphView = formAvailable ? view : 'yaml'
   const errorPhaseKey =
     saveError != null ? extractPhaseKeyFromSaveError(saveError) : null
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          agent_graph
-        </label>
+        <Chip>agent_graph</Chip>
         <div className="flex items-center gap-3">
           {dirty && (
-            <span
-              data-testid="dirty-indicator"
-              className="font-mono text-2xs text-primary"
-            >
+            <Chip data-testid="dirty-indicator" tone="strong">
               未保存の変更あり
-            </span>
+            </Chip>
           )}
-          <div className="flex gap-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                setView('form')
-              }}
-              disabled={!formAvailable}
-              aria-pressed={effectiveView === 'form'}
-              className={viewChipClass(effectiveView === 'form')}
-            >
-              フォーム
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setView('yaml')
-              }}
-              aria-pressed={effectiveView === 'yaml'}
-              className={viewChipClass(effectiveView === 'yaml')}
-            >
-              YAML
-            </button>
-          </div>
+          <AgentGraphViewSelector
+            value={effectiveView}
+            formAvailable={formAvailable}
+            onChange={setView}
+          />
         </div>
       </div>
 
@@ -158,14 +139,5 @@ export function AgentGraphEditor({
         )}
       </div>
     </div>
-  )
-}
-
-function viewChipClass(active: boolean) {
-  return cn(
-    'border px-2 py-0.5 font-mono text-2xs',
-    active
-      ? 'border-primary bg-bg-tertiary text-primary'
-      : 'border-border text-muted-foreground disabled:opacity-30',
   )
 }

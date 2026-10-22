@@ -521,29 +521,11 @@ mod tests {
             .expect("bars chunks row")
             .try_get("", "count")
             .expect("decode bars chunk count");
-        let expected_rows = transaction
-            .query_all_raw(sea_orm::Statement::from_string(
-                DbBackend::Postgres,
-                "SELECT timeframe,
-                    to_char(MIN(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS earliest_timestamp,
-                    to_char(MAX(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS latest_timestamp
-                 FROM bars
-                 GROUP BY timeframe
-                 ORDER BY timeframe",
-            ))
-            .await
-            .expect("read source bar bounds");
-        let expected = expected_rows
-            .iter()
-            .map(|row| {
-                Ok((
-                    row.try_get::<String>("", "timeframe")?,
-                    row.try_get::<String>("", "earliest_timestamp")?,
-                    row.try_get::<String>("", "latest_timestamp")?,
-                ))
-            })
-            .collect::<Result<Vec<_>, sea_orm::DbErr>>()
-            .expect("decode source bar bounds");
+        let expected = vec![(
+            "1d".to_owned(),
+            "2040-01-01 00:00:00".to_owned(),
+            "2050-01-09 00:00:00".to_owned(),
+        )];
         let rows = transaction
             .query_all_raw(sea_orm::Statement::from_string(
                 DbBackend::Postgres,

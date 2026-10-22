@@ -3,8 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_application::widget::{
-    SharedWidgetGroupMembershipSource, WidgetGroupMembershipSource, WidgetQuery, WidgetQueryError,
-    WidgetQueryRow, WidgetQuerySource, WidgetRowKey, WidgetUseCases,
+    SharedWidgetGroupMembershipSource, WidgetGroupMembershipSource, WidgetMetric, WidgetQuery,
+    WidgetQueryError, WidgetQueryRow, WidgetQuerySource, WidgetRowKey, WidgetUseCases,
 };
 use indoc::indoc;
 use rust_decimal::Decimal;
@@ -34,6 +34,7 @@ const DASHBOARD_YAML: &str = indoc! {"
 
 struct FakeWidgetQuerySource {
     unavailable_date: Option<NaiveDate>,
+    incompatible_metric: Option<WidgetMetric>,
 }
 
 struct EmptyWidgetGroupMembershipSource;
@@ -67,8 +68,11 @@ impl WidgetQuerySource for FakeWidgetQuerySource {
     async fn query(
         &self,
         _as_of: NaiveDate,
-        _definition: &WidgetQuery,
+        definition: &WidgetQuery,
     ) -> Result<Vec<WidgetQueryRow>, WidgetQueryError> {
+        if self.incompatible_metric == Some(definition.metric) {
+            return Err(WidgetQueryError::IncompatibleCurrencies);
+        }
         Ok(vec![WidgetQueryRow {
             key: WidgetRowKey::Market,
             name: "Market Sample".to_owned(),
@@ -82,6 +86,7 @@ fn test_server(db: gateway_postgres::DatabaseHandle) -> super::tests_common::Mgm
         db,
         FakeWidgetQuerySource {
             unavailable_date: None,
+            incompatible_metric: None,
         },
     )
 }
@@ -187,7 +192,13 @@ async fn preview_reports_malformed_yaml(db: gateway_postgres::DatabaseHandle) {
 #[backend_test_macros::database_test]
 async fn preview_continues_after_a_widget_has_no_data(db: gateway_postgres::DatabaseHandle) {
     let unavailable_date = NaiveDate::from_ymd_opt(2099, 2, 2);
-    let server = test_server_with_source(db, FakeWidgetQuerySource { unavailable_date });
+    let server = test_server_with_source(
+        db,
+        FakeWidgetQuerySource {
+            unavailable_date,
+            incompatible_metric: None,
+        },
+    );
     let yaml = indoc! {"
         title: sample-dashboard
         widgets:
@@ -231,7 +242,74 @@ async fn preview_continues_after_a_widget_has_no_data(db: gateway_postgres::Data
         json!({
             "errors": [{
                 "path": "widgets[0].time.as_of",
-                "message": "no daily bar data is available on or before the requested date",
+                "message": "no widget data is available on or before the requested date",
+            }],
+            "preview_url": "<preview_url>",
+            "widgets": [{
+                "title": "available-widget",
+                "width": "full",
+                "as_of": "2099-02-03",
+                "rows": [{
+                    "key": "market",
+                    "name": "Market Sample",
+                    "values": { "movement": 1.25 },
+                }],
+            }],
+        }),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn preview_continues_after_a_widget_has_incompatible_currencies(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let server = test_server_with_source(
+        db,
+        FakeWidgetQuerySource {
+            unavailable_date: None,
+            incompatible_metric: Some(WidgetMetric::Close),
+        },
+    );
+    let yaml = indoc! {"
+        title: sample-dashboard
+        widgets:
+          - title: incompatible-widget
+            width: half
+            queries:
+              amount:
+                metric: close
+                by: none
+                agg: sum
+            viz:
+              type: table
+              columns:
+                - amount
+          - title: available-widget
+            width: full
+            queries:
+              movement:
+                metric: change
+                period: 1d
+                by: none
+                agg: mean
+            viz:
+              type: toplist
+              value: movement
+              order: desc
+              limit: 1
+    "};
+    let result = server.preview_dashboard(yaml).await.unwrap();
+    let mut normalized_result = result.0;
+    if normalized_result["preview_url"].as_str().is_some() {
+        normalized_result["preview_url"] = json!("<preview_url>");
+    }
+
+    assert_eq!(
+        normalized_result,
+        json!({
+            "errors": [{
+                "path": "widgets[0].queries",
+                "message": "amount aggregation across multiple stocks requires confirmed currencies",
             }],
             "preview_url": "<preview_url>",
             "widgets": [{

@@ -40,6 +40,7 @@ async fn eval_python_returns_executor_result() {
             stdout: "2\n".into(),
             stderr: String::new(),
             exit_code: 0,
+            files: Vec::new(),
         }))
         .await;
     let (server, _shared, strategy_id) = build_server(executor.clone());
@@ -148,6 +149,7 @@ async fn eval_python_passes_through_sandbox_rejection() {
             stdout: String::new(),
             stderr: "PermissionError: network access denied".into(),
             exit_code: 1,
+            files: Vec::new(),
         }))
         .await;
     let (server, _, strategy_id) = build_server(executor.clone());

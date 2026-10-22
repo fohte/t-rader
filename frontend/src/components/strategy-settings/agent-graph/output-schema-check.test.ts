@@ -25,41 +25,41 @@ describe('checkOutputSchemaText', () => {
   })
 
   it('object 配列 + プリミティブ配列 + required を持つ有効な output は issue なし', () => {
-    const text = `hypotheses:
+    const text = `sample_field:
   type: array
-  description: 検証すべき仮説
+  description: sample array
   items:
-    title:
+    name:
       type: string
-    rationale:
+    value:
       type: string
-    checks:
+    values:
       type: array
       items:
         type: string
-  required: [title, rationale]
+  required: [name, value]
 `
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [],
       output: {
-        hypotheses: {
+        sample_field: {
           type: 'array',
-          description: '検証すべき仮説',
+          description: 'sample array',
           items: {
-            title: { type: 'string' },
-            rationale: { type: 'string' },
-            checks: { type: 'array', items: { type: 'string' } },
+            name: { type: 'string' },
+            value: { type: 'string' },
+            values: { type: 'array', items: { type: 'string' } },
           },
-          required: ['title', 'rationale'],
+          required: ['name', 'value'],
         },
       },
     })
   })
 
   it('type-less なネストした object とその required を有効として扱う', () => {
-    const text = `record:
-  required: [details]
-  details:
+    const text = `sample_object:
+  required: [field_alpha]
+  field_alpha:
     required: [items]
     items:
       type: array
@@ -70,9 +70,9 @@ describe('checkOutputSchemaText', () => {
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [],
       output: {
-        record: {
-          required: ['details'],
-          details: {
+        sample_object: {
+          required: ['field_alpha'],
+          field_alpha: {
             required: ['items'],
             items: {
               type: 'array',
@@ -85,27 +85,27 @@ describe('checkOutputSchemaText', () => {
   })
 
   it('ネストした object 内で items に書かれた required を有効として扱う', () => {
-    const text = `packet:
-  entries:
+    const text = `sample_object:
+  records:
     type: array
     items:
-      required: [code, quantity]
-      code:
+      required: [field_alpha, field_beta]
+      field_alpha:
         type: string
-      quantity:
+      field_beta:
         type: number
 `
 
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [],
       output: {
-        packet: {
-          entries: {
+        sample_object: {
+          records: {
             type: 'array',
             items: {
-              required: ['code', 'quantity'],
-              code: { type: 'string' },
-              quantity: { type: 'number' },
+              required: ['field_alpha', 'field_beta'],
+              field_alpha: { type: 'string' },
+              field_beta: { type: 'number' },
             },
           },
         },
@@ -114,12 +114,12 @@ describe('checkOutputSchemaText', () => {
   })
 
   it('items 内の不正な required は issue を 1 件だけ返す', () => {
-    const text = `packet:
-  entries:
+    const text = `sample_object:
+  records:
     type: array
     items:
-      required: code
-      code:
+      required: field_alpha
+      field_alpha:
         type: string
 `
 
@@ -127,18 +127,18 @@ describe('checkOutputSchemaText', () => {
       issues: [
         {
           message:
-            'packet.entries.items.required は文字列の配列である必要があります',
+            'sample_object.records.items.required は文字列の配列である必要があります',
           line: 5,
           column: 17,
         },
       ],
       output: {
-        packet: {
-          entries: {
+        sample_object: {
+          records: {
             type: 'array',
             items: {
-              required: 'code',
-              code: { type: 'string' },
+              required: 'field_alpha',
+              field_alpha: { type: 'string' },
             },
           },
         },
@@ -147,26 +147,26 @@ describe('checkOutputSchemaText', () => {
   })
 
   it('enum フィールドが配列でなければ issue を出すが output は commit される', () => {
-    const text = `verdict:
-  enum: supported
+    const text = `sample_field:
+  enum: sample-value
 `
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [
         {
-          message: 'verdict.enum は配列である必要があります',
+          message: 'sample_field.enum は配列である必要があります',
           line: 2,
           column: 9,
         },
       ],
-      output: { verdict: { enum: 'supported' } },
+      output: { sample_field: { enum: 'sample-value' } },
     })
   })
 
   it('items 内の `required` キーは予約されず、ただのフィールドとして扱われる', () => {
-    const text = `hypotheses:
+    const text = `sample_field:
   type: array
   items:
-    title:
+    name:
       type: string
     required:
       type: string
@@ -174,10 +174,10 @@ describe('checkOutputSchemaText', () => {
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [],
       output: {
-        hypotheses: {
+        sample_field: {
           type: 'array',
           items: {
-            title: { type: 'string' },
+            name: { type: 'string' },
             required: { type: 'string' },
           },
         },
@@ -186,53 +186,53 @@ describe('checkOutputSchemaText', () => {
   })
 
   it('items を持たないフィールドの required は実行時に無視されるため issue を出す', () => {
-    const text = `verdict:
+    const text = `sample_field:
   type: string
-  required: [verdict]
+  required: [sample_field]
 `
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [
         {
           message:
-            'verdict.required は items がオブジェクト配列の場合のみ有効です (ここでは無視されます)',
+            'sample_field.required は items がオブジェクト配列の場合のみ有効です (ここでは無視されます)',
           line: 3,
           column: 13,
         },
       ],
-      output: { verdict: { type: 'string', required: ['verdict'] } },
+      output: { sample_field: { type: 'string', required: ['sample_field'] } },
     })
   })
 
   it('items がプリミティブ配列のフィールドの required は実行時に無視されるため issue を出す', () => {
-    const text = `checks:
+    const text = `sample_values:
   type: array
   items:
     type: string
-  required: [checks]
+  required: [sample_values]
 `
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [
         {
           message:
-            'checks.required は items がオブジェクト配列の場合のみ有効です (ここでは無視されます)',
+            'sample_values.required は items がオブジェクト配列の場合のみ有効です (ここでは無視されます)',
           line: 5,
           column: 13,
         },
       ],
       output: {
-        checks: {
+        sample_values: {
           type: 'array',
           items: { type: 'string' },
-          required: ['checks'],
+          required: ['sample_values'],
         },
       },
     })
   })
 
   it('トップレベルの required が文字列配列でなければ issue を出す', () => {
-    const text = `verdict:
+    const text = `sample_field:
   type: string
-required: verdict
+required: sample_field
 `
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [
@@ -242,7 +242,7 @@ required: verdict
           column: 11,
         },
       ],
-      output: { verdict: { type: 'string' }, required: 'verdict' },
+      output: { sample_field: { type: 'string' }, required: 'sample_field' },
     })
   })
 
@@ -261,32 +261,32 @@ required: verdict
   })
 
   it('フィールドスキーマがオブジェクトでなければ issue を出す', () => {
-    expect(checkOutputSchemaText('verdict: supported\n')).toEqual({
+    expect(checkOutputSchemaText('sample_field: sample-value\n')).toEqual({
       issues: [
         {
-          message: 'verdict はオブジェクトである必要があります',
+          message: 'sample_field はオブジェクトである必要があります',
           line: 1,
-          column: 10,
+          column: 15,
         },
       ],
-      output: { verdict: 'supported' },
+      output: { sample_field: 'sample-value' },
     })
   })
 
   it('items がオブジェクトでなければ issue を出す', () => {
-    const text = `hypotheses:
+    const text = `sample_field:
   type: array
-  items: title
+  items: name
 `
     expect(checkOutputSchemaText(text)).toEqual({
       issues: [
         {
-          message: 'hypotheses.items はオブジェクトである必要があります',
+          message: 'sample_field.items はオブジェクトである必要があります',
           line: 3,
           column: 10,
         },
       ],
-      output: { hypotheses: { type: 'array', items: 'title' } },
+      output: { sample_field: { type: 'array', items: 'name' } },
     })
   })
 })
