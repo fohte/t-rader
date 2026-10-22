@@ -77,7 +77,7 @@ const parseTaskStartDefinition = (
   })
 }
 
-export const parseTaskExecutionSnapshot = (
+const parseTaskExecutionSnapshot = (
   value: unknown,
 ): Result<TaskExecutionSnapshot | undefined, Error> => {
   if (!isPlainObject(value) || !('definition' in value)) {

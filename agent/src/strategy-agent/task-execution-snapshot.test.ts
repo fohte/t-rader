@@ -5,7 +5,6 @@ import type { SubagentDefinition } from '#strategy-agent/subagent-definition-cli
 import {
   createSnapshotSubagentDefinitionFetcher,
   createTaskExecutionSnapshotFetcher,
-  parseTaskExecutionSnapshot,
 } from '#strategy-agent/task-execution-snapshot'
 
 const subagentResponse = {
@@ -36,10 +35,18 @@ const subagentDefinition: SubagentDefinition = {
   output: { type: 'object' },
 }
 
-describe('parseTaskExecutionSnapshot', () => {
-  it('normalizes the captured agent config and child definitions', () => {
+const fetchSnapshotResponse = (response: unknown) => {
+  const fetchSnapshot = createTaskExecutionSnapshotFetcher(() => ({
+    callExecutionTool: () => Promise.resolve(ok(response)),
+    close: () => Promise.resolve(),
+  }))
+  return fetchSnapshot('strategy-synthetic', 'task-synthetic')
+}
+
+describe('createTaskExecutionSnapshotFetcher', () => {
+  it('normalizes the captured agent config and child definitions', async () => {
     expect(
-      parseTaskExecutionSnapshot({
+      await fetchSnapshotResponse({
         digest: 'synthetic-digest',
         definition: {
           agent_config: {
@@ -64,15 +71,15 @@ describe('parseTaskExecutionSnapshot', () => {
     )
   })
 
-  it('returns no snapshot for a task created before snapshot support', () => {
+  it('returns no snapshot for a task created before snapshot support', async () => {
     expect(
-      parseTaskExecutionSnapshot({ definition: null, digest: null }),
+      await fetchSnapshotResponse({ definition: null, digest: null }),
     ).toEqual(ok(undefined))
   })
 
-  it('rejects a snapshot with duplicate child definition keys', () => {
+  it('rejects a snapshot with duplicate child definition keys', async () => {
     expect(
-      parseTaskExecutionSnapshot({
+      await fetchSnapshotResponse({
         digest: 'synthetic-digest',
         definition: {
           agent_config: {
@@ -89,9 +96,7 @@ describe('parseTaskExecutionSnapshot', () => {
       ),
     )
   })
-})
 
-describe('createTaskExecutionSnapshotFetcher', () => {
   it('uses the fixed snapshot tool and closes its MCP client', async () => {
     const client = {
       callExecutionTool: vi.fn(() =>
