@@ -200,11 +200,14 @@ describe('MarkdownBody', () => {
   })
 
   it('renders a link that opens in a new tab', () => {
-    render(<MarkdownBody source="[記事](https://example.com/a)" />)
+    render(<MarkdownBody source="[記事](https://example.invalid/a)" />)
     const link = screen.getByRole('link', { name: '記事' })
-    expect(link.getAttribute('href')).toBe('https://example.com/a')
-    expect(link.getAttribute('target')).toBe('_blank')
-    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(renderedLinkOutput(link)).toEqual([
+      '記事',
+      'https://example.invalid/a',
+      '_blank',
+      'noopener noreferrer',
+    ])
   })
 
   it('renders an escaped body reference to the selected note version', () => {

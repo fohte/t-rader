@@ -258,7 +258,7 @@ export function MarkdownBody({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-foreground underline-offset-4 hover:underline"
+          className="text-primary underline underline-offset-4 hover:underline"
         >
           {children}
         </a>
@@ -336,7 +336,7 @@ export function MarkdownBody({
             to="/notes/$noteId"
             params={{ noteId }}
             search={{ version_id: noteLink.version_id ?? undefined }}
-            className="text-foreground underline-offset-4 hover:underline"
+            className="text-primary underline underline-offset-4 hover:underline"
           >
             {noteLink.title ?? 'タイトルなし'}
             {noteLink.version_id == null
