@@ -47,6 +47,28 @@ const dashboardConfigWithFixedDate: DashboardConfig = {
   widgets: [makeWidget('値動き', 'movement', 'change', 'DEMO-A', '2099-01-05')],
 }
 
+const dashboardConfigWithRangedLine: DashboardConfig = {
+  title: '市場の動き',
+  widgets: [
+    {
+      title: '値動き',
+      width: 'full',
+      definition: {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '20d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        viz: { type: 'line', series: ['movement'] },
+        time: { range: '3m' },
+      },
+    },
+  ],
+}
+
 function createQueryClientWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -322,6 +344,80 @@ describe('useDashboardPageData', () => {
           order: 'desc',
           limit: 5,
         },
+      },
+    ])
+  })
+
+  it('日付を最新に戻しても折れ線の期間を API に渡す', async () => {
+    activeMiddleware = installWidgetQueryCapture()
+    const hook = renderHook(
+      () =>
+        useDashboardPageData(dashboardConfigWithRangedLine, 'sample-market'),
+      { wrapper: createQueryClientWrapper() },
+    )
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 1) {
+        throw new Error('initial widget request is not complete')
+      }
+    })
+
+    act(() => {
+      hook.result.current.onAsOfChange('2099-02-01')
+    })
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 2) {
+        throw new Error('selected-date widget request is not complete')
+      }
+    })
+
+    act(() => {
+      hook.result.current.onAsOfChange('')
+    })
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 3) {
+        throw new Error('latest-date widget request is not complete')
+      }
+    })
+
+    expect(activeMiddleware.requests).toEqual([
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '20d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        viz: { type: 'line', series: ['movement'] },
+        time: { range: '3m' },
+      },
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '20d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        viz: { type: 'line', series: ['movement'] },
+        time: { range: '3m', as_of: '2099-02-01' },
+      },
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '20d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        viz: { type: 'line', series: ['movement'] },
+        time: { range: '3m' },
       },
     ])
   })

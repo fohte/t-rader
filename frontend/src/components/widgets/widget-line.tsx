@@ -53,31 +53,33 @@ export function WidgetLine({
   )
   const { containerRef, error } = useEChartsChart({ createOption: option })
 
-  if (!model.hasValues) {
-    return (
-      <p
-        className="border border-dashed border-border px-4 py-8 text-center font-mono text-xs text-muted-foreground"
-        role="status"
-      >
-        表示できる値がありません。
-      </p>
-    )
-  }
-
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-mono text-2xs text-muted-foreground">
-        <span>{String(model.series.length)} 系列</span>
-        <span>
-          {model.startDate} – {model.endDate}
-        </span>
+      {model.hasValues && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-mono text-2xs text-muted-foreground">
+          <span>{String(model.series.length)} 系列</span>
+          <span>
+            {model.startDate} – {model.endDate}
+          </span>
+        </div>
+      )}
+      <div className="relative h-72 min-w-0 w-full">
+        <div
+          aria-hidden={!model.hasValues}
+          aria-label={model.ariaDescription}
+          className={`h-72 min-w-0 w-full border border-border bg-card ${model.hasValues ? '' : 'invisible'}`}
+          ref={containerRef}
+          role="img"
+        />
+        {!model.hasValues && (
+          <p
+            className="absolute inset-0 border border-dashed border-border bg-card px-4 py-8 text-center font-mono text-xs text-muted-foreground"
+            role="status"
+          >
+            表示できる値がありません。
+          </p>
+        )}
       </div>
-      <div
-        aria-label={model.ariaDescription}
-        className="h-72 min-w-0 w-full border border-border bg-card"
-        ref={containerRef}
-        role="img"
-      />
       {error != null && (
         <p className="text-xs text-destructive" role="alert">
           {error}

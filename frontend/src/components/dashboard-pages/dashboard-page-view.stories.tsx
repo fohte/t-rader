@@ -203,7 +203,7 @@ export const InvalidConfig: Story = {
         {
           path: 'widgets[0].viz',
           message:
-            'viz.type は treemap、toplist または table を指定してください。',
+            'viz.type は treemap、toplist、table または line を指定してください。',
         },
       ],
     },

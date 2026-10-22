@@ -113,6 +113,10 @@ describe('parseWidgetDefinition', () => {
     { name: '3m', range: '3m' },
     { name: '1y', range: '1y' },
     {
+      name: 'an inclusive one-year date range',
+      range: '2097-01-05..2098-01-05',
+    },
+    {
       name: 'an inclusive date range',
       range: '2099-01-01..2099-01-05',
     },
@@ -255,6 +259,12 @@ describe('parseWidgetDefinition', () => {
       message: 'time.as_of は文字列で指定してください。',
     },
     {
+      name: 'a line visualization with a non-string series',
+      source: LINE_WIDGET_DEFINITION.replace('    - doubled', '    - 1'),
+      path: undefined,
+      message: 'viz.type は文字列で指定してください。',
+    },
+    {
       name: 'a widget with time.range',
       source: VALID_WIDGET_DEFINITION.replace(
         '  as_of: 2099-01-05',
@@ -314,6 +324,15 @@ describe('parseWidgetDefinition', () => {
       path: 'time.range',
       message:
         'time.range は line で 3m、1y、または YYYY-MM-DD..YYYY-MM-DD を指定してください。',
+    },
+    {
+      name: 'a line with a date range longer than one year',
+      source: LINE_WIDGET_DEFINITION.replace(
+        'range: 1y',
+        'range: 2097-01-04..2098-01-05',
+      ),
+      path: 'time.range',
+      message: 'time.range は 1 年以内で指定してください。',
     },
     {
       name: 'a line that ends after its as_of date',

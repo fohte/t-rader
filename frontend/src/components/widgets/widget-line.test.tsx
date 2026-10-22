@@ -50,8 +50,10 @@ const result: WidgetQueryResponse = {
 }
 
 function readWidgetLineOutput() {
+  const chart = screen.queryByRole('img', { hidden: true })
   return {
-    chart: screen.queryByRole('img')?.getAttribute('aria-label') ?? null,
+    chart: chart?.getAttribute('aria-label') ?? null,
+    chartVisible: screen.queryByRole('img') != null,
     period: screen.queryByText('2099-01-05 – 2099-01-07')?.textContent ?? null,
     status: screen.queryByRole('status')?.textContent ?? null,
     alert: screen.queryByRole('alert')?.textContent ?? null,
@@ -77,14 +79,15 @@ describe('WidgetLine', () => {
     expect(readWidgetLineOutput()).toEqual({
       chart:
         '2099-01-05 から 2099-01-07の折れ線グラフ。系列: 騰落率 · サンプル分類 A。欠損値は線をつなぎません。',
+      chartVisible: true,
       period: '2099-01-05 – 2099-01-07',
       status: null,
       alert: null,
     })
   })
 
-  it('値がない系列は空の状態を表示する', () => {
-    render(
+  it('空の状態から値が届くと折れ線を表示する', () => {
+    const { rerender } = render(
       <WidgetLine
         display={display}
         queries={queries}
@@ -108,9 +111,29 @@ describe('WidgetLine', () => {
     )
 
     expect(readWidgetLineOutput()).toEqual({
-      chart: null,
+      chart:
+        '2099-01-05 から 2099-01-06の折れ線グラフ。系列: 騰落率。欠損値は線をつなぎません。',
+      chartVisible: false,
       period: null,
       status: '表示できる値がありません。',
+      alert: null,
+    })
+
+    rerender(
+      <WidgetLine
+        display={display}
+        queries={queries}
+        result={result}
+        viz={viz}
+      />,
+    )
+
+    expect(readWidgetLineOutput()).toEqual({
+      chart:
+        '2099-01-05 から 2099-01-07の折れ線グラフ。系列: 騰落率 · サンプル分類 A。欠損値は線をつなぎません。',
+      chartVisible: true,
+      period: '2099-01-05 – 2099-01-07',
+      status: null,
       alert: null,
     })
   })
@@ -129,6 +152,7 @@ describe('WidgetLine', () => {
     expect(readWidgetLineOutput()).toEqual({
       chart:
         '2099-01-05 から 2099-01-07の折れ線グラフ。系列: 騰落率 · サンプル分類 A。欠損値は線をつなぎません。',
+      chartVisible: true,
       period: '2099-01-05 – 2099-01-07',
       status: null,
       alert: '架空の描画エラー',
