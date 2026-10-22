@@ -58,6 +58,7 @@ mod strategy;
 mod strategy_earnings_target;
 mod strategy_execution;
 mod strategy_execution_manifest_query;
+mod strategy_execution_payload_conversion;
 mod strategy_existence;
 mod strategy_scope;
 mod strategy_summary_query;
