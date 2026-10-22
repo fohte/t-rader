@@ -79,6 +79,42 @@ const createContext = (
   ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
 })
 
+const createDeferred = (): {
+  readonly promise: Promise<void>
+  readonly resolve: () => void
+} => {
+  let resolve: () => void = () => undefined
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = () => {
+      resolvePromise()
+    }
+  })
+  return { promise, resolve }
+}
+
+const rejectOnAbort = (
+  signal: AbortSignal | undefined,
+  missingSignalMessage: string,
+  abortedMessage: string,
+): Promise<never> =>
+  new Promise((_, reject) => {
+    if (signal === undefined) {
+      reject(new Error(missingSignalMessage))
+      return
+    }
+    if (signal.aborted) {
+      reject(new Error(abortedMessage))
+      return
+    }
+    signal.addEventListener(
+      'abort',
+      () => {
+        reject(new Error(abortedMessage))
+      },
+      { once: true },
+    )
+  })
+
 describe('runAgentGraph operation phases', () => {
   it('dispatches only registered tools for literal, prior-output, and dataset inputs without creating a model', async () => {
     const modelCalls: string[] = []
@@ -699,30 +735,17 @@ describe('runAgentGraph operation phases', () => {
       const calls: ExecutionToolRequest[] = []
       const latestSteps: StrategyTaskStep[][] = []
       let operationSignal: AbortSignal | undefined
-      let markOperationStarted: () => void = () => undefined
-      const operationStarted = new Promise<void>((resolve) => {
-        markOperationStarted = () => {
-          resolve()
-        }
-      })
+      const operationStarted = createDeferred()
       const context = createContext(
         (request, signal) => {
           calls.push(request)
           operationSignal = signal
-          markOperationStarted()
-          return new Promise((_, reject) => {
-            if (signal === undefined) {
-              reject(new Error('operation request had no cancellation signal'))
-              return
-            }
-            signal.addEventListener(
-              'abort',
-              () => {
-                reject(new Error('operation request cancelled'))
-              },
-              { once: true },
-            )
-          })
+          operationStarted.resolve()
+          return rejectOnAbort(
+            signal,
+            'operation request had no cancellation signal',
+            'operation request cancelled',
+          )
         },
         (steps) => latestSteps.push([...steps]),
       )
@@ -758,7 +781,7 @@ describe('runAgentGraph operation phases', () => {
         context,
       )
 
-      await operationStarted
+      await operationStarted.promise
       await vi.advanceTimersByTimeAsync(60_000)
       const result = await execution
       expect(
@@ -815,12 +838,7 @@ describe('runAgentGraph operation phases', () => {
       const modelCalls: string[] = []
       const calls: ExecutionToolRequest[] = []
       let payloadReadSignal: AbortSignal | undefined
-      let markPayloadReadStarted: () => void = () => undefined
-      const payloadReadStarted = new Promise<void>((resolve) => {
-        markPayloadReadStarted = () => {
-          resolve()
-        }
-      })
+      const payloadReadStarted = createDeferred()
       const payloadId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
       const context = createContext((request, signal) => {
         calls.push(request)
@@ -839,20 +857,12 @@ describe('runAgentGraph operation phases', () => {
           return Promise.resolve(err(new Error('unexpected fixed tool call')))
         }
         payloadReadSignal = signal
-        markPayloadReadStarted()
-        return new Promise((_, reject) => {
-          if (signal === undefined) {
-            reject(new Error('payload read request had no cancellation signal'))
-            return
-          }
-          signal.addEventListener(
-            'abort',
-            () => {
-              reject(new Error('payload read request cancelled'))
-            },
-            { once: true },
-          )
-        })
+        payloadReadStarted.resolve()
+        return rejectOnAbort(
+          signal,
+          'payload read request had no cancellation signal',
+          'payload read request cancelled',
+        )
       })
       const execution = runAgentGraph(
         createDeps(modelCalls, () =>
@@ -906,7 +916,7 @@ describe('runAgentGraph operation phases', () => {
         context,
       )
 
-      await payloadReadStarted
+      await payloadReadStarted.promise
       await vi.advanceTimersByTimeAsync(60_000)
       const result = await execution
       expect(
@@ -956,12 +966,7 @@ describe('runAgentGraph operation phases', () => {
       const calls: ExecutionToolRequest[] = []
       const latestSteps: StrategyTaskStep[][] = []
       let captureSignal: AbortSignal | undefined
-      let markCaptureStarted: () => void = () => undefined
-      const captureStarted = new Promise<void>((resolve) => {
-        markCaptureStarted = () => {
-          resolve()
-        }
-      })
+      const captureStarted = createDeferred()
       const context = createContext(
         (request, signal) => {
           calls.push(request)
@@ -969,20 +974,12 @@ describe('runAgentGraph operation phases', () => {
             return Promise.resolve(err(new Error('unexpected fixed tool call')))
           }
           captureSignal = signal
-          markCaptureStarted()
-          return new Promise((_, reject) => {
-            if (signal === undefined) {
-              reject(new Error('dataset capture had no cancellation signal'))
-              return
-            }
-            signal.addEventListener(
-              'abort',
-              () => {
-                reject(new Error('dataset capture cancelled'))
-              },
-              { once: true },
-            )
-          })
+          captureStarted.resolve()
+          return rejectOnAbort(
+            signal,
+            'dataset capture had no cancellation signal',
+            'dataset capture cancelled',
+          )
         },
         (steps) => latestSteps.push([...steps]),
       )
@@ -1026,7 +1023,7 @@ describe('runAgentGraph operation phases', () => {
         context,
       )
 
-      await captureStarted
+      await captureStarted.promise
       await vi.advanceTimersByTimeAsync(60_000)
       const result = await execution
       expect(
@@ -1084,12 +1081,7 @@ describe('runAgentGraph operation phases', () => {
       const payloadId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
       const pointer = '/value/items'
       let payloadReadSignal: AbortSignal | undefined
-      let markSecondPageStarted: () => void = () => undefined
-      const secondPageStarted = new Promise<void>((resolve) => {
-        markSecondPageStarted = () => {
-          resolve()
-        }
-      })
+      const secondPageStarted = createDeferred()
       const context = createContext(
         (request, signal) => {
           calls.push(request)
@@ -1122,20 +1114,12 @@ describe('runAgentGraph operation phases', () => {
             )
           }
           payloadReadSignal = signal
-          markSecondPageStarted()
-          return new Promise((_, reject) => {
-            if (signal === undefined) {
-              reject(new Error('payload page read had no cancellation signal'))
-              return
-            }
-            signal.addEventListener(
-              'abort',
-              () => {
-                reject(new Error('payload page read cancelled'))
-              },
-              { once: true },
-            )
-          })
+          secondPageStarted.resolve()
+          return rejectOnAbort(
+            signal,
+            'payload page read had no cancellation signal',
+            'payload page read cancelled',
+          )
         },
         (steps) => latestSteps.push([...steps]),
       )
@@ -1184,7 +1168,7 @@ describe('runAgentGraph operation phases', () => {
         context,
       )
 
-      await secondPageStarted
+      await secondPageStarted.promise
       await vi.advanceTimersByTimeAsync(60_000)
       const result = await execution
       expect(
