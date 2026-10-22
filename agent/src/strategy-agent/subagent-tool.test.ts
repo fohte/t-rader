@@ -37,6 +37,16 @@ const buildFakeTool = (name: string): DynamicStructuredTool =>
     func: () => Promise.resolve('unused in this test'),
   })
 
+const buildFakeMcpClient = (
+  tools: DynamicStructuredTool[] = [],
+): McpToolsClient => ({
+  getTools: () => Promise.resolve(tools),
+  reserveModelCall: () => Promise.resolve(),
+  reserveSubagentRun: () => Promise.resolve(),
+  transitionReservation: () => Promise.resolve(),
+  close: () => Promise.resolve(),
+})
+
 const phase: AgentGraphPhase = {
   key: 'research',
   label: 'Research',
@@ -113,18 +123,15 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder,
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition: () => okAsync(definition),
       createMcpClient: (executionStepId, definitionKey): McpToolsClient => {
         createdMcpClients.push({ executionStepId, definitionKey })
-        return {
-          getTools: () =>
-            Promise.resolve([
-              buildFakeTool('search_web'),
-              buildFakeTool('read_page'),
-              buildFakeTool('run_subagent'),
-            ]),
-          close: () => Promise.resolve(),
-        }
+        return buildFakeMcpClient([
+          buildFakeTool('search_web'),
+          buildFakeTool('read_page'),
+          buildFakeTool('run_subagent'),
+        ])
       },
       deps: runAgentDeps,
     })
@@ -211,11 +218,9 @@ describe('createRunSubagentTool', () => {
       phase: { ...phase, maxSubagentRuns: 1 },
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition,
-      createMcpClient: () => ({
-        getTools: () => Promise.resolve([]),
-        close: () => Promise.resolve(),
-      }),
+      createMcpClient: () => buildFakeMcpClient(),
       deps: {
         createChatModel: () => new FakeChatModel({}),
         buildPhaseAgent: () => ({
@@ -259,11 +264,9 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition,
-      createMcpClient: () => ({
-        getTools: () => Promise.resolve([]),
-        close: () => Promise.resolve(),
-      }),
+      createMcpClient: () => buildFakeMcpClient(),
       deps: {
         createChatModel: () => new FakeChatModel({}),
         buildPhaseAgent: () => ({
@@ -380,12 +383,10 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 3 }),
-      createMcpClient: () => ({
-        getTools: () => Promise.resolve([buildFakeTool('search_web')]),
-        close: () => Promise.resolve(),
-      }),
+      createMcpClient: () => buildFakeMcpClient([buildFakeTool('search_web')]),
       deps: runAgentDeps,
     })
 
@@ -460,12 +461,10 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 1 }),
-      createMcpClient: () => ({
-        getTools: () => Promise.resolve([buildFakeTool('search_web')]),
-        close: () => Promise.resolve(),
-      }),
+      createMcpClient: () => buildFakeMcpClient([buildFakeTool('search_web')]),
       deps: {
         createChatModel: () => new FakeChatModel({}),
         buildPhaseAgent: (options): CompiledPhaseAgent => {
@@ -521,12 +520,10 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 1 }),
-      createMcpClient: () => ({
-        getTools: () => Promise.resolve([buildFakeTool('search_web')]),
-        close: () => Promise.resolve(),
-      }),
+      createMcpClient: () => buildFakeMcpClient([buildFakeTool('search_web')]),
       deps: {
         createChatModel: () => new FakeChatModel({}),
         buildPhaseAgent: (options): CompiledPhaseAgent => {
@@ -595,11 +592,9 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder((steps) => notifications.push(steps)),
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition: () => errAsync(new Error('definition unavailable')),
-      createMcpClient: () => ({
-        getTools: () => Promise.resolve([]),
-        close: () => Promise.resolve(),
-      }),
+      createMcpClient: () => buildFakeMcpClient(),
       deps: {
         createChatModel: () => new FakeChatModel({}),
         buildPhaseAgent: () => ({
@@ -666,16 +661,17 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
+      parentMcpClient: buildFakeMcpClient(),
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 3 }),
       createMcpClient: () => ({
+        ...buildFakeMcpClient(),
         getTools: () =>
           new Promise((resolve) => {
             setTimeout(() => {
               resolve([])
             }, 120_000)
           }),
-        close: () => Promise.resolve(),
       }),
       deps: runAgentDeps,
     })

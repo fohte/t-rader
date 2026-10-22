@@ -56,6 +56,8 @@ const buildApp = (
 }
 
 describe('POST /internal/tasks', () => {
+  const taskId = '00000000-0000-4000-8000-000000000001'
+
   it('submits the prompt as an A2A message scoped by strategy_id and returns the task id', async () => {
     let capturedParams: MessageSendParams | undefined
     const app = buildApp(
@@ -71,6 +73,7 @@ describe('POST /internal/tasks', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
       }),
@@ -79,6 +82,7 @@ describe('POST /internal/tasks', () => {
     expect.soft(res.status).toBe(201)
     expect.soft(await res.json()).toEqual({ task_id: 'task-1' })
     expect.soft(capturedParams?.message.metadata).toEqual({
+      task_id: taskId,
       strategy_id: '11111111-1111-1111-1111-111111111111',
     })
     expect.soft(capturedParams?.message.parts[0]).toEqual({
@@ -103,6 +107,7 @@ describe('POST /internal/tasks', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
         deadline_at: '2026-01-01T00:15:00.000Z',
@@ -111,6 +116,7 @@ describe('POST /internal/tasks', () => {
 
     expect(res.status).toBe(201)
     expect(capturedParams?.message.metadata).toEqual({
+      task_id: taskId,
       strategy_id: '11111111-1111-1111-1111-111111111111',
       deadline_at: '2026-01-01T00:15:00.000Z',
     })
@@ -131,6 +137,7 @@ describe('POST /internal/tasks', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
         deadline_at: '2026-01-01T00:15:00.000Z',
@@ -140,6 +147,7 @@ describe('POST /internal/tasks', () => {
 
     expect(res.status).toBe(201)
     expect(capturedParams?.message.metadata).toEqual({
+      task_id: taskId,
       strategy_id: '11111111-1111-1111-1111-111111111111',
       deadline_at: '2026-01-01T00:15:00.000Z',
       as_of: '2026-01-01T00:00:00.000Z',
@@ -159,6 +167,7 @@ describe('POST /internal/tasks', () => {
       () => shuttingDown,
     )
     const requestBody = JSON.stringify({
+      task_id: taskId,
       strategy_id: '11111111-1111-1111-1111-111111111111',
       prompt: 'do the thing',
     })
@@ -205,6 +214,7 @@ describe('POST /internal/tasks', () => {
     const res = await app.request('/internal/tasks', {
       method: 'POST',
       body: JSON.stringify({
+        task_id: taskId,
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'do the thing',
       }),

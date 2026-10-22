@@ -121,6 +121,7 @@ describe('createApp', () => {
         authorization: 'Bearer internal-secret',
       },
       body: JSON.stringify({
+        task_id: '00000000-0000-4000-8000-000000000001',
         strategy_id: '11111111-1111-1111-1111-111111111111',
         prompt: 'hi',
       }),

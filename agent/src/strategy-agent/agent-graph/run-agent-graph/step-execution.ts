@@ -16,6 +16,7 @@ import type {
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { withPhaseSpan } from '#strategy-agent/agent-graph/tracing'
 import type { AgentGraphPhase } from '#strategy-agent/agent-graph/types'
+import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 
 // 上限に達しても structured response を得られなければ、そのフェーズを失敗として確定する。
@@ -96,6 +97,7 @@ const createPhaseAgent = (
   context: RunAgentGraphContext,
   tools: readonly DynamicStructuredTool[],
   localTools: readonly DynamicStructuredTool[],
+  mcpClient: McpToolsClient,
 ): CompiledPhaseAgent => {
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   const { tools: phaseTools } = phase
@@ -117,6 +119,9 @@ const createPhaseAgent = (
     }),
     tools: filteredTools,
     mcpTools: filteredMcpTools,
+    reserveModelCall: (callId) => mcpClient.reserveModelCall(callId),
+    transitionReservation: (callId, state) =>
+      mcpClient.transitionReservation(callId, state),
     systemPrompt: buildSystemPrompt({
       agentsMd: context.agentsMd,
       skills: filteredSkills,
@@ -136,6 +141,7 @@ const resolveLocalTools = (
   executionStepId: string,
   recorder: StepRecorder,
   context: RunAgentGraphContext,
+  parentMcpClient: McpToolsClient,
 ): Result<DynamicStructuredTool[], Error> => {
   if (phase.subagents.length === 0) return ok([])
   const factory = context.createSubagentTool
@@ -146,7 +152,9 @@ const resolveLocalTools = (
       ),
     )
   }
-  return ok([factory(phase, executionStepId, recorder, context)])
+  return ok([
+    factory(phase, executionStepId, recorder, context, parentMcpClient),
+  ])
 }
 
 // invoke() 自体の reject (usage limit・ツール失敗・ネットワークエラー等) は
@@ -259,6 +267,7 @@ export const invokeAndRecordStep = (
                 executionStepId,
                 recorder,
                 context,
+                stepMcpClient,
               )
               if (localTools.isErr()) return err(localTools.error)
               return invokePhaseWithRetry(
@@ -268,6 +277,7 @@ export const invokeAndRecordStep = (
                   context,
                   mcpTools,
                   localTools.value,
+                  stepMcpClient,
                 ),
                 messages,
                 executionStepId,

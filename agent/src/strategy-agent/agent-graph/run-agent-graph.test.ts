@@ -50,6 +50,9 @@ const buildStepMcpClientFactory =
   (tools: readonly DynamicStructuredTool[] = []) =>
   (): McpToolsClient => ({
     getTools: () => Promise.resolve([...tools]),
+    reserveModelCall: () => Promise.resolve(),
+    reserveSubagentRun: () => Promise.resolve(),
+    transitionReservation: () => Promise.resolve(),
     close: () => Promise.resolve(),
   })
 
@@ -1045,10 +1048,21 @@ describe('runAgentGraph', () => {
       originalPromptText: 'req',
     })
 
-    expect(capturedOptions).toEqual({
+    const capturedOptionSnapshot =
+      capturedOptions === undefined
+        ? undefined
+        : {
+            ...capturedOptions,
+            reserveModelCall: typeof capturedOptions.reserveModelCall,
+            transitionReservation: typeof capturedOptions.transitionReservation,
+          }
+
+    expect(capturedOptionSnapshot).toEqual({
       model: chatModelReturnValue,
       tools: [toolA],
       mcpTools: [toolA],
+      reserveModelCall: 'function',
+      transitionReservation: 'function',
       systemPrompt: 'AGENTS\n\n# Skill: skill-a\n\nbody a',
       responseSchema: {
         type: 'object',
@@ -1095,10 +1109,21 @@ describe('runAgentGraph', () => {
       originalPromptText: 'req',
     })
 
-    expect(capturedOptions).toEqual({
+    const capturedOptionSnapshot =
+      capturedOptions === undefined
+        ? undefined
+        : {
+            ...capturedOptions,
+            reserveModelCall: typeof capturedOptions.reserveModelCall,
+            transitionReservation: typeof capturedOptions.transitionReservation,
+          }
+
+    expect(capturedOptionSnapshot).toEqual({
       model: chatModelReturnValue,
       tools: [toolA, toolB],
       mcpTools: [toolA, toolB],
+      reserveModelCall: 'function',
+      transitionReservation: 'function',
       systemPrompt: 'AGENTS',
       responseSchema: {
         type: 'object',
@@ -1654,6 +1679,9 @@ describe('runAgentGraph', () => {
       skills: {},
       createStepMcpClient: () => ({
         getTools: () => Promise.reject(new Error('cannot connect')),
+        reserveModelCall: () => Promise.resolve(),
+        reserveSubagentRun: () => Promise.resolve(),
+        transitionReservation: () => Promise.resolve(),
         close: () => Promise.resolve(),
       }),
       originalPromptText: 'req',

@@ -44,6 +44,7 @@ pub use types::{
 use crate::agent_config::graph::parse_agent_graph;
 use crate::event::SharedEventRepository;
 use crate::event_dispatch_job::EventDispatchJobUseCases;
+use crate::execution_budget::SharedExecutionBudgetRepository;
 use crate::strategy_execution::SharedTaskStartSnapshotter;
 use crate::unit_of_work::SharedUnitOfWork;
 
@@ -69,6 +70,7 @@ pub struct StrategyTaskUseCases {
     pub(super) repository: SharedStrategyTaskRepository,
     completion_events: Option<CompletionEventDependencies>,
     task_start_snapshotter: Option<SharedTaskStartSnapshotter>,
+    execution_budget: Option<SharedExecutionBudgetRepository>,
 }
 
 #[derive(Clone)]
@@ -84,11 +86,20 @@ impl StrategyTaskUseCases {
             repository,
             completion_events: None,
             task_start_snapshotter: None,
+            execution_budget: None,
         }
     }
 
     pub fn with_task_start_snapshotter(mut self, snapshotter: SharedTaskStartSnapshotter) -> Self {
         self.task_start_snapshotter = Some(snapshotter);
+        self
+    }
+
+    pub fn with_execution_budget(
+        mut self,
+        execution_budget: SharedExecutionBudgetRepository,
+    ) -> Self {
+        self.execution_budget = Some(execution_budget);
         self
     }
 

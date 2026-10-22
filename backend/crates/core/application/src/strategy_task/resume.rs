@@ -1,12 +1,11 @@
-use chrono::SubsecRound;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskClient, SubmitAgentTask};
 
+use super::StrategyTaskUseCases;
 use super::error::{ReconcileTaskError, ResumeTaskError};
 use super::queries::step_to_wire_json;
 use super::types::{StrategyTaskPhase, StrategyTaskUpdate, SubmittedTask};
-use super::{DEFAULT_PURPOSE, StrategyTaskUseCases, deadline_duration_from_agent_graph};
 
 impl StrategyTaskUseCases {
     pub async fn resume(
@@ -33,12 +32,7 @@ impl StrategyTaskUseCases {
         new_result_text: Option<String>,
         new_steps: Option<serde_json::Value>,
     ) -> Result<bool, ReconcileTaskError> {
-        let purpose = task.purpose.as_deref().unwrap_or(DEFAULT_PURPOSE);
-        let agent_graph = self.repository.find_agent_graph_by_purpose(purpose).await?;
-        let deadline_duration =
-            deadline_duration_from_agent_graph(agent_graph.as_deref().unwrap_or_default());
-        let claim_now = chrono::Utc::now().fixed_offset().trunc_subsecs(6);
-        let deadline_at = claim_now + deadline_duration;
+        let claim_now = chrono::Utc::now().fixed_offset();
         let claim = self
             .apply_failed_and_claim_resumable(
                 &task,
@@ -46,7 +40,6 @@ impl StrategyTaskUseCases {
                 new_result_text.clone(),
                 new_steps,
                 claim_now,
-                deadline_at,
             )
             .await?;
         if !claim.claimed {
@@ -59,13 +52,13 @@ impl StrategyTaskUseCases {
             phase: StrategyTaskPhase::Running,
             error_summary: new_error,
             result_text: new_result_text,
-            deadline_at,
+            deadline_at: task.deadline_at,
             auto_resumed_at: Some(claim_now),
             updated_at: claim_now,
             ..task
         };
         match self
-            .submit_claimed_task(agent_client, claimed_task, deadline_at)
+            .submit_claimed_task(agent_client, claimed_task, task.deadline_at)
             .await
         {
             Ok(submitted) => tracing::info!(
@@ -93,23 +86,11 @@ impl StrategyTaskUseCases {
             .find_by_id(task_id)
             .await?
             .ok_or(ResumeTaskError::NotFound(task_id))?;
-        let purpose = task.purpose.as_deref().unwrap_or(DEFAULT_PURPOSE);
-        let agent_graph = self.repository.find_agent_graph_by_purpose(purpose).await?;
-        let deadline_duration =
-            deadline_duration_from_agent_graph(agent_graph.as_deref().unwrap_or_default());
-
-        let claim_now = chrono::Utc::now().fixed_offset().trunc_subsecs(6);
-        let deadline_at = claim_now + deadline_duration;
+        let claim_now = chrono::Utc::now().fixed_offset();
         let transaction = self.unit_of_work.begin().await?;
         let claimed = self
             .repository
-            .claim_resumable(
-                &transaction,
-                task_id,
-                claim_now,
-                deadline_at,
-                mark_auto_resumed,
-            )
+            .claim_resumable(&transaction, task_id, claim_now, mark_auto_resumed)
             .await?;
         self.unit_of_work.commit(transaction).await?;
         if !claimed {
@@ -118,13 +99,12 @@ impl StrategyTaskUseCases {
         let mut claimed_task = task.clone();
         claimed_task.phase = StrategyTaskPhase::Running;
         claimed_task.a2a_task_id = None;
-        claimed_task.deadline_at = deadline_at;
         claimed_task.updated_at = claim_now;
         if mark_auto_resumed {
             claimed_task.auto_resumed_at = Some(claim_now);
         }
 
-        self.submit_claimed_task(agent_client, claimed_task, deadline_at)
+        self.submit_claimed_task(agent_client, claimed_task.clone(), claimed_task.deadline_at)
             .await
     }
 
@@ -152,6 +132,7 @@ impl StrategyTaskUseCases {
 
         let agent_ref = match agent_client
             .submit(SubmitAgentTask {
+                task_id,
                 strategy_id: claimed_task.strategy_id,
                 prompt: claimed_task.prompt.clone(),
                 purpose: claimed_task.purpose.clone(),
@@ -196,7 +177,7 @@ impl StrategyTaskUseCases {
                 phase: None,
                 error_summary: Some(None),
                 result_text: Some(None),
-                deadline_at: Some(deadline_at),
+                deadline_at: None,
                 auto_resumed_at: None,
                 updated_at: chrono::Utc::now().fixed_offset(),
             })

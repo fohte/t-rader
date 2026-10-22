@@ -58,6 +58,7 @@ import { isUsageLimitError } from '#strategy-agent/usage-limit'
 const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
 const STRATEGY_ID_HEADER = 'x-strategy-id'
+const STRATEGY_TASK_ID_HEADER = 'x-strategy-task-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
 const SUBAGENT_EXECUTION_ID_HEADER = 'x-subagent-execution-id'
 const SUBAGENT_DEFINITION_KEY_HEADER = 'x-subagent-definition-key'
@@ -78,6 +79,17 @@ export interface StrategyAgentResult {
 
 export interface McpToolsClient {
   getTools(): Promise<DynamicStructuredTool[]>
+  reserveModelCall(callId: string): Promise<void>
+  reserveSubagentRun(input: {
+    readonly callId: string
+    readonly phaseKey: string
+    readonly parentExecutionStepId: string
+    readonly definitionKey: string
+  }): Promise<void>
+  transitionReservation(
+    callId: string,
+    state: 'consumed' | 'released',
+  ): Promise<void>
   close(): Promise<void>
 }
 
@@ -91,6 +103,7 @@ export interface StrategyAgentDeps {
   readonly fetchSubagentDefinition: FetchSubagentDefinition
   readonly createMcpClient: (
     strategyId: string,
+    strategyTaskId: string,
     executionId: string,
     toolModels: Readonly<Record<string, string>>,
     subagentExecution?: SubagentExecutionIdentity,
@@ -127,6 +140,11 @@ const buildCompiledAgent = (
     agentSignal?: AbortSignal
     phaseTimeout?: BuildPhaseAgentOptions['phaseTimeout']
     modelCallBudget?: ModelCallBudget
+    reserveModelCall?: (callId: string) => Promise<void>
+    transitionReservation?: (
+      callId: string,
+      state: 'consumed' | 'released',
+    ) => Promise<void>
     captureMessagesOnAbort?: boolean
   },
 ): CompiledPhaseAgent => {
@@ -157,7 +175,10 @@ const buildCompiledAgent = (
         : []),
       stripMessageNameMiddleware,
       // 再試行ごとに呼び出し時間上限と tool 呼び出し上限の状態を作り直す。
-      createModelCallRetryMiddleware(),
+      createModelCallRetryMiddleware(
+        options.reserveModelCall,
+        options.transitionReservation,
+      ),
       malformedToolCallResponseMiddleware,
       // 実際の HTTP リクエストに一番近い位置で signal / callback を差し込む。
       createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
@@ -276,14 +297,21 @@ export const createStrategyAgentDeps = (
   fetchSubagentDefinition: createSubagentDefinitionFetcher(
     config.backendApiBaseUrl,
   ),
-  createMcpClient: (strategyId, executionId, toolModels, subagentExecution) =>
-    new MultiServerMCPClient({
+  createMcpClient: (
+    strategyId,
+    strategyTaskId,
+    executionId,
+    toolModels,
+    subagentExecution,
+  ) => {
+    const client = new MultiServerMCPClient({
       defaultToolTimeout: MCP_TOOL_TIMEOUT_MS,
       mcpServers: {
         strategy: {
           url: `${config.backendApiBaseUrl.replace(/\/+$/, '')}/mcp/strategy`,
           headers: {
             [STRATEGY_ID_HEADER]: strategyId,
+            [STRATEGY_TASK_ID_HEADER]: strategyTaskId,
             [EXECUTION_ID_HEADER]: executionId,
             [TOOL_MODELS_HEADER]: JSON.stringify(toolModels),
             ...(subagentExecution !== undefined
@@ -296,7 +324,43 @@ export const createStrategyAgentDeps = (
           },
         },
       },
-    }),
+    })
+    const callBudgetOperation = async (
+      argumentsValue: Record<string, unknown>,
+    ): Promise<void> => {
+      const strategyClient = await client.getClient('strategy')
+      if (strategyClient === undefined) {
+        return Promise.reject(new Error('strategy MCP client is unavailable'))
+      }
+      const result = await strategyClient.callTool({
+        name: '__execution_budget',
+        arguments: argumentsValue,
+      })
+      if (result.isError === true) {
+        return Promise.reject(new Error('execution budget operation failed'))
+      }
+    }
+    return {
+      getTools: () => client.getTools(),
+      reserveModelCall: (callId) =>
+        callBudgetOperation({ action: 'reserve_model_call', call_id: callId }),
+      reserveSubagentRun: (input) =>
+        callBudgetOperation({
+          action: 'reserve_subagent_run',
+          call_id: input.callId,
+          phase_key: input.phaseKey,
+          parent_execution_step_id: input.parentExecutionStepId,
+          definition_key: input.definitionKey,
+        }),
+      transitionReservation: (callId, state) =>
+        callBudgetOperation({
+          action: 'transition',
+          call_id: callId,
+          state,
+        }),
+      close: () => client.close(),
+    }
+  },
   createChatModel: (model, options) =>
     new ChatOpenAI({
       apiKey: config.llmApiKey,
@@ -357,6 +421,7 @@ export interface RunStrategyAgentInput {
   readonly strategyId: string
   readonly purpose: string | undefined
   readonly taskId: string
+  readonly strategyTaskId: string
   readonly userMessage: Message
   readonly resumeSteps: unknown[] | undefined
   readonly asOf: Date | undefined
@@ -372,6 +437,7 @@ export const runStrategyAgent = async (
     strategyId,
     purpose,
     taskId,
+    strategyTaskId,
     userMessage,
     resumeSteps,
     asOf,
@@ -416,6 +482,7 @@ export const runStrategyAgent = async (
               createStepMcpClient: (executionStepId) =>
                 deps.createMcpClient(
                   strategyId,
+                  strategyTaskId,
                   `${taskId}:${executionStepId}`,
                   parsedGraph.value.toolModels ?? {},
                 ),
@@ -424,15 +491,18 @@ export const runStrategyAgent = async (
                 parentExecutionStepId,
                 recorder,
                 phaseContext,
+                parentMcpClient,
               ) => {
                 return createRunSubagentTool({
                   phase,
                   parentExecutionStepId,
                   recorder,
+                  parentMcpClient,
                   fetchDefinition: deps.fetchSubagentDefinition,
                   createMcpClient: (executionStepId, definitionKey) =>
                     deps.createMcpClient(
                       strategyId,
+                      strategyTaskId,
                       `${taskId}:${executionStepId}`,
                       parsedGraph.value.toolModels ?? {},
                       { executionId: executionStepId, definitionKey },

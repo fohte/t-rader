@@ -30,7 +30,7 @@ fn resumable_task() -> StrategyTask {
         phase: StrategyTaskPhase::Failed,
         error_summary: Some("previous failure".to_string()),
         result_text: None,
-        deadline_at: now,
+        deadline_at: now + chrono::Duration::minutes(15),
         purpose: Some("explore".to_string()),
         as_of: Some(now),
         context_kind: None,

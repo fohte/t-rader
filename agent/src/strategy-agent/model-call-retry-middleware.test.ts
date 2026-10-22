@@ -110,6 +110,80 @@ describe('createModelCallRetryMiddleware', () => {
     })
   })
 
+  it('uses a new consumed reservation for each actual retry', async () => {
+    const model = new ScriptedChatModel([
+      Object.assign(new Error('temporary server failure'), { status: 503 }),
+      new AIMessage('done'),
+    ])
+    const reserved: string[] = []
+    const consumed: string[] = []
+    const agent = createAgent({
+      model,
+      tools: [],
+      middleware: [
+        createModelCallRetryMiddleware(
+          (callId) => {
+            reserved.push(callId)
+            return Promise.resolve()
+          },
+          (callId, state) => {
+            if (state === 'consumed') consumed.push(callId)
+            return Promise.resolve()
+          },
+        ),
+      ],
+    })
+
+    const outcome = await invokeOutcome(agent)
+
+    const actual = JSON.stringify({
+      outcome,
+      attempts: model.attempts,
+      reservations: reserved.length,
+      retryUsesAnotherCallId: new Set(reserved).size === 2,
+      eachAttemptWasConsumed:
+        consumed.length === 2 &&
+        consumed.every((callId) => reserved.includes(callId)),
+    })
+    expect(actual).toBe(
+      '{"outcome":"resolved","attempts":2,"reservations":2,"retryUsesAnotherCallId":true,"eachAttemptWasConsumed":true}',
+    )
+  })
+
+  it('does not call the model when its reservation request fails', async () => {
+    const model = new ScriptedChatModel([new AIMessage('done')])
+    let reservationAttempts = 0
+    let transitions = 0
+    const agent = createAgent({
+      model,
+      tools: [],
+      middleware: [
+        createModelCallRetryMiddleware(
+          () => {
+            reservationAttempts += 1
+            return Promise.reject(new TypeError('reservation transport failed'))
+          },
+          () => {
+            transitions += 1
+            return Promise.resolve()
+          },
+        ),
+      ],
+    })
+
+    const outcome = await invokeOutcome(agent)
+
+    const actual = JSON.stringify({
+      outcome,
+      attempts: model.attempts,
+      reservationAttempts,
+      transitions,
+    })
+    expect(actual).toBe(
+      '{"outcome":"rejected","attempts":0,"reservationAttempts":1,"transitions":0}',
+    )
+  })
+
   it.each([
     {
       name: 'deadline aborts',

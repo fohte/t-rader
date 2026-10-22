@@ -156,6 +156,7 @@ impl AgentTaskClient for HttpAgentTaskClient {
             .transpose()
             .map_err(|e| AgentTaskError::Parse(format!("invalid purpose: {e}")))?;
         let body = generated::types::SubmitTaskBody {
+            task_id: req.task_id,
             strategy_id,
             prompt,
             purpose,

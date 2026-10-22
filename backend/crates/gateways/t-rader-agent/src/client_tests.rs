@@ -104,6 +104,7 @@ async fn submit_posts_body_and_returns_task_id() {
         .and(path("/internal/tasks"))
         .and(header("authorization", "Bearer test-token"))
         .and(body_json(json!({
+            "task_id": "87654321-4321-6789-4321-678987654321",
             "strategy_id": strategy_id,
             "prompt": "hello",
             "deadline_at": "2020-01-01T00:00:00Z",
@@ -118,6 +119,7 @@ async fn submit_posts_body_and_returns_task_id() {
     let client = http_client(&server);
     let result = client
         .submit(SubmitAgentTask {
+            task_id: uuid::Uuid::parse_str("87654321-4321-6789-4321-678987654321").unwrap(),
             strategy_id,
             prompt: "hello".into(),
             purpose: None,
@@ -131,8 +133,8 @@ async fn submit_posts_body_and_returns_task_id() {
 }
 
 #[rstest]
-#[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
-#[case::some(Some("explore".to_string()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "purpose": "explore", "deadline_at": "2020-01-01T00:00:00Z" }))]
+#[case::none(None, json!({ "task_id": "87654321-4321-6789-4321-678987654321", "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
+#[case::some(Some("sample-purpose".to_string()), json!({ "task_id": "87654321-4321-6789-4321-678987654321", "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "purpose": "sample-purpose", "deadline_at": "2020-01-01T00:00:00Z" }))]
 #[tokio::test]
 async fn submit_body_includes_purpose_only_when_some(
     #[case] purpose: Option<String>,
@@ -154,6 +156,7 @@ async fn submit_body_includes_purpose_only_when_some(
     let client = http_client(&server);
     client
         .submit(SubmitAgentTask {
+            task_id: uuid::Uuid::parse_str("87654321-4321-6789-4321-678987654321").unwrap(),
             strategy_id,
             prompt: "hello".into(),
             purpose,
@@ -166,8 +169,8 @@ async fn submit_body_includes_purpose_only_when_some(
 }
 
 #[rstest]
-#[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
-#[case::some(Some(test_as_of()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z", "as_of": "2019-06-01T12:34:56Z" }))]
+#[case::none(None, json!({ "task_id": "87654321-4321-6789-4321-678987654321", "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
+#[case::some(Some(test_as_of()), json!({ "task_id": "87654321-4321-6789-4321-678987654321", "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z", "as_of": "2019-06-01T12:34:56Z" }))]
 #[tokio::test]
 async fn submit_body_includes_as_of_only_when_some(
     #[case] as_of: Option<DateTime<FixedOffset>>,
@@ -189,6 +192,7 @@ async fn submit_body_includes_as_of_only_when_some(
     let client = http_client(&server);
     client
         .submit(SubmitAgentTask {
+            task_id: uuid::Uuid::parse_str("87654321-4321-6789-4321-678987654321").unwrap(),
             strategy_id,
             prompt: "hello".into(),
             purpose: None,
@@ -201,10 +205,11 @@ async fn submit_body_includes_as_of_only_when_some(
 }
 
 #[rstest]
-#[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
+#[case::none(None, json!({ "task_id": "87654321-4321-6789-4321-678987654321", "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
 #[case::some(
         Some(vec![json!({ "execution_step_id": "step-1", "status": "completed" })]),
         json!({
+            "task_id": "87654321-4321-6789-4321-678987654321",
             "strategy_id": "12345678-1234-5678-1234-567812345678",
             "prompt": "hello",
             "resume_steps": [{ "execution_step_id": "step-1", "status": "completed" }],
@@ -232,6 +237,7 @@ async fn submit_body_includes_resume_steps_only_when_some(
     let client = http_client(&server);
     client
         .submit(SubmitAgentTask {
+            task_id: uuid::Uuid::parse_str("87654321-4321-6789-4321-678987654321").unwrap(),
             strategy_id,
             prompt: "hello".into(),
             purpose: None,
@@ -256,6 +262,7 @@ async fn submit_maps_error_response() {
     let client = http_client(&server);
     let err = client
         .submit(SubmitAgentTask {
+            task_id: uuid::Uuid::new_v4(),
             strategy_id: uuid::Uuid::new_v4(),
             prompt: "hello".into(),
             purpose: None,
