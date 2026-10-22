@@ -1,7 +1,9 @@
 import { Button } from '@fohte/ui/button'
+import { Checkbox } from '@fohte/ui/checkbox'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
+import { SelectableListRow } from '#components/strategy-settings/selectable-list-row'
 import type { FormState } from '#components/strategy-settings/trigger-form'
 import {
   EMPTY_FORM,
@@ -241,7 +243,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
     return (
       <p
         data-testid="trigger-list-error"
-        className="font-mono text-xs text-primary"
+        className="font-mono text-xs text-destructive"
       >
         trigger 一覧の取得に失敗しました
         {error instanceof Error ? `: ${error.message}` : ''}
@@ -262,7 +264,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
         {listError != null && (
           <p
             data-testid="trigger-list-error"
-            className="font-mono text-2xs text-primary"
+            className="font-mono text-2xs text-destructive"
           >
             {listError}
           </p>
@@ -277,45 +279,34 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
           {triggers.map((t) => {
             const label = triggerLabel(t)
             return (
-              <li
+              <SelectableListRow
                 key={t.trigger_id}
-                className="flex items-center gap-1 border-b border-border px-1 last:border-b-0"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    selectTrigger(t.trigger_id)
-                  }}
-                  data-active={selectedId === t.trigger_id && !isCreate}
-                  className="flex-1 truncate px-2 py-1.5 text-left font-mono text-xs hover:bg-surface-strong data-[active=true]:text-primary"
-                >
-                  <span className="uppercase">{t.kind}</span>
-                  <span className="ml-2 text-muted-foreground">{label}</span>
-                </button>
-                <label
-                  className="flex items-center px-1 font-mono text-2xs uppercase tracking-wider text-muted-foreground"
-                  title={t.enabled ? '有効' : '無効'}
-                >
-                  <input
-                    type="checkbox"
+                selected={selectedId === t.trigger_id && !isCreate}
+                onSelect={() => {
+                  selectTrigger(t.trigger_id)
+                }}
+                deleteLabel={`trigger ${t.kind} ${label} を削除`}
+                onDelete={() => {
+                  handleDelete(t)
+                }}
+                groupLabel={`trigger ${t.kind} ${label} の操作`}
+                trailingControl={
+                  <Checkbox
+                    className="mx-1"
                     aria-label={`trigger ${t.kind} ${label} の有効化`}
+                    title={t.enabled ? '有効' : '無効'}
                     checked={t.enabled}
-                    onChange={(e) => {
-                      handleToggleEnabled(t, e.target.checked)
+                    onCheckedChange={(checked) => {
+                      handleToggleEnabled(t, checked)
                     }}
                   />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleDelete(t)
-                  }}
-                  aria-label={`trigger ${t.kind} ${label} を削除`}
-                  className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-primary"
-                >
-                  削除
-                </button>
-              </li>
+                }
+              >
+                <span className="shrink-0 uppercase">{t.kind}</span>
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {label}
+                </span>
+              </SelectableListRow>
             )
           })}
         </ul>

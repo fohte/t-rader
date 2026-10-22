@@ -1,5 +1,14 @@
 import { Button } from '@fohte/ui/button'
+import { Checkbox } from '@fohte/ui/checkbox'
 import { Input } from '@fohte/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
+import { Textarea } from '@fohte/ui/textarea'
 
 import { PurposeSelect } from '#components/purpose-select'
 import type { components } from '#lib/api/schema.gen'
@@ -7,6 +16,12 @@ import { parseJson } from '#lib/json'
 
 type Trigger = components['schemas']['Trigger']
 type TriggerKind = components['schemas']['TriggerKind']
+
+const TRIGGER_KINDS: Array<{ label: string; value: TriggerKind }> = [
+  { label: 'cron', value: 'cron' },
+  { label: 'hook', value: 'hook' },
+  { label: 'event', value: 'event' },
+]
 
 export interface FormState {
   purpose: string
@@ -94,6 +109,7 @@ export function validateForm(form: FormState): ValidationResult {
 export interface TriggerFormProps {
   mode: 'create' | 'edit'
   form: FormState
+  defaultKindSelectOpen?: boolean
   agentConfigs: ReadonlyArray<{ purpose: string }>
   onChange: (next: FormState) => void
   formError: string | null
@@ -105,6 +121,7 @@ export interface TriggerFormProps {
 export function TriggerForm({
   mode,
   form,
+  defaultKindSelectOpen,
   agentConfigs,
   onChange,
   formError,
@@ -145,25 +162,36 @@ export function TriggerForm({
       </div>
 
       <div className="space-y-1.5">
-        <label
+        <span
+          id="trigger-kind-label"
           className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
-          htmlFor="trigger-kind"
         >
           kind
-        </label>
-        <select
-          id="trigger-kind"
+        </span>
+        <Select
+          defaultOpen={defaultKindSelectOpen}
+          items={TRIGGER_KINDS}
           value={form.kind}
           disabled={mode === 'edit'}
-          onChange={(e) => {
-            update('kind', parseKind(e.target.value))
+          onValueChange={(value) => {
+            if (value != null) update('kind', parseKind(value))
           }}
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <option value="cron">cron</option>
-          <option value="hook">hook</option>
-          <option value="event">event</option>
-        </select>
+          <SelectTrigger
+            id="trigger-kind"
+            aria-labelledby="trigger-kind-label"
+            className="w-full"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TRIGGER_KINDS.map(({ label, value }) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {mode === 'edit' && (
           <p className="font-mono text-2xs text-muted-foreground">
             kind は作成後に変更できません。
@@ -172,7 +200,7 @@ export function TriggerForm({
       </div>
 
       {form.kind === 'cron' && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 font-mono">
           <label
             className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
             htmlFor="trigger-schedule"
@@ -229,14 +257,14 @@ export function TriggerForm({
       )}
 
       {(form.kind === 'hook' || form.kind === 'event') && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 font-mono">
           <label
             className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
             htmlFor="trigger-event-match"
           >
             event_match (JSON、空欄なら無条件)
           </label>
-          <textarea
+          <Textarea
             id="trigger-event-match"
             value={form.eventMatch}
             placeholder='{"event": {"eq": "fired"}}'
@@ -244,19 +272,18 @@ export function TriggerForm({
               update('eventMatch', e.target.value)
             }}
             rows={4}
-            className="w-full resize-y border border-input bg-transparent p-2 font-mono text-xs"
           />
         </div>
       )}
 
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 font-mono">
         <label
           className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           htmlFor="trigger-prompt"
         >
           prompt_template
         </label>
-        <textarea
+        <Textarea
           id="trigger-prompt"
           value={form.promptTemplate}
           placeholder="morning briefing for {{strategy.name}}"
@@ -264,29 +291,24 @@ export function TriggerForm({
             update('promptTemplate', e.target.value)
           }}
           rows={6}
-          className="w-full resize-y border border-input bg-transparent p-2 font-mono text-xs"
         />
       </div>
 
-      <label
-        className="flex items-center gap-2 font-mono text-xs"
-        htmlFor="trigger-enabled"
-      >
-        <input
-          id="trigger-enabled"
-          type="checkbox"
+      <div className="flex items-center gap-2 font-mono text-xs">
+        <Checkbox
+          aria-labelledby="trigger-enabled-label"
           checked={form.enabled}
-          onChange={(e) => {
-            update('enabled', e.target.checked)
+          onCheckedChange={(checked) => {
+            update('enabled', checked)
           }}
         />
-        enabled
-      </label>
+        <span id="trigger-enabled-label">enabled</span>
+      </div>
 
       {formError != null && (
         <p
           data-testid="trigger-form-error"
-          className="font-mono text-2xs text-primary"
+          className="font-mono text-2xs text-destructive"
         >
           {formError}
         </p>

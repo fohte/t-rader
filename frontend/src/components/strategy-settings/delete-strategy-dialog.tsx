@@ -89,7 +89,7 @@ export function DeleteStrategyDialog({
           />
         </div>
         {deleteMutation.isError && (
-          <p className="text-xs text-primary">削除に失敗しました</p>
+          <p className="text-xs text-destructive">削除に失敗しました</p>
         )}
         <DialogFooter>
           <Button

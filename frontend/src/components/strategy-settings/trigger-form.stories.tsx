@@ -119,3 +119,57 @@ export const EventEditing: Story = {
     onCancel: null,
   },
 }
+
+export const Saving: Story = {
+  name: 'the form disables purpose selection while saving.',
+  args: {
+    mode: 'create',
+    form: {
+      ...EMPTY_FORM,
+      schedule: '0 9 * * 1-5',
+      promptTemplate: 'synthetic prompt',
+    },
+    agentConfigs: [{ purpose: 'synthetic-purpose' }],
+    onChange: () => {},
+    formError: null,
+    isSaving: true,
+    onSubmit: () => {},
+    onCancel: () => {},
+  },
+}
+
+export const ValidationError: Story = {
+  name: 'the form shows a validation error.',
+  args: {
+    mode: 'create',
+    form: {
+      ...EMPTY_FORM,
+      promptTemplate: 'synthetic prompt',
+    },
+    agentConfigs: [],
+    onChange: () => {},
+    formError: 'schedule (cron 式) は必須です',
+    isSaving: false,
+    onSubmit: () => {},
+    onCancel: () => {},
+  },
+}
+
+export const KindMenuOpen: Story = {
+  name: 'the kind menu shows all trigger types.',
+  args: {
+    mode: 'create',
+    form: {
+      ...EMPTY_FORM,
+      schedule: '15 10 * * 2',
+      promptTemplate: 'synthetic prompt',
+    },
+    defaultKindSelectOpen: true,
+    agentConfigs: [],
+    onChange: () => {},
+    formError: null,
+    isSaving: false,
+    onSubmit: () => {},
+    onCancel: null,
+  },
+}
