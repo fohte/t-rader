@@ -131,14 +131,16 @@ export function ReviewPageView({
     })),
   ]
 
-  function renderApprovalButton(className: string, mobile = false) {
+  function renderApprovalButton(mobile = false) {
     return (
       <Button
         type="button"
         size={mobile ? 'lg' : 'sm'}
         disabled={selectedCount === 0 || isApproving}
         onClick={onApproveSelected}
-        className={className}
+        className={
+          mobile ? 'w-full text-center' : 'ml-auto hidden md:inline-flex'
+        }
       >
         {isApproving ? '承認中…' : `選択した ${String(selectedCount)} 件を承認`}
       </Button>
@@ -216,7 +218,7 @@ export function ReviewPageView({
           />
           すべて選択
         </label>
-        {renderApprovalButton('ml-auto hidden md:inline-flex')}
+        {renderApprovalButton()}
       </div>
 
       {hasApprovalError && (
@@ -337,7 +339,7 @@ export function ReviewPageView({
 
       {selectedCount > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background px-4 py-3 md:hidden">
-          {renderApprovalButton('w-full text-center', true)}
+          {renderApprovalButton(true)}
         </div>
       )}
     </section>

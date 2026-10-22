@@ -220,31 +220,29 @@ export function NoteEvidenceCardView({
           </Button>
         }
       />
-      <PopoverContent
-        align="start"
-        padding="md"
-        className="w-80 space-y-2 text-xs"
-      >
-        <p className="font-mono font-semibold text-foreground">
-          {referenceTitle(reference)}
-        </p>
-        <div className="space-y-1.5">
-          <EvidenceRows reference={reference} />
-          {reference.kind === 'change' && (
-            <ChangeCalculation reference={reference} />
+      <PopoverContent align="start" padding="md" className="w-80">
+        <div className="space-y-2 text-xs">
+          <p className="font-mono font-semibold text-foreground">
+            {referenceTitle(reference)}
+          </p>
+          <div className="space-y-1.5">
+            <EvidenceRows reference={reference} />
+            {reference.kind === 'change' && (
+              <ChangeCalculation reference={reference} />
+            )}
+          </div>
+          {reference.kind === 'indicator' ? (
+            <Link
+              to="/indicators/$indicatorId"
+              params={{ indicatorId: reference.indicatorId }}
+              className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-foreground hover:underline"
+            >
+              指標ページを見る <span aria-hidden="true">→</span>
+            </Link>
+          ) : (
+            <StockPageLink reference={reference} />
           )}
         </div>
-        {reference.kind === 'indicator' ? (
-          <Link
-            to="/indicators/$indicatorId"
-            params={{ indicatorId: reference.indicatorId }}
-            className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-foreground hover:underline"
-          >
-            指標ページを見る <span aria-hidden="true">→</span>
-          </Link>
-        ) : (
-          <StockPageLink reference={reference} />
-        )}
       </PopoverContent>
     </Popover>
   )

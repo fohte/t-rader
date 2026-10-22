@@ -88,25 +88,27 @@ export function NoteHistoryPanel({
                   onClick={() => {
                     onSelectVersion(version.version_no)
                   }}
-                  className="h-auto w-full flex-col gap-2 whitespace-normal px-3.5 py-3 text-left"
+                  className="h-auto w-full flex-col whitespace-normal text-left"
                 >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs font-bold text-foreground">
-                      v{String(version.version_no)}
+                  <span className="flex w-full flex-col items-center gap-2">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs font-bold text-foreground">
+                        v{String(version.version_no)}
+                      </span>
+                      {version.is_current && <Chip>現行</Chip>}
                     </span>
-                    {version.is_current && <Chip>現行</Chip>}
-                  </span>
-                  <span className="line-clamp-2 text-sm leading-snug text-foreground">
-                    {version.title}
-                  </span>
-                  <span className="flex flex-wrap items-center justify-between gap-2">
-                    <StatusPill status={version.status} />
-                    <span className="font-mono text-2xs text-muted-foreground">
-                      {version.created_by_kind === 'llm'
-                        ? 'エージェント'
-                        : '自分'}
-                      {' · '}
-                      {formatRelative(version.created_at)}
+                    <span className="line-clamp-2 w-full text-center text-sm leading-snug text-foreground">
+                      {version.title}
+                    </span>
+                    <span className="flex flex-wrap items-center justify-between gap-2">
+                      <StatusPill status={version.status} />
+                      <span className="font-mono text-2xs text-muted-foreground">
+                        {version.created_by_kind === 'llm'
+                          ? 'エージェント'
+                          : '自分'}
+                        {' · '}
+                        {formatRelative(version.created_at)}
+                      </span>
                     </span>
                   </span>
                 </Button>

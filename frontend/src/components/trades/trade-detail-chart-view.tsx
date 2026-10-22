@@ -1,5 +1,3 @@
-import '#components/trades/trade-detail-chart-view.css'
-
 import type { CSSProperties } from 'react'
 
 import { CandlestickChart } from '#components/candlestick-chart'
@@ -12,13 +10,11 @@ type TradeDetail = components['schemas']['TradeDetailResponse']
 type TradeMarkerColorStyle = CSSProperties & {
   '--trade-marker-color': string
 }
-
-function markerColorStyle(
-  side: keyof typeof TRADE_MARKER_COLORS,
-): TradeMarkerColorStyle {
-  return {
-    '--trade-marker-color': TRADE_MARKER_COLORS[side],
-  } satisfies TradeMarkerColorStyle
+const buyMarkerStyle: TradeMarkerColorStyle = {
+  '--trade-marker-color': TRADE_MARKER_COLORS.buy,
+}
+const sellMarkerStyle: TradeMarkerColorStyle = {
+  '--trade-marker-color': TRADE_MARKER_COLORS.sell,
 }
 
 export function TradeDetailChartView({
@@ -64,14 +60,14 @@ export function TradeDetailChartView({
             role="group"
           >
             <span
-              className="trade-detail-chart-marker-color"
-              style={markerColorStyle('buy')}
+              className="text-(--trade-marker-color)"
+              style={buyMarkerStyle}
             >
               ▲買
             </span>{' '}
             <span
-              className="trade-detail-chart-marker-color"
-              style={markerColorStyle('sell')}
+              className="text-(--trade-marker-color)"
+              style={sellMarkerStyle}
             >
               ▼売
             </span>
