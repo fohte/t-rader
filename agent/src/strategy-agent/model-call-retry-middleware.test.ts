@@ -184,6 +184,51 @@ describe('createModelCallRetryMiddleware', () => {
     )
   })
 
+  it('does not retry when claiming its reservation fails', async () => {
+    const attemptClaim = async () => {
+      const model = new ScriptedChatModel([new AIMessage('done')])
+      const reserved: string[] = []
+      const transitions: Array<{
+        callId: string
+        state: 'consumed' | 'released'
+      }> = []
+      const claimError = new Error('reservation claim timed out')
+      claimError.name = 'TimeoutError'
+      const agent = createAgent({
+        model,
+        tools: [],
+        middleware: [
+          createModelCallRetryMiddleware(
+            (callId) => {
+              reserved.push(callId)
+              return Promise.resolve()
+            },
+            (callId, state) => {
+              transitions.push({ callId, state })
+              return Promise.reject(claimError)
+            },
+          ),
+        ],
+      })
+
+      const outcome = await invokeOutcome(agent)
+
+      return {
+        outcome,
+        modelAttempts: model.attempts,
+        reservations: reserved.length,
+        transitions: transitions.map(({ state }) => state),
+      }
+    }
+
+    expect(await attemptClaim()).toEqual({
+      outcome: 'rejected',
+      modelAttempts: 0,
+      reservations: 1,
+      transitions: ['consumed'],
+    })
+  })
+
   it.each([
     {
       name: 'deadline aborts',

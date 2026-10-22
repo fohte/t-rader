@@ -168,49 +168,54 @@ export const createModelCallRetryMiddleware = (
         callDurationRetriesMade: number,
       ): ReturnType<typeof handler> => {
         const callId = randomUUID()
-        let reservationMade = false
-        return Promise.resolve()
-          .then(() => reserveModelCall?.(callId))
-          .then(() => {
-            reservationMade = reserveModelCall !== undefined
-            return transitionReservation === undefined || !reservationMade
-              ? handler(delegated)
-              : transitionReservation(callId, 'consumed').then(() =>
-                  handler(delegated),
-                )
-          })
-          .catch((caught: unknown) => {
-            if (reserveModelCall !== undefined && !reservationMade) {
-              return Promise.reject(
-                caught instanceof Error ? caught : new Error(String(caught)),
-              )
-            }
-            return Promise.resolve().then(async () => {
-              const error =
-                caught instanceof Error ? caught : new Error(String(caught))
-              const isCallDuration = isCallDurationAbort(error)
-
+        const prepareReservation = (): Promise<void> =>
+          Promise.resolve()
+            .then(() => reserveModelCall?.(callId))
+            .then(() => {
               if (
-                !isRetryableModelCallError(error) ||
-                retriesMade >= MAX_RETRIES ||
-                (isCallDuration &&
-                  callDurationRetriesMade >= MAX_CALL_DURATION_RETRIES)
+                reserveModelCall === undefined ||
+                transitionReservation === undefined
               ) {
-                return Promise.reject(error)
+                return
               }
-
-              logger.warn(
-                { err: getOriginalError(error) },
-                'model call failed with a retryable error',
-              )
-              await waitForRetry(getRetryDelay(error, retriesMade))
-
-              return callModel(
-                retriesMade + 1,
-                callDurationRetriesMade + Number(isCallDuration),
-              )
+              return transitionReservation(callId, 'consumed')
             })
-          })
+        return prepareReservation().then(
+          () =>
+            Promise.resolve()
+              .then(() => handler(delegated))
+              .catch((caught: unknown) => {
+                return Promise.resolve().then(async () => {
+                  const error =
+                    caught instanceof Error ? caught : new Error(String(caught))
+                  const isCallDuration = isCallDurationAbort(error)
+
+                  if (
+                    !isRetryableModelCallError(error) ||
+                    retriesMade >= MAX_RETRIES ||
+                    (isCallDuration &&
+                      callDurationRetriesMade >= MAX_CALL_DURATION_RETRIES)
+                  ) {
+                    return Promise.reject(error)
+                  }
+
+                  logger.warn(
+                    { err: getOriginalError(error) },
+                    'model call failed with a retryable error',
+                  )
+                  await waitForRetry(getRetryDelay(error, retriesMade))
+
+                  return callModel(
+                    retriesMade + 1,
+                    callDurationRetriesMade + Number(isCallDuration),
+                  )
+                })
+              }),
+          (caught: unknown) =>
+            Promise.reject(
+              caught instanceof Error ? caught : new Error(String(caught)),
+            ),
+        )
       }
 
       return callModel(0, 0)
