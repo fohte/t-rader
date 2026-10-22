@@ -8,7 +8,8 @@ use super::super::dto::{
     ReadExecutionPayloadResult,
 };
 use super::super::{
-    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, invalid_params,
+    StrategyServer, execution_step_id_from_ctx, execution_task_id_for_read_from_ctx,
+    execution_task_id_from_ctx, invalid_params,
 };
 
 #[tool_router(router = execution_payload_tool_router, vis = "pub(super)")]
@@ -46,7 +47,7 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadExecutionPayloadResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let a2a_task_id = execution_task_id_from_ctx(&ctx)
+        let a2a_task_id = execution_task_id_for_read_from_ctx(&ctx)
             .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
         self.read_execution_payload_inner(scope, &a2a_task_id, execution_step_id, params)

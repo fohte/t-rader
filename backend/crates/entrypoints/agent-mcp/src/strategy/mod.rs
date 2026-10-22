@@ -388,19 +388,29 @@ fn execution_step_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<Uuid> 
     execution_id_from_ctx(ctx).and_then(|id| execution_step_id_from_execution_id(&id))
 }
 
-/// `x-execution-id` ヘッダ値から `a2a_task_id` を取り出す。task-only read は裸の task ID を送る。
+/// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `a2a_task_id` を取り出す。
 fn execution_task_id_from_execution_id(execution_id: &str) -> Option<&str> {
-    match execution_id.rsplit_once(':') {
-        Some((task_id, _)) if !task_id.is_empty() => Some(task_id),
-        Some(_) => None,
-        None if !execution_id.is_empty() => Some(execution_id),
-        None => None,
-    }
+    let (task_id, _) = execution_id.rsplit_once(':')?;
+    (!task_id.is_empty()).then_some(task_id)
 }
 
 fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     let execution_id = execution_id_from_ctx(ctx)?;
     execution_task_id_from_execution_id(&execution_id).map(str::to_string)
+}
+
+/// task 内の読取では A2A task ID 単体と step 付き実行 ID のどちらも受け付ける。
+fn execution_task_id_for_read_from_execution_id(execution_id: &str) -> Option<&str> {
+    if execution_id.contains(':') {
+        execution_task_id_from_execution_id(execution_id)
+    } else {
+        (!execution_id.is_empty()).then_some(execution_id)
+    }
+}
+
+fn execution_task_id_for_read_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
+    let execution_id = execution_id_from_ctx(ctx)?;
+    execution_task_id_for_read_from_execution_id(&execution_id).map(str::to_string)
 }
 
 pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
@@ -570,7 +580,7 @@ mod tests {
 
     #[rstest]
     #[case::valid("a2a-task-1:550e8400-e29b-41d4-a716-446655440000", Some("a2a-task-1"))]
-    #[case::task_only("a2a-task-1", Some("a2a-task-1"))]
+    #[case::no_step("a2a-task-1", None)]
     #[case::empty("", None)]
     #[case::empty_task_id_part(":550e8400-e29b-41d4-a716-446655440000", None)]
     fn execution_task_id_from_execution_id_cases(
@@ -578,5 +588,20 @@ mod tests {
         #[case] expected: Option<&str>,
     ) {
         assert_eq!(execution_task_id_from_execution_id(execution_id), expected);
+    }
+
+    #[rstest]
+    #[case::step_scoped("a2a-task-1:550e8400-e29b-41d4-a716-446655440000", Some("a2a-task-1"))]
+    #[case::task_only("a2a-task-1", Some("a2a-task-1"))]
+    #[case::empty("", None)]
+    #[case::empty_task_id_part(":550e8400-e29b-41d4-a716-446655440000", None)]
+    fn execution_task_id_for_read_from_execution_id_cases(
+        #[case] execution_id: &str,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(
+            execution_task_id_for_read_from_execution_id(execution_id),
+            expected
+        );
     }
 }

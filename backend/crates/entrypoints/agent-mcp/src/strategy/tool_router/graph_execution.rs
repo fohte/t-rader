@@ -7,7 +7,8 @@ use super::super::dto::{
     CaptureDatasetParams, CaptureDatasetResult, ReadTaskExecutionSnapshotResult,
 };
 use super::super::{
-    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, invalid_params,
+    StrategyServer, execution_step_id_from_ctx, execution_task_id_for_read_from_ctx,
+    execution_task_id_from_ctx, invalid_params,
 };
 
 #[tool_router(router = graph_execution_tool_router, vis = "pub(super)")]
@@ -44,7 +45,7 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadTaskExecutionSnapshotResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let a2a_task_id = execution_task_id_from_ctx(&ctx)
+        let a2a_task_id = execution_task_id_for_read_from_ctx(&ctx)
             .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
         self.read_task_execution_snapshot_inner(scope, &a2a_task_id)
             .await
