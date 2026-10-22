@@ -63,16 +63,9 @@ fn parse_manifest_cursor(
 ) -> Result<Option<PayloadManifestCursor>, AppError> {
     cursor
         .map(|cursor| {
-            let (created_at, id) = cursor.split_once('|').ok_or_else(|| {
+            PayloadManifestCursor::from_token(&cursor).ok_or_else(|| {
                 AppError::Validation("invalid execution payload manifest cursor".into())
-            })?;
-            let created_at = chrono::DateTime::parse_from_rfc3339(created_at).map_err(|_| {
-                AppError::Validation("invalid execution payload manifest cursor".into())
-            })?;
-            let id = Uuid::parse_str(id).map_err(|_| {
-                AppError::Validation("invalid execution payload manifest cursor".into())
-            })?;
-            Ok(PayloadManifestCursor { created_at, id })
+            })
         })
         .transpose()
 }

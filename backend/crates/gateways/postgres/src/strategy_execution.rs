@@ -21,6 +21,7 @@ use crate::{
         task_execution_definition_snapshot, task_execution_payload, task_execution_payload_chunk,
     },
     persistence::persistence_error,
+    strategy_execution_manifest_query,
     transaction::transaction_ref,
 };
 
@@ -346,6 +347,23 @@ impl StrategyExecutionRepository for PostgresStrategyExecutionRepository {
             .await
             .map_err(database_error)?;
         row.map(TryInto::try_into).transpose()
+    }
+
+    async fn count_payload_manifests(
+        &self,
+        task_id: Uuid,
+    ) -> Result<u64, StrategyExecutionRepositoryError> {
+        strategy_execution_manifest_query::count_payload_manifests(&self.db, task_id).await
+    }
+
+    async fn list_payload_manifests(
+        &self,
+        task_id: Uuid,
+        cursor: Option<core_application::strategy_execution::PayloadManifestCursor>,
+        limit: usize,
+    ) -> Result<Vec<PayloadManifest>, StrategyExecutionRepositoryError> {
+        strategy_execution_manifest_query::list_payload_manifests(&self.db, task_id, cursor, limit)
+            .await
     }
 
     async fn list_payload_chunks(

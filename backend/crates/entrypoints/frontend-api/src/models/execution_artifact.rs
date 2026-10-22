@@ -39,8 +39,11 @@ impl ExecutionPayloadManifestPageResponse {
     pub fn new(task_id: Uuid, page: PayloadManifestPage) -> Self {
         Self {
             task_id,
-            cursor: page.cursor.as_ref().map(encode_manifest_cursor),
-            next_cursor: page.next_cursor.as_ref().map(encode_manifest_cursor),
+            cursor: page.cursor.as_ref().map(PayloadManifestCursor::to_token),
+            next_cursor: page
+                .next_cursor
+                .as_ref()
+                .map(PayloadManifestCursor::to_token),
             total_count: page.total_count,
             items: page
                 .manifests
@@ -49,10 +52,6 @@ impl ExecutionPayloadManifestPageResponse {
                 .collect(),
         }
     }
-}
-
-fn encode_manifest_cursor(cursor: &PayloadManifestCursor) -> String {
-    format!("{}|{}", cursor.created_at.to_rfc3339(), cursor.id)
 }
 
 #[derive(Debug, Serialize, ToSchema)]

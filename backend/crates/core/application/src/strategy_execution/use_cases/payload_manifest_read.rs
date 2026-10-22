@@ -20,12 +20,9 @@ impl StrategyExecutionUseCases {
             return Err(StrategyExecutionUseCaseError::InvalidPayloadManifestPageLimit);
         }
 
-        let total_count = self
-            .manifest_query_repository
-            .count_payload_manifests(task_id)
-            .await?;
+        let total_count = self.repository.count_payload_manifests(task_id).await?;
         let mut manifests = self
-            .manifest_query_repository
+            .repository
             .list_payload_manifests(task_id, query.cursor.clone(), query.limit + 1)
             .await?;
         let has_more = manifests.len() > query.limit;

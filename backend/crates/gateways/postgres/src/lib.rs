@@ -122,7 +122,6 @@ pub use stock_registration::PostgresStockRegistrationRepository;
 pub use strategy::PostgresStrategyRepository;
 pub use strategy_earnings_target::PostgresStrategyEarningsTargetRepository;
 pub use strategy_execution::PostgresStrategyExecutionRepository;
-pub use strategy_execution_manifest_query::PostgresStrategyExecutionManifestQueryRepository;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;
 pub use strategy_summary_query::PostgresStrategySummaryQuery;

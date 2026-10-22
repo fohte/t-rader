@@ -124,6 +124,20 @@ pub struct PayloadManifestCursor {
     pub id: Uuid,
 }
 
+impl PayloadManifestCursor {
+    pub fn from_token(token: &str) -> Option<Self> {
+        let (created_at, id) = token.split_once('|')?;
+        Some(Self {
+            created_at: DateTime::parse_from_rfc3339(created_at).ok()?,
+            id: Uuid::parse_str(id).ok()?,
+        })
+    }
+
+    pub fn to_token(&self) -> String {
+        format!("{}|{}", self.created_at.to_rfc3339(), self.id)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayloadManifestPage {
     pub cursor: Option<PayloadManifestCursor>,

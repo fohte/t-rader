@@ -6,11 +6,7 @@ mod use_cases;
 pub use error::{
     DatasetProviderError, StrategyExecutionRepositoryError, StrategyExecutionUseCaseError,
 };
-pub use repository::{
-    SharedStrategyExecutionManifestQueryRepository, SharedStrategyExecutionRepository,
-    StrategyExecutionManifestQueryRepository, StrategyExecutionRepositories,
-    StrategyExecutionRepository,
-};
+pub use repository::{SharedStrategyExecutionRepository, StrategyExecutionRepository};
 pub use types::{
     AuthorizedExecution, DEFAULT_PAYLOAD_MANIFEST_PAGE_ITEMS, DEFAULT_PAYLOAD_PAGE_ITEMS,
     DatasetCaptureReport, DatasetPage, DatasetPageCompletion, DatasetProvider, DatasetSnapshot,

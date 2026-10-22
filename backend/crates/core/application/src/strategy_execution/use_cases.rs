@@ -27,7 +27,6 @@ use crate::{
 use self::payload_read::{assemble_payload, validate_page_limit};
 use super::{
     DefinitionSnapshot, MAX_PAYLOAD_PAGE_ITEMS, PayloadKind, PayloadStatus,
-    SharedStrategyExecutionManifestQueryRepository, StrategyExecutionRepositories,
     StrategyExecutionRepository, StrategyExecutionUseCaseError, TaskStartSnapshotter,
 };
 
@@ -35,7 +34,6 @@ use super::{
 pub struct StrategyExecutionUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: Arc<dyn StrategyExecutionRepository + Send + Sync>,
-    manifest_query_repository: SharedStrategyExecutionManifestQueryRepository,
     task_repository: Arc<dyn StrategyTaskRepository + Send + Sync>,
     custom_indicators: CustomIndicatorUseCases,
     custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
@@ -46,7 +44,7 @@ pub struct StrategyExecutionUseCases {
 impl StrategyExecutionUseCases {
     pub fn new(
         unit_of_work: SharedUnitOfWork,
-        repositories: StrategyExecutionRepositories,
+        repository: Arc<dyn StrategyExecutionRepository + Send + Sync>,
         task_repository: Arc<dyn StrategyTaskRepository + Send + Sync>,
         custom_indicators: CustomIndicatorUseCases,
         custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
@@ -55,8 +53,7 @@ impl StrategyExecutionUseCases {
     ) -> Self {
         Self {
             unit_of_work,
-            repository: repositories.payloads,
-            manifest_query_repository: repositories.manifests,
+            repository,
             task_repository,
             custom_indicators,
             custom_indicator_evaluations,

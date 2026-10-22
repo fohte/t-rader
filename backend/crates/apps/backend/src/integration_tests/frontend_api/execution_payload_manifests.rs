@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Duration, FixedOffset};
+    use core_application::strategy_execution::PayloadManifestCursor;
     use gateway_postgres::entities::task_execution_payload;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     use serde_json::{Value, json};
@@ -16,7 +17,7 @@ mod tests {
     }
 
     fn cursor(created_at: DateTime<FixedOffset>, id: Uuid) -> String {
-        format!("{}|{id}", created_at.to_rfc3339())
+        PayloadManifestCursor { created_at, id }.to_token()
     }
 
     fn encode_query_cursor(cursor: &str) -> String {
@@ -280,6 +281,30 @@ mod tests {
             (
                 axum::http::StatusCode::NOT_FOUND,
                 json!({"error": "task execution artifact not found"}),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn malformed_payload_manifest_cursor_returns_validation_error(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "synthetic-strategy").await;
+        let task_id = Uuid::from_u128(0x830);
+
+        let response = server
+            .get(&format!(
+                "/api/strategies/{strategy_id}/tasks/{task_id}/execution-artifacts/payloads?cursor=bad"
+            ))
+            .await;
+        let body: Value = response.json();
+
+        assert_eq!(
+            (response.status_code(), body),
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "invalid execution payload manifest cursor" }),
             ),
         );
     }

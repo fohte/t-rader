@@ -17,7 +17,7 @@ use crate::{
     },
     strategy_execution::{
         AuthorizedExecution, DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk,
-        PayloadManifest, PayloadSeal, SharedStrategyExecutionRepository,
+        PayloadManifest, PayloadManifestCursor, PayloadSeal, SharedStrategyExecutionRepository,
         StrategyExecutionRepository, StrategyExecutionRepositoryError,
     },
     unit_of_work::FakeUnitOfWork,
@@ -419,6 +419,22 @@ impl StrategyExecutionRepository for SnapshotRepository {
         _task_id: Uuid,
         _payload_id: Uuid,
     ) -> Result<Option<PayloadManifest>, StrategyExecutionRepositoryError> {
+        Err(unexpected_repository_call())
+    }
+
+    async fn count_payload_manifests(
+        &self,
+        _task_id: Uuid,
+    ) -> Result<u64, StrategyExecutionRepositoryError> {
+        Err(unexpected_repository_call())
+    }
+
+    async fn list_payload_manifests(
+        &self,
+        _task_id: Uuid,
+        _cursor: Option<PayloadManifestCursor>,
+        _limit: usize,
+    ) -> Result<Vec<PayloadManifest>, StrategyExecutionRepositoryError> {
         Err(unexpected_repository_call())
     }
 
