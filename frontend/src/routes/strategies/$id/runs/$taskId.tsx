@@ -33,7 +33,10 @@ export const Route = createFileRoute('/strategies/$id/runs/$taskId')({
 
 function TaskRunPage() {
   const { id, taskId } = Route.useParams()
+  return <TaskRunPageForTask key={`${id}:${taskId}`} id={id} taskId={taskId} />
+}
 
+function TaskRunPageForTask({ id, taskId }: { id: string; taskId: string }) {
   const taskQuery = $api.useQuery(
     'get',
     '/api/strategies/{id}/tasks/{task_id}',
