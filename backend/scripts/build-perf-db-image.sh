@@ -73,9 +73,13 @@ cleanup() {
 trap cleanup EXIT
 
 psql_exec() {
-  docker exec "$container_name" psql \
+  docker exec \
+    --env "PGPASSWORD=$POSTGRES_PASSWORD" \
+    "$container_name" psql \
     -X \
     -q \
+    --host=127.0.0.1 \
+    --port=5432 \
     -U "$POSTGRES_USER" \
     -d "$POSTGRES_DATABASE" \
     -v ON_ERROR_STOP=1 \
@@ -179,10 +183,7 @@ container_started=true
 
 wait_for_postgres
 
-docker exec "$container_name" psql \
-  -U "$POSTGRES_USER" \
-  -d "$POSTGRES_DATABASE" \
-  -v ON_ERROR_STOP=1 \
+psql_exec \
   -c "ALTER SYSTEM SET max_wal_size = '1GB'" \
   -c "ALTER SYSTEM SET min_wal_size = '32MB'" \
   -c 'SELECT pg_reload_conf()' > /dev/null
@@ -194,10 +195,17 @@ port="$(docker port "$container_name" 5432/tcp | sed 's/.*://')"
     cargo run -p migration -- up
 )
 
-docker exec -i "$container_name" psql \
+docker exec --interactive \
+  --env "PGPASSWORD=$POSTGRES_PASSWORD" \
+  "$container_name" psql \
+  -X \
+  -q \
+  --host=127.0.0.1 \
+  --port=5432 \
   -U "$POSTGRES_USER" \
   -d "$POSTGRES_DATABASE" \
-  -v ON_ERROR_STOP=1 < "$seed_sql"
+  -v ON_ERROR_STOP=1 \
+  < "$seed_sql"
 
 shrink_wal
 docker stop --timeout 60 "$container_name" > /dev/null
