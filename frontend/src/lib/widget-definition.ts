@@ -8,8 +8,11 @@ type WidgetUniverse = components['schemas']['WidgetUniverseRequest']
 type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
 export type SupportedWidgetVisualization = Extract<
   WidgetVisualization,
-  { type: 'treemap' | 'toplist' | 'table' }
+  { type: 'treemap' | 'toplist' | 'table' | 'line' }
 >
+
+const SUPPORTED_WIDGET_VISUALIZATION_TYPES: readonly WidgetVisualization['type'][] =
+  ['treemap', 'toplist', 'table', 'line']
 
 export type WidgetDefinitionResult =
   | {
@@ -70,7 +73,57 @@ function isDisplay(value: unknown): boolean {
 }
 
 function isVisualization(value: unknown): boolean {
-  return isRecord(value) && typeof value.type === 'string'
+  if (!isRecord(value) || typeof value.type !== 'string') return false
+  return (
+    value.type !== 'line' ||
+    (Array.isArray(value.series) &&
+      value.series.every((name) => typeof name === 'string'))
+  )
+}
+
+function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (match == null) return false
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (year < 1 || month < 1 || month > 12) return false
+
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth = [
+    31,
+    leapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ]
+  return day >= 1 && day <= (daysInMonth[month - 1] ?? 0)
+}
+
+function isWidgetRange(value: unknown): value is string {
+  if (value === '3m' || value === '1y') return true
+  if (typeof value !== 'string') return false
+
+  const match = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(value)
+  if (match == null) return false
+
+  const start = match[1]
+  const end = match[2]
+  return (
+    start != null &&
+    end != null &&
+    isCalendarDate(start) &&
+    isCalendarDate(end) &&
+    start <= end
+  )
 }
 
 function errorMessage(error: unknown): string {
@@ -145,11 +198,37 @@ export function parseWidgetQueryRequest(
   if (time !== undefined && !isOptionalString(time.as_of)) {
     return { ok: false, message: 'time.as_of は文字列で指定してください。' }
   }
-  if (time !== undefined && Object.hasOwn(time, 'range')) {
+  const isLine = isRecord(value.viz) && value.viz.type === 'line'
+  const hasRange = time !== undefined && Object.hasOwn(time, 'range')
+  if (!isLine && hasRange) {
     return {
       ok: false,
       path: 'time.range',
-      message: 'time.range は現在のウィジェットでは使えません。',
+      message: 'time.range は line 以外では使えません。',
+    }
+  }
+  if (isLine && !isWidgetRange(time?.range)) {
+    return {
+      ok: false,
+      path: 'time.range',
+      message:
+        'time.range は line で 3m、1y、または YYYY-MM-DD..YYYY-MM-DD を指定してください。',
+    }
+  }
+  const dateRange =
+    isLine && typeof time?.range === 'string'
+      ? /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(time.range)
+      : null
+  if (
+    dateRange?.[2] != null &&
+    typeof time?.as_of === 'string' &&
+    isCalendarDate(time.as_of) &&
+    dateRange[2] > time.as_of
+  ) {
+    return {
+      ok: false,
+      path: 'time.range',
+      message: 'time.range の終了日は time.as_of 以下にしてください。',
     }
   }
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- enum 値と範囲は API に検証させるため、生成型にない値も保持する
@@ -180,7 +259,5 @@ export function parseWidgetDefinition(source: string): WidgetDefinitionResult {
 export function isSupportedWidgetVisualization(
   viz: WidgetVisualization,
 ): viz is SupportedWidgetVisualization {
-  return (
-    viz.type === 'treemap' || viz.type === 'toplist' || viz.type === 'table'
-  )
+  return SUPPORTED_WIDGET_VISUALIZATION_TYPES.includes(viz.type)
 }

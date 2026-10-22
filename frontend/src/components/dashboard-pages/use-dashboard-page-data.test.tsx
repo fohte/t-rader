@@ -400,4 +400,73 @@ describe('useDashboardPageData', () => {
       },
     ])
   })
+
+  it('line widget の期間を保ち、画面で選んだ基準日を API に渡す', async () => {
+    activeMiddleware = installWidgetQueryCapture()
+    const lineConfig: DashboardConfig = {
+      title: '期間推移',
+      widgets: [
+        {
+          title: 'サンプル指標',
+          width: 'full',
+          definition: {
+            queries: {
+              sample: {
+                metric: 'indicator',
+                by: 'none',
+                indicator: 'demo-indicator',
+              },
+            },
+            viz: { type: 'line', series: ['sample'] },
+            time: { range: '1y' },
+          },
+        },
+      ],
+    }
+    const hook = renderHook(
+      () => useDashboardPageData(lineConfig, 'sample-market'),
+      { wrapper: createQueryClientWrapper() },
+    )
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 1) {
+        throw new Error('widget request is not complete')
+      }
+    })
+
+    act(() => {
+      hook.result.current.onAsOfChange('2099-03-01')
+    })
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 2) {
+        throw new Error('selected-date request is not complete')
+      }
+    })
+
+    expect(activeMiddleware.requests).toEqual([
+      {
+        queries: {
+          sample: {
+            metric: 'indicator',
+            by: 'none',
+            indicator: 'demo-indicator',
+          },
+        },
+        viz: { type: 'line', series: ['sample'] },
+        time: { range: '1y' },
+      },
+      {
+        queries: {
+          sample: {
+            metric: 'indicator',
+            by: 'none',
+            indicator: 'demo-indicator',
+          },
+        },
+        viz: { type: 'line', series: ['sample'] },
+        time: { range: '1y', as_of: '2099-03-01' },
+      },
+    ])
+  })
 })

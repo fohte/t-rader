@@ -1,3 +1,4 @@
+import { WidgetLine } from '#components/widgets/widget-line'
 import { WidgetTable } from '#components/widgets/widget-table'
 import { WidgetToplist } from '#components/widgets/widget-toplist'
 import { WidgetTreemap } from '#components/widgets/widget-treemap'
@@ -43,6 +44,15 @@ export function WidgetVisualizationView({
     case 'table':
       return (
         <WidgetTable
+          queries={queries}
+          display={display}
+          result={result}
+          viz={viz}
+        />
+      )
+    case 'line':
+      return (
+        <WidgetLine
           queries={queries}
           display={display}
           result={result}
