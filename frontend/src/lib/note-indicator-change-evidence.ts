@@ -1,6 +1,6 @@
 import type { IndicatorObservation } from '#lib/indicator-observation'
 
-export interface NoteIndicatorChangeEvidence {
+interface NoteIndicatorChangeEvidence {
   startValue: number
   endValue: number
   changePercent: number
