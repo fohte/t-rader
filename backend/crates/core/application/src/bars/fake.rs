@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -20,7 +21,6 @@ pub struct FakeBarsRepository {
     pub bars: Mutex<Vec<Bar>>,
     pub ingested_dates: Mutex<HashSet<NaiveDate>>,
     pub instruments: Mutex<HashSet<String>>,
-    pub us_stock_instrument_ids: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_daily_targets: Mutex<HashSet<String>>,
     pub us_stock_minute_targets: Mutex<HashSet<String>>,
@@ -37,6 +37,9 @@ pub struct FakeBarsRepository {
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
     pub minute_bar_downsample_instruments: Mutex<Vec<String>>,
+    pub minute_bar_downsample_candidate_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
+    minute_bar_downsample_candidate_query_hook: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
+    minute_bar_downsample_transaction_hook: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     pub minute_bar_downsample_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub minute_bar_downsample_cutoffs: Mutex<Vec<DateTime<Utc>>>,
     minute_bar_downsample_stats: Mutex<UsStockMinuteBarsDownsampleStats>,
@@ -60,13 +63,6 @@ impl FakeBarsRepository {
 
     pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
         self.us_stock_targets.lock().await.extend(instrument_ids);
-    }
-
-    pub async fn seed_us_stock_instrument_ids(&self, instrument_ids: Vec<String>) {
-        self.us_stock_instrument_ids
-            .lock()
-            .await
-            .extend(instrument_ids);
     }
 
     pub async fn seed_us_stock_daily_targets(&self, instrument_ids: Vec<String>) {
@@ -122,6 +118,20 @@ impl FakeBarsRepository {
 
     pub async fn set_minute_bar_downsample_stats(&self, stats: UsStockMinuteBarsDownsampleStats) {
         *self.minute_bar_downsample_stats.lock().await = stats;
+    }
+
+    pub async fn set_minute_bar_downsample_candidate_query_hook(
+        &self,
+        hook: Arc<dyn Fn() + Send + Sync>,
+    ) {
+        *self.minute_bar_downsample_candidate_query_hook.lock().await = Some(hook);
+    }
+
+    pub async fn set_minute_bar_downsample_transaction_hook(
+        &self,
+        hook: Arc<dyn Fn() + Send + Sync>,
+    ) {
+        *self.minute_bar_downsample_transaction_hook.lock().await = Some(hook);
     }
 
     pub async fn fail_bar_compression_with(&self, message: impl Into<String>) {
@@ -257,15 +267,40 @@ impl BarsRepository for FakeBarsRepository {
             .min())
     }
 
-    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
-        let mut instrument_ids = self
-            .us_stock_instrument_ids
+    async fn find_us_stock_minute_bar_instrument_ids(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError> {
+        self.minute_bar_downsample_candidate_ranges
             .lock()
             .await
+            .push((from, until));
+        let bars = self.bars.lock().await;
+        let mut instrument_ids = bars
             .iter()
-            .cloned()
+            .filter(|bar| {
+                bar.instrument_id.starts_with("US:")
+                    && bar.timeframe == Timeframe::Minute
+                    && bar.timestamp >= from
+                    && bar.timestamp < until
+                    && bar.timestamp < cutoff
+            })
+            .map(|bar| bar.instrument_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
             .collect::<Vec<_>>();
         instrument_ids.sort();
+        drop(bars);
+        if let Some(hook) = self
+            .minute_bar_downsample_candidate_query_hook
+            .lock()
+            .await
+            .clone()
+        {
+            hook();
+        }
         Ok(instrument_ids)
     }
 
@@ -298,6 +333,14 @@ impl BarsRepository for FakeBarsRepository {
             return Err(BarsRepositoryError::Database(PersistenceError::Database(
                 message,
             )));
+        }
+        if let Some(hook) = self
+            .minute_bar_downsample_transaction_hook
+            .lock()
+            .await
+            .clone()
+        {
+            hook();
         }
         Ok(*self.minute_bar_downsample_stats.lock().await)
     }

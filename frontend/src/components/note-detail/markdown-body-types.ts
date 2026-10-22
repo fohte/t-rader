@@ -4,7 +4,10 @@ import type { ExtraProps } from 'react-markdown'
 import type { MarkdownBodyRangeCommentProps } from '#components/note-detail/markdown-body-range-comment-context'
 import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import type { components } from '#lib/api/schema.gen'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
+import type {
+  ParsedNoteChangeReference,
+  ParsedStockChangeReference,
+} from '#lib/note-change-reference'
 import type { ParsedNotePriceReference } from '#lib/note-price-reference'
 import type {
   ParsedNoteIndicatorObservationReference,
@@ -52,6 +55,6 @@ export type NoteTokenComponents = {
     ParsedNoteChangeReference & { token: string; value?: string }
   >
   'note-change-figure': ComponentType<
-    ParsedNoteChangeReference & { node?: MarkdownNode }
+    ParsedStockChangeReference & { node?: MarkdownNode }
   >
 }

@@ -79,6 +79,17 @@ function renderReviewPage(overrides: Partial<ReviewPageViewProps> = {}) {
 }
 
 describe('ReviewPageView', () => {
+  it('opens a reviewed note version in its note detail route', async () => {
+    renderReviewPage()
+    const noteLink = await screen.findByRole('link', {
+      name: /架空の確認メモ/,
+    })
+
+    expect(noteLink.getAttribute('href')).toEqual(
+      '/notes/fake-note-a?version=1',
+    )
+  })
+
   it('shows the display name for the selected note kind', async () => {
     renderReviewPage({
       typeFilter: 'note',

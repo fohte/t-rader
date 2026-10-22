@@ -1,6 +1,6 @@
 import type { components } from '#lib/api/schema.gen'
 import { getChartBarDate } from '#lib/chart-utils'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
+import type { ParsedStockChangeReference } from '#lib/note-change-reference'
 
 type Bar = components['schemas']['Bar']
 
@@ -70,7 +70,7 @@ function calculateNoteChangeEvidence(
 
 export function resolveNoteChangeEvidence(
   bars: Bar[],
-  reference: ParsedNoteChangeReference,
+  reference: ParsedStockChangeReference,
   savedValue: number,
 ): NoteChangeEvidence | undefined {
   const startBar = bars.find(

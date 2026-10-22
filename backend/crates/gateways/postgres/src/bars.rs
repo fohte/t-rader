@@ -11,8 +11,8 @@ use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter,
-    QueryOrder, Set, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
+    Statement,
 };
 
 use crate::DatabaseHandle;
@@ -250,19 +250,17 @@ impl BarsRepository for PostgresBarsRepository {
             .map_err(repository_error)
     }
 
-    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
-        instruments::Entity::find()
-            .filter(instruments::Column::Market.eq(Market::Us.to_string()))
-            .order_by_asc(instruments::Column::Id)
-            .all(&self.db)
-            .await
-            .map(|instruments| {
-                instruments
-                    .into_iter()
-                    .map(|instrument| instrument.id)
-                    .collect()
-            })
-            .map_err(repository_error)
+    async fn find_us_stock_minute_bar_instrument_ids(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError> {
+        us_stock_minute_bars_downsample::find_instrument_ids_with_minute_bars(
+            &self.db, from, until, cutoff,
+        )
+        .await
+        .map_err(repository_error)
     }
 
     async fn downsample_us_stock_minute_bar_range(
@@ -1270,15 +1268,19 @@ mod tests {
     ) {
         let suffix = uuid::Uuid::new_v4().simple().to_string();
         let us_instrument_id = format!("US:DEMO-DOWNSAMPLE-{suffix}");
-        let empty_us_instrument_id = format!("US:DEMO-EMPTY-{suffix}");
+        let hourly_only_instrument_id = format!("US:DEMO-HOURLY-ONLY-{suffix}");
         let partial_bucket_instrument_id = format!("US:DEMO-PARTIAL-BUCKET-{suffix}");
         let fully_deleted_instrument_id = format!("US:DEMO-FULLY-DELETED-{suffix}");
+        let out_of_range_instrument_id = format!("US:DEMO-OUT-OF-RANGE-{suffix}");
+        let cutoff_only_instrument_id = format!("US:DEMO-CUTOFF-ONLY-{suffix}");
         let foreign_instrument_id = format!("JP-DEMO-DOWNSAMPLE-{suffix}");
         for (id, market) in [
             (&us_instrument_id, "US"),
-            (&empty_us_instrument_id, "US"),
+            (&hourly_only_instrument_id, "US"),
             (&partial_bucket_instrument_id, "US"),
             (&fully_deleted_instrument_id, "US"),
+            (&out_of_range_instrument_id, "US"),
+            (&cutoff_only_instrument_id, "US"),
             (&foreign_instrument_id, "OTHER"),
         ] {
             instruments::Entity::insert(instruments::ActiveModel {
@@ -1367,6 +1369,36 @@ mod tests {
             290,
             305,
             13,
+        );
+        let hourly_only_bar = bar(
+            &hourly_only_instrument_id,
+            Timeframe::Hourly,
+            timestamp(7, 0),
+            100,
+            110,
+            90,
+            105,
+            77,
+        );
+        let out_of_range_minute = bar(
+            &out_of_range_instrument_id,
+            Timeframe::Minute,
+            timestamp(8, 30),
+            80,
+            90,
+            70,
+            85,
+            17,
+        );
+        let cutoff_only_minute = bar(
+            &cutoff_only_instrument_id,
+            Timeframe::Minute,
+            timestamp(9, 0),
+            90,
+            100,
+            80,
+            95,
+            19,
         );
         let partial_bucket_minute_to_delete = bar(
             &partial_bucket_instrument_id,
@@ -1468,6 +1500,9 @@ mod tests {
                 api_hourly_bar.clone(),
                 expected_latest_minute.clone(),
                 foreign_minute.clone(),
+                hourly_only_bar,
+                out_of_range_minute,
+                cutoff_only_minute,
                 partial_bucket_minute_to_delete,
                 partial_bucket_minute.clone(),
                 fully_deleted_minute,
@@ -1480,9 +1515,9 @@ mod tests {
             .await
             .expect("find earliest old US minute bar");
         let instrument_ids = repository
-            .find_us_stock_instrument_ids()
+            .find_us_stock_minute_bar_instrument_ids(timestamp(6, 0), timestamp(8, 0), cutoff)
             .await
-            .expect("find US stock instruments");
+            .expect("find US stocks with minute bars in the target range");
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         let stats = repository
             .downsample_us_stock_minute_bar_range(
@@ -1647,7 +1682,6 @@ mod tests {
                     timestamp(9, 0).fixed_offset(),
                     vec![
                         us_instrument_id.clone(),
-                        empty_us_instrument_id,
                         fully_deleted_instrument_id.clone(),
                         partial_bucket_instrument_id.clone(),
                     ],
@@ -1759,7 +1793,7 @@ mod tests {
             write_lock.clone(),
             core_application::bars::SharedSipRefetchLease::new(write_lock),
         )
-        .downsample_old_us_stock_minute_bars(now)
+        .downsample_old_us_stock_minute_bars(now, Default::default())
         .await
         .map_err(|_| ());
         let mut remaining_minutes = Vec::new();

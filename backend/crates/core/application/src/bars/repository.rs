@@ -35,7 +35,12 @@ pub trait BarsRepository: Send + Sync {
         cutoff: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
 
-    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError>;
+    async fn find_us_stock_minute_bar_instrument_ids(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError>;
 
     async fn downsample_us_stock_minute_bar_range(
         &self,

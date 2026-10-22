@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::time::Duration as StdDuration;
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_domain::bar::Timeframe;
@@ -210,6 +211,14 @@ mod tests {
 pub struct UsStockMinuteBarsDownsampleStats {
     pub hourly_bars_inserted: u64,
     pub minute_bars_deleted: u64,
+}
+
+pub const US_STOCK_MINUTE_BARS_DOWNSAMPLE_PROCESSING_BUDGET: StdDuration =
+    StdDuration::from_secs(60);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct UsStockMinuteBarsDownsampleConfig {
+    pub max_processing_duration: Option<StdDuration>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

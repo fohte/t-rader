@@ -726,6 +726,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/notes/overview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノート一覧の代表・現行・最新 unread バージョン */
+    get: operations['list_note_overviews']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes/{id}': {
     parameters: {
       query?: never
@@ -2265,6 +2282,13 @@ export interface components {
     NoteLinksResponse: {
       incoming: components['schemas']['NoteLinkItem'][]
       outgoing: components['schemas']['NoteLinkItem'][]
+    }
+    NoteOverviewResponse: {
+      current?: null | components['schemas']['NoteVersion']
+      latest_unread?: null | components['schemas']['NoteVersion']
+      representative: components['schemas']['Note']
+      /** Format: int64 */
+      unread_version_count: number
     }
     /**
      * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
@@ -6378,6 +6402,52 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_note_overviews: {
+    parameters: {
+      query?: {
+        /**
+         * @description 表示対象。`all` は現行優先、`pending` は最新 unread のみを返す。
+         * @example all
+         */
+        view?: string
+        /** @description ノート属性で絞り込む。 */
+        kind?: string
+        /** @description view が選んだ代表バージョンのタグで絞り込む。 */
+        tag?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteOverviewResponse'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
         headers: {
           [name: string]: unknown
         }

@@ -18,9 +18,10 @@ pub use error::{BarsUseCaseError, UsStockBarsIngestError};
 pub use repository::{BarsRepository, BarsRepositoryError, SharedBarsRepository};
 pub use types::{
     BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, IngestStats, LatestPrices,
-    UsStockBarTarget, UsStockBarsIngestResult, UsStockBarsIngestStats,
-    UsStockMinuteBarsDownsampleStats, UsStockSipBarRefetchConfig, UsStockSipBarRefetchCursor,
-    UsStockSipBarRefetchTarget, UsStockSipBarRefetchTimeframe,
+    US_STOCK_MINUTE_BARS_DOWNSAMPLE_PROCESSING_BUDGET, UsStockBarTarget, UsStockBarsIngestResult,
+    UsStockBarsIngestStats, UsStockMinuteBarsDownsampleConfig, UsStockMinuteBarsDownsampleStats,
+    UsStockSipBarRefetchConfig, UsStockSipBarRefetchCursor, UsStockSipBarRefetchTarget,
+    UsStockSipBarRefetchTimeframe,
 };
 pub use us_stock_source::{
     SharedUsStockBarSource, SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery,

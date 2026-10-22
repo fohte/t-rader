@@ -315,7 +315,12 @@ mod tests {
             Err(database_error())
         }
 
-        async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
+        async fn find_us_stock_minute_bar_instrument_ids(
+            &self,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+        ) -> Result<Vec<String>, BarsRepositoryError> {
             Err(database_error())
         }
 

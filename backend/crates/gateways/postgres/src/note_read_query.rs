@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use core_application::note::{
-    Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteReadQuery, NoteReadQueryError,
-    NoteSnapshot, NoteVersion, PendingNoteVersion,
+    Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteOverview, NoteOverviewQuery,
+    NoteReadQuery, NoteReadQueryError, NoteSnapshot, NoteVersion, PendingNoteVersion,
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
@@ -16,6 +16,7 @@ const PENDING_STATUS: &str = "unread";
 
 mod links;
 mod list;
+mod overview;
 mod pending;
 mod task_notes;
 
@@ -169,6 +170,13 @@ impl NoteReadQuery for PostgresNoteReadQuery {
 
     async fn list_notes(&self, query: NoteListQuery) -> Result<NoteListPage, NoteReadQueryError> {
         self.list_query(query).await
+    }
+
+    async fn list_note_overviews(
+        &self,
+        query: NoteOverviewQuery,
+    ) -> Result<Vec<NoteOverview>, NoteReadQueryError> {
+        overview::list_note_overviews(self, query).await
     }
 
     async fn list_notes_written_by_task(
