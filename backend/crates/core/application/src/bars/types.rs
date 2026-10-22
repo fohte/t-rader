@@ -124,6 +124,17 @@ pub struct UsStockBarsIngestStats {
     pub compression_error: Option<String>,
 }
 
+impl UsStockBarsIngestStats {
+    pub(crate) fn total_rows_upserted(&self) -> u64 {
+        u64::try_from(
+            self.daily_bars_upserted
+                .saturating_add(self.hourly_bars_upserted)
+                .saturating_add(self.minute_bars_upserted),
+        )
+        .unwrap_or(u64::MAX)
+    }
+}
+
 #[derive(serde::Serialize)]
 pub struct UsStockBarsIngestResult {
     #[serde(flatten)]

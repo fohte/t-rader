@@ -11,6 +11,7 @@
 | id              | smallint                 | 1       | false    |          |         |                                           |
 | hour_started_at | timestamp with time zone |         | false    |          |         | 行数を集計する UTC 時間の開始時刻。       |
 | rows_written    | bigint                   | 0       | false    |          |         | この時間に SIP 再取得で upsert した行数。 |
+| next_allowed_at | timestamp with time zone |         | true     |          |         | 次の SIP ページ書き込みが許可される時刻。 |
 
 ## Constraints
 
@@ -39,6 +40,7 @@ erDiagram
   smallint id
   timestamp_with_time_zone hour_started_at
   bigint rows_written
+  timestamp_with_time_zone next_allowed_at
 }
 ```
 

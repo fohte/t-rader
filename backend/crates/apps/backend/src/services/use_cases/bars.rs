@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use core_application::bars::{BarsUseCases, SharedUsStockBarsWriteLock, UsStockBarsIngestUseCases};
+use core_application::bars::{
+    BarsUseCases, SharedSipRefetchLease, SharedUsStockBarsWriteLock, UsStockBarsIngestUseCases,
+};
 use gateway_postgres::PostgresBarsRepository;
 
 use super::UseCases;
@@ -16,7 +18,8 @@ impl UseCases {
     pub fn us_stock_bars_ingest(
         &self,
         write_lock: SharedUsStockBarsWriteLock,
+        sip_refetch_lease: SharedSipRefetchLease,
     ) -> UsStockBarsIngestUseCases {
-        UsStockBarsIngestUseCases::new(self.bars(), write_lock)
+        UsStockBarsIngestUseCases::new(self.bars(), write_lock, sip_refetch_lease)
     }
 }

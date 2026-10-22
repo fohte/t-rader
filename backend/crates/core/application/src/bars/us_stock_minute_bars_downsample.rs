@@ -267,9 +267,9 @@ mod tests {
     use std::time::Duration as StdDuration;
 
     use crate::bars::{
-        BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock, UsStockBarsIngestUseCases,
-        UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockMinuteBarsDownsampleConfig,
-        UsStockMinuteBarsDownsampleStats,
+        BarsUseCases, FakeBarsRepository, SharedSipRefetchLease, SharedUsStockBarsWriteLock,
+        UsStockBarsIngestUseCases, UsStockBarsWriteLock, UsStockBarsWriteLockGuard,
+        UsStockMinuteBarsDownsampleConfig, UsStockMinuteBarsDownsampleStats,
     };
     use crate::persistence::PersistenceError;
 
@@ -365,6 +365,7 @@ mod tests {
 
     struct TestDownsampleClock {
         started_at: Instant,
+        started_at_utc: DateTime<Utc>,
         elapsed: StdMutex<StdDuration>,
         lock_active: Arc<AtomicUsize>,
         sleeps: StdMutex<Vec<StdDuration>>,
@@ -375,6 +376,7 @@ mod tests {
         fn new(lock_active: Arc<AtomicUsize>) -> Self {
             Self {
                 started_at: Instant::now(),
+                started_at_utc: date("2040-01-01T00:00:00Z"),
                 elapsed: StdMutex::new(StdDuration::ZERO),
                 lock_active,
                 sleeps: StdMutex::new(Vec::new()),
@@ -399,6 +401,14 @@ mod tests {
                     .elapsed
                     .lock()
                     .expect("clock elapsed time lock is available")
+        }
+
+        fn utc_now(&self) -> DateTime<Utc> {
+            let elapsed = *self
+                .elapsed
+                .lock()
+                .expect("clock elapsed time lock is available");
+            self.started_at_utc + chrono::Duration::from_std(elapsed).unwrap_or_default()
         }
 
         async fn sleep(&self, duration: StdDuration) {
@@ -448,8 +458,12 @@ mod tests {
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
         let bars_use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
         let shared_write_lock: SharedUsStockBarsWriteLock = write_lock.clone();
-        let use_cases =
-            UsStockBarsIngestUseCases::with_clock(bars_use_cases, shared_write_lock, clock.clone());
+        let use_cases = UsStockBarsIngestUseCases::with_clock(
+            bars_use_cases,
+            shared_write_lock.clone(),
+            SharedSipRefetchLease::new(shared_write_lock),
+            clock.clone(),
+        );
         DownsampleFixture {
             use_cases,
             unit_of_work,

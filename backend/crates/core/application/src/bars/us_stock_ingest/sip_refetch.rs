@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, TimeZone, Timelike, Utc};
 
 use super::super::error::{BarsUseCaseError, UsStockBarsIngestError};
 use super::super::types::{
@@ -11,10 +11,14 @@ use super::super::us_stock_source::UsStockBarSource;
 use super::super::use_cases::UsStockBarsIngestUseCases;
 use super::super::write_throttle::WriteThrottle;
 use super::request_budget::RequestBudget;
-use super::{BatchIngestContext, IngestContext, UsStockBarRange, UsStockBarTimeframe};
+use super::{
+    BatchIngestContext, IngestContext, SIP_REFETCH_MAX_ROWS_PER_RUN, SipRefetchLimits,
+    UsStockBarRange, UsStockBarTimeframe,
+};
 
 const MAX_REQUESTS_PER_RUN: usize = usize::MAX;
-const MAX_RUN_DURATION: Duration = Duration::from_secs(90 * 60);
+const START_MINUTE: u32 = 50;
+const RUN_DEADLINE_BUFFER: Duration = Duration::from_secs(5 * 60);
 const HOURLY_HISTORY_START: (i32, u32, u32) = (2016, 1, 1);
 
 #[derive(Clone, Copy)]
@@ -39,19 +43,30 @@ impl UsStockBarsIngestUseCases {
         now: DateTime<Utc>,
         config: UsStockSipBarRefetchConfig,
     ) -> Result<UsStockBarsIngestResult, UsStockBarsIngestError> {
-        let mut budget =
-            RequestBudget::new(MAX_REQUESTS_PER_RUN, MAX_RUN_DURATION, self.clock.instant());
-        let mut lock_wait_stats = UsStockBarsIngestStats::default();
-        let write_lock_guard = match self
-            .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
+        let mut budget = RequestBudget::new(
+            MAX_REQUESTS_PER_RUN,
+            run_duration_until_next_start(now),
+            self.clock.instant(),
+        );
+        let mut stats = UsStockBarsIngestStats::default();
+        if !budget.can_start_request(self.clock.instant()) {
+            stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
+            return Ok(UsStockBarsIngestResult::new(stats, None));
+        }
+        let _lease_guard = match self
+            .us_stock_sip_refetch_lease
+            .acquire(Duration::ZERO)
             .await
         {
             Ok(Some(guard)) => guard,
-            Ok(None) => return Ok(UsStockBarsIngestResult::new(lock_wait_stats, None)),
+            Ok(None) => {
+                stats.interrupted_reason = Some("sip_refetch_lease_busy".to_owned());
+                return Ok(UsStockBarsIngestResult::new(stats, None));
+            }
             Err(error) => {
                 return Err(UsStockBarsIngestError::new(
-                    UsStockBarsIngestResult::new(lock_wait_stats, None),
-                    error,
+                    UsStockBarsIngestResult::new(stats, None),
+                    error.into(),
                 ));
             }
         };
@@ -60,9 +75,11 @@ impl UsStockBarsIngestUseCases {
             budget,
             stats: UsStockBarsIngestStats::default(),
             write_throttle: WriteThrottle::default(),
-            sip_refetch_max_rows_per_hour: Some(config.max_rows_per_hour),
+            sip_refetch: Some(SipRefetchLimits {
+                max_rows_per_hour: config.max_rows_per_hour,
+                max_rows_per_run: SIP_REFETCH_MAX_ROWS_PER_RUN,
+            }),
         };
-        context.stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
         let refetch_result = self
             .refetch_pending_targets(source, now, config, &mut context)
             .await;
@@ -72,13 +89,10 @@ impl UsStockBarsIngestUseCases {
                     context.stats.interrupted_reason =
                         context.budget.interrupted_reason.map(str::to_owned);
                 }
-                Ok(UsStockBarsIngestResult::new(
-                    context.stats,
-                    Some(write_lock_guard),
-                ))
+                Ok(UsStockBarsIngestResult::new(context.stats, None))
             }
             Err(error) => Err(UsStockBarsIngestError::new(
-                UsStockBarsIngestResult::new(context.stats, Some(write_lock_guard)),
+                UsStockBarsIngestResult::new(context.stats, None),
                 error,
             )),
         }
@@ -282,6 +296,28 @@ impl UsStockBarsIngestUseCases {
     }
 }
 
+fn run_duration_until_next_start(now: DateTime<Utc>) -> Duration {
+    let current_hour_start = now
+        .date_naive()
+        .and_hms_opt(now.hour(), START_MINUTE, 0)
+        .map(|time| time.and_utc())
+        .unwrap_or(now);
+    let next_start = if current_hour_start > now {
+        current_hour_start
+    } else {
+        current_hour_start
+            .checked_add_signed(ChronoDuration::hours(1))
+            .unwrap_or(now)
+    };
+    let latest_finish = next_start
+        .checked_sub_signed(ChronoDuration::from_std(RUN_DEADLINE_BUFFER).unwrap_or_default())
+        .unwrap_or(now);
+    latest_finish
+        .signed_duration_since(now)
+        .to_std()
+        .unwrap_or_default()
+}
+
 enum RefetchFrameResult {
     Completed,
     Interrupted,
@@ -292,19 +328,24 @@ enum RefetchFrameResult {
 mod tests {
     use std::{
         collections::{HashMap, HashSet},
-        sync::Arc,
+        sync::{
+            Arc, Mutex as StdMutex,
+            atomic::{AtomicUsize, Ordering},
+        },
         time::{Duration, Instant},
     };
 
     use async_trait::async_trait;
-    use chrono::{TimeZone, Utc};
+    use chrono::{DateTime, TimeZone, Utc};
     use core_domain::bar::{Bar, Timeframe};
+    use rstest::rstest;
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
     use crate::{
+        bars::clock::BarsIngestClock,
         bars::{
-            BarsUseCases, SharedBarsRepository, SharedUsStockBarsWriteLock,
+            BarsUseCases, SharedBarsRepository, SharedSipRefetchLease, SharedUsStockBarsWriteLock,
             SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
             UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsIngestUseCases,
             UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockSipBarRefetchConfig,
@@ -315,12 +356,89 @@ mod tests {
         unit_of_work::{FakeUnitOfWork, SharedUnitOfWork},
     };
 
+    use super::super::{
+        BatchIngestContext, IngestContext, SIP_REFETCH_MAX_ROWS_PER_RUN, SipRefetchLimits,
+        SipRefetchProgressContext, UsStockBarRange, UsStockBarTimeframe,
+    };
+    use super::{RequestBudget, WriteThrottle};
+
     #[derive(Default)]
     struct FakeSource {
         calls: Mutex<Vec<UsStockBarQuery>>,
+        page_limits: Mutex<Vec<Option<u32>>>,
         bars: Mutex<Vec<Bar>>,
         skipped_instruments: Mutex<HashMap<String, String>>,
         scripted_pages: Mutex<Vec<UsStockBarPage>>,
+    }
+
+    struct FakeClock {
+        started_at: Instant,
+        started_at_utc: DateTime<Utc>,
+        elapsed: StdMutex<Duration>,
+        sleeps: StdMutex<Vec<Duration>>,
+        write_lock_held_during_sleep: StdMutex<Vec<bool>>,
+        active_write_locks: Arc<AtomicUsize>,
+    }
+
+    impl FakeClock {
+        fn new(active_write_locks: Arc<AtomicUsize>) -> Self {
+            Self {
+                started_at: Instant::now(),
+                started_at_utc: Utc::now(),
+                elapsed: StdMutex::default(),
+                sleeps: StdMutex::default(),
+                write_lock_held_during_sleep: StdMutex::default(),
+                active_write_locks,
+            }
+        }
+
+        fn elapsed(&self) -> Duration {
+            *self
+                .elapsed
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+
+        fn sleeps(&self) -> Vec<Duration> {
+            self.sleeps
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+
+        fn write_lock_held_during_sleep(&self) -> Vec<bool> {
+            self.write_lock_held_during_sleep
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    #[async_trait]
+    impl BarsIngestClock for FakeClock {
+        fn instant(&self) -> Instant {
+            self.started_at + self.elapsed()
+        }
+
+        fn utc_now(&self) -> DateTime<Utc> {
+            self.started_at_utc + chrono::Duration::from_std(self.elapsed()).unwrap_or_default()
+        }
+
+        async fn sleep(&self, duration: Duration) {
+            self.write_lock_held_during_sleep
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(self.active_write_locks.load(Ordering::SeqCst) > 0);
+            self.sleeps
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(duration);
+            let mut elapsed = self
+                .elapsed
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *elapsed = elapsed.saturating_add(duration);
+        }
     }
 
     #[async_trait]
@@ -328,9 +446,11 @@ mod tests {
         async fn fetch_page(
             &self,
             query: &UsStockBarQuery,
+            max_rows: Option<u32>,
             _deadline: Instant,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
             self.calls.lock().await.push(query.clone());
+            self.page_limits.lock().await.push(max_rows);
             let scripted_page = {
                 let mut pages = self.scripted_pages.lock().await;
                 (!pages.is_empty()).then(|| pages.remove(0))
@@ -396,7 +516,24 @@ mod tests {
 
     struct ImmediateWriteLockGuard;
 
+    struct BusyWriteLock;
+
+    struct TrackingWriteLock {
+        active_write_locks: Arc<AtomicUsize>,
+    }
+
+    struct TrackingWriteLockGuard {
+        active_write_locks: Arc<AtomicUsize>,
+    }
+
     impl UsStockBarsWriteLockGuard for ImmediateWriteLockGuard {}
+    impl UsStockBarsWriteLockGuard for TrackingWriteLockGuard {}
+
+    impl Drop for TrackingWriteLockGuard {
+        fn drop(&mut self) {
+            self.active_write_locks.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
 
     #[async_trait]
     impl UsStockBarsWriteLock for ImmediateWriteLock {
@@ -408,29 +545,64 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl UsStockBarsWriteLock for BusyWriteLock {
+        async fn acquire(
+            &self,
+            _wait_timeout: Duration,
+        ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
+            Ok(None)
+        }
+    }
+
+    #[async_trait]
+    impl UsStockBarsWriteLock for TrackingWriteLock {
+        async fn acquire(
+            &self,
+            _wait_timeout: Duration,
+        ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
+            self.active_write_locks.fetch_add(1, Ordering::SeqCst);
+            Ok(Some(Box::new(TrackingWriteLockGuard {
+                active_write_locks: self.active_write_locks.clone(),
+            })))
+        }
+    }
+
     struct Harness {
         use_cases: UsStockBarsIngestUseCases,
         repository: Arc<crate::bars::FakeBarsRepository>,
         source: FakeSource,
+        clock: Arc<FakeClock>,
     }
 
     fn harness() -> Harness {
+        harness_with_lease(SharedSipRefetchLease::new(Arc::new(ImmediateWriteLock)))
+    }
+
+    fn harness_with_lease(lease: SharedSipRefetchLease) -> Harness {
         let repository = Arc::new(crate::bars::FakeBarsRepository::new());
         let repository_trait: SharedBarsRepository = repository.clone();
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let unit_of_work_trait: SharedUnitOfWork = unit_of_work;
-        let write_lock: SharedUsStockBarsWriteLock = Arc::new(ImmediateWriteLock);
+        let active_write_locks = Arc::new(AtomicUsize::new(0));
+        let clock = Arc::new(FakeClock::new(active_write_locks.clone()));
+        let write_lock: SharedUsStockBarsWriteLock =
+            Arc::new(TrackingWriteLock { active_write_locks });
         Harness {
-            use_cases: UsStockBarsIngestUseCases::new(
+            use_cases: UsStockBarsIngestUseCases::with_clock(
                 BarsUseCases::new(unit_of_work_trait, repository_trait),
                 write_lock,
+                lease,
+                clock.clone(),
             ),
             repository,
             source: FakeSource::default(),
+            clock,
         }
     }
 
-    fn without_runtime_throttle_time(mut stats: UsStockBarsIngestStats) -> UsStockBarsIngestStats {
+    fn without_runtime_waits(mut stats: UsStockBarsIngestStats) -> UsStockBarsIngestStats {
+        stats.write_lock_wait_ms = 0;
         stats.write_throttle_wait_ms = 0;
         stats
     }
@@ -453,6 +625,177 @@ mod tests {
         Utc.with_ymd_and_hms(2026, 10, 18, 16, 30, 0)
             .single()
             .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn skips_source_requests_when_the_sip_lease_is_busy() {
+        let harness = harness_with_lease(SharedSipRefetchLease::new(Arc::new(BusyWriteLock)));
+        let result = harness
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &harness.source,
+                fixed_now(),
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 10,
+                },
+            )
+            .await
+            .map(|result| without_runtime_waits(result.stats))
+            .map_err(|error| error.to_string());
+        let source_requests = harness.source.calls.lock().await.clone();
+
+        assert_eq!(
+            (result, source_requests),
+            (
+                Ok::<_, String>(UsStockBarsIngestStats {
+                    interrupted_reason: Some("sip_refetch_lease_busy".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                }),
+                Vec::<UsStockBarQuery>::new(),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_page_that_would_exceed_the_sip_run_row_limit() {
+        let harness = harness();
+        let instrument_id = "DEMO-STOCK";
+        let range = UsStockBarRange {
+            from: fixed_now(),
+            to: fixed_now() + chrono::Duration::days(1),
+        };
+        let page_bars = (0..1_000)
+            .map(|index| {
+                bar(
+                    instrument_id,
+                    Timeframe::Minute,
+                    range.from + chrono::Duration::seconds(i64::from(index)),
+                )
+            })
+            .collect::<Vec<_>>();
+        harness
+            .source
+            .scripted_pages
+            .lock()
+            .await
+            .push(UsStockBarPage {
+                bars: page_bars,
+                next_page_token: Some("page-next".to_owned()),
+                skipped_instruments: Vec::new(),
+            });
+        let cursor = UsStockSipBarRefetchCursor {
+            timeframe: UsStockSipBarRefetchTimeframe::Minute,
+            range_from: range.from,
+            range_to: range.to,
+            page_token: Some("page-current".to_owned()),
+        };
+        harness
+            .repository
+            .us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .insert(instrument_id.to_owned(), cursor.clone());
+        let mut context = IngestContext {
+            budget: RequestBudget::new(10, Duration::from_secs(60 * 60), harness.clock.instant()),
+            stats: UsStockBarsIngestStats {
+                daily_bars_upserted: 999_500,
+                ..UsStockBarsIngestStats::default()
+            },
+            write_throttle: WriteThrottle::default(),
+            sip_refetch: Some(SipRefetchLimits {
+                max_rows_per_hour: 1_000_000,
+                max_rows_per_run: SIP_REFETCH_MAX_ROWS_PER_RUN,
+            }),
+        };
+        let outcome = {
+            let mut batch_context = BatchIngestContext::new(&mut context);
+            batch_context.sip_refetch_progress = Some(SipRefetchProgressContext {
+                instrument_id: instrument_id.to_owned(),
+                resume_after: Some(cursor.clone()),
+            });
+            batch_context.page_token = cursor.page_token.clone();
+            harness
+                .use_cases
+                .ingest_batch(
+                    &harness.source,
+                    &[instrument_id.to_owned()],
+                    UsStockBarTimeframe::Minute,
+                    range,
+                    &mut batch_context,
+                )
+                .await
+                .map(|outcome| (outcome.completed, outcome.requested))
+                .map_err(|error| error.to_string())
+        };
+        let reserved_rows = *harness
+            .repository
+            .us_stock_sip_refetch_rows_reserved
+            .lock()
+            .await;
+        let saved_cursors = harness
+            .repository
+            .us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .clone();
+        let stored_bars = harness.repository.bars.lock().await.clone();
+        let source_requests = harness.source.calls.lock().await.clone();
+        let page_limits = harness.source.page_limits.lock().await.clone();
+        let stats = without_runtime_waits(context.stats);
+
+        assert_eq!(
+            (
+                outcome,
+                stats,
+                reserved_rows,
+                saved_cursors,
+                stored_bars,
+                source_requests,
+                page_limits,
+            ),
+            (
+                Ok::<_, String>((false, true)),
+                UsStockBarsIngestStats {
+                    daily_bars_upserted: 999_500,
+                    requests_attempted: 1,
+                    interrupted_reason: Some("sip_refetch_run_row_limit_reached".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                0,
+                HashMap::from([(instrument_id.to_owned(), cursor)]),
+                Vec::new(),
+                vec![UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Minute,
+                    from: range.from,
+                    to: range.to,
+                    page_token: Some("page-current".to_owned()),
+                }],
+                vec![Some(1_000)],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::at_the_scheduled_minute(50, 0, 55 * 60)]
+    #[case::after_the_scheduled_minute(55, 0, 50 * 60)]
+    #[case::inside_the_safety_buffer(46, 0, 0)]
+    #[case::before_the_scheduled_minute(20, 0, 25 * 60)]
+    fn ends_before_the_next_sip_start(
+        #[case] minute: u32,
+        #[case] second: u32,
+        #[case] expected_seconds: u64,
+    ) {
+        let now = Utc
+            .with_ymd_and_hms(2026, 10, 18, 16, minute, second)
+            .single()
+            .unwrap_or_default();
+
+        assert_eq!(
+            super::run_duration_until_next_start(now),
+            Duration::from_secs(expected_seconds),
+        );
     }
 
     #[tokio::test]
@@ -500,6 +843,13 @@ mod tests {
         let cutoff = us_stock_sip_bars_history_cutoff(now);
         let hourly_cutoff = super::super::super::us_stock_hourly_history_cutoff(now);
         let queries = fixture.source.calls.lock().await.clone();
+        let page_limits = fixture.source.page_limits.lock().await.clone();
+        let pacing_millis = fixture
+            .repository
+            .us_stock_sip_refetch_pacing_millis
+            .lock()
+            .await
+            .clone();
         let completed = fixture
             .repository
             .us_stock_sip_refetch_completed
@@ -515,8 +865,12 @@ mod tests {
 
         assert_eq!(
             (
-                without_runtime_throttle_time(result.stats),
+                without_runtime_waits(result.stats),
                 queries,
+                page_limits,
+                pacing_millis,
+                fixture.clock.sleeps(),
+                fixture.clock.write_lock_held_during_sleep(),
                 completed,
                 hourly_progress,
             ),
@@ -559,6 +913,10 @@ mod tests {
                         page_token: None,
                     },
                 ],
+                vec![Some(1_000), Some(1_000), Some(1_000)],
+                vec![3, 3, 3],
+                vec![Duration::from_millis(3), Duration::from_millis(3)],
+                vec![false, false],
                 HashSet::from([instrument_id.to_owned()]),
                 std::collections::HashMap::from([(
                     instrument_id.to_owned(),
@@ -736,9 +1094,9 @@ mod tests {
         };
         assert_eq!(
             (
-                without_runtime_throttle_time(first.stats),
+                without_runtime_waits(first.stats),
                 cursor_after_first,
-                without_runtime_throttle_time(second.stats),
+                without_runtime_waits(second.stats),
                 queries,
                 completed,
             ),
@@ -968,7 +1326,7 @@ mod tests {
                         minute_bars_upserted: 0,
                         hourly_bars_upserted: 0,
                         write_lock_wait_ms: 0,
-                        write_throttle_wait_ms: 0,
+                        write_throttle_wait_ms: 3,
                         skipped_instruments: Vec::new(),
                         interrupted_reason: None,
                         compression_error: None,
@@ -983,6 +1341,239 @@ mod tests {
                     first_instrument_id.to_owned(),
                     second_instrument_id.to_owned(),
                 ]),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn paces_one_thousand_rows_for_three_seconds() {
+        let fixture = harness();
+        let instrument_id = "US:DEMO-SIP-BULK";
+        let now = fixed_now();
+        let bars = (1..=1_000_i64)
+            .map(|days_ago| {
+                bar(
+                    instrument_id,
+                    Timeframe::Daily,
+                    now - chrono::Duration::days(days_ago),
+                )
+            })
+            .collect::<Vec<_>>();
+        fixture
+            .repository
+            .seed_us_stock_daily_targets(vec![instrument_id.to_owned()])
+            .await;
+        fixture.repository.seed_bars(bars.clone()).await;
+        *fixture.source.bars.lock().await = bars;
+
+        let result = fixture
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &fixture.source,
+                now,
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 10_000,
+                },
+            )
+            .await
+            .expect("SIP refetch succeeds");
+        let actual = (
+            result.stats,
+            fixture.source.page_limits.lock().await.clone(),
+            fixture
+                .repository
+                .us_stock_sip_refetch_pacing_millis
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    daily_bars_upserted: 1_000,
+                    minute_bars_upserted: 0,
+                    hourly_bars_upserted: 0,
+                    write_lock_wait_ms: 0,
+                    write_throttle_wait_ms: 0,
+                    skipped_instruments: Vec::new(),
+                    interrupted_reason: None,
+                    compression_error: None,
+                },
+                vec![Some(1_000)],
+                vec![3_000],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn waits_for_persisted_pacing_before_the_first_page_after_restart() {
+        let fixture = harness();
+        let instrument_id = "US:DEMO-SIP-RESTART";
+        let now = fixed_now();
+        let stored_deadline = fixture.clock.utc_now() + chrono::Duration::seconds(5);
+        *fixture
+            .repository
+            .us_stock_sip_refetch_next_allowed_at
+            .lock()
+            .await = Some(stored_deadline);
+        fixture
+            .repository
+            .seed_us_stock_daily_targets(vec![instrument_id.to_owned()])
+            .await;
+        let existing_bar = bar(
+            instrument_id,
+            Timeframe::Daily,
+            now - chrono::Duration::days(5),
+        );
+        fixture
+            .repository
+            .seed_bars(vec![existing_bar.clone()])
+            .await;
+        *fixture.source.bars.lock().await = vec![existing_bar];
+
+        let result = fixture
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &fixture.source,
+                now,
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 10,
+                },
+            )
+            .await
+            .expect("SIP refetch succeeds");
+        let actual = (
+            result.stats,
+            fixture.clock.sleeps(),
+            fixture.clock.write_lock_held_during_sleep(),
+            fixture.source.page_limits.lock().await.clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    daily_bars_upserted: 1,
+                    minute_bars_upserted: 0,
+                    hourly_bars_upserted: 0,
+                    write_lock_wait_ms: 0,
+                    write_throttle_wait_ms: 5_000,
+                    skipped_instruments: Vec::new(),
+                    interrupted_reason: None,
+                    compression_error: None,
+                },
+                vec![Duration::from_secs(5)],
+                vec![false],
+                vec![Some(1_000)],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupts_before_the_deadline_and_keeps_the_current_page_cursor() {
+        let fixture = harness();
+        let instrument_id = "US:DEMO-SIP-DEADLINE";
+        let now = Utc
+            .with_ymd_and_hms(2026, 10, 18, 16, 44, 55)
+            .single()
+            .unwrap_or_default();
+        let cursor = UsStockSipBarRefetchCursor {
+            timeframe: UsStockSipBarRefetchTimeframe::Daily,
+            range_from: now - chrono::Duration::days(10),
+            range_to: now - chrono::Duration::days(1),
+            page_token: Some("synthetic-page-token".to_owned()),
+        };
+        fixture
+            .repository
+            .seed_us_stock_daily_targets(vec![instrument_id.to_owned()])
+            .await;
+        fixture
+            .repository
+            .seed_bars(vec![bar(
+                instrument_id,
+                Timeframe::Daily,
+                now - chrono::Duration::days(5),
+            )])
+            .await;
+        fixture
+            .repository
+            .us_stock_sip_refetch_cursors
+            .lock()
+            .await
+            .insert(instrument_id.to_owned(), cursor.clone());
+        *fixture
+            .repository
+            .us_stock_sip_refetch_next_allowed_at
+            .lock()
+            .await = Some(fixture.clock.utc_now() + chrono::Duration::seconds(60));
+
+        let result = fixture
+            .use_cases
+            .refetch_us_stock_bars_via_sip(
+                &fixture.source,
+                now,
+                UsStockSipBarRefetchConfig {
+                    max_symbols: None,
+                    max_rows_per_hour: 10,
+                },
+            )
+            .await
+            .expect("deadline interruption is reported in stats");
+        let actual = (
+            result.stats,
+            fixture.source.calls.lock().await.clone(),
+            fixture.source.page_limits.lock().await.clone(),
+            fixture.clock.sleeps(),
+            fixture.clock.write_lock_held_during_sleep(),
+            fixture
+                .repository
+                .us_stock_sip_refetch_cursors
+                .lock()
+                .await
+                .clone(),
+            fixture
+                .repository
+                .us_stock_sip_refetch_pacing_millis
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    daily_bars_upserted: 0,
+                    minute_bars_upserted: 0,
+                    hourly_bars_upserted: 0,
+                    write_lock_wait_ms: 0,
+                    write_throttle_wait_ms: 5_000,
+                    skipped_instruments: Vec::new(),
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    compression_error: None,
+                },
+                vec![UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Daily,
+                    from: cursor.range_from,
+                    to: cursor.range_to,
+                    page_token: cursor.page_token.clone(),
+                }],
+                vec![Some(1_000)],
+                vec![Duration::from_secs(5)],
+                vec![false],
+                HashMap::from([(instrument_id.to_owned(), cursor)]),
+                Vec::<u64>::new(),
             ),
         );
     }

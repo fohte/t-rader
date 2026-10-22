@@ -338,9 +338,15 @@ async fn main() -> Result<(), StartupError> {
     let us_stock_bars_write_lock: core_application::bars::SharedUsStockBarsWriteLock = Arc::new(
         PostgresUsStockBarsWriteLock::new(db.get_postgres_connection_pool().clone()),
     );
+    let us_stock_sip_refetch_lease = core_application::bars::SharedSipRefetchLease::new(Arc::new(
+        PostgresUsStockBarsWriteLock::new_for_sip_refetch_job(
+            db.get_postgres_connection_pool().clone(),
+        ),
+    ));
     let dependencies = SchedulerDependencies {
         bars: use_cases.bars(),
-        us_stock_bars_ingest: use_cases.us_stock_bars_ingest(us_stock_bars_write_lock),
+        us_stock_bars_ingest: use_cases
+            .us_stock_bars_ingest(us_stock_bars_write_lock, us_stock_sip_refetch_lease),
         calendar_events: use_cases.calendar_events(),
         boj_calendar_source,
         ecb_calendar_source,

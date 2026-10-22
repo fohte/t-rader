@@ -400,7 +400,15 @@ mod tests {
             _: &UnitOfWorkTransaction,
             _: u64,
             _: u64,
+            _: chrono::DateTime<Utc>,
+            _: u64,
         ) -> Result<bool, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_us_stock_sip_refetch_next_allowed_at(
+            &self,
+        ) -> Result<Option<chrono::DateTime<Utc>>, BarsRepositoryError> {
             Err(database_error())
         }
 

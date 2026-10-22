@@ -382,6 +382,7 @@ comments:
     columnComments:
       hour_started_at: '行数を集計する UTC 時間の開始時刻。'
       rows_written: 'この時間に SIP 再取得で upsert した行数。'
+      next_allowed_at: '次の SIP ページ書き込みが許可される時刻。'
   - table: cross_shareholding_documents
     tableComment: 'EDINET の政策保有株式に関する提出書類と明細を保持する。'
     columnComments:

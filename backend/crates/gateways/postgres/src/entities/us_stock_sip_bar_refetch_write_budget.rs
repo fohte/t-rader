@@ -10,6 +10,7 @@ pub struct Model {
     pub id: i16,
     pub hour_started_at: DateTimeWithTimeZone,
     pub rows_written: i64,
+    pub next_allowed_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
