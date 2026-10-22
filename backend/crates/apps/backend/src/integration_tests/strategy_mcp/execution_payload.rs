@@ -14,14 +14,14 @@ use core_application::{
     strategy_scope::StrategyScope,
 };
 use gateway_postgres::entities::{
-    custom_indicator, custom_indicator_evaluation, execution_reservation, strategy_task,
-    task_execution_definition_snapshot, task_execution_payload, task_execution_state,
+    custom_indicator, custom_indicator_evaluation, strategy_task,
+    task_execution_definition_snapshot, task_execution_payload,
 };
 use indoc::indoc;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
-    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -435,11 +435,11 @@ async fn task_only_mcp_reads_authorize_snapshot_and_sealed_payload_with_fixed_de
 }
 
 #[backend_test_macros::database_test]
-async fn operation_mcp_call_respects_zero_task_tool_budget_without_dispatch(
+async fn operation_mcp_call_respects_zero_tool_budgets_without_dispatch(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
-    let task = tests_common::create_test_execution_task(
+    let task_wide_task = tests_common::create_test_execution_task(
         &db,
         strategy_id,
         indoc! {"
@@ -449,8 +449,18 @@ async fn operation_mcp_call_respects_zero_task_tool_budget_without_dispatch(
         "},
     )
     .await;
-    let execution_id = format!("{}:{}", task.a2a_task_id, Uuid::from_u128(712));
-    let result = tests_common::build_server(db.clone())
+    let scoped_task = tests_common::create_test_execution_task(
+        &db,
+        strategy_id,
+        indoc! {"
+            tool_limits:
+              execute_operation: 0
+            phases: []
+        "},
+    )
+    .await;
+    let task_wide_execution_id = format!("{}:{}", task_wide_task.a2a_task_id, Uuid::from_u128(712));
+    let task_wide_result = tests_common::build_server(db.clone())
         .invoke::<_, Value>(
             "execute_operation",
             strategy_id,
@@ -459,37 +469,45 @@ async fn operation_mcp_call_respects_zero_task_tool_budget_without_dispatch(
                 "args": {},
                 "payload_inputs": [],
             }),
-            Some(execution_id),
+            Some(task_wide_execution_id),
             None,
         )
         .await
         .map(|_| ())
         .map_err(|error| error.message.to_string());
-    let state = task_execution_state::Entity::find_by_id(task.task_id)
-        .one(&db)
+    let scoped_execution_id = format!("{}:{}", scoped_task.a2a_task_id, Uuid::from_u128(713));
+    let scoped_result = tests_common::build_server(db.clone())
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            json!({
+                "name": "synthetic-operation",
+                "args": {},
+                "payload_inputs": [],
+            }),
+            Some(scoped_execution_id),
+            None,
+        )
         .await
-        .expect("query task execution budget state")
-        .expect("task execution budget state exists");
-    let reservation_count = execution_reservation::Entity::find()
-        .filter(execution_reservation::Column::TaskId.eq(task.task_id))
-        .count(&db)
-        .await
-        .expect("count task execution reservations");
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    let task_wide_usage =
+        super::super::execution_budget::task_budget_usage(&db, task_wide_task.task_id).await;
+    let scoped_usage =
+        super::super::execution_budget::task_budget_usage(&db, scoped_task.task_id).await;
 
     assert_eq!(
         (
-            result,
-            state.model_calls_used,
-            state.tool_calls_used,
-            state.subagent_runs_used,
-            reservation_count,
+            task_wide_result,
+            task_wide_usage,
+            scoped_result,
+            scoped_usage,
         ),
         (
             Err("execution budget limit was exceeded for __task_total".into()),
-            0,
-            0,
-            0,
-            0,
+            (0, 0, 0, 0),
+            Err("execution budget limit was exceeded for execute_operation".into()),
+            (0, 0, 0, 0),
         ),
     );
 }

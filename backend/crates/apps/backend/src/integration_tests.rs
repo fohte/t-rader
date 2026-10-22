@@ -5,7 +5,7 @@
 
 mod agent_webhook;
 pub(crate) mod calendar_test_support;
-mod execution_budget;
+pub(crate) mod execution_budget;
 mod external_webhook;
 mod frontend_api;
 pub(crate) mod mcp_tool;

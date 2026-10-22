@@ -19,6 +19,29 @@ use gateway_postgres::entities::{
     task_execution_state,
 };
 
+pub(crate) async fn task_budget_usage(
+    db: &gateway_postgres::DatabaseHandle,
+    task_id: Uuid,
+) -> (i64, i64, i64, u64) {
+    let state = task_execution_state::Entity::find_by_id(task_id)
+        .one(db)
+        .await
+        .expect("query task execution budget state")
+        .expect("task execution budget state exists");
+    let reservation_count = execution_reservation::Entity::find()
+        .filter(execution_reservation::Column::TaskId.eq(task_id))
+        .count(db)
+        .await
+        .expect("count task execution reservations");
+
+    (
+        state.model_calls_used,
+        state.tool_calls_used,
+        state.subagent_runs_used,
+        reservation_count,
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 enum ResumeMode {
     Manual,
@@ -136,33 +159,14 @@ async fn zero_model_and_subagent_task_limits_reject_without_reservations(
         }),
     )
     .await;
-    let state = task_execution_state::Entity::find_by_id(task.task_id)
-        .one(&db)
-        .await
-        .expect("query task execution budget state")
-        .expect("task execution budget state exists");
-    let reservation_count = execution_reservation::Entity::find()
-        .filter(execution_reservation::Column::TaskId.eq(task.task_id))
-        .count(&db)
-        .await
-        .expect("count task execution reservations");
+    let usage = task_budget_usage(&db, task.task_id).await;
 
     assert_eq!(
-        (
-            model_call,
-            child_run,
-            state.model_calls_used,
-            state.tool_calls_used,
-            state.subagent_runs_used,
-            reservation_count,
-        ),
+        (model_call, child_run, usage),
         (
             Err("execution budget limit was exceeded for __task_total".into()),
             Err("execution budget limit was exceeded for __task_total".into()),
-            0,
-            0,
-            0,
-            0,
+            (0, 0, 0, 0),
         ),
     );
 }
