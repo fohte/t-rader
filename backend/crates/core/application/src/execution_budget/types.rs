@@ -90,5 +90,4 @@ pub struct BudgetReservation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetReservationResult {
     pub reservations: Vec<BudgetReservation>,
-    pub inserted: bool,
 }

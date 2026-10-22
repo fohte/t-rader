@@ -11,16 +11,14 @@ use core_application::{
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use uuid::Uuid;
 
-use crate::{DatabaseHandle, persistence::persistence_error, transaction::transaction_ref};
+use crate::{persistence::persistence_error, transaction::transaction_ref};
 
-#[derive(Clone)]
-pub struct PostgresExecutionBudgetRepository {
-    db: DatabaseHandle,
-}
+#[derive(Clone, Default)]
+pub struct PostgresExecutionBudgetRepository;
 
 impl PostgresExecutionBudgetRepository {
-    pub fn new(db: DatabaseHandle) -> Self {
-        Self { db }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -108,7 +106,6 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
             }
             return Ok(BudgetReservationResult {
                 reservations: existing,
-                inserted: false,
             });
         }
 
@@ -185,10 +182,7 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
                 updated_at: command.now,
             });
         }
-        Ok(BudgetReservationResult {
-            reservations,
-            inserted: true,
-        })
+        Ok(BudgetReservationResult { reservations })
     }
 
     async fn transition_call(
@@ -261,23 +255,6 @@ impl ExecutionBudgetRepository for PostgresExecutionBudgetRepository {
                 reservation
             })
             .collect())
-    }
-
-    async fn find_deadline(
-        &self,
-        task_id: Uuid,
-    ) -> Result<Option<DateTime<FixedOffset>>, ExecutionBudgetRepositoryError> {
-        let row = self
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT deadline_at FROM task_execution_state WHERE task_id = $1",
-                [task_id.into()],
-            ))
-            .await
-            .map_err(database_error)?;
-        row.map(|row| row.try_get("", "deadline_at").map_err(database_error))
-            .transpose()
     }
 }
 
@@ -397,16 +374,15 @@ mod tests {
 
     #[derive(Debug, PartialEq, Eq)]
     struct ReservationObservation {
-        first_inserted: bool,
-        replay_inserted: bool,
+        first_reservations: usize,
         replay_matches_original: bool,
-        second_inserted: bool,
+        second_reservations: usize,
         over_limit_rejected: bool,
         duplicate_release_is_idempotent: bool,
         released_call_cannot_be_reused: bool,
         consumed_call_cannot_be_released: bool,
-        retry_inserted: bool,
-        separate_task_inserted: bool,
+        retry_has_distinct_reservation: bool,
+        separate_task_reservations: usize,
         expired_call_rejected: bool,
         first_task_counter: i64,
         separate_task_counter: i64,
@@ -421,7 +397,7 @@ mod tests {
         let task_id = Uuid::new_v4();
         let other_task_id = Uuid::new_v4();
         let expired_task_id = Uuid::new_v4();
-        let repository = PostgresExecutionBudgetRepository::new(db.clone());
+        let repository = PostgresExecutionBudgetRepository::new();
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         insert_strategy(&db, strategy_id).await;
         insert_task(
@@ -554,10 +530,9 @@ mod tests {
         .await;
 
         let actual = ReservationObservation {
-            first_inserted: first.inserted,
-            replay_inserted: replay.inserted,
+            first_reservations: first.reservations.len(),
             replay_matches_original: replay.reservations == first.reservations,
-            second_inserted: second.inserted,
+            second_reservations: second.reservations.len(),
             over_limit_rejected: matches!(
                 over_limit,
                 Err(ExecutionBudgetRepositoryError::LimitExceeded { .. })
@@ -571,8 +546,9 @@ mod tests {
                 consumed_release,
                 Err(ExecutionBudgetRepositoryError::InvalidReservationState)
             ),
-            retry_inserted: retried_call.inserted,
-            separate_task_inserted: separate_task.inserted,
+            retry_has_distinct_reservation: retried_call.reservations[0].reservation_id
+                != first.reservations[0].reservation_id,
+            separate_task_reservations: separate_task.reservations.len(),
             expired_call_rejected: matches!(
                 expired,
                 Err(ExecutionBudgetRepositoryError::DeadlineExpired)
@@ -586,16 +562,15 @@ mod tests {
         assert_eq!(
             actual,
             ReservationObservation {
-                first_inserted: true,
-                replay_inserted: false,
+                first_reservations: 1,
                 replay_matches_original: true,
-                second_inserted: true,
+                second_reservations: 1,
                 over_limit_rejected: true,
                 duplicate_release_is_idempotent: true,
                 released_call_cannot_be_reused: true,
                 consumed_call_cannot_be_released: true,
-                retry_inserted: true,
-                separate_task_inserted: true,
+                retry_has_distinct_reservation: true,
+                separate_task_reservations: 1,
                 expired_call_rejected: true,
                 first_task_counter: 2,
                 separate_task_counter: 1,
@@ -621,7 +596,7 @@ mod tests {
         let deadline_at = now + chrono::Duration::minutes(2);
         insert_strategy(&db, strategy_id).await;
         insert_task(&db, strategy_id, task_id, deadline_at).await;
-        let repository = PostgresExecutionBudgetRepository::new(db.clone());
+        let repository = PostgresExecutionBudgetRepository::new();
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("begin budget setup");
         repository

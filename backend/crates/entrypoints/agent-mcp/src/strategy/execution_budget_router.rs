@@ -55,6 +55,7 @@ impl StrategyServer {
             None
         };
 
+        // MCP tool の結果だけでは外部送信の有無を判別できず、失敗時も消費扱いを維持する。
         let result = Self::tool_router()
             .call(ToolCallContext::new(self, request, context))
             .await;

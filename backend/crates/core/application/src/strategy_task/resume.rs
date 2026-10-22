@@ -57,10 +57,7 @@ impl StrategyTaskUseCases {
             updated_at: claim_now,
             ..task
         };
-        match self
-            .submit_claimed_task(agent_client, claimed_task, task.deadline_at)
-            .await
-        {
+        match self.submit_claimed_task(agent_client, claimed_task).await {
             Ok(submitted) => tracing::info!(
                 task_id = %submitted.task_id,
                 a2a_task_id = submitted.a2a_task_id,
@@ -104,15 +101,13 @@ impl StrategyTaskUseCases {
             claimed_task.auto_resumed_at = Some(claim_now);
         }
 
-        self.submit_claimed_task(agent_client, claimed_task.clone(), claimed_task.deadline_at)
-            .await
+        self.submit_claimed_task(agent_client, claimed_task).await
     }
 
     async fn submit_claimed_task(
         &self,
         agent_client: &dyn AgentTaskClient,
         claimed_task: super::types::StrategyTask,
-        deadline_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> Result<SubmittedTask, ResumeTaskError> {
         let task_id = claimed_task.task_id;
         let steps = self.repository.list_steps(task_id).await?;
@@ -137,7 +132,7 @@ impl StrategyTaskUseCases {
                 prompt: claimed_task.prompt.clone(),
                 purpose: claimed_task.purpose.clone(),
                 resume_steps: (!resume_steps.is_empty()).then_some(resume_steps),
-                deadline_at,
+                deadline_at: claimed_task.deadline_at,
                 as_of: claimed_task.as_of,
             })
             .await

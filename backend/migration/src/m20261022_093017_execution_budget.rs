@@ -1,5 +1,6 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
@@ -33,12 +34,6 @@ enum ExecutionReservation {
     State,
     CreatedAt,
     UpdatedAt,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261022_093017_execution_budget"
-    }
 }
 
 #[async_trait::async_trait]

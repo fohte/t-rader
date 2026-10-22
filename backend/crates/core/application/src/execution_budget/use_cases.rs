@@ -19,6 +19,9 @@ use super::{
 
 const DEFAULT_MODEL_CALLS_PER_STEP: u64 = 15;
 
+#[cfg(test)]
+mod reservation_tests;
+
 #[derive(Clone)]
 pub struct ExecutionBudgetUseCases {
     unit_of_work: SharedUnitOfWork,
@@ -49,16 +52,6 @@ impl ExecutionBudgetUseCases {
             .initialize_task(transaction, task_id, deadline_at)
             .await?;
         Ok(())
-    }
-
-    pub async fn deadline(
-        &self,
-        task_id: Uuid,
-    ) -> Result<Option<DateTime<FixedOffset>>, ExecutionBudgetUseCaseError> {
-        self.repository
-            .find_deadline(task_id)
-            .await
-            .map_err(Into::into)
     }
 
     pub async fn reserve_model_call(

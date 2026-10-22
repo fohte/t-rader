@@ -27,7 +27,7 @@ impl UseCases {
     pub fn execution_budgets(&self) -> ExecutionBudgetUseCases {
         ExecutionBudgetUseCases::new(
             self.unit_of_work.clone(),
-            Arc::new(PostgresExecutionBudgetRepository::new(self.db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
             Arc::new(PostgresStrategyExecutionRepository::new(self.db.clone())),
         )
     }

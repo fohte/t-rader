@@ -3,6 +3,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient};
+use crate::execution_budget::test_support::FakeExecutionBudgetRepository;
 use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
     ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskUseCases, SubmitTaskError,
@@ -78,7 +79,11 @@ async fn submit_rejects_missing_default_purpose_before_inserting_a_task() {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeStrategyTaskRepository::without_agent_config(None));
     let agent_client = FakeAgentTaskClient::new();
-    let use_cases = StrategyTaskUseCases::new(unit_of_work, repository.clone());
+    let use_cases = StrategyTaskUseCases::new(
+        unit_of_work,
+        repository.clone(),
+        Arc::new(FakeExecutionBudgetRepository::default()),
+    );
 
     let result = submit_outcome(
         use_cases
@@ -129,14 +134,60 @@ async fn submit_uses_default_deadline_when_agent_graph_cannot_be_parsed() {
     );
 }
 
+#[tokio::test]
+async fn submit_initializes_execution_budget_for_the_new_task() {
+    let unit_of_work = Arc::new(FakeUnitOfWork::new());
+    let repository = Arc::new(FakeStrategyTaskRepository::new(None, Vec::new()));
+    let execution_budget = Arc::new(FakeExecutionBudgetRepository::default());
+    let agent_client = FakeAgentTaskClient::new();
+    let use_cases =
+        StrategyTaskUseCases::new(unit_of_work, repository.clone(), execution_budget.clone());
+
+    let submitted = use_cases
+        .submit_task(
+            &agent_client,
+            Uuid::nil(),
+            "synthetic prompt",
+            TaskSource::Review,
+            Some("fictional-purpose".to_string()),
+        )
+        .await
+        .is_ok();
+    let task = repository
+        .state
+        .lock()
+        .await
+        .task
+        .clone()
+        .expect("submitted task is stored");
+    let budget_deadline = execution_budget.initialized_deadline(task.task_id).await;
+    let request = agent_client
+        .submitted
+        .lock()
+        .await
+        .first()
+        .map(|request| (request.task_id, request.deadline_at));
+
+    assert_eq!(
+        (submitted, budget_deadline, request),
+        (
+            true,
+            Some(task.deadline_at),
+            Some((task.task_id, task.deadline_at)),
+        ),
+    );
+}
+
 async fn submit_deadline_for_agent_graph(
     agent_graph: &str,
 ) -> (bool, Option<(chrono::Duration, bool)>) {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeStrategyTaskRepository::new(None, Vec::new()));
     repository.set_agent_graph(agent_graph).await;
+    let execution_budget = Arc::new(FakeExecutionBudgetRepository::default());
     let agent_client = FakeAgentTaskClient::new();
-    let use_cases = StrategyTaskUseCases::new(unit_of_work, repository.clone());
+    let use_cases =
+        StrategyTaskUseCases::new(unit_of_work, repository.clone(), execution_budget.clone());
 
     let submitted = use_cases
         .submit_task(
@@ -179,7 +230,11 @@ async fn submit_returns_agent_error_when_marking_failed_also_fails() {
             "submission unavailable".to_string(),
         ))
         .await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+    let use_cases = StrategyTaskUseCases::new(
+        unit_of_work.clone(),
+        repository.clone(),
+        Arc::new(FakeExecutionBudgetRepository::default()),
+    );
 
     let result = submit_outcome(
         use_cases
@@ -217,7 +272,11 @@ async fn resume_returns_agent_error_when_marking_failed_also_fails() {
     agent_client
         .set_submit_error(AgentTaskError::Network("resume unavailable".to_string()))
         .await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+    let use_cases = StrategyTaskUseCases::new(
+        unit_of_work.clone(),
+        repository.clone(),
+        Arc::new(FakeExecutionBudgetRepository::default()),
+    );
 
     let result = resume_outcome(use_cases.resume(&agent_client, Uuid::nil()).await);
     let update_phases = repository.update_phases.lock().await.clone();

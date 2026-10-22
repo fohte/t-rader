@@ -46,8 +46,8 @@ mod tests {
         agent_config, event as event_entity, strategy, strategy_task, strategy_task_step,
     };
     use gateway_postgres::{
-        PostgresEventRepository, PostgresStrategyTaskRepository, PostgresTriggerRepository,
-        PostgresUnitOfWork,
+        PostgresEventRepository, PostgresExecutionBudgetRepository, PostgresStrategyTaskRepository,
+        PostgresTriggerRepository, PostgresUnitOfWork,
     };
     use sea_orm::{
         ActiveModelTrait,
@@ -733,6 +733,7 @@ mod tests {
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             Arc::new(PostgresStrategyTaskRepository::new(db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
@@ -801,6 +802,7 @@ mod tests {
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             Arc::new(PostgresStrategyTaskRepository::new(db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         );
         let fake = FakeAgentTaskClient::new();
 
@@ -1678,6 +1680,7 @@ mod tests {
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             repository.clone(),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
@@ -1764,12 +1767,15 @@ mod tests {
         )
         .await;
         let dispatch_queue = Arc::new(FailingEventDispatchJobQueue::default());
-        let strategy_tasks =
-            StrategyTaskUseCases::new(Arc::new(PostgresUnitOfWork::new(db.clone())), repository)
-                .with_completion_events(
-                    Arc::new(PostgresEventRepository::new(db.clone())),
-                    EventDispatchJobUseCases::new(dispatch_queue.clone()),
-                );
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            repository,
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+        )
+        .with_completion_events(
+            Arc::new(PostgresEventRepository::new(db.clone())),
+            EventDispatchJobUseCases::new(dispatch_queue.clone()),
+        );
 
         let updated = strategy_tasks
             .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
@@ -2137,6 +2143,7 @@ mod tests {
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             repository.clone(),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),

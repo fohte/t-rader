@@ -5,6 +5,7 @@ use rstest::rstest;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask};
+use crate::execution_budget::test_support::FakeExecutionBudgetRepository;
 use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
     ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
@@ -64,7 +65,11 @@ impl ResumeHarness {
     fn with_repository(repository: Arc<FakeStrategyTaskRepository>) -> Self {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let agent_client = FakeAgentTaskClient::new();
-        let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+        let use_cases = StrategyTaskUseCases::new(
+            unit_of_work.clone(),
+            repository.clone(),
+            Arc::new(FakeExecutionBudgetRepository::default()),
+        );
         Self {
             repository,
             unit_of_work,

@@ -11,8 +11,9 @@ use core_application::{
     unit_of_work::SharedUnitOfWork,
 };
 use gateway_postgres::{
-    DatabaseHandle, PostgresStrategyExistence, PostgresStrategyRepository,
-    PostgresStrategyTaskRepository, PostgresTriggerRepository, PostgresUnitOfWork,
+    DatabaseHandle, PostgresExecutionBudgetRepository, PostgresStrategyExistence,
+    PostgresStrategyRepository, PostgresStrategyTaskRepository, PostgresTriggerRepository,
+    PostgresUnitOfWork,
     entities::{change_history, strategy, trigger},
 };
 use sea_orm::ActiveValue::Set;
@@ -659,6 +660,7 @@ async fn update_rolls_back_when_change_history_recording_fails(
     let strategy_tasks = StrategyTaskUseCases::new(
         unit_of_work.clone(),
         Arc::new(PostgresStrategyTaskRepository::new(db.clone())),
+        Arc::new(PostgresExecutionBudgetRepository::new()),
     );
     let trigger_use_cases = TriggerUseCases::new(
         unit_of_work,

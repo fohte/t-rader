@@ -118,15 +118,13 @@ impl StrategyTaskUseCases {
         self.repository
             .insert(transaction, prepared.task.clone())
             .await?;
-        if let Some(execution_budget) = &self.execution_budget {
-            execution_budget
-                .initialize_task(
-                    transaction,
-                    prepared.task.task_id,
-                    prepared.task.deadline_at,
-                )
-                .await?;
-        }
+        self.execution_budget
+            .initialize_task(
+                transaction,
+                prepared.task.task_id,
+                prepared.task.deadline_at,
+            )
+            .await?;
         if let Some(snapshotter) = &self.task_start_snapshotter {
             snapshotter
                 .capture_task_start(

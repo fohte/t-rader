@@ -80,7 +80,138 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+const buildReservationTestTool = (
+  events: unknown[],
+  reserveSubagentRun: McpToolsClient['reserveSubagentRun'],
+): ReturnType<typeof createRunSubagentTool> =>
+  createRunSubagentTool({
+    phase: {
+      ...phase,
+      key: 'sample-phase',
+      label: 'Sample phase',
+      subagents: ['sample-helper'],
+    },
+    parentExecutionStepId: 'sample-parent-step',
+    recorder: createStepRecorder(() => undefined),
+    parentMcpClient: {
+      ...buildFakeMcpClient(),
+      reserveSubagentRun: (input) => {
+        events.push({ action: 'reserve', ...input })
+        return reserveSubagentRun(input)
+      },
+      transitionReservation: (callId, state) => {
+        events.push({ action: 'transition', callId, state })
+        return Promise.resolve()
+      },
+    },
+    fetchDefinition: () => {
+      events.push({ action: 'fetch-definition' })
+      return okAsync({
+        ...definition,
+        key: 'sample-helper',
+        description: 'Sample helper',
+        prompt: 'Return the requested structured result.',
+        tools: [],
+        output: {},
+      })
+    },
+    createMcpClient: (executionStepId, definitionKey) => {
+      events.push({
+        action: 'create-child-mcp-client',
+        executionStepId,
+        definitionKey,
+      })
+      return buildFakeMcpClient()
+    },
+    deps: {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: () => ({
+        invoke: () => {
+          events.push({ action: 'invoke-child-agent' })
+          return Promise.resolve({
+            structuredResponse: { result: 'sample result' },
+          })
+        },
+      }),
+    },
+  })
+
 describe('createRunSubagentTool', () => {
+  it('reserves a child run before starting it', async () => {
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+      .mockReturnValueOnce('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+    const events: unknown[] = []
+    const tool = buildReservationTestTool(events, () => Promise.resolve())
+
+    const result = await tool.invoke({
+      key: 'sample-helper',
+      brief: 'Return the requested value.',
+    })
+
+    const actual = Array.of<unknown>(result, events)
+
+    expect(actual).toEqual([
+      { result: 'sample result' },
+      [
+        {
+          action: 'reserve',
+          callId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          phaseKey: 'sample-phase',
+          parentExecutionStepId: 'sample-parent-step',
+          definitionKey: 'sample-helper',
+        },
+        {
+          action: 'transition',
+          callId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          state: 'consumed',
+        },
+        { action: 'fetch-definition' },
+        {
+          action: 'create-child-mcp-client',
+          executionStepId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          definitionKey: 'sample-helper',
+        },
+        { action: 'invoke-child-agent' },
+      ],
+    ])
+  })
+
+  it('does not start a child run when its reservation is rejected', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    )
+    const events: unknown[] = []
+    const tool = buildReservationTestTool(events, () =>
+      Promise.reject(new Error('child run limit reached')),
+    )
+
+    const outcome = await tool
+      .invoke({ key: 'sample-helper', brief: 'Return the requested value.' })
+      .then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (error: unknown) => ({
+          status: 'rejected' as const,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      )
+
+    const actual = Array.of<unknown>(outcome, events)
+
+    expect(actual).toEqual([
+      { status: 'rejected', message: 'child run limit reached' },
+      [
+        {
+          action: 'reserve',
+          callId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          phaseKey: 'sample-phase',
+          parentExecutionStepId: 'sample-parent-step',
+          definitionKey: 'sample-helper',
+        },
+      ],
+    ])
+  })
+
   it('runs only the requested definition in a separate conversation and records its step', async () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue(
       'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',

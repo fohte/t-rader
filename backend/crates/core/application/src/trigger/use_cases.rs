@@ -451,6 +451,7 @@ mod tests {
             SubmitAgentTask,
         },
         change_history::{FakeChangeHistory, SharedChangeHistoryPort},
+        execution_budget::test_support::FakeExecutionBudgetRepository,
         strategy::{FakeStrategyRepository, SharedStrategyRepository, Strategy},
         strategy_existence::{FakeStrategyExistence, SharedStrategyExistence},
         strategy_task::{
@@ -486,8 +487,11 @@ mod tests {
         let task_repository: SharedStrategyTaskRepository = Arc::new(TestStrategyTaskRepository);
         let change_history = Arc::new(FakeChangeHistory::new());
         let change_history_shared: SharedChangeHistoryPort = change_history;
-        let strategy_tasks =
-            StrategyTaskUseCases::new(unit_of_work_shared.clone(), task_repository);
+        let strategy_tasks = StrategyTaskUseCases::new(
+            unit_of_work_shared.clone(),
+            task_repository,
+            Arc::new(FakeExecutionBudgetRepository::default()),
+        );
 
         Harness {
             use_cases: TriggerUseCases::new(

@@ -34,11 +34,6 @@ pub trait ExecutionBudgetRepository: Send + Sync {
         state: BudgetReservationState,
         now: DateTime<FixedOffset>,
     ) -> Result<Vec<BudgetReservation>, ExecutionBudgetRepositoryError>;
-
-    async fn find_deadline(
-        &self,
-        task_id: Uuid,
-    ) -> Result<Option<DateTime<FixedOffset>>, ExecutionBudgetRepositoryError>;
 }
 
 pub type SharedExecutionBudgetRepository = Arc<dyn ExecutionBudgetRepository + Send + Sync>;

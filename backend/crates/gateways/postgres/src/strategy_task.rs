@@ -8,10 +8,9 @@ use core_application::strategy_task::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
-use sea_orm::sea_query::{LockType, OnConflict};
+use sea_orm::sea_query::{Condition, Expr, LockType, OnConflict};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement,
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
 use uuid::Uuid;
 
@@ -19,7 +18,9 @@ use crate::DatabaseHandle;
 use crate::entities::sea_orm_active_enums::{
     StrategyTaskPhase as DbPhase, StrategyTaskStepStatus as DbStepStatus,
 };
-use crate::entities::{agent_config, strategy, strategy_task, strategy_task_step};
+use crate::entities::{
+    agent_config, strategy, strategy_task, strategy_task_step, task_execution_state,
+};
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
@@ -278,30 +279,43 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         mark_auto_resumed: bool,
     ) -> Result<bool, StrategyTaskRepositoryError> {
         let transaction = transaction_ref(transaction)?;
-        transaction
-            .execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "UPDATE strategy_task AS task \
-                 SET phase = 'running', \
-                     a2a_task_id = NULL, \
-                     updated_at = $2, \
-                     auto_resumed_at = CASE WHEN $3 THEN $2 ELSE task.auto_resumed_at END \
-                 WHERE task.task_id = $1 \
-                   AND EXISTS ( \
-                       SELECT 1 FROM task_execution_state AS budget \
-                       WHERE budget.task_id = task.task_id AND budget.deadline_at > $2 \
-                   ) \
-                   AND (task.phase::text = 'failed' OR ( \
-                       task.phase::text = 'completed' AND EXISTS ( \
-                           SELECT 1 FROM strategy_task_step AS step \
-                           WHERE step.task_id = task.task_id AND step.status::text = 'failed' \
-                       ) \
-                   )) \
-                   AND (NOT $3 OR task.auto_resumed_at IS NULL)",
-                [task_id.into(), now.into(), mark_auto_resumed.into()],
-            ))
+        let unexpired_task_ids = task_execution_state::Entity::find()
+            .select_only()
+            .column(task_execution_state::Column::TaskId)
+            .filter(task_execution_state::Column::DeadlineAt.gt(now))
+            .into_query();
+        let failed_step_task_ids = strategy_task_step::Entity::find()
+            .select_only()
+            .column(strategy_task_step::Column::TaskId)
+            .filter(strategy_task_step::Column::Status.eq(DbStepStatus::Failed))
+            .into_query();
+        let resumable = Condition::any()
+            .add(strategy_task::Column::Phase.eq(DbPhase::Failed))
+            .add(
+                Condition::all()
+                    .add(strategy_task::Column::Phase.eq(DbPhase::Completed))
+                    .add(strategy_task::Column::TaskId.in_subquery(failed_step_task_ids)),
+            );
+        let mut filter = Condition::all()
+            .add(strategy_task::Column::TaskId.eq(task_id))
+            .add(strategy_task::Column::TaskId.in_subquery(unexpired_task_ids))
+            .add(resumable);
+        let mut update = strategy_task::Entity::update_many()
+            .col_expr(strategy_task::Column::Phase, Expr::value(DbPhase::Running))
+            .col_expr(
+                strategy_task::Column::A2aTaskId,
+                Expr::value(None::<String>),
+            )
+            .col_expr(strategy_task::Column::UpdatedAt, Expr::value(now));
+        if mark_auto_resumed {
+            update = update.col_expr(strategy_task::Column::AutoResumedAt, Expr::value(now));
+            filter = filter.add(strategy_task::Column::AutoResumedAt.is_null());
+        }
+        update
+            .filter(filter)
+            .exec(transaction)
             .await
-            .map(|result| result.rows_affected() > 0)
+            .map(|result| result.rows_affected > 0)
             .map_err(repository_error)
     }
 }

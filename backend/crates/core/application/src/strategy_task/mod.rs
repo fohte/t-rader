@@ -70,7 +70,7 @@ pub struct StrategyTaskUseCases {
     pub(super) repository: SharedStrategyTaskRepository,
     completion_events: Option<CompletionEventDependencies>,
     task_start_snapshotter: Option<SharedTaskStartSnapshotter>,
-    execution_budget: Option<SharedExecutionBudgetRepository>,
+    execution_budget: SharedExecutionBudgetRepository,
 }
 
 #[derive(Clone)]
@@ -80,26 +80,22 @@ struct CompletionEventDependencies {
 }
 
 impl StrategyTaskUseCases {
-    pub fn new(unit_of_work: SharedUnitOfWork, repository: SharedStrategyTaskRepository) -> Self {
+    pub fn new(
+        unit_of_work: SharedUnitOfWork,
+        repository: SharedStrategyTaskRepository,
+        execution_budget: SharedExecutionBudgetRepository,
+    ) -> Self {
         Self {
             unit_of_work,
             repository,
             completion_events: None,
             task_start_snapshotter: None,
-            execution_budget: None,
+            execution_budget,
         }
     }
 
     pub fn with_task_start_snapshotter(mut self, snapshotter: SharedTaskStartSnapshotter) -> Self {
         self.task_start_snapshotter = Some(snapshotter);
-        self
-    }
-
-    pub fn with_execution_budget(
-        mut self,
-        execution_budget: SharedExecutionBudgetRepository,
-    ) -> Self {
-        self.execution_budget = Some(execution_budget);
         self
     }
 

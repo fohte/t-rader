@@ -34,11 +34,9 @@ impl UseCases {
         StrategyTaskUseCases::new(
             self.unit_of_work.clone(),
             Arc::new(PostgresStrategyTaskRepository::new(self.db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_task_start_snapshotter(Arc::new(self.strategy_executions()))
-        .with_execution_budget(Arc::new(PostgresExecutionBudgetRepository::new(
-            self.db.clone(),
-        )))
     }
 }
 
