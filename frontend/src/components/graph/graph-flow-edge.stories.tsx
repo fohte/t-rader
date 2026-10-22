@@ -11,17 +11,21 @@ const edgeTypes: EdgeTypes = {
 }
 
 // React Flow の既定ノードは unlayered CSS が Tailwind utility を上書きするため、表示値を Node.style に渡す。
+const dagreNodeStyle = {
+  height: 56,
+  backgroundColor: 'var(--card)',
+  color: 'var(--card-foreground)',
+  border: '1px solid var(--border)',
+}
+
 const nodes: Node[] = [
   {
     id: 'source',
     position: { x: 120, y: 50 },
     data: { label: 'Source node' },
     style: {
+      ...dagreNodeStyle,
       width: 160,
-      height: 56,
-      backgroundColor: 'var(--card)',
-      color: 'var(--card-foreground)',
-      border: '1px solid var(--border)',
     },
   },
   {
@@ -29,11 +33,8 @@ const nodes: Node[] = [
     position: { x: 340, y: 50 },
     data: { label: 'Intermediate node' },
     style: {
+      ...dagreNodeStyle,
       width: 120,
-      height: 56,
-      backgroundColor: 'var(--card)',
-      color: 'var(--card-foreground)',
-      border: '1px solid var(--border)',
     },
   },
   {
@@ -41,11 +42,8 @@ const nodes: Node[] = [
     position: { x: 500, y: 50 },
     data: { label: 'Target node' },
     style: {
+      ...dagreNodeStyle,
       width: 160,
-      height: 56,
-      backgroundColor: 'var(--card)',
-      color: 'var(--card-foreground)',
-      border: '1px solid var(--border)',
     },
   },
 ]
