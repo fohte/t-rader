@@ -1,5 +1,6 @@
 import { Button } from '@fohte/ui/button'
 import { Input } from '@fohte/ui/input'
+import { Textarea } from '@fohte/ui/textarea'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 
@@ -121,14 +122,13 @@ export function GeneralTab({ strategyId }: GeneralTabProps) {
           >
             説明
           </label>
-          <textarea
+          <Textarea
             id="strategy-description"
             rows={3}
             value={description}
             onChange={(e) => {
               setDescription(e.target.value)
             }}
-            className="w-full border border-border bg-bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:border-muted-foreground"
           />
         </div>
         <div className="flex items-center gap-3">
@@ -142,7 +142,7 @@ export function GeneralTab({ strategyId }: GeneralTabProps) {
             {updateMutation.isPending ? '保存中…' : '保存'}
           </Button>
           {saveError != null && (
-            <span data-testid="save-error" className="text-xs text-primary">
+            <span data-testid="save-error" className="text-xs text-destructive">
               {saveError}
             </span>
           )}
@@ -158,7 +158,7 @@ export function GeneralTab({ strategyId }: GeneralTabProps) {
         </p>
         <Button
           type="button"
-          variant="destructive"
+          variant="plain"
           onClick={() => {
             setDeleteOpen(true)
           }}

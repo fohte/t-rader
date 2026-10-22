@@ -14,6 +14,7 @@ mod comments;
 mod data;
 mod eval;
 mod eval_indicator;
+mod execution_payload;
 mod group_movers;
 mod holdings;
 mod japanese_stock_only;

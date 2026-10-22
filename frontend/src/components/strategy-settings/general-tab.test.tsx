@@ -185,6 +185,24 @@ describe('GeneralTab', () => {
     expect(active?.patchCalls).toEqual([{ name: '月次記録一覧' }])
   })
 
+  it('説明を編集して保存すると変更したフィールドだけ PATCH される', async () => {
+    const user = userEvent.setup()
+    setup({
+      id: 'strat-1',
+      name: '議事録アーカイブ',
+      description: '現在の説明',
+    })
+
+    const description = await screen.findByLabelText('説明')
+    await user.clear(description)
+    await user.type(description, '更新した説明')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(active?.patchCalls).toEqual([{ description: '更新した説明' }])
+    })
+  })
+
   it('保存に失敗するとエラーメッセージを表示する', async () => {
     const user = userEvent.setup()
     setup(

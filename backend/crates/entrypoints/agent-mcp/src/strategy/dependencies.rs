@@ -16,7 +16,6 @@ use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::margin::MarginUseCases;
 use core_application::market_movers::MarketMoversUseCases;
-use core_application::mcp_tool_call_count::McpToolCallCountUseCases;
 use core_application::news::NewsUseCases;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
 use core_application::note_kind::NoteKindUseCases;
@@ -32,6 +31,7 @@ use core_application::stock_group::StockGroupUseCases;
 use core_application::stock_registration::StockRegistrationUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
+use core_application::strategy_execution::StrategyExecutionUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
@@ -61,7 +61,6 @@ pub struct StrategyServerDependencies {
     pub llm_client: Option<SharedLlmClient>,
     pub margins: MarginUseCases,
     pub market_movers: MarketMoversUseCases,
-    pub mcp_tool_call_counts: McpToolCallCountUseCases,
     pub news: NewsUseCases,
     pub note_kinds: NoteKindUseCases,
     pub note_reads: NoteReadUseCases,
@@ -80,6 +79,8 @@ pub struct StrategyServerDependencies {
     pub strategies: StrategyUseCases,
     pub strategy_scope: Arc<StrategyScopeUseCases>,
     pub strategy_tasks: StrategyTaskUseCases,
+    pub strategy_executions: StrategyExecutionUseCases,
+    pub execution_budgets: core_application::execution_budget::ExecutionBudgetUseCases,
     pub subagent_definitions: SubagentDefinitionUseCases,
     pub strategy_task_step_evidence: StrategyTaskStepEvidenceUseCases,
     pub trades: TradeUseCases,

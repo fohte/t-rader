@@ -1,11 +1,12 @@
 use chrono::{DateTime, FixedOffset};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
 pub const SCOPE_GLOBAL: &str = "global";
 pub const SCOPE_STRATEGY: &str = "strategy";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CustomIndicator {
     pub indicator_id: Uuid,
     pub name: String,

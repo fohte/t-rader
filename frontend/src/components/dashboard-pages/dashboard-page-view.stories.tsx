@@ -82,6 +82,22 @@ const tableQueries: WidgetQueryDefinitions = {
   metric_b: { metric: 'mkt_cap', by: 'stock' },
 }
 
+const tableResults: WidgetQueryResponse = {
+  as_of: '2099-01-05',
+  rows: [
+    {
+      key: 'stock:DEMO-A',
+      name: 'サンプル対象 A',
+      values: { metric_a: 1240, metric_b: 24 },
+    },
+    {
+      key: 'stock:DEMO-B',
+      name: 'サンプル対象 B',
+      values: { metric_a: null, metric_b: 18 },
+    },
+  ],
+}
+
 const tableWidget: DashboardWidgetPageState = {
   key: 'sample-table',
   title: 'サンプル表',
@@ -99,18 +115,62 @@ const tableWidget: DashboardWidgetPageState = {
   },
   isPending: false,
   errorMessage: null,
+  result: tableResults,
+}
+
+const previewTableWidget: DashboardWidgetPageState = {
+  ...tableWidget,
+  result: { ...tableResults, as_of: '2099-01-19' },
+}
+
+const groupLineWidget: DashboardWidgetPageState = {
+  key: 'group-movement-line',
+  title: '分類別の騰落率',
+  width: 'full',
+  definition: {
+    queries: {
+      movement: { metric: 'change', period: '1d', by: 'group' },
+    },
+    display: { movement: { label: '騰落率', format: 'percent' } },
+    viz: { type: 'line', series: ['movement'] },
+  },
+  isPending: false,
+  errorMessage: null,
   result: {
-    as_of: '2099-01-05',
-    rows: [
+    as_of: '2099-01-19',
+    rows: [],
+    series: [
       {
-        key: 'stock:DEMO-A',
-        name: 'サンプル対象 A',
-        values: { metric_a: 1240, metric_b: 24 },
+        key: 'movement:group:sample-axis/sample-group-a',
+        query: 'movement',
+        name: '騰落率',
+        target: {
+          key: 'group:sample-axis/sample-group-a',
+          name: '分類 A',
+        },
+        points: [
+          { date: '2099-01-05', value: 0.012 },
+          { date: '2099-01-06', value: 0.018 },
+          { date: '2099-01-07', value: null },
+          { date: '2099-01-12', value: -0.008 },
+          { date: '2099-01-19', value: 0.014 },
+        ],
       },
       {
-        key: 'stock:DEMO-B',
-        name: 'サンプル対象 B',
-        values: { metric_a: null, metric_b: 18 },
+        key: 'movement:group:sample-axis/sample-group-b',
+        query: 'movement',
+        name: '騰落率',
+        target: {
+          key: 'group:sample-axis/sample-group-b',
+          name: '分類 B',
+        },
+        points: [
+          { date: '2099-01-05', value: -0.006 },
+          { date: '2099-01-06', value: 0.009 },
+          { date: '2099-01-07', value: 0.015 },
+          { date: '2099-01-12', value: -0.011 },
+          { date: '2099-01-19', value: 0.004 },
+        ],
       },
     ],
   },
@@ -167,6 +227,19 @@ export const Preview: Story = {
   args: { state: readyState, showDashboardListLink: false },
 }
 
+export const PreviewLineAndTable: Story = {
+  name: 'プレビューで分類別の折れ線と表を並べて表示する。',
+  args: {
+    state: {
+      ...readyState,
+      title: '期間推移のプレビュー',
+      asOf: '2099-01-19',
+      widgets: [groupLineWidget, previewTableWidget],
+    },
+    showDashboardListLink: false,
+  },
+}
+
 export const Loading: Story = {
   name: 'ダッシュボードを読み込んでいる状態を表示します。',
   args: { state: { status: 'loading', title: '市場の動き' } },
@@ -198,7 +271,7 @@ export const InvalidConfig: Story = {
         {
           path: 'widgets[0].viz',
           message:
-            'viz.type は treemap、toplist または table を指定してください。',
+            'viz.type は treemap、toplist、table または line を指定してください。',
         },
       ],
     },

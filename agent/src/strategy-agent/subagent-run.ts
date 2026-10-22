@@ -19,6 +19,7 @@ export interface CreateRunSubagentToolOptions {
   readonly phase: AgentGraphPhase
   readonly parentExecutionStepId: string
   readonly recorder: StepRecorder
+  readonly parentMcpClient: McpToolsClient
   readonly fetchDefinition: FetchSubagentDefinition
   readonly createMcpClient: (
     executionStepId: string,
@@ -40,6 +41,11 @@ export const buildSubagentAgent = (
     readonly deadlineSignal?: AbortSignal
     readonly phaseTimeout?: PhaseTimeout
     readonly modelCallBudget: ModelCallBudget
+    readonly reserveModelCall?: (callId: string) => Promise<void>
+    readonly transitionReservation?: (
+      callId: string,
+      state: 'consumed' | 'released',
+    ) => Promise<void>
     readonly systemPrompt?: string
   },
 ): CompiledPhaseAgent =>
@@ -54,6 +60,12 @@ export const buildSubagentAgent = (
     systemPrompt: options.systemPrompt ?? definition.prompt,
     responseSchema: buildOutputJsonSchema(definition.output),
     modelCallBudget: options.modelCallBudget,
+    ...(options.reserveModelCall !== undefined
+      ? { reserveModelCall: options.reserveModelCall }
+      : {}),
+    ...(options.transitionReservation !== undefined
+      ? { transitionReservation: options.transitionReservation }
+      : {}),
     captureMessagesOnAbort: true,
     ...(options.deadlineSignal !== undefined
       ? {

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { type AnyAgentMiddleware, createMiddleware } from 'langchain'
 
 import { isRecord } from '#errors'
@@ -146,7 +148,13 @@ const isRetryableModelCallError = (error: Error): boolean => {
   )
 }
 
-export const createModelCallRetryMiddleware = (): AnyAgentMiddleware => {
+export const createModelCallRetryMiddleware = (
+  reserveModelCall?: (callId: string) => Promise<void>,
+  transitionReservation?: (
+    callId: string,
+    state: 'consumed' | 'released',
+  ) => Promise<void>,
+): AnyAgentMiddleware => {
   return createMiddleware({
     name: 'modelCallRetryMiddleware',
     wrapModelCall: (request, handler) => {
@@ -158,34 +166,57 @@ export const createModelCallRetryMiddleware = (): AnyAgentMiddleware => {
       const callModel = (
         retriesMade: number,
         callDurationRetriesMade: number,
-      ): ReturnType<typeof handler> =>
-        Promise.resolve()
-          .then(() => handler(delegated))
-          .catch(async (caught: unknown) => {
-            const error =
-              caught instanceof Error ? caught : new Error(String(caught))
-            const isCallDuration = isCallDurationAbort(error)
+      ): ReturnType<typeof handler> => {
+        const callId = randomUUID()
+        const prepareReservation = (): Promise<void> =>
+          Promise.resolve()
+            .then(() => reserveModelCall?.(callId))
+            .then(() => {
+              if (
+                reserveModelCall === undefined ||
+                transitionReservation === undefined
+              ) {
+                return
+              }
+              return transitionReservation(callId, 'consumed')
+            })
+        return prepareReservation().then(
+          () =>
+            Promise.resolve()
+              .then(() => handler(delegated))
+              .catch((caught: unknown) => {
+                return Promise.resolve().then(async () => {
+                  const error =
+                    caught instanceof Error ? caught : new Error(String(caught))
+                  const isCallDuration = isCallDurationAbort(error)
 
-            if (
-              !isRetryableModelCallError(error) ||
-              retriesMade >= MAX_RETRIES ||
-              (isCallDuration &&
-                callDurationRetriesMade >= MAX_CALL_DURATION_RETRIES)
-            ) {
-              return Promise.reject(error)
-            }
+                  if (
+                    !isRetryableModelCallError(error) ||
+                    retriesMade >= MAX_RETRIES ||
+                    (isCallDuration &&
+                      callDurationRetriesMade >= MAX_CALL_DURATION_RETRIES)
+                  ) {
+                    return Promise.reject(error)
+                  }
 
-            logger.warn(
-              { err: getOriginalError(error) },
-              'model call failed with a retryable error',
-            )
-            await waitForRetry(getRetryDelay(error, retriesMade))
+                  logger.warn(
+                    { err: getOriginalError(error) },
+                    'model call failed with a retryable error',
+                  )
+                  await waitForRetry(getRetryDelay(error, retriesMade))
 
-            return callModel(
-              retriesMade + 1,
-              callDurationRetriesMade + Number(isCallDuration),
-            )
-          })
+                  return callModel(
+                    retriesMade + 1,
+                    callDurationRetriesMade + Number(isCallDuration),
+                  )
+                })
+              }),
+          (caught: unknown) =>
+            Promise.reject(
+              caught instanceof Error ? caught : new Error(String(caught)),
+            ),
+        )
+      }
 
       return callModel(0, 0)
     },

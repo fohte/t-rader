@@ -8,8 +8,11 @@ type WidgetUniverse = components['schemas']['WidgetUniverseRequest']
 type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
 export type SupportedWidgetVisualization = Extract<
   WidgetVisualization,
-  { type: 'treemap' | 'toplist' | 'table' }
+  { type: 'treemap' | 'toplist' | 'table' | 'line' }
 >
+
+const SUPPORTED_WIDGET_VISUALIZATION_TYPES: readonly WidgetVisualization['type'][] =
+  ['treemap', 'toplist', 'table', 'line']
 
 export type WidgetDefinitionResult =
   | {
@@ -70,7 +73,83 @@ function isDisplay(value: unknown): boolean {
 }
 
 function isVisualization(value: unknown): boolean {
-  return isRecord(value) && typeof value.type === 'string'
+  if (!isRecord(value) || typeof value.type !== 'string') return false
+  return (
+    value.type !== 'line' ||
+    (Array.isArray(value.series) &&
+      value.series.every((name) => typeof name === 'string'))
+  )
+}
+
+function daysInMonth(year: number, month: number): number {
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  return (
+    [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][
+      month - 1
+    ] ?? 0
+  )
+}
+
+function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (match == null) return false
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  return (
+    year >= 1 &&
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysInMonth(year, month)
+  )
+}
+
+function parseDateRange(value: string): { start: string; end: string } | null {
+  const match = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(value)
+  if (match == null) return null
+
+  const start = match[1]
+  const end = match[2]
+  if (
+    start == null ||
+    end == null ||
+    !isCalendarDate(start) ||
+    !isCalendarDate(end) ||
+    start > end
+  ) {
+    return null
+  }
+  return { start, end }
+}
+
+function isWithinOneYear({
+  start,
+  end,
+}: {
+  start: string
+  end: string
+}): boolean {
+  const [yearString, monthString, dayString] = end.split('-')
+  const year = Number(yearString)
+  const month = Number(monthString)
+  const day = Number(dayString)
+  if (year <= 1) return true
+
+  const earliestYear = year - 1
+  const earliestDay = Math.min(day, daysInMonth(earliestYear, month))
+  const earliestDate = `${String(earliestYear).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(earliestDay).padStart(2, '0')}`
+  return start >= earliestDate
+}
+
+function parseWidgetRange(
+  value: unknown,
+): { dateRange: { start: string; end: string } | null } | null {
+  if (value === '3m' || value === '1y') return { dateRange: null }
+  if (typeof value !== 'string') return null
+  const dateRange = parseDateRange(value)
+  return dateRange == null ? null : { dateRange }
 }
 
 function errorMessage(error: unknown): string {
@@ -145,11 +224,42 @@ export function parseWidgetQueryRequest(
   if (time !== undefined && !isOptionalString(time.as_of)) {
     return { ok: false, message: 'time.as_of は文字列で指定してください。' }
   }
-  if (time !== undefined && Object.hasOwn(time, 'range')) {
+  const isLine = isRecord(value.viz) && value.viz.type === 'line'
+  const widgetRange = isLine ? parseWidgetRange(time?.range) : null
+  const hasRange = time !== undefined && Object.hasOwn(time, 'range')
+  if (!isLine && hasRange) {
     return {
       ok: false,
       path: 'time.range',
-      message: 'time.range は現在のウィジェットでは使えません。',
+      message: 'time.range は line 以外では使えません。',
+    }
+  }
+  if (isLine && widgetRange == null) {
+    return {
+      ok: false,
+      path: 'time.range',
+      message:
+        'time.range は line で 3m、1y、または YYYY-MM-DD..YYYY-MM-DD を指定してください。',
+    }
+  }
+  const dateRange = widgetRange?.dateRange ?? null
+  if (dateRange != null && !isWithinOneYear(dateRange)) {
+    return {
+      ok: false,
+      path: 'time.range',
+      message: 'time.range は 1 年以内で指定してください。',
+    }
+  }
+  if (
+    dateRange != null &&
+    typeof time?.as_of === 'string' &&
+    isCalendarDate(time.as_of) &&
+    dateRange.end > time.as_of
+  ) {
+    return {
+      ok: false,
+      path: 'time.range',
+      message: 'time.range の終了日は time.as_of 以下にしてください。',
     }
   }
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- enum 値と範囲は API に検証させるため、生成型にない値も保持する
@@ -180,7 +290,5 @@ export function parseWidgetDefinition(source: string): WidgetDefinitionResult {
 export function isSupportedWidgetVisualization(
   viz: WidgetVisualization,
 ): viz is SupportedWidgetVisualization {
-  return (
-    viz.type === 'treemap' || viz.type === 'toplist' || viz.type === 'table'
-  )
+  return SUPPORTED_WIDGET_VISUALIZATION_TYPES.includes(viz.type)
 }

@@ -115,7 +115,7 @@ function validateDashboard(value: unknown): DashboardConfigResult {
       issues.push({
         path: `${path}.viz`,
         message:
-          'viz.type は treemap、toplist または table を指定してください。',
+          'viz.type は treemap、toplist、table または line を指定してください。',
       })
       return
     }

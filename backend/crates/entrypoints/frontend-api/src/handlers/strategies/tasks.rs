@@ -140,6 +140,14 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
         SubmitTaskError::AgentTask(agent_err) => {
             AppError::Config(format!("agent task error: {agent_err}"))
         }
+        SubmitTaskError::ExecutionSnapshot(error) => {
+            tracing::error!(error = %error, "failed to capture task execution definitions");
+            AppError::Internal("failed to capture task execution definitions".into())
+        }
+        SubmitTaskError::ExecutionBudget(error) => {
+            tracing::error!(error = %error, "failed to initialize task execution budget");
+            AppError::Internal("failed to initialize task execution budget".into())
+        }
     }
 }
 

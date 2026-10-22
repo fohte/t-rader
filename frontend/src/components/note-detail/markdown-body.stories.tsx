@@ -217,6 +217,47 @@ export const Default: Story = {
   args: { source: SAMPLE, noteLinks: NOTE_LINKS },
 }
 
+export const LinksWithoutHover: Story = {
+  name: 'shows bare URLs, Markdown links, and note links without hovering.',
+  args: {
+    source: [
+      '裸 URL: https://example.invalid/source',
+      '',
+      '[外部リンク](https://example.invalid/article)',
+      '',
+      '[[note:00000000-0000-4000-8000-000000000101]]',
+    ].join('\n'),
+    noteLinks: [
+      {
+        note_id: '00000000-0000-4000-8000-000000000101',
+        version_id: '00000000-0000-4000-8000-000000000201',
+        version_no: 2,
+        title: '関連する記録',
+      },
+    ],
+  },
+}
+
+export const LinksOnMobile: Story = {
+  name: 'shows links without hovering on a narrow screen.',
+  args: { ...LinksWithoutHover.args },
+  globals: { viewport: { value: 'mobileNoteLinks' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileNoteLinks: {
+          name: 'Mobile note links',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
+}
+
 export const WithRangeCommentGutter: Story = {
   name: 'the formatted note keeps its body position beside the comment gutter.',
   decorators: [withNoteBodyCard],

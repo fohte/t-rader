@@ -81,9 +81,20 @@ cleanup() {
 trap cleanup EXIT
 
 psql_exec() {
-  docker exec "$container_name" psql \
+  local docker_exec_args=()
+  if [[ "${1-}" == '--interactive' ]]; then
+    docker_exec_args+=(--interactive)
+    shift
+  fi
+
+  docker exec \
+    "${docker_exec_args[@]}" \
+    --env "PGPASSWORD=$POSTGRES_PASSWORD" \
+    "$container_name" psql \
     -X \
     -q \
+    --host=127.0.0.1 \
+    --port=5432 \
     -U "$POSTGRES_USER" \
     -d "$POSTGRES_DATABASE" \
     -v ON_ERROR_STOP=1 \
@@ -188,10 +199,7 @@ container_started=true
 
 wait_for_postgres
 
-docker exec "$container_name" psql \
-  -U "$POSTGRES_USER" \
-  -d "$POSTGRES_DATABASE" \
-  -v ON_ERROR_STOP=1 \
+psql_exec \
   -c "ALTER SYSTEM SET max_wal_size = '1GB'" \
   -c "ALTER SYSTEM SET min_wal_size = '32MB'" \
   -c "ALTER SYSTEM SET timescaledb.max_background_workers = '0'" \
@@ -208,13 +216,7 @@ port="$(docker port "$container_name" 5432/tcp | sed 's/.*://')"
   cat "$seed_sql"
   printf '\n'
   cat "$profile_sql"
-} | docker exec -i "$container_name" psql \
-  -X \
-  -q \
-  -U "$POSTGRES_USER" \
-  -d "$POSTGRES_DATABASE" \
-  -v ON_ERROR_STOP=1 \
-  -v record_profile=true
+} | psql_exec --interactive -v record_profile=true
 
 shrink_wal
 docker stop --timeout 60 "$container_name" > /dev/null

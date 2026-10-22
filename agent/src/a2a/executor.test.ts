@@ -12,6 +12,7 @@ import {
   extractPurpose,
   extractResumeSteps,
   extractStrategyId,
+  extractStrategyTaskId,
 } from '#a2a/message-metadata'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
@@ -49,7 +50,10 @@ const buildUserMessage = (
   role: 'user',
   messageId: 'm1',
   parts: [{ kind: 'text', text }],
-  ...(metadata !== undefined ? { metadata } : {}),
+  metadata: {
+    task_id: '22222222-2222-2222-2222-222222222222',
+    ...metadata,
+  },
 })
 
 const buildAgentMessage = (text: string): Message => ({
@@ -78,6 +82,16 @@ describe('extractStrategyId', () => {
     expect(
       extractStrategyId(buildUserMessage({ strategy_id: 123 })),
     ).toBeUndefined()
+  })
+})
+
+describe('extractStrategyTaskId', () => {
+  it('reads the stable backend task UUID from message metadata', () => {
+    expect(
+      extractStrategyTaskId(
+        buildUserMessage({ task_id: '33333333-3333-3333-3333-333333333333' }),
+      ),
+    ).toBe('33333333-3333-3333-3333-333333333333')
   })
 })
 
@@ -289,6 +303,37 @@ describe('TraderAgentExecutor', () => {
       expect(calls).toEqual([expected])
     },
   )
+
+  it('forwards the backend task UUID separately from the A2A task ID', async () => {
+    const calls: { taskId: string; strategyTaskId: string }[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (input) => {
+        calls.push({
+          taskId: input.taskId,
+          strategyTaskId: input.strategyTaskId,
+        })
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const requestContext = new RequestContext(
+      buildUserMessage({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+        task_id: '33333333-3333-3333-3333-333333333333',
+      }),
+      'a2a-attempt-id',
+      'context-id',
+    )
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual([
+      {
+        taskId: 'a2a-attempt-id',
+        strategyTaskId: '33333333-3333-3333-3333-333333333333',
+      },
+    ])
+  })
 
   it('forwards resume_steps to runStrategyAgent alongside an explicit strategy_id', async () => {
     const calls: (unknown[] | undefined)[] = []

@@ -26,6 +26,7 @@ const TASK_NOT_FOUND_ERROR_CODE = -32001
  */
 const submitTaskBodySchema = z
   .object({
+    task_id: z.string().uuid(),
     strategy_id: z.string().min(1),
     prompt: z.string().min(1),
     // 目的キー (agent_config.purpose)。省略時は既定の目的が使われる。
@@ -87,6 +88,7 @@ export interface InternalApiOptions {
 }
 
 const buildUserMessage = (
+  taskId: string,
   strategyId: string,
   prompt: string,
   purpose: string | undefined,
@@ -99,6 +101,7 @@ const buildUserMessage = (
   messageId: randomUUID(),
   parts: [{ kind: 'text', text: prompt }],
   metadata: {
+    task_id: taskId,
     strategy_id: strategyId,
     ...(purpose !== undefined ? { purpose } : {}),
     ...(resumeSteps !== undefined ? { resume_steps: resumeSteps } : {}),
@@ -170,7 +173,7 @@ const isTaskNotFoundError = (err: unknown): boolean =>
 const submitTaskRoute = createRoute({
   operationId: 'submitTask',
   method: 'post',
-  path: '/internal/tasks',
+  path: '/internal/v2/tasks',
   request: {
     body: {
       content: { 'application/json': { schema: submitTaskBodySchema } },
@@ -235,9 +238,17 @@ export const mountInternalApiRoutes = (
       if (isShuttingDown?.() === true) {
         return c.json({ error: 'agent is shutting down' }, 503)
       }
-      const { strategy_id, prompt, purpose, resume_steps, deadline_at, as_of } =
-        c.req.valid('json')
+      const {
+        task_id,
+        strategy_id,
+        prompt,
+        purpose,
+        resume_steps,
+        deadline_at,
+        as_of,
+      } = c.req.valid('json')
       const message = buildUserMessage(
+        task_id,
         strategy_id,
         prompt,
         purpose,

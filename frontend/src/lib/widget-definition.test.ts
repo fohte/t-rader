@@ -71,6 +71,13 @@ const TABLE_WIDGET_DEFINITION = VALID_WIDGET_DEFINITION.replace(
   'type: toplist\n  value: doubled\n  order: desc\n  limit: 5\n  bar_scale:\n    min: -1\n    max: 1',
   'type: table\n  columns:\n    - doubled\n    - daily',
 )
+const LINE_WIDGET_DEFINITION = VALID_WIDGET_DEFINITION.replace(
+  'type: toplist\n  value: doubled\n  order: desc\n  limit: 5\n  bar_scale:\n    min: -1\n    max: 1',
+  'type: line\n  series:\n    - doubled',
+).replace(
+  'time:\n  as_of: 2099-01-05',
+  'time:\n  as_of: 2099-01-05\n  range: 1y',
+)
 
 describe('parseWidgetDefinition', () => {
   it('parses YAML into a widget query request', () => {
@@ -85,6 +92,47 @@ describe('parseWidgetDefinition', () => {
         viz: { type: 'table', columns: ['doubled', 'daily'] },
       },
       viz: { type: 'table', columns: ['doubled', 'daily'] },
+      asOf: '2099-01-05',
+    })
+  })
+
+  it('accepts a line with a relative date range', () => {
+    expect(parseWidgetDefinition(LINE_WIDGET_DEFINITION)).toEqual({
+      ok: true,
+      request: {
+        ...VALID_RESULT.request,
+        viz: { type: 'line', series: ['doubled'] },
+        time: { as_of: '2099-01-05', range: '1y' },
+      },
+      viz: { type: 'line', series: ['doubled'] },
+      asOf: '2099-01-05',
+    })
+  })
+
+  it.each([
+    { name: '3m', range: '3m' },
+    { name: '1y', range: '1y' },
+    {
+      name: 'an inclusive one-year date range',
+      range: '2097-01-05..2098-01-05',
+    },
+    {
+      name: 'an inclusive date range',
+      range: '2099-01-01..2099-01-05',
+    },
+  ])('accepts $name for a line', ({ range }) => {
+    expect(
+      parseWidgetDefinition(
+        LINE_WIDGET_DEFINITION.replace('range: 1y', `range: ${range}`),
+      ),
+    ).toEqual({
+      ok: true,
+      request: {
+        ...VALID_RESULT.request,
+        viz: { type: 'line', series: ['doubled'] },
+        time: { as_of: '2099-01-05', range },
+      },
+      viz: { type: 'line', series: ['doubled'] },
       asOf: '2099-01-05',
     })
   })
@@ -211,13 +259,19 @@ describe('parseWidgetDefinition', () => {
       message: 'time.as_of は文字列で指定してください。',
     },
     {
+      name: 'a line visualization with a non-string series',
+      source: LINE_WIDGET_DEFINITION.replace('    - doubled', '    - 1'),
+      path: undefined,
+      message: 'viz.type は文字列で指定してください。',
+    },
+    {
       name: 'a widget with time.range',
       source: VALID_WIDGET_DEFINITION.replace(
         '  as_of: 2099-01-05',
         '  as_of: 2099-01-05\n  range: 1d',
       ),
       path: 'time.range',
-      message: 'time.range は現在のウィジェットでは使えません。',
+      message: 'time.range は line 以外では使えません。',
     },
     {
       name: 'a widget with a null time.range',
@@ -226,7 +280,7 @@ describe('parseWidgetDefinition', () => {
         '  as_of: 2099-01-05\n  range: null',
       ),
       path: 'time.range',
-      message: 'time.range は現在のウィジェットでは使えません。',
+      message: 'time.range は line 以外では使えません。',
     },
     {
       name: 'a table with time.range',
@@ -235,7 +289,59 @@ describe('parseWidgetDefinition', () => {
         '  as_of: 2099-01-05\n  range: 1d',
       ),
       path: 'time.range',
-      message: 'time.range は現在のウィジェットでは使えません。',
+      message: 'time.range は line 以外では使えません。',
+    },
+    {
+      name: 'a line without time.range',
+      source: LINE_WIDGET_DEFINITION.replace('\n  range: 1y', ''),
+      path: 'time.range',
+      message:
+        'time.range は line で 3m、1y、または YYYY-MM-DD..YYYY-MM-DD を指定してください。',
+    },
+    {
+      name: 'a line with an unsupported relative range',
+      source: LINE_WIDGET_DEFINITION.replace('range: 1y', 'range: 6m'),
+      path: 'time.range',
+      message:
+        'time.range は line で 3m、1y、または YYYY-MM-DD..YYYY-MM-DD を指定してください。',
+    },
+    {
+      name: 'a line with an impossible calendar date',
+      source: LINE_WIDGET_DEFINITION.replace(
+        'range: 1y',
+        'range: 2099-02-30..2099-03-01',
+      ),
+      path: 'time.range',
+      message:
+        'time.range は line で 3m、1y、または YYYY-MM-DD..YYYY-MM-DD を指定してください。',
+    },
+    {
+      name: 'a line with reversed date bounds',
+      source: LINE_WIDGET_DEFINITION.replace(
+        'range: 1y',
+        'range: 2099-01-06..2099-01-05',
+      ),
+      path: 'time.range',
+      message:
+        'time.range は line で 3m、1y、または YYYY-MM-DD..YYYY-MM-DD を指定してください。',
+    },
+    {
+      name: 'a line with a date range longer than one year',
+      source: LINE_WIDGET_DEFINITION.replace(
+        'range: 1y',
+        'range: 2097-01-04..2098-01-05',
+      ),
+      path: 'time.range',
+      message: 'time.range は 1 年以内で指定してください。',
+    },
+    {
+      name: 'a line that ends after its as_of date',
+      source: LINE_WIDGET_DEFINITION.replace(
+        'range: 1y',
+        'range: 2099-01-05..2099-01-06',
+      ),
+      path: 'time.range',
+      message: 'time.range の終了日は time.as_of 以下にしてください。',
     },
   ])('rejects $name', ({ source, path, message }) => {
     expect(parseWidgetDefinition(source)).toEqual({

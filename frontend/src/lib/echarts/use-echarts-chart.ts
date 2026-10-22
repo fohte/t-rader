@@ -15,6 +15,14 @@ import { observeChartResize, observeChartTheme } from '#lib/chart-theme'
 
 echarts.use([AriaComponent, CanvasRenderer, LabelLayout])
 
+const fallbackSeriesColors = [
+  '#5470c6',
+  '#91cc75',
+  '#fac858',
+  '#ee6666',
+  '#73c0de',
+] as const
+
 export interface EChartsPalette {
   background: string
   border: string
@@ -24,6 +32,7 @@ export interface EChartsPalette {
   upDim: string
   down: string
   downDim: string
+  seriesColors: string[]
 }
 
 export type EChartsOptionFactory = (
@@ -39,6 +48,7 @@ const fallbackPalette: EChartsPalette = {
   upDim: '#5a2a2a',
   down: '#3f9fe0',
   downDim: '#234152',
+  seriesColors: [...fallbackSeriesColors],
 }
 
 function readPalette(element: HTMLElement): EChartsPalette {
@@ -55,6 +65,13 @@ function readPalette(element: HTMLElement): EChartsPalette {
     upDim: read('--color-up-dim', fallbackPalette.upDim),
     down: read('--color-down', fallbackPalette.down),
     downDim: read('--color-down-dim', fallbackPalette.downDim),
+    seriesColors: [
+      read('--color-chart-1', fallbackSeriesColors[0]),
+      read('--color-chart-2', fallbackSeriesColors[1]),
+      read('--color-chart-3', fallbackSeriesColors[2]),
+      read('--color-chart-4', fallbackSeriesColors[3]),
+      read('--color-chart-5', fallbackSeriesColors[4]),
+    ],
   }
 }
 

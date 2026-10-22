@@ -37,6 +37,10 @@
       "SubmitTaskBody": {
         "type": "object",
         "properties": {
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "strategy_id": {
             "type": "string",
             "minLength": 1
@@ -65,6 +69,7 @@
           }
         },
         "required": [
+          "task_id",
           "strategy_id",
           "prompt"
         ]
@@ -103,7 +108,7 @@
     "parameters": {}
   },
   "paths": {
-    "/internal/tasks": {
+    "/internal/v2/tasks": {
       "post": {
         "operationId": "submitTask",
         "requestBody": {

@@ -57,7 +57,7 @@
 | [public.paper_account](public.paper_account.md)                                                 | 9       | 戦略と agent 設定ごとの仮想取引口座を保持する。                                                                                                    | BASE TABLE        |
 | [public.paper_order](public.paper_order.md)                                                     | 7       | 仮想口座に対して記録した不変の売買注文を保持する。                                                                                                 | BASE TABLE        |
 | [public.paper_order_result](public.paper_order_result.md)                                       | 6       | 仮想注文を約定または却下した結果を保持する。                                                                                                       | BASE TABLE        |
-| [public.custom_indicator_evaluation](public.custom_indicator_evaluation.md)                     | 7       | 自作指標の成功した計算結果を、実行時点の定義とともに保持する。                                                                                     | BASE TABLE        |
+| [public.custom_indicator_evaluation](public.custom_indicator_evaluation.md)                     | 10      | 自作指標の成功した計算結果を、実行時点の定義とともに保持する。                                                                                     | BASE TABLE        |
 | [public.saved_screen](public.saved_screen.md)                                                   | 6       | スクリーナーで保存した名前付き条件と並び順を保持する。                                                                                             | BASE TABLE        |
 | [public.event](public.event.md)                                                                 | 6       | システム内で発生したイベントと dispatch 状態を保持する。                                                                                           | BASE TABLE        |
 | [public.event_firing](public.event_firing.md)                                                   | 3       | event と trigger の発火、および投入した task の対応を保持する。                                                                                    | BASE TABLE        |
@@ -69,6 +69,11 @@
 | [public.us_stock_sip_bar_refetch_progress](public.us_stock_sip_bar_refetch_progress.md)         | 7       | 米国株の SIP 足を再取得した銘柄と、再取得できない理由を保持する。                                                                                  | BASE TABLE        |
 | [public.us_stock_sip_bar_refetch_write_budget](public.us_stock_sip_bar_refetch_write_budget.md) | 3       | 米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。                                                                                        | BASE TABLE        |
 | [public.us_stock_minute_bar_ingest_progress](public.us_stock_minute_bar_ingest_progress.md)     | 2       | 米国株の 1 分足を取得済みの終端時刻を保持する。                                                                                                    | BASE TABLE        |
+| [public.task_execution_definition_snapshot](public.task_execution_definition_snapshot.md)       | 5       | task 開始時の設定と初回参照した定義を不変 snapshot として保持する。                                                                                | BASE TABLE        |
+| [public.task_execution_payload](public.task_execution_payload.md)                               | 19      | task に属する input/output payload の revision、schema、完全性状態を保持する。                                                                     | BASE TABLE        |
+| [public.task_execution_payload_chunk](public.task_execution_payload_chunk.md)                   | 6       | payload の順序付き JSON chunk を追記専用で保持する。                                                                                               | BASE TABLE        |
+| [public.task_execution_state](public.task_execution_state.md)                                   | 8       | 戦略 task の固定期限と累計実行量を保持する。                                                                                                       | BASE TABLE        |
+| [public.execution_reservation](public.execution_reservation.md)                                 | 12      | task の実行量予約と送信状態を記録する。                                                                                                            | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -179,6 +184,9 @@
 | public.add_process_hypertable_invalidations_policy    | void           | IN hypertable regclass, IN schedule_interval interval, IN if_not_exists boolean DEFAULT false, IN initial_start timestamp with time zone DEFAULT NULL::timestamp with time zone, IN timezone text DEFAULT NULL::text                                                                                                                                                                                                                                                                                                                                                                                                                                               | PROCEDURE |
 | public.remove_process_hypertable_invalidations_policy | void           | IN hypertable regclass, IN if_exists boolean DEFAULT false                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | PROCEDURE |
 | public.get_telemetry_report                           | jsonb          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | FUNCTION  |
+| public.reject_execution_definition_snapshot_change    | trigger        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | FUNCTION  |
+| public.protect_execution_payload                      | trigger        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | FUNCTION  |
+| public.protect_execution_payload_chunk                | trigger        |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | FUNCTION  |
 
 ## Enums
 
@@ -230,6 +238,7 @@ erDiagram
 "public.paper_order" }o--|| "public.note_version" : "FOREIGN KEY (note_version_id) REFERENCES note_version(id)"
 "public.paper_order" }o--|| "public.paper_account" : "FOREIGN KEY (account_id) REFERENCES paper_account(id) ON DELETE CASCADE"
 "public.paper_order_result" |o--|| "public.paper_order" : "FOREIGN KEY (order_id) REFERENCES paper_order(id) ON DELETE CASCADE"
+"public.custom_indicator_evaluation" }o--o| "public.task_execution_payload" : "FOREIGN KEY (payload_id) REFERENCES task_execution_payload(id) ON DELETE RESTRICT"
 "public.event_firing" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id)"
 "public.event_firing" }o--|| "public.trigger" : "FOREIGN KEY (trigger_id) REFERENCES trigger(trigger_id) ON DELETE CASCADE"
 "public.event_firing" }o--|| "public.event" : "FOREIGN KEY (event_id) REFERENCES event(event_id) ON DELETE CASCADE"
@@ -237,6 +246,11 @@ erDiagram
 "public.bars_timestamp_coverage" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 "public.us_stock_sip_bar_refetch_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 "public.us_stock_minute_bar_ingest_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
+"public.task_execution_definition_snapshot" }o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE RESTRICT"
+"public.task_execution_payload" }o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE RESTRICT"
+"public.task_execution_payload_chunk" }o--|| "public.task_execution_payload" : "FOREIGN KEY (payload_id) REFERENCES task_execution_payload(id) ON DELETE RESTRICT"
+"public.task_execution_state" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE"
+"public.execution_reservation" }o--|| "public.task_execution_state" : "FOREIGN KEY (task_id) REFERENCES task_execution_state(task_id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -788,6 +802,9 @@ erDiagram
   jsonb args
   jsonb output
   timestamp_with_time_zone evaluated_at
+  uuid payload_id FK
+  jsonb payload_pointers
+  uuid execution_step_id
 }
 "public.saved_screen" {
   uuid id
@@ -872,6 +889,66 @@ erDiagram
 "public.us_stock_minute_bar_ingest_progress" {
   text instrument_id FK
   timestamp_with_time_zone completed_through
+}
+"public.task_execution_definition_snapshot" {
+  uuid task_id FK
+  text definition_key
+  jsonb definition
+  text digest
+  timestamp_with_time_zone created_at
+}
+"public.task_execution_payload" {
+  uuid id
+  uuid task_id FK
+  uuid execution_step_id
+  text kind
+  text source
+  text source_revision
+  jsonb source_locator
+  jsonb source_metadata
+  jsonb schema
+  boolean root_is_array
+  bigint chunk_count
+  bigint item_count
+  bigint byte_count
+  text digest
+  text status
+  text incomplete_reason
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone sealed_at
+  jsonb capture_metadata
+}
+"public.task_execution_payload_chunk" {
+  uuid payload_id FK
+  bigint sequence
+  bigint start_item
+  jsonb data
+  bigint byte_count
+  bigint item_count
+}
+"public.task_execution_state" {
+  uuid task_id FK
+  timestamp_with_time_zone deadline_at
+  boolean usage_complete
+  bigint model_calls_used
+  bigint tool_calls_used
+  bigint subagent_runs_used
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.execution_reservation" {
+  uuid reservation_id
+  uuid task_id FK
+  varchar_255_ call_id
+  varchar_32_ resource
+  varchar_128_ resource_key
+  varchar_128_ scope_key
+  bigint amount
+  varchar_64_ request_fingerprint
+  text state
+  jsonb response_json
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 

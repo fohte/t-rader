@@ -1140,6 +1140,121 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn finds_earliest_us_minute_bar_before_cutoff_independent_of_coverage(
+        db: DatabaseHandle,
+    ) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let earliest_us_id = format!("US:DEMO-EARLY-{suffix}");
+        let later_us_id = format!("US:DEMO-LATER-{suffix}");
+        let no_earlier_us_id = format!("US:DEMO-NO-EARLIER-{suffix}");
+        let foreign_id = format!("KR:DEMO-MINUTE-{suffix}");
+        for (id, market) in [
+            (&earliest_us_id, "US"),
+            (&later_us_id, "US"),
+            (&no_earlier_us_id, "US"),
+            (&foreign_id, "OTHER"),
+        ] {
+            instruments::Entity::insert(instruments::ActiveModel {
+                id: Set(id.clone()),
+                name: Set(id.clone()),
+                market: Set(market.to_owned()),
+                sector: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert instrument");
+        }
+
+        let timestamp = |hour, minute| {
+            Utc.with_ymd_and_hms(2040, 1, 2, hour, minute, 0)
+                .single()
+                .expect("fixture timestamp")
+        };
+        bar_queries::upsert_bars(
+            &db,
+            vec![
+                test_bar(&earliest_us_id, Timeframe::Minute, timestamp(8, 0)),
+                test_bar(&earliest_us_id, Timeframe::Minute, timestamp(9, 0)),
+                test_bar(&earliest_us_id, Timeframe::Minute, timestamp(9, 1)),
+                test_bar(&earliest_us_id, Timeframe::Hourly, timestamp(6, 0)),
+                test_bar(&later_us_id, Timeframe::Minute, timestamp(8, 30)),
+                test_bar(&later_us_id, Timeframe::Minute, timestamp(9, 0)),
+                test_bar(&later_us_id, Timeframe::Minute, timestamp(9, 1)),
+                test_bar(&no_earlier_us_id, Timeframe::Minute, timestamp(9, 0)),
+                test_bar(&no_earlier_us_id, Timeframe::Minute, timestamp(9, 1)),
+                test_bar(&foreign_id, Timeframe::Minute, timestamp(7, 0)),
+            ],
+        )
+        .await
+        .expect("insert synthetic bars");
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM bars_timestamp_coverage WHERE instrument_id = $1 AND timeframe = '1m'",
+            [earliest_us_id.into()],
+        ))
+        .await
+        .expect("remove minute coverage");
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE bars_timestamp_coverage SET earliest_timestamp = $2 \
+             WHERE instrument_id = $1 AND timeframe = '1m'",
+            [later_us_id.into(), timestamp(7, 30).fixed_offset().into()],
+        ))
+        .await
+        .expect("make minute coverage stale");
+
+        let repository = PostgresBarsRepository::new(db);
+        let before_cutoff = repository
+            .find_earliest_us_stock_minute_bar_before(timestamp(9, 0))
+            .await
+            .expect("find earliest US minute bar before cutoff");
+        let at_cutoff = repository
+            .find_earliest_us_stock_minute_bar_before(timestamp(8, 0))
+            .await
+            .expect("find US minute bars before an equal cutoff");
+
+        assert_eq!((before_cutoff, at_cutoff), (Some(timestamp(8, 0)), None),);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn finds_no_minute_bar_when_no_us_instrument_exists(db: DatabaseHandle) {
+        let instrument_id = format!(
+            "KR:DEMO-EMPTY-{suffix}",
+            suffix = uuid::Uuid::new_v4().simple()
+        );
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(instrument_id.clone()),
+            name: Set(instrument_id.clone()),
+            market: Set("OTHER".to_owned()),
+            sector: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert foreign instrument");
+        let cutoff = Utc
+            .with_ymd_and_hms(2040, 1, 2, 9, 0, 0)
+            .single()
+            .expect("fixture cutoff");
+        bar_queries::upsert_bars(
+            &db,
+            vec![test_bar(
+                &instrument_id,
+                Timeframe::Minute,
+                cutoff - ChronoDuration::minutes(1),
+            )],
+        )
+        .await
+        .expect("insert foreign minute bar");
+
+        let earliest = PostgresBarsRepository::new(db)
+            .find_earliest_us_stock_minute_bar_before(cutoff)
+            .await
+            .expect("find earliest US minute bar");
+
+        assert_eq!(earliest, None);
+    }
+
+    #[backend_test_macros::database_test]
     async fn downsampling_preserves_api_hourly_bars_and_deletes_only_saved_us_minutes(
         db: DatabaseHandle,
     ) {

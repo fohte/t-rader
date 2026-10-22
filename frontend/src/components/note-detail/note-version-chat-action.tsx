@@ -17,12 +17,13 @@ export function NoteVersionChatAction({
       onClick={() => {
         onAsk(title)
       }}
-      className="inline-flex items-center gap-1"
     >
-      <span className="font-bold text-foreground" aria-hidden="true">
-        &gt;_
+      <span className="inline-flex items-center gap-1">
+        <span className="font-bold text-foreground" aria-hidden="true">
+          &gt;_
+        </span>
+        アナリストに聞く
       </span>
-      アナリストに聞く
     </Button>
   )
 }

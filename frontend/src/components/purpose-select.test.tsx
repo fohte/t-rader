@@ -35,7 +35,9 @@ describe('PurposeSelect', () => {
     )
 
     await user.click(screen.getByRole('combobox', { name: '実行目的' }))
-    await user.click(screen.getByRole('option', { name: 'purpose-alpha' }))
+    await user.click(
+      await screen.findByRole('option', { name: 'purpose-alpha' }),
+    )
 
     expect(onPurposeChange.mock.calls).toEqual([['purpose-alpha']])
   })
@@ -53,7 +55,7 @@ describe('PurposeSelect', () => {
     )
 
     await user.click(screen.getByRole('combobox', { name: '実行目的' }))
-    await user.click(screen.getByRole('option', { name: '既定の設定' }))
+    await user.click(await screen.findByRole('option', { name: '既定の設定' }))
 
     expect(onPurposeChange.mock.calls).toEqual([['']])
   })

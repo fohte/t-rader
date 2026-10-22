@@ -119,6 +119,24 @@ export const Populated: Story = {
   name: 'shows mixed unread notes and annotations with selected items.',
 }
 
+export const MobileSelection: Story = {
+  name: 'selected items show the mobile approval footer.',
+  args: { selectedItemIds: ['note:fake-version-a'] },
+  globals: { viewport: { value: 'mobileReview' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileReview: {
+          name: 'Mobile review',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: { viewport: { width: 390, height: 700 } },
+  },
+}
+
 export const AnnotationTab: Story = {
   name: 'the annotation tab shows annotations and disables the note-kind filter.',
   args: { typeFilter: 'annotation', selectedItemIds: [] },

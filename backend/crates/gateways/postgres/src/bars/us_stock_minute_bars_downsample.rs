@@ -12,6 +12,11 @@ struct TimestampRow {
 }
 
 #[derive(Debug, FromQueryResult)]
+struct EarliestTimestampRow {
+    timestamp: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, FromQueryResult)]
 struct InsertedBarRow {
     timestamp: DateTime<FixedOffset>,
 }
@@ -20,18 +25,20 @@ pub(super) async fn find_earliest_minute_bar_before(
     db: &impl ConnectionTrait,
     cutoff: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>, sea_orm::DbErr> {
+    // MIN/MAX 専用の順序探索を避け、chunk ごとの部分集約を全体でまとめる。
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT MIN(timestamp) AS timestamp FROM bars \
-             WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' AND timestamp < $1",
+             WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' AND timestamp < $1 \
+             GROUP BY timeframe",
             [cutoff.fixed_offset().into()],
         ))
         .await?;
 
-    row.map(|row| TimestampRow::from_query_result(&row, ""))
+    row.map(|row| EarliestTimestampRow::from_query_result(&row, ""))
         .transpose()
-        .map(|row| row.and_then(|row| row.timestamp.map(|timestamp| timestamp.to_utc())))
+        .map(|row| row.map(|row| row.timestamp.to_utc()))
 }
 
 pub(super) async fn downsample_minute_bar_range(

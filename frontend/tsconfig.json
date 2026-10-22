@@ -16,6 +16,7 @@
     "jsx": "react-jsx",
     // agent の型を type-only import するためのエイリアス (別 tsconfig プロジェクトのため paths が要る)
     "paths": {
+      "#components/ui": ["./src/components/ui"],
       "agent/*": ["../agent/src/*"]
     }
   },

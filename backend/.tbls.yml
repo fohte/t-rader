@@ -100,6 +100,28 @@ comments:
       event_id: '発火元のイベント。'
       trigger_id: 'イベントで起動した trigger。'
       task_id: 'trigger が投入した戦略 task。'
+  - table: task_execution_state
+    tableComment: '戦略 task の固定期限と累計実行量を保持する。'
+    columnComments:
+      task_id: '利用枠と期限を共有する戦略 task。'
+      deadline_at: 'task 開始時に固定した実行期限。'
+      usage_complete: '移行前の累計実行量が完全に復元できているかを示す。false の task は予約と再開を拒否する。'
+      model_calls_used: '予約済みまたは消費済みのモデル呼び出し数。'
+      tool_calls_used: '予約済みまたは消費済みの tool 呼び出し数。'
+      subagent_runs_used: '予約済みまたは消費済みの子実行数。'
+  - table: execution_reservation
+    tableComment: 'task の実行量予約と送信状態を記録する。'
+    columnComments:
+      reservation_id: '予約レコードの識別子。'
+      task_id: '利用枠を共有する戦略 task。'
+      call_id: '通信再送を同じ予約へ対応させる呼び出し識別子。'
+      request_fingerprint: 'call_id に結び付けた要求内容の digest。'
+      resource: '予約した量の種類。'
+      resource_key: '上限を適用する対象キー。'
+      scope_key: '上限を適用する task / step / run の範囲。'
+      amount: '予約した量。'
+      state: '予約、消費、または未送信確認済みの解放状態。'
+      response_json: '完了した tool 呼び出しを再送へ返す保存済み応答。'
   - table: group_axis
     tableComment: '銘柄グループを分類する軸を定義する。'
     columnComments:
@@ -388,6 +410,45 @@ comments:
       args: '計算に渡した入力引数を保持する JSON 値。'
       output: '自作指標が返した JSON 値。'
       evaluated_at: '計算が成功した時刻。'
+      payload_id: '完全な評価出力を保持する task payload。'
+      payload_pointers: 'evaluation の数値出力名と payload 内 JSON Pointer の対応。'
+      execution_step_id: '評価を実行した task step の UUID。'
+  - table: task_execution_definition_snapshot
+    tableComment: 'task 開始時の設定と初回参照した定義を不変 snapshot として保持する。'
+    columnComments:
+      task_id: '定義 snapshot を所有する task。'
+      definition_key: 'snapshot 内の定義を識別するキー。'
+      definition: '実行で使う定義の保存時点の JSON 内容。'
+      digest: 'definition の SHA-256 digest。'
+  - table: task_execution_payload
+    tableComment: 'task に属する input/output payload の revision、schema、完全性状態を保持する。'
+    columnComments:
+      task_id: 'payload を所有する task。'
+      execution_step_id: 'payload を生成した task step の UUID。'
+      kind: 'payload の区分。input または output。'
+      source: 'payload を取得または生成した操作。'
+      source_revision: '取得元が返す revision または保存した定義 digest。'
+      source_locator: '取得元の revision に対応する locator。'
+      source_metadata: '取得元が返す補足情報。'
+      schema: 'seal 前に payload 全体へ適用する JSON Schema。'
+      capture_metadata: '取得時点と provider が把握する期待、取得、欠損、未取得の件数。'
+      root_is_array: 'payload の root が配列かどうか。'
+      chunk_count: '保存した順序付き chunk 数。'
+      item_count: 'payload に含まれる配列要素数。'
+      byte_count: 'payload の JSON byte 数。'
+      digest: 'seal 済み payload の SHA-256 digest。'
+      status: 'staging、sealed、incomplete のいずれか。'
+      incomplete_reason: 'payload を完了扱いにできなかった理由。'
+      sealed_at: 'payload を immutable な sealed 状態にした時刻。'
+  - table: task_execution_payload_chunk
+    tableComment: 'payload の順序付き JSON chunk を追記専用で保持する。'
+    columnComments:
+      payload_id: 'chunk が属する payload。'
+      sequence: 'payload 内の 0 始まりの chunk 順序。'
+      start_item: '配列 payload 内で chunk が始まる要素位置。'
+      data: 'chunk に含まれる JSON 値。'
+      byte_count: 'chunk の JSON byte 数。'
+      item_count: 'chunk に含まれる配列要素数。'
   - table: dashboard
     tableComment: 'ユーザーが作成したダッシュボードの YAML 設定を保持する。'
     columnComments:

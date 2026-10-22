@@ -195,20 +195,22 @@ function AnnotationRows({
               type="button"
               variant={isSelected ? 'default' : 'ghost'}
               aria-pressed={isSelected}
-              className="h-auto min-w-0 flex-1 flex-col items-start gap-1.5 whitespace-normal px-3.5 py-3 text-left"
+              className="h-auto min-w-0 flex-1 whitespace-normal text-left"
               onClick={() => {
                 onSelectAnnotation(annotation.id)
               }}
             >
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs text-muted-foreground">
-                <time dateTime={timestamp}>{formatDate(timestamp)}</time>
-                <span>{getAuthorLabel(annotation.created_by_kind)}</span>
-                {annotation.status === 'unread' && (
-                  <StatusPill status="unread" />
-                )}
-              </span>
-              <span className="line-clamp-2 text-sm text-foreground">
-                {buildSnippet(annotation.text)}
+              <span className="flex w-full flex-col items-start gap-1.5">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs text-muted-foreground">
+                  <time dateTime={timestamp}>{formatDate(timestamp)}</time>
+                  <span>{getAuthorLabel(annotation.created_by_kind)}</span>
+                  {annotation.status === 'unread' && (
+                    <StatusPill status="unread" />
+                  )}
+                </span>
+                <span className="line-clamp-2 text-sm text-foreground">
+                  {buildSnippet(annotation.text)}
+                </span>
               </span>
             </Button>
             <Link

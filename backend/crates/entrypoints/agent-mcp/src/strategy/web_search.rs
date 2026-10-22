@@ -9,7 +9,6 @@ use core_application::web_search::{WebSearchError, WebSearchTimeRange, WebSearch
 use rmcp::ErrorData as McpError;
 
 use super::dto::{SearchWebArticle, SearchWebParams, SearchWebResult};
-use super::tool_call_limit::ToolCallLimitContext;
 use super::{StrategyServer, internal_error, invalid_params};
 
 pub(super) const TOOL_NAME: &str = "search_web";
@@ -22,7 +21,6 @@ impl StrategyServer {
     pub(super) async fn search_web_inner(
         &self,
         scope: impl Into<StrategyScope>,
-        call_limits: ToolCallLimitContext,
         params: SearchWebParams,
     ) -> Result<SearchWebResult, McpError> {
         let session_strategy_id = scope.into().id();
@@ -36,9 +34,6 @@ impl StrategyServer {
             .web_search_client
             .as_ref()
             .ok_or_else(|| internal_error("TAVILY_API_KEY is not configured"))?;
-        self.reserve_tool_call_limits(&call_limits, TOOL_NAME)
-            .await?;
-
         tracing::info!(
             strategy_id = %session_strategy_id,
             query,
@@ -61,8 +56,6 @@ impl StrategyServer {
                     error = %error,
                     "search_web: web search request failed"
                 );
-                // 検索が実際には行われなかったので、予約した呼び出し回数を戻す。
-                self.release_tool_call_limits(&call_limits, TOOL_NAME).await;
                 return Err(web_search_error_to_mcp(error));
             }
         };

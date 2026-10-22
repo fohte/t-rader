@@ -6,6 +6,7 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig, mergeConfig } from 'vitest/config'
 
+import { tapLinkOnTouch } from './src/vitest/browser-commands.test-helper'
 import viteConfig from './vite.config'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -30,6 +31,7 @@ export default mergeConfig(
           test: {
             name: 'browser',
             include: ['src/**/*.browser.test.{ts,tsx}'],
+            exclude: ['src/**/*.touch.browser.test.{ts,tsx}'],
             browser: {
               enabled: true,
               provider: playwright({
@@ -37,6 +39,24 @@ export default mergeConfig(
               }),
               headless: true,
               instances: [{ browser: 'chromium' }],
+            },
+            setupFiles: ['./src/test-setup.ts'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'browser-touch',
+            include: ['src/**/*.touch.browser.test.{ts,tsx}'],
+            browser: {
+              enabled: true,
+              provider: playwright({
+                launchOptions: { args: [...BLOCK_EXTERNAL_REQUESTS_ARGS] },
+                contextOptions: { hasTouch: true },
+              }),
+              headless: true,
+              instances: [{ browser: 'chromium' }],
+              commands: { tapLinkOnTouch },
             },
             setupFiles: ['./src/test-setup.ts'],
           },

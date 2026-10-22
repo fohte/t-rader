@@ -82,6 +82,9 @@ mod tests {
             code: INDICATOR_CODE.to_owned(),
             args: json!({ "value": 12 }),
             output: json!({ "value": 12 }),
+            payload_id: None,
+            payload_pointers: None,
+            execution_step_id: None,
             evaluated_at: DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
                 .expect("valid timestamp"),
         }

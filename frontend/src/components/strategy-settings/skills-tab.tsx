@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
 import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
+import { SelectableListRow } from '#components/strategy-settings/selectable-list-row'
 import { validateSkillName } from '#components/strategy-settings/skill-name'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
@@ -169,7 +170,7 @@ export function SkillsTab({ purpose }: SkillsTabProps) {
           {newNameError != null && (
             <p
               data-testid="new-skill-error"
-              className="font-mono text-2xs text-primary"
+              className="font-mono text-2xs text-destructive"
             >
               {newNameError}
             </p>
@@ -183,32 +184,20 @@ export function SkillsTab({ purpose }: SkillsTabProps) {
             </li>
           )}
           {names.map((name) => (
-            <li
+            <SelectableListRow
               key={name}
-              className="flex items-center justify-between border-b border-border px-1 last:border-b-0"
+              selected={selected === name}
+              onSelect={() => {
+                setSelected(name)
+                setSaveError(null)
+              }}
+              deleteLabel={`skill "${name}" を削除`}
+              onDelete={() => {
+                handleDelete(name)
+              }}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setSelected(name)
-                  setSaveError(null)
-                }}
-                data-active={selected === name}
-                className="flex-1 truncate px-2 py-1.5 text-left font-mono text-xs hover:bg-surface-strong data-[active=true]:text-primary"
-              >
-                {name}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleDelete(name)
-                }}
-                aria-label={`skill "${name}" を削除`}
-                className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-primary"
-              >
-                削除
-              </button>
-            </li>
+              <span className="min-w-0 flex-1 truncate">{name}</span>
+            </SelectableListRow>
           ))}
         </ul>
       </aside>

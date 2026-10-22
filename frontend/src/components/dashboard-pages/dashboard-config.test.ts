@@ -149,7 +149,7 @@ describe('parseDashboardConfig', () => {
       ),
       issue: {
         path: 'widgets[0].time.range',
-        message: 'time.range は現在のウィジェットでは使えません。',
+        message: 'time.range は line 以外では使えません。',
       },
     },
     {
@@ -180,7 +180,7 @@ describe('parseDashboardConfig', () => {
       issue: {
         path: 'widgets[0].viz',
         message:
-          'viz.type は treemap、toplist または table を指定してください。',
+          'viz.type は treemap、toplist、table または line を指定してください。',
       },
     },
   ])('$name を検証エラーとして返す', ({ yaml, issue }) => {
@@ -237,10 +237,89 @@ describe('parseDashboardConfig', () => {
     })
   })
 
+  it('期間と系列を含む line widget を読み取る', () => {
+    const lineYaml = dashboardYaml
+      .replace('type: toplist', 'type: line')
+      .replace(
+        '      value: movement\n      order: desc\n      limit: 5\n      bar_scale:\n        min: -0.1\n        max: 0.1',
+        '      series: [movement]',
+      )
+      .replace(
+        '    viz:',
+        '    time:\n      range: 2099-01-01..2099-01-05\n    viz:',
+      )
+
+    expect(parseDashboardConfig(lineYaml)).toEqual({
+      ok: true,
+      value: {
+        title: '市場の動き',
+        widgets: [
+          {
+            title: '値動き',
+            width: 'half',
+            definition: {
+              queries: {
+                movement: {
+                  metric: 'change',
+                  period: '1d',
+                  by: 'stock',
+                  universe: { stocks: ['DEMO-A'] },
+                },
+              },
+              display: {
+                movement: { label: 'Movement', format: 'percent' },
+              },
+              time: { range: '2099-01-01..2099-01-05' },
+              viz: { type: 'line', series: ['movement'] },
+            },
+          },
+        ],
+      },
+    })
+  })
+
   it('プレビュー URL の URL-safe Base64 から設定を読み取る', () => {
     expect(
       parseDashboardPreviewHash(`#${encodeBase64Url(dashboardYaml)}`),
     ).toEqual(expectedDashboardConfig)
+  })
+
+  it('プレビュー URL に含まれる期間 line widget を読み取る', () => {
+    const lineYaml = dashboardYaml
+      .replace('type: toplist', 'type: line')
+      .replace(
+        '      value: movement\n      order: desc\n      limit: 5\n      bar_scale:\n        min: -0.1\n        max: 0.1',
+        '      series: [movement]',
+      )
+      .replace('    viz:', '    time:\n      range: 1y\n    viz:')
+
+    expect(parseDashboardPreviewHash(`#${encodeBase64Url(lineYaml)}`)).toEqual({
+      ok: true,
+      value: {
+        title: '市場の動き',
+        widgets: [
+          {
+            title: '値動き',
+            width: 'half',
+            definition: {
+              queries: {
+                movement: {
+                  metric: 'change',
+                  period: '1d',
+                  by: 'stock',
+                  universe: { stocks: ['DEMO-A'] },
+                },
+              },
+              display: {
+                movement: { label: 'Movement', format: 'percent' },
+              },
+              time: { range: '1y' },
+              viz: { type: 'line', series: ['movement'] },
+            },
+          },
+        ],
+      },
+    })
   })
 
   it('復号できないプレビュー URL を検証エラーとして返す', () => {

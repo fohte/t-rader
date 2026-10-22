@@ -99,6 +99,7 @@ impl StrategyTaskUseCases {
         Ok(PreparedStrategyTaskSubmission {
             task,
             request: SubmitAgentTask {
+                task_id,
                 strategy_id,
                 prompt,
                 purpose: Some(purpose),
@@ -117,6 +118,22 @@ impl StrategyTaskUseCases {
         self.repository
             .insert(transaction, prepared.task.clone())
             .await?;
+        self.execution_budget
+            .initialize_task(
+                transaction,
+                prepared.task.task_id,
+                prepared.task.deadline_at,
+            )
+            .await?;
+        if let Some(snapshotter) = &self.task_start_snapshotter {
+            snapshotter
+                .capture_task_start(
+                    transaction,
+                    prepared.task.task_id,
+                    prepared.task.purpose.as_deref().unwrap_or(DEFAULT_PURPOSE),
+                )
+                .await?;
+        }
         Ok(())
     }
 

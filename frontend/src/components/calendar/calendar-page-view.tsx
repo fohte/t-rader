@@ -197,9 +197,9 @@ export function CalendarPageView({
             className="space-y-2 p-3 sm:p-4"
             aria-label="イベントを読み込み中"
           >
-            <Skeleton className="h-6 w-full rounded-none" />
-            <Skeleton className="h-18 w-full rounded-none" />
-            <Skeleton className="h-18 w-full rounded-none" />
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-18 w-full" />
+            <Skeleton className="h-18 w-full" />
           </div>
         ) : errorMessage != null ? (
           <p role="alert" className="px-4 py-8 text-center text-destructive">
@@ -259,8 +259,8 @@ export function CalendarPageView({
                               className="space-y-1 px-3 py-2 sm:px-4"
                               aria-label="他の決算を読み込み中"
                             >
-                              <Skeleton className="h-5 w-full rounded-none" />
-                              <Skeleton className="h-5 w-full rounded-none" />
+                              <Skeleton className="h-5 w-full" />
+                              <Skeleton className="h-5 w-full" />
                             </div>
                           ) : otherEarningsErrorMessage != null ? (
                             <p

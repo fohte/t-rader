@@ -46,6 +46,14 @@ const agentGraphPhaseSchema = z
 
 const agentGraphConfigSchema = z.object({
   timeout_minutes: timeoutMinutesSchema.optional(),
+  execution_limits: z
+    .object({
+      max_model_calls: z.number().int().min(0).max(4_294_967_295).optional(),
+      max_tool_calls: z.number().int().min(0).max(4_294_967_295).optional(),
+      max_subagent_runs: z.number().int().min(0).max(4_294_967_295).optional(),
+    })
+    .strict()
+    .optional(),
   tool_limits: z
     .record(z.string(), z.number().int().min(0).max(4_294_967_295))
     .optional(),
@@ -103,6 +111,31 @@ export const parseAgentGraph = (
     return ok({
       ...(validated.data.timeout_minutes !== undefined
         ? { timeoutMinutes: validated.data.timeout_minutes }
+        : {}),
+      ...(validated.data.execution_limits !== undefined
+        ? {
+            executionLimits: {
+              ...(validated.data.execution_limits.max_model_calls !== undefined
+                ? {
+                    maxModelCalls:
+                      validated.data.execution_limits.max_model_calls,
+                  }
+                : {}),
+              ...(validated.data.execution_limits.max_tool_calls !== undefined
+                ? {
+                    maxToolCalls:
+                      validated.data.execution_limits.max_tool_calls,
+                  }
+                : {}),
+              ...(validated.data.execution_limits.max_subagent_runs !==
+              undefined
+                ? {
+                    maxSubagentRuns:
+                      validated.data.execution_limits.max_subagent_runs,
+                  }
+                : {}),
+            },
+          }
         : {}),
       ...(validated.data.tool_limits !== undefined
         ? { toolLimits: validated.data.tool_limits }

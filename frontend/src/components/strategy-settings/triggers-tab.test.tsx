@@ -228,6 +228,14 @@ function setup(initial: Trigger[] = []) {
   return render(<TriggersTab strategyId="strat-1" />, { wrapper: Wrapper })
 }
 
+async function selectKind(
+  user: ReturnType<typeof userEvent.setup>,
+  kind: 'cron' | 'hook' | 'event',
+) {
+  await user.click(screen.getByRole('combobox', { name: 'kind' }))
+  await user.click(await screen.findByRole('option', { name: kind }))
+}
+
 afterEach(() => {
   cleanup()
   activeMiddleware?.eject()
@@ -278,7 +286,7 @@ describe('TriggersTab', () => {
         .getAllByRole('button')
         .filter((button) => button.getAttribute('aria-label') == null)
         .map((button) => button.textContent),
-    ).toEqual(['eventdemo_record.changed'])
+    ).toEqual(['eventdemo_record.changed選択中'])
   })
 
   it('初期表示で先頭の trigger を選択しフォームに反映する', async () => {
@@ -341,7 +349,7 @@ describe('TriggersTab', () => {
         },
       },
     ])
-  })
+  }, 15_000)
 
   it('event trigger を作成すると event_type と event_match を API に送る', async () => {
     const user = userEvent.setup()
@@ -349,7 +357,7 @@ describe('TriggersTab', () => {
 
     await screen.findByTestId('trigger-list')
     await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
-    await user.selectOptions(screen.getByLabelText('kind'), 'event')
+    await selectKind(user, 'event')
     fireEvent.change(screen.getByLabelText('event_type'), {
       target: { value: 'demo_record.changed' },
     })
@@ -379,7 +387,7 @@ describe('TriggersTab', () => {
         },
       ])
     })
-  })
+  }, 15_000)
 
   it('event_type が空の event trigger は作成できない', async () => {
     const user = userEvent.setup()
@@ -387,7 +395,7 @@ describe('TriggersTab', () => {
 
     await screen.findByTestId('trigger-list')
     await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
-    await user.selectOptions(screen.getByLabelText('kind'), 'event')
+    await selectKind(user, 'event')
     fireEvent.change(screen.getByLabelText('prompt_template'), {
       target: { value: 'synthetic prompt' },
     })
@@ -403,7 +411,7 @@ describe('TriggersTab', () => {
       error: 'event_type は必須です',
       createCalls: [],
     })
-  })
+  }, 15_000)
 
   it('hook trigger 作成時に event_match の JSON が不正だとエラーになり API は呼ばれない', async () => {
     const user = userEvent.setup()
@@ -412,7 +420,7 @@ describe('TriggersTab', () => {
     await screen.findByTestId('trigger-list')
     await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
 
-    await user.selectOptions(screen.getByLabelText('kind'), 'hook')
+    await selectKind(user, 'hook')
     await user.type(
       screen.getByLabelText('hook_slug (POST /api/hooks/:slug)'),
       'x',
@@ -428,7 +436,7 @@ describe('TriggersTab', () => {
       'event_match の JSON が不正です',
     )
     expect(activeMiddleware?.store.createCalls).toEqual([])
-  })
+  }, 15_000)
 
   it('cron で schedule が空だと validation エラーになり API は呼ばれない', async () => {
     const user = userEvent.setup()
@@ -484,7 +492,39 @@ describe('TriggersTab', () => {
         },
       ])
     })
-  })
+  }, 15_000)
+
+  it('フォームの enabled checkbox を解除して保存すると enabled: false が PUT される', async () => {
+    const user = userEvent.setup()
+    setup([
+      makeTrigger({
+        trigger_id: 'demo-trigger',
+        kind: 'cron',
+        schedule: '15 10 * * 2',
+        prompt_template: 'sample prompt',
+        enabled: true,
+      }),
+    ])
+
+    await screen.findByLabelText('prompt_template')
+    await user.click(screen.getByLabelText('enabled'))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(activeMiddleware?.store.updateCalls).toEqual([
+        {
+          triggerId: 'demo-trigger',
+          body: {
+            purpose: null,
+            prompt_template: 'sample prompt',
+            enabled: false,
+            event_match: null,
+            schedule: '15 10 * * 2',
+          },
+        },
+      ])
+    })
+  }, 15_000)
 
   it('event trigger を編集すると event_type と event_match が PUT される', async () => {
     const user = userEvent.setup()

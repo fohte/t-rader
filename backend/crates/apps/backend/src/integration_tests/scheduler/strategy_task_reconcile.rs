@@ -46,13 +46,14 @@ mod tests {
         agent_config, event as event_entity, strategy, strategy_task, strategy_task_step,
     };
     use gateway_postgres::{
-        PostgresEventRepository, PostgresStrategyTaskRepository, PostgresTriggerRepository,
-        PostgresUnitOfWork,
+        PostgresEventRepository, PostgresExecutionBudgetRepository, PostgresStrategyTaskRepository,
+        PostgresTriggerRepository, PostgresUnitOfWork,
     };
     use sea_orm::{
         ActiveModelTrait,
         ActiveValue::{NotSet, Set},
-        ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+        ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, QueryOrder,
+        Statement,
     };
     use serde_json::{Value, json};
     use uuid::Uuid;
@@ -128,6 +129,7 @@ mod tests {
         purpose: Option<&str>,
     ) -> Uuid {
         let now = Utc::now().fixed_offset();
+        let deadline_at = now + deadline_offset;
         strategy_task::ActiveModel {
             task_id: Set(task_id),
             strategy_id: Set(strategy_id),
@@ -137,7 +139,7 @@ mod tests {
             phase: Set(phase),
             error_summary: Set(None),
             result_text: Set(None),
-            deadline_at: Set(now + deadline_offset),
+            deadline_at: Set(deadline_at),
             purpose: Set(purpose.map(str::to_string)),
             as_of: NotSet,
             context_kind: NotSet,
@@ -147,6 +149,13 @@ mod tests {
             updated_at: NotSet,
         }
         .insert(db)
+        .await
+        .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO task_execution_state (task_id, deadline_at, created_at, updated_at) VALUES ($1, $2, $3, $3)",
+            [task_id.into(), deadline_at.into(), now.into()],
+        ))
         .await
         .unwrap();
         task_id
@@ -706,7 +715,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_claim_refreshes_deadline_before_agent_submission(
+    async fn resume_preserves_the_original_deadline_before_agent_submission(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
@@ -715,14 +724,16 @@ mod tests {
             strategy_id,
             Some("t-resume-deadline"),
             StrategyTaskPhase::Failed,
-            PAST,
+            FAR_FUTURE,
         )
         .await;
+        let original_deadline = fetch_task(&db, task_id).await.deadline_at;
         let client = Arc::new(BlockingSubmitAgentTaskClient::new());
         client.fake.set_next_task_id("t-resumed-deadline").await;
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             Arc::new(PostgresStrategyTaskRepository::new(db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
@@ -750,13 +761,14 @@ mod tests {
                 resume_result.is_ok(),
                 claimed.phase,
                 claimed.a2a_task_id,
-                claimed.deadline_at > Utc::now().fixed_offset(),
+                claimed.deadline_at == original_deadline,
                 reconciled,
                 after_reconcile.phase,
                 after_reconcile.a2a_task_id,
                 finished.phase,
                 finished.a2a_task_id,
-                finished.deadline_at == submitted_deadline,
+                submitted_deadline == original_deadline,
+                finished.deadline_at == original_deadline,
                 events,
             ),
             (
@@ -770,7 +782,148 @@ mod tests {
                 StrategyTaskPhase::Running,
                 Some("t-resumed-deadline".to_string()),
                 true,
+                true,
                 vec![],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn manual_resume_does_not_reopen_an_expired_task(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-expired-manual-resume"),
+            StrategyTaskPhase::Failed,
+            PAST,
+        )
+        .await;
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            Arc::new(PostgresStrategyTaskRepository::new(db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+        );
+        let fake = FakeAgentTaskClient::new();
+
+        let result = strategy_tasks.resume(&fake, task_id).await;
+        let task = fetch_task(&db, task_id).await;
+
+        assert_eq!(
+            (
+                matches!(
+                    result,
+                    Err(core_application::strategy_task::ResumeTaskError::NotResumable(_, _))
+                ),
+                fake.submitted.lock().await.len(),
+                task.phase,
+                task.deadline_at < Utc::now().fixed_offset(),
+            ),
+            (true, 0, StrategyTaskPhase::Failed, true),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn manual_resume_rejects_unmeasured_legacy_usage(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic-unmeasured-manual"),
+            StrategyTaskPhase::Failed,
+            FAR_FUTURE,
+        )
+        .await;
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE task_execution_state SET usage_complete = false WHERE task_id = $1",
+            [task_id.into()],
+        ))
+        .await
+        .unwrap();
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            Arc::new(PostgresStrategyTaskRepository::new(db.clone())),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+        );
+        let fake = FakeAgentTaskClient::new();
+
+        let result = strategy_tasks.resume(&fake, task_id).await;
+        let task = fetch_task(&db, task_id).await;
+
+        assert_eq!(
+            (
+                matches!(
+                    result,
+                    Err(core_application::strategy_task::ResumeTaskError::NotResumable(_, _))
+                ),
+                fake.submitted.lock().await.len(),
+                task.phase,
+            ),
+            (true, 0, StrategyTaskPhase::Failed),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn automatic_resume_rejects_unmeasured_legacy_usage(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic-unmeasured-auto"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE task_execution_state SET usage_complete = false WHERE task_id = $1",
+            [task_id.into()],
+        ))
+        .await
+        .unwrap();
+        let fake = FakeAgentTaskClient::new();
+        fake.set_status(
+            "synthetic-unmeasured-auto",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_message: None,
+                error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        let repository = Arc::new(PostgresStrategyTaskRepository::new(db.clone()));
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            repository.clone(),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+        );
+        let task = repository.find_by_id(task_id).await.unwrap().unwrap();
+
+        let updated = strategy_tasks
+            .reconcile_task(&fake, task, Utc::now().fixed_offset())
+            .await
+            .unwrap();
+        let task = fetch_task(&db, task_id).await;
+
+        assert_eq!(
+            (
+                updated,
+                task.phase,
+                task.a2a_task_id,
+                task.auto_resumed_at.is_some(),
+                fake.submitted.lock().await.len(),
+            ),
+            (
+                true,
+                StrategyTaskPhase::Failed,
+                Some("synthetic-unmeasured-auto".to_string()),
+                false,
+                0,
             ),
         );
     }
@@ -1632,6 +1785,7 @@ mod tests {
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             repository.clone(),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
@@ -1718,12 +1872,15 @@ mod tests {
         )
         .await;
         let dispatch_queue = Arc::new(FailingEventDispatchJobQueue::default());
-        let strategy_tasks =
-            StrategyTaskUseCases::new(Arc::new(PostgresUnitOfWork::new(db.clone())), repository)
-                .with_completion_events(
-                    Arc::new(PostgresEventRepository::new(db.clone())),
-                    EventDispatchJobUseCases::new(dispatch_queue.clone()),
-                );
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            repository,
+            Arc::new(PostgresExecutionBudgetRepository::new()),
+        )
+        .with_completion_events(
+            Arc::new(PostgresEventRepository::new(db.clone())),
+            EventDispatchJobUseCases::new(dispatch_queue.clone()),
+        );
 
         let updated = strategy_tasks
             .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
@@ -2091,6 +2248,7 @@ mod tests {
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             repository.clone(),
+            Arc::new(PostgresExecutionBudgetRepository::new()),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
