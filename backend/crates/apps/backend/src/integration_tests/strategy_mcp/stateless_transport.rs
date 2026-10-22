@@ -8,22 +8,20 @@ use core_application::kata_exec::{
     ExecRequest, ExecResult, FakeKataExecutor, KataExecError, KataExecutor, SharedKataExecutor,
 };
 use gateway_postgres::entities::{
-    custom_indicator, sea_orm_active_enums::StrategyTaskPhase, strategy_task,
-    task_execution_definition_snapshot,
+    custom_indicator, strategy_task, task_execution_definition_snapshot,
 };
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
+    ColumnTrait, EntityTrait, QueryFilter,
 };
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 use uuid::Uuid;
 
+use super::tests_common;
 use crate::testing::insert_test_strategy;
 use crate::testing::mcp::{legacy_initialize_body, parse_sse_response};
-
-const TASK_START_SNAPSHOT_DIGEST: &str =
-    "8b71de3f8e45dcb78cf9e14199658490a9bbe1b59a902c22b849b6386b921cbc";
 
 struct NotifyOnDrop(Arc<Notify>);
 
@@ -51,6 +49,7 @@ async fn call_strategy_tool(
     server: &TestServer,
     request_id: u64,
     strategy_id: Uuid,
+    strategy_task_id: Uuid,
     execution_id: &str,
     name: &str,
     arguments: Value,
@@ -60,6 +59,7 @@ async fn call_strategy_tool(
         .add_header("accept", "application/json, text/event-stream")
         .add_header("mcp-protocol-version", "2025-06-18")
         .add_header("x-strategy-id", strategy_id.to_string())
+        .add_header("x-strategy-task-id", strategy_task_id.to_string())
         .add_header("x-execution-id", execution_id)
         .add_header("x-tool-models", "{}")
         .json(&json!({
@@ -82,7 +82,7 @@ fn normalize_payload_ids_and_digests(value: &mut Value) {
         }
         Value::Object(fields) => {
             for (key, item) in fields {
-                if matches!(key.as_str(), "id" | "task_id" | "payload_id") {
+                if matches!(key.as_str(), "id" | "task_id" | "payload_id" | "purpose") {
                     if item.is_string() {
                         *item = json!(format!("<{key}>"));
                     }
@@ -164,36 +164,17 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
-    let task_id = crate::testing::insert_test_strategy_task(
-        &db,
-        strategy_id,
-        "synthetic task prompt",
-        None,
-        Utc::now().fixed_offset(),
-    )
-    .await;
-    let a2a_task_id = format!("sample-task-{}", Uuid::new_v4());
-    strategy_task::ActiveModel {
-        task_id: Set(task_id),
-        a2a_task_id: Set(Some(a2a_task_id.clone())),
-        phase: Set(StrategyTaskPhase::Running),
-        ..Default::default()
-    }
-    .update(&db)
-    .await
-    .expect("mark synthetic task as running");
-
-    let snapshot_definition = json!({"phase": "synthetic"});
-    task_execution_definition_snapshot::ActiveModel {
-        task_id: Set(task_id),
-        definition_key: Set("task_start".into()),
-        definition: Set(snapshot_definition.clone()),
-        digest: Set(TASK_START_SNAPSHOT_DIGEST.into()),
-        created_at: Set(Utc::now().fixed_offset()),
-    }
-    .insert(&db)
-    .await
-    .expect("insert synthetic task snapshot");
+    let task = tests_common::create_test_execution_task(&db, strategy_id, "phases: []").await;
+    let task_id = task.task_id;
+    let a2a_task_id = task.a2a_task_id;
+    let task_start_snapshot = task_execution_definition_snapshot::Entity::find()
+        .filter(task_execution_definition_snapshot::Column::TaskId.eq(task_id))
+        .filter(task_execution_definition_snapshot::Column::DefinitionKey.eq("task_start"))
+        .one(&db)
+        .await
+        .expect("query synthetic task start snapshot")
+        .expect("task start snapshot exists");
+    let snapshot_definition = task_start_snapshot.definition;
 
     let indicator_id = Uuid::new_v4();
     custom_indicator::ActiveModel {
@@ -256,6 +237,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         2,
         strategy_id,
+        task_id,
         &a2a_task_id,
         "read_task_execution_snapshot",
         json!({}),
@@ -266,6 +248,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         3,
         strategy_id,
+        task_id,
         &format!("{a2a_task_id}:{execution_step_id}"),
         "execute_operation",
         json!({
@@ -284,6 +267,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         4,
         strategy_id,
+        task_id,
         &a2a_task_id,
         "read_execution_payload",
         json!({
@@ -298,6 +282,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         5,
         strategy_id,
+        task_id,
         &a2a_task_id,
         "read_execution_payload",
         json!({
@@ -312,6 +297,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         6,
         strategy_id,
+        task_id,
         &a2a_task_id,
         "read_execution_payload",
         json!({
@@ -345,6 +331,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         7,
         strategy_id,
+        task_id,
         "sample-unknown-task",
         "read_task_execution_snapshot",
         json!({}),
@@ -354,6 +341,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         8,
         other_strategy_id,
+        task_id,
         &a2a_task_id,
         "read_task_execution_snapshot",
         json!({}),
@@ -363,6 +351,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
         &server,
         9,
         strategy_id,
+        completed_task_id,
         &completed_a2a_task_id,
         "read_task_execution_snapshot",
         json!({}),
@@ -389,7 +378,7 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
     });
     normalize_payload_ids_and_digests(&mut actual);
 
-    let expected = json!({
+    let mut expected = json!({
         "snapshot": {
             "definition": snapshot_definition,
             "digest": "<digest>",
@@ -450,14 +439,12 @@ async fn task_only_execution_id_reads_snapshot_and_payload_over_streamable_http(
             "digest": "<digest>",
         },
         "auth_errors": {
-            "unknown_task": {"code": -32602, "message": "task execution was not found"},
-            "wrong_strategy": {
-                "code": -32602,
-                "message": "task execution is outside the requested strategy scope",
-            },
-            "completed_task": {"code": -32602, "message": "task execution is not running"},
+            "unknown_task": {"code": -32602, "message": "execution does not match an active task"},
+            "wrong_strategy": {"code": -32602, "message": "execution does not match an active task"},
+            "completed_task": {"code": -32602, "message": "execution does not match an active task"},
         },
     });
+    normalize_payload_ids_and_digests(&mut expected);
 
     assert_eq!(actual, expected);
 }
@@ -467,24 +454,9 @@ async fn cancelling_an_in_flight_operation_request_stops_the_kata_handler(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
-    let task_id = crate::testing::insert_test_strategy_task(
-        &db,
-        strategy_id,
-        "synthetic task prompt",
-        None,
-        Utc::now().fixed_offset(),
-    )
-    .await;
-    let a2a_task_id = format!("sample-task-{}", Uuid::new_v4());
-    strategy_task::ActiveModel {
-        task_id: Set(task_id),
-        a2a_task_id: Set(Some(a2a_task_id.clone())),
-        phase: Set(StrategyTaskPhase::Running),
-        ..Default::default()
-    }
-    .update(&db)
-    .await
-    .expect("mark synthetic task as running");
+    let task = tests_common::create_test_execution_task(&db, strategy_id, "phases: []").await;
+    let task_id = task.task_id;
+    let a2a_task_id = task.a2a_task_id;
 
     custom_indicator::ActiveModel {
         indicator_id: Set(Uuid::new_v4()),
@@ -524,6 +496,7 @@ async fn cancelling_an_in_flight_operation_request_stops_the_kata_handler(
             &server,
             20,
             strategy_id,
+            task_id,
             &execution_id,
             "execute_operation",
             json!({
@@ -544,7 +517,10 @@ async fn cancelling_an_in_flight_operation_request_stops_the_kata_handler(
     let execution_drop = tokio::time::timeout(Duration::from_secs(5), dropped.notified()).await;
 
     assert_eq!(
-        (request_result.is_err(), execution_drop.is_ok()),
+        (
+            request_result.is_err_and(|error| error.is_cancelled()),
+            execution_drop.is_ok(),
+        ),
         (true, true),
     );
 }
