@@ -406,6 +406,7 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
                 resume_steps: Some(vec![
                     serde_json::json!({
                         "execution_step_id": completed_step_id,
+                        "kind": "llm",
                         "phase_key": "planning",
                         "label": "planning",
                         "model": "fictional-model",
@@ -416,6 +417,7 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
                     }),
                     serde_json::json!({
                         "execution_step_id": failed_step_id,
+                        "kind": "llm",
                         "phase_key": "research",
                         "label": "research",
                         "model": "fictional-model",
