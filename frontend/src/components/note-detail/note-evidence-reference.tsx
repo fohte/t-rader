@@ -7,6 +7,7 @@ import {
   type NoteEvaluationEvidenceState,
 } from '#components/note-detail/note-evaluation-evidence-card-view'
 import { NoteEvidenceCardView } from '#components/note-detail/note-evidence-card-view'
+import { useNoteIndicatorChangeEvidence } from '#hooks/use-note-indicator-change-evidence'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { fetchClient } from '#lib/api/client'
 import {
@@ -20,7 +21,6 @@ import type {
   ParsedNoteChangeReference,
   ParsedStockChangeReference,
 } from '#lib/note-change-reference'
-import { resolveNoteIndicatorChangeEvidence } from '#lib/note-indicator-change-evidence'
 import type { ParsedNotePriceReference } from '#lib/note-price-reference'
 import type {
   ParsedNoteIndicatorObservationReference,
@@ -252,53 +252,7 @@ function ResolvedNoteIndicatorChangeReference({
 }: ParsedIndicatorChangeReference & { value: string }) {
   const [open, setOpen] = useState(false)
   const indicator = useResolveRef(`indicator:${indicatorId}`)
-  const evidenceQuery = useQuery({
-    queryKey: ['note-indicator-change-evidence', indicator.id, start, end],
-    queryFn: async ({ signal }) => {
-      const [startResult, endResult] = await Promise.all([
-        fetchClient.GET('/api/refs/indicators/{id}/observations', {
-          params: {
-            path: { id: indicator.id },
-            query: { from: start, to: start },
-          },
-          signal,
-        }),
-        fetchClient.GET('/api/refs/indicators/{id}/observations', {
-          params: {
-            path: { id: indicator.id },
-            query: { from: end, to: end },
-          },
-          signal,
-        }),
-      ])
-
-      if (
-        !startResult.response.ok ||
-        startResult.data == null ||
-        !endResult.response.ok ||
-        endResult.data == null
-      ) {
-        return { status: 'error' as const }
-      }
-
-      return {
-        status: 'ready' as const,
-        state: resolveNoteIndicatorChangeEvidence(
-          startResult.data,
-          endResult.data,
-          start,
-          end,
-        ),
-      }
-    },
-    enabled: open,
-    retry: false,
-  })
-  const state = evidenceQuery.isPending
-    ? { status: 'loading' as const }
-    : evidenceQuery.isError || evidenceQuery.data.status === 'error'
-      ? { status: 'error' as const }
-      : evidenceQuery.data.state
+  const state = useNoteIndicatorChangeEvidence(indicator.id, start, end, open)
 
   return (
     <NoteEvidenceCardView

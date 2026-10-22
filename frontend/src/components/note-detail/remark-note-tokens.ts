@@ -292,7 +292,7 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
       },
     ])
 
-    // ブロック図は段落内に置けないため、変化率を含む段落の直後に図を挿入する。
+    // ブロック図は段落内に置けないため、株価の変化率を含む段落の直後に図を挿入する。
     appendChangeFigures(tree.children)
   }
 }

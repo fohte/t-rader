@@ -13,6 +13,10 @@ export type NoteIndicatorChangeEvidenceState =
   | { status: 'zero-start'; startValue: number; endValue: number }
   | { status: 'ready'; evidence: NoteIndicatorChangeEvidence }
 
+function isUsableValue(value: number | undefined): value is number {
+  return value != null && Number.isFinite(value)
+}
+
 export function resolveNoteIndicatorChangeEvidence(
   startObservations: IndicatorObservation[],
   endObservations: IndicatorObservation[],
@@ -25,17 +29,14 @@ export function resolveNoteIndicatorChangeEvidence(
   const endValue = endObservations.find(
     (observation) => observation.date === end,
   )?.value
+  const hasStartValue = isUsableValue(startValue)
+  const hasEndValue = isUsableValue(endValue)
   const missingDates = [
-    ...(startValue == null || !Number.isFinite(startValue) ? [start] : []),
-    ...(endValue == null || !Number.isFinite(endValue) ? [end] : []),
+    ...(hasStartValue ? [] : [start]),
+    ...(hasEndValue ? [] : [end]),
   ]
 
-  if (
-    startValue == null ||
-    endValue == null ||
-    !Number.isFinite(startValue) ||
-    !Number.isFinite(endValue)
-  ) {
+  if (!hasStartValue || !hasEndValue) {
     return { status: 'missing', missingDates }
   }
 

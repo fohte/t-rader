@@ -30,6 +30,8 @@ interface IndicatorObservationResponse {
   data: Array<{ date: string; value: number }> | undefined
 }
 
+const indicatorObservationPath = '/api/refs/indicators/{id}/observations'
+
 const { useBarsQuery, fetchGet } = vi.hoisted(() => ({
   useBarsQuery: vi.fn(),
   fetchGet:
@@ -78,7 +80,8 @@ const emptyRangeComments = {
 }
 
 function requestedIndicatorObservations() {
-  return fetchGet.mock.calls.map(([, options]) => ({
+  return fetchGet.mock.calls.map(([path, options]) => ({
+    path,
     id: options.params.path.id,
     query: options.params.query,
   }))
@@ -931,10 +934,10 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
   it('shows the saved indicator percentage and fetches observations only when opened', async () => {
     const user = userEvent.setup()
     const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
-    fetchGet.mockImplementation((_path, options) => {
+    fetchGet.mockImplementation((path, options) => {
       const date = options.params.query.from
       return Promise.resolve({
-        response: { ok: true },
+        response: { ok: path === indicatorObservationPath },
         data: [
           {
             date,
@@ -970,10 +973,12 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
       callsBeforeOpen: 0,
       requests: [
         {
+          path: indicatorObservationPath,
           id: 'demo-indicator',
           query: { from: '2030-01-02', to: '2030-01-02' },
         },
         {
+          path: indicatorObservationPath,
           id: 'demo-indicator',
           query: { from: '2030-01-03', to: '2030-01-03' },
         },
@@ -986,14 +991,22 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
 
   it.each([
     {
-      name: 'the request fails',
+      name: 'the response is unsuccessful',
+      kind: 'response' as const,
       response: { ok: false },
       data: undefined,
       role: 'alert',
       message: '指標の観測値を取得できませんでした',
     },
     {
+      name: 'the request is rejected',
+      kind: 'rejected' as const,
+      role: 'alert',
+      message: '指標の観測値を取得できませんでした',
+    },
+    {
       name: 'both observations are missing',
+      kind: 'response' as const,
       response: { ok: true },
       data: [],
       role: 'status',
@@ -1001,10 +1014,14 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
     },
   ])(
     'keeps the saved percentage visible when $name',
-    async ({ response, data, role, message }) => {
+    async ({ kind, response, data, role, message }) => {
       const user = userEvent.setup()
       const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
-      fetchGet.mockResolvedValue({ response, data })
+      if (kind === 'rejected') {
+        fetchGet.mockRejectedValue(new Error('request failed'))
+      } else {
+        fetchGet.mockResolvedValue({ response, data })
+      }
       const router = createStoryRouter(
         () => (
           <QueryClientProvider client={queryClient}>
@@ -1032,10 +1049,12 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
         message,
         requests: [
           {
+            path: indicatorObservationPath,
             id: 'demo-indicator',
             query: { from: '2030-01-02', to: '2030-01-02' },
           },
           {
+            path: indicatorObservationPath,
             id: 'demo-indicator',
             query: { from: '2030-01-03', to: '2030-01-03' },
           },
