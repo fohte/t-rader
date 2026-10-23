@@ -216,7 +216,8 @@ export function NotesList({
                       <StatusPill status={note.status} />
                       {overview.unread_version_count > 0 && (
                         <Chip>
-                          未読 {String(overview.unread_version_count)} 版
+                          未読 {String(overview.unread_version_count)}{' '}
+                          バージョン
                         </Chip>
                       )}
                       {!note.is_current && overview.current != null && (

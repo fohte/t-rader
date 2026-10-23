@@ -228,7 +228,12 @@ describe('NotesList', () => {
         '/notes/fake-note-a?version=2&version_id=fake-version-a&view=all&kind=sample-kind&tag=sample-tag',
       unreadHref:
         '/notes/fake-note-a?version=4&version_id=fake-version-unread&view=all&kind=sample-kind&tag=sample-tag',
-      rowMetadata: ['架空の種別表示名', '現行 v2', '未読 2 版', '架空タグ'],
+      rowMetadata: [
+        '架空の種別表示名',
+        '現行 v2',
+        '未読 2 バージョン',
+        '架空タグ',
+      ],
       currentStatus: '承認済み',
     })
 
