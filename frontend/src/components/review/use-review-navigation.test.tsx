@@ -1,4 +1,4 @@
-import { RouterProvider } from '@tanstack/react-router'
+import { Link, RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
@@ -46,6 +46,37 @@ const loadedQueue: ReviewQueueState = {
   isError: false,
   invalidate,
 }
+const scopedItems: ReviewQueueItem[] = [
+  {
+    kind: 'note',
+    id: 'fake-version-approved',
+    noteId: 'fake-note-approved',
+    versionNo: 2,
+    title: '架空の確認済みノート',
+    createdAt: '2026-01-14T02:00:00Z',
+    noteKind: null,
+    createdByKind: 'human',
+    unreadVersionCount: 0,
+  },
+  {
+    kind: 'note',
+    id: 'fake-version-next',
+    noteId: 'fake-note-next',
+    versionNo: 3,
+    title: '架空の次のノート',
+    createdAt: '2026-01-14T01:00:00Z',
+    noteKind: null,
+    createdByKind: 'llm',
+    unreadVersionCount: 1,
+  },
+]
+const scopedSnapshot = reviewQueueModel.createNavigationSnapshot(scopedItems)
+const scopedNavigationState = {
+  snapshot: scopedSnapshot,
+  currentItemKey: 'note:fake-version-approved',
+  items: scopedItems,
+  scope: 'notes' as const,
+}
 
 afterEach(cleanup)
 
@@ -67,6 +98,31 @@ function ReviewNavigationProbe() {
       >
         Load queue
       </button>
+    </>
+  )
+}
+
+function ScopedReviewNavigationProbe() {
+  const { navigation, isPending, isError } = useReviewNavigation(
+    'note:fake-version-approved',
+    'fake-note-approved',
+  )
+
+  return (
+    <>
+      <Link
+        to="/notes/$noteId"
+        params={{ noteId: 'fake-note-approved' }}
+        state={(previous) => ({
+          ...previous,
+          reviewQueue: scopedNavigationState,
+        })}
+      >
+        Open scoped notes navigation
+      </Link>
+      <output data-testid="review-navigation-state">
+        {JSON.stringify({ navigation, isPending, isError })}
+      </output>
     </>
   )
 }
@@ -99,5 +155,40 @@ describe('useReviewNavigation', () => {
     })
 
     expect((await screen.findByText(expected)).textContent).toEqual(expected)
+  })
+
+  it('keeps approved overview rows when the live unread queue excludes them', async () => {
+    const user = userEvent.setup()
+    vi.mocked(useReviewQueue).mockReturnValue({
+      data: { counts: { notes: 0, annotations: 0, total: 0 }, items: [] },
+      isPending: false,
+      isError: false,
+      invalidate,
+    })
+    const router = createStoryRouter(() => <ScopedReviewNavigationProbe />, {
+      paths: ['/notes/$noteId'],
+      initialPath: '/notes/fake-note-approved',
+    })
+    render(<RouterProvider router={router} />)
+
+    await user.click(
+      await screen.findByRole('link', {
+        name: 'Open scoped notes navigation',
+      }),
+    )
+
+    const expected = JSON.stringify({
+      navigation: {
+        items: scopedItems,
+        snapshot: scopedSnapshot,
+        currentItemKey: 'note:fake-version-approved',
+        scope: 'notes',
+      },
+      isPending: false,
+      isError: false,
+    })
+    expect(
+      (await screen.findByTestId('review-navigation-state')).textContent,
+    ).toEqual(expected)
   })
 })

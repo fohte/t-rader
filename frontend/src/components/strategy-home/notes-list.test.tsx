@@ -151,6 +151,27 @@ function getSelectedSnapshotOutput() {
   }
 }
 
+function getLoadingStateOutput() {
+  const status = screen.getByRole('status')
+  return {
+    busy: status.getAttribute('aria-busy'),
+    rowCount: screen.queryAllByRole('listitem').length,
+  }
+}
+
+function getErrorStateOutput() {
+  const alert = screen.getByRole('alert')
+  return { role: alert.getAttribute('role'), text: alert.textContent }
+}
+
+function getPendingEmptyStateOutput() {
+  return {
+    rowCount: screen.queryAllByRole('listitem').length,
+    message: screen.getByText('未読・レビュー待ちのノートはありません。')
+      .textContent,
+  }
+}
+
 async function renderList(
   overviews: NoteOverview[],
   options: {
@@ -349,20 +370,27 @@ describe('NotesList', () => {
     })
   })
 
-  it('shows loading, error, and empty states for the selected view', async () => {
+  it('shows the loading state while overviews are being fetched', async () => {
     await renderList([], { state: 'loading' })
-    expect(screen.getByRole('status').getAttribute('aria-busy')).toEqual('true')
-    cleanup()
 
+    expect(getLoadingStateOutput()).toEqual({ busy: 'true', rowCount: 0 })
+  })
+
+  it('shows an error when overviews cannot be fetched', async () => {
     await renderList([], { state: 'error' })
-    expect(screen.getByRole('alert').textContent).toEqual(
-      'ノート一覧を読み込めませんでした。',
-    )
-    cleanup()
 
+    expect(getErrorStateOutput()).toEqual({
+      role: 'alert',
+      text: 'ノート一覧を読み込めませんでした。',
+    })
+  })
+
+  it('shows an empty message when no notes await review', async () => {
     await renderList([], { view: 'pending' })
-    expect(
-      screen.getByText('未読・レビュー待ちのノートはありません。').textContent,
-    ).toEqual('未読・レビュー待ちのノートはありません。')
+
+    expect(getPendingEmptyStateOutput()).toEqual({
+      rowCount: 0,
+      message: '未読・レビュー待ちのノートはありません。',
+    })
   })
 })
