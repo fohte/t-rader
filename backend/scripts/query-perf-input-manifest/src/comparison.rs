@@ -356,3 +356,6 @@ pub(crate) fn failure_kind(detail: &str) -> String {
 fn is_sha256(hash: &str) -> bool {
     hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
+
+#[cfg(test)]
+mod tests;

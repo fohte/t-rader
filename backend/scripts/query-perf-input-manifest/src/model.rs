@@ -31,7 +31,7 @@ pub(crate) struct Manifest {
     pub(crate) comparison: InputComparison,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct ComparisonReport {
     pub(crate) matches: bool,
     pub(crate) expected_source_log_sha256: String,
@@ -67,7 +67,7 @@ pub(crate) struct ComparisonReport {
     pub(crate) sql_differences: Vec<SqlDifference>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct SqlDifference {
     pub(crate) sql_sha256: String,
     pub(crate) expected_present: bool,
