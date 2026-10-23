@@ -352,7 +352,20 @@ describe('NoteDetailPage', () => {
         },
       ])
     })
-    expect(displayedBodyText()).toEqual(null)
+    expect(notePageOutput(requests.noteRequests)).toEqual([
+      historicalVersion.title,
+      '種別を読み込み中',
+      null,
+      null,
+      null,
+      [
+        {
+          method: 'GET',
+          path: `/api/notes/${noteId}`,
+          versionId: historicalVersion.id,
+        },
+      ],
+    ])
 
     resolveNoteResponse(Response.json(noteForVersion(historicalVersion)))
     await screen.findByRole(
@@ -361,9 +374,20 @@ describe('NoteDetailPage', () => {
       { timeout: 30_000 },
     )
 
-    expect(displayedBodyText()).toEqual(
+    expect(notePageOutput(requests.noteRequests)).toEqual([
+      historicalVersion.title,
+      noteKindLabel,
       '銘柄架空工業DEMO-A: 銘柄架空商事DEMO-B: 内容の続き',
-    )
+      null,
+      null,
+      [
+        {
+          method: 'GET',
+          path: `/api/notes/${noteId}`,
+          versionId: historicalVersion.id,
+        },
+      ],
+    ])
   }, 30_000)
 
   it('keeps raw body hidden when the detail response belongs to another version', async () => {
