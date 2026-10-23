@@ -76,6 +76,11 @@ export const CatalogFailed: Story = {
   args: { kind: 'unknown-kind', catalogState: 'error' },
 }
 
+export const TagCandidatesFailed: Story = {
+  name: 'shows when some tag candidates could not be loaded.',
+  args: { tagCandidatesError: true },
+}
+
 export const UnregisteredKind: Story = {
   name: 'keeps an unregistered kind selected without showing its key.',
   args: { kind: 'unlisted-kind' },

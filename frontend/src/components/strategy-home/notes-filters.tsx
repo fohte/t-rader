@@ -15,6 +15,7 @@ interface NotesFiltersProps {
   kind: string | undefined
   tags: string[]
   tag: string | undefined
+  tagCandidatesError?: boolean
   view: NoteOverviewView
   onViewChange: (view: NoteOverviewView) => void
   onKindChange: (value: string | undefined) => void
@@ -28,6 +29,7 @@ export function NotesFilters({
   kind,
   tags,
   tag,
+  tagCandidatesError = false,
   view,
   onViewChange,
   onKindChange,
@@ -59,6 +61,11 @@ export function NotesFilters({
         onChange={onTagChange}
         className="h-auto min-h-11 w-full min-w-0"
       />
+      {tagCandidatesError && (
+        <p role="alert" className="text-xs text-destructive sm:col-span-2">
+          一部のタグ候補を読み込めませんでした。
+        </p>
+      )}
       <Button
         variant="plain"
         onClick={onClear}

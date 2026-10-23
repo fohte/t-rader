@@ -91,18 +91,20 @@ function NotesPage() {
   } = $api.useQuery('get', '/api/note-kinds', undefined, {
     enabled: showingNotes,
   })
-  const { data: allTagOverviews } = $api.useQuery(
-    'get',
-    '/api/notes/overview',
-    { params: { query: { view: 'all' } } },
-    { enabled: showingNotes },
-  )
-  const { data: pendingTagOverviews } = $api.useQuery(
-    'get',
-    '/api/notes/overview',
-    { params: { query: { view: 'pending' } } },
-    { enabled: showingNotes },
-  )
+  const { data: allTagOverviews, isError: allTagOverviewsError } =
+    $api.useQuery(
+      'get',
+      '/api/notes/overview',
+      { params: { query: { view: 'all' } } },
+      { enabled: showingNotes },
+    )
+  const { data: pendingTagOverviews, isError: pendingTagOverviewsError } =
+    $api.useQuery(
+      'get',
+      '/api/notes/overview',
+      { params: { query: { view: 'pending' } } },
+      { enabled: showingNotes },
+    )
   const {
     data: overviews,
     isPending: overviewsPending,
@@ -194,6 +196,7 @@ function NotesPage() {
           tags={tags}
           tag={tag}
           view={view}
+          tagCandidatesError={allTagOverviewsError || pendingTagOverviewsError}
           onViewChange={(value) => {
             void navigate({
               search: (previous) => ({ ...previous, view: value }),

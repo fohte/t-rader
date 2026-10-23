@@ -93,6 +93,10 @@ function getPendingTagFilterOutput(search: unknown, tagOption: HTMLElement) {
   }
 }
 
+function getTagCandidatesErrorOutput(alert: HTMLElement) {
+  return { role: alert.getAttribute('role'), text: alert.textContent }
+}
+
 afterEach(() => {
   cleanup()
   resetFetch()
@@ -245,6 +249,50 @@ describe('/notes overview route', () => {
       emptyMessage: '未読・レビュー待ちのノートはありません。',
       tagOption: 'pending-only-tag',
       selectedTag: 'pending-only-tag',
+    })
+  }, 30_000)
+
+  it('shows when pending tag candidates could not be loaded', async () => {
+    stubFetch((input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init)
+      const url = new URL(request.url)
+
+      if (url.pathname === '/api/notes/overview') {
+        return url.searchParams.get('view') === 'pending'
+          ? Promise.resolve(Response.json({}, { status: 500 }))
+          : Promise.resolve(Response.json([overview]))
+      }
+      if (url.pathname === '/api/note-kinds') {
+        return Promise.resolve(Response.json([]))
+      }
+      if (url.pathname === '/api/annotations') {
+        return Promise.resolve(Response.json([]))
+      }
+      return Promise.resolve(Response.json([]))
+    })
+
+    const { routeTree } = await import('#routeTree.gen')
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ['/notes'] }),
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(<RouterProvider router={router} />, {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    })
+
+    const alert = await screen.findByRole('alert')
+
+    expect(getTagCandidatesErrorOutput(alert)).toEqual({
+      role: 'alert',
+      text: '一部のタグ候補を読み込めませんでした。',
     })
   }, 30_000)
 })
