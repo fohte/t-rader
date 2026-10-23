@@ -386,7 +386,7 @@ jobs:
             '{backend_tests: $tests, log_capture: $log_capture, log_upload: $log_upload, input_comparison: $comparison, input_comparison_matches: $comparison_matches, ghcr_login: $ghcr_login, plan_capture: $plan_capture}' \
             > "$CAPTURE_OUTPUT_DIR/prerequisite-status.json"
           if [[ "$PLAN_CAPTURE_OUTCOME" == "skipped" ]]; then
-            printf 'Replay and EXPLAIN were not run because regenerated test input validation did not pass.\n' \
+            printf 'Replay and EXPLAIN were not run because a required prerequisite did not pass.\n' \
               > "$CAPTURE_OUTPUT_DIR/replay-skipped.txt"
           fi
 
