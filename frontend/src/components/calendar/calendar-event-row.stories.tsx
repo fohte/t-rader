@@ -58,7 +58,7 @@ export const OverseasPreMarketEarnings: Story = {
     time: '寄り前',
     country: 'US',
     title: '架空電子',
-    stockId: 'FICT1',
+    stockId: 'US:FICT1',
     target: false,
   },
 }

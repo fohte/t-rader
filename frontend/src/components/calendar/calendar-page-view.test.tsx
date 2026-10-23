@@ -211,7 +211,7 @@ describe('CalendarPageView', () => {
       category: 'earnings',
       country: 'US',
       title: '架空電子',
-      stock_id: 'FICT1',
+      stock_id: 'US:FICT1',
       fiscal_period: '2099-01-01',
       event_date: '2099-01-06',
       event_at: null,
@@ -224,7 +224,7 @@ describe('CalendarPageView', () => {
 
     expect(
       screen.getByRole('link', { name: '架空電子' }).getAttribute('href'),
-    ).toBe('/stocks/FICT1')
+    ).toBe('/stocks/US%3AFICT1')
   })
 
   it('requests the other earnings for the selected country and date', async () => {
@@ -281,6 +281,7 @@ describe('CalendarPageView', () => {
       source: 'jquants',
       title: '架空工業',
       stockId: '0000',
+      expectedHref: '/stocks/0000',
       timeOfDay: 'post_market',
       expectedLinkName: '架空工業 (0000)',
       expectedDetailsText: '引け後JP決算架空工業 (0000)',
@@ -289,7 +290,8 @@ describe('CalendarPageView', () => {
       country: 'US',
       source: 'alpha_vantage',
       title: '架空電子',
-      stockId: 'FICT1',
+      stockId: 'US:FICT1',
+      expectedHref: '/stocks/US%3AFICT1',
       timeOfDay: 'pre_market',
       expectedLinkName: '架空電子',
       expectedDetailsText: '寄り前US決算架空電子',
@@ -301,6 +303,7 @@ describe('CalendarPageView', () => {
       source,
       title,
       stockId,
+      expectedHref,
       timeOfDay,
       expectedLinkName,
       expectedDetailsText,
@@ -345,7 +348,7 @@ describe('CalendarPageView', () => {
           detailsId,
           detailsText: expectedDetailsText,
         },
-        links: [{ name: expectedLinkName, href: `/stocks/${stockId}` }],
+        links: [{ name: expectedLinkName, href: expectedHref }],
       })
     },
   )
