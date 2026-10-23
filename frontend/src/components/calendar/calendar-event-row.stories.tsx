@@ -53,12 +53,12 @@ export const DomesticTargetEarnings: Story = {
 }
 
 export const OverseasPreMarketEarnings: Story = {
-  name: '海外銘柄の決算時刻が寄り前と分かっています。',
+  name: '海外決算を銘柄ページへのリンクで表示します。',
   args: {
     time: '寄り前',
     country: 'US',
     title: '架空電子',
-    stockId: undefined,
+    stockId: 'FICT1',
     target: false,
   },
 }

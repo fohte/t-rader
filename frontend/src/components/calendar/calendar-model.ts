@@ -119,9 +119,11 @@ function buildEventRow(
 ): { row: CalendarRowView; sortOrder: number } {
   const time = getEventTime(event)
   const stockId = event.stock_id ?? undefined
-  const isDomesticEarnings =
-    event.category === 'earnings' && event.country === 'JP' && stockId != null
-  const title = isDomesticEarnings ? `${event.title} (${stockId})` : event.title
+  const isEarningsStock = event.category === 'earnings' && stockId != null
+  const title =
+    isEarningsStock && event.country === 'JP'
+      ? `${event.title} (${stockId})`
+      : event.title
 
   return {
     row: {
@@ -130,7 +132,7 @@ function buildEventRow(
       country: event.country,
       category: formatCalendarCategory(event.category),
       title,
-      stockId: isDomesticEarnings ? stockId : undefined,
+      stockId: isEarningsStock ? stockId : undefined,
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',
       muted: false,

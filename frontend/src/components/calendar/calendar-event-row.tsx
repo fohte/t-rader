@@ -53,7 +53,7 @@ export function CalendarEventRow({
           aria-expanded={titleAction.expanded}
           aria-controls={titleAction.controlsId}
           onClick={titleAction.onClick}
-          className="min-w-0 flex-1"
+          className="min-h-11 min-w-0 flex-1 justify-start text-left"
         >
           <span
             className={clsx(titleToneClassName, 'w-full break-words text-left')}
@@ -66,12 +66,12 @@ export function CalendarEventRow({
           to="/stocks/$stockId"
           params={{ stockId }}
           className={clsx(
-            'min-w-0 flex-1 break-words',
+            'flex min-h-11 min-w-0 flex-1 items-center',
             titleToneClassName,
             'hover:underline',
           )}
         >
-          {title}
+          <span className="w-full break-words">{title}</span>
         </Link>
       ) : (
         <span
