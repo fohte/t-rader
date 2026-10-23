@@ -147,6 +147,20 @@ function getDirectAnnotationNavigationOutput(
   return { search, nextHref }
 }
 
+function getAllViewAnnotationNavigationOutput(
+  pathname: string,
+  search: unknown,
+  annotationQueryStatuses: (string | null)[],
+) {
+  return {
+    pathname,
+    search,
+    allAnnotationsQuery: annotationQueryStatuses.some(
+      (status) => status == null,
+    ),
+  }
+}
+
 describe('/notes annotation integration', () => {
   it.each([
     {
@@ -231,28 +245,30 @@ describe('/notes annotation integration', () => {
         tag: 'sample-tag',
       })
     })
-    await screen.findByRole('link', { name: '架空の未読メモ B' })
-
-    expect(
-      getAllAndPendingAnnotationsOutput(
-        [...new Set(annotationQueries)].map((status) => status ?? 'all').sort(),
-        [
-          screen.queryByRole('link', { name: '架空の確認済みメモ' }) != null,
-          screen.queryByRole('link', { name: '架空の却下済みメモ' }) != null,
-        ],
-        screen.getByLabelText('未読アノテーション 2 件').textContent,
-        router.state.location.search,
-      ),
-    ).toEqual({
-      annotationQueries: ['all', 'unread'],
-      remainingAllStatusesVisible: [false, false],
-      unreadCountLabel: '2',
-      search: {
-        tab: 'annotations',
-        view: 'pending',
-        kind: 'sample-kind',
-        tag: 'sample-tag',
-      },
+    await waitFor(() => {
+      expect(
+        getAllAndPendingAnnotationsOutput(
+          [...new Set(annotationQueries)]
+            .map((status) => status ?? 'all')
+            .sort(),
+          [
+            screen.queryByRole('link', { name: '架空の確認済みメモ' }) != null,
+            screen.queryByRole('link', { name: '架空の却下済みメモ' }) != null,
+          ],
+          screen.getByLabelText('未読アノテーション 2 件').textContent,
+          router.state.location.search,
+        ),
+      ).toEqual({
+        annotationQueries: ['all', 'unread'],
+        remainingAllStatusesVisible: [false, false],
+        unreadCountLabel: '2',
+        search: {
+          tab: 'annotations',
+          view: 'pending',
+          kind: 'sample-kind',
+          tag: 'sample-tag',
+        },
+      })
     })
   }, 30_000)
 
@@ -482,6 +498,56 @@ describe('/notes annotation integration', () => {
       },
       nextHref:
         '/annotations/fake-annotation-b?tab=annotations&view=pending&kind=sample-kind&tag=sample-tag',
+    })
+  }, 30_000)
+
+  it('navigates through all annotations from a directly opened all-view URL', async () => {
+    const user = userEvent.setup()
+    const allViewQueryStatuses: (string | null)[] = []
+    stubFetch((input, init) => {
+      const request = createRequest(input, init)
+      const url = new URL(request.url)
+      if (url.pathname === '/api/annotations') {
+        allViewQueryStatuses.push(url.searchParams.get('status'))
+        return Promise.resolve(Response.json(allAnnotations))
+      }
+      if (url.pathname.startsWith('/api/annotations/')) {
+        const annotationId = url.pathname.split('/')[3]
+        return Promise.resolve(
+          Response.json(
+            allAnnotations.find((annotation) => annotation.id === annotationId),
+          ),
+        )
+      }
+      if (url.pathname === '/api/comments' || url.pathname === '/api/history') {
+        return Promise.resolve(Response.json([]))
+      }
+      return Promise.resolve(Response.json([]))
+    })
+
+    const { router } = await renderRoute(
+      '/annotations/fake-annotation-approved?tab=annotations&view=all&kind=sample-kind&tag=sample-tag',
+    )
+    await user.click(await screen.findByRole('link', { name: '次へ →' }))
+    await screen.findByText('架空の却下済みメモ')
+
+    await waitFor(() => {
+      expect(
+        getAllViewAnnotationNavigationOutput(
+          router.state.location.pathname,
+          router.state.location.search,
+          allViewQueryStatuses,
+        ),
+      ).toEqual({
+        pathname: '/annotations/fake-annotation-rejected',
+        search: {
+          tab: 'annotations',
+          view: 'all',
+          kind: 'sample-kind',
+          tag: 'sample-tag',
+        },
+        allAnnotationsQuery: true,
+      })
     })
   }, 30_000)
 })
