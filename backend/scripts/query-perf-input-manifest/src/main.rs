@@ -65,8 +65,8 @@ mod runner {
     pub struct SqlFingerprint {
         pub sql_sha256: String,
         pub bind_count: usize,
-        pub parameter_types_sha256s: Vec<String>,
-        pub shifted_bind_hashes: Vec<String>,
+        pub parameter_types_set_sha256: String,
+        pub shifted_bind_set_sha256: String,
         pub typed_shifted_bind_set_sha256: String,
     }
 
@@ -78,6 +78,7 @@ mod runner {
         pub specified_bind_hashes: Vec<String>,
         pub specified_bind_set_sha256: String,
         pub parameter_types_sha256: String,
+        pub parameter_types_set_sha256: String,
         pub typed_shifted_bind_set_sha256: String,
     }
 
@@ -250,25 +251,26 @@ mod runner {
 
             total_bind_count += parameter_sets.len();
             binds.sort();
-            let mut parameter_types_sha256s: Vec<_> = binds
+            let mut parameter_types_hashes: Vec<_> = binds
                 .iter()
-                .map(|bind| bind.parameter_types_sha256.clone())
+                .map(|bind| bind.parameter_types_sha256.as_str())
                 .collect();
             let mut shifted_bind_hashes: Vec<_> = binds
                 .iter()
-                .map(|bind| bind.shifted_values_sha256.clone())
+                .map(|bind| bind.shifted_values_sha256.as_str())
                 .collect();
-            let typed_bind_hashes: Vec<_> = binds
+            let mut typed_bind_hashes: Vec<_> = binds
                 .iter()
-                .map(|bind| bind.typed_shifted_bind_sha256.clone())
+                .map(|bind| bind.typed_shifted_bind_sha256.as_str())
                 .collect();
-            parameter_types_sha256s.sort();
+            parameter_types_hashes.sort_unstable();
             shifted_bind_hashes.sort();
+            typed_bind_hashes.sort_unstable();
             let fingerprint = SqlFingerprint {
                 sql_sha256: sql_sha256.clone(),
                 bind_count: parameter_sets.len(),
-                parameter_types_sha256s,
-                shifted_bind_hashes,
+                parameter_types_set_sha256: hash_serialized(&parameter_types_hashes)?,
+                shifted_bind_set_sha256: hash_serialized(&shifted_bind_hashes)?,
                 typed_shifted_bind_set_sha256: hash_serialized(&typed_bind_hashes)?,
             };
 
@@ -295,6 +297,7 @@ mod runner {
                     specified_bind_set_sha256: hash_serialized(&specified_bind_hashes)?,
                     specified_bind_hashes,
                     parameter_types_sha256: hash_serialized(&parameter_types)?,
+                    parameter_types_set_sha256: fingerprint.parameter_types_set_sha256.clone(),
                     typed_shifted_bind_set_sha256: hash_serialized(&group_typed_bind_hashes)?,
                 });
             }
@@ -602,7 +605,7 @@ const EXPECTED_SOURCE_ARTIFACT_ID: &str = "12399056019";
 const EXPECTED_SOURCE_ZIP_SHA256: &str =
     "50d7b38e3a07a9939cc87f9e1bdbf5084240c9ab13ecd53e1ddb34ad50b499e6";
 const EXPECTED_REFERENCE_MANIFEST_SHA256: &str =
-    "ac180c35ce46ac3da9bf45261c8e4dfa54f6c08849cb996d45d5bbb6106fd776";
+    "021b14429c4bdddba79594e45730508bd98656bf0412c638f3e7f6061da83fc5";
 const EXPECTED_TARGET_DATE: &str = "2026-10-22";
 const EXPECTED_PARSED_SQL_COUNT: usize = 365;
 const EXPECTED_REPLAY_SQL_COUNT: usize = 350;
@@ -867,7 +870,7 @@ async fn build_manifest_inner(options: BuildOptions) -> Result<(), String> {
     }
     let reference_applied_exclusion_set_sha256 = comparison.applicable_exclusion_set_sha256.clone();
     let manifest = Manifest {
-        format_version: 2,
+        format_version: 3,
         provenance: Provenance {
             input_kind,
             source_checkout_sha,
@@ -951,7 +954,7 @@ fn validate_baseline(baseline: &Manifest) -> Result<(), String> {
                             .any(|actual| actual == expected)
                     })
             })
-        || baseline.format_version != 2
+        || baseline.format_version != 3
         || manifest_internal_validation_error(&baseline.comparison).is_some()
     {
         return Err("hash-only reference manifest provenance or counts are invalid".to_string());
@@ -984,21 +987,9 @@ fn manifest_internal_validation_error(comparison: &InputComparison) -> Option<St
     let mut total_bind_count = 0;
     for sql in &comparison.sqls {
         total_bind_count += sql.bind_count;
-        if sql.bind_count != sql.parameter_types_sha256s.len()
-            || sql.bind_count != sql.shifted_bind_hashes.len()
-            || sql
-                .parameter_types_sha256s
-                .windows(2)
-                .any(|pair| pair[0] > pair[1])
-            || sql
-                .shifted_bind_hashes
-                .windows(2)
-                .any(|pair| pair[0] > pair[1])
-            || sql
-                .parameter_types_sha256s
-                .iter()
-                .chain(&sql.shifted_bind_hashes)
-                .any(|hash| !is_sha256(hash))
+        if sql.bind_count == 0
+            || !is_sha256(&sql.parameter_types_set_sha256)
+            || !is_sha256(&sql.shifted_bind_set_sha256)
             || !is_sha256(&sql.typed_shifted_bind_set_sha256)
         {
             return Some(format!(
@@ -1055,10 +1046,7 @@ fn manifest_internal_validation_error(comparison: &InputComparison) -> Option<St
     };
     let specified_bind_hashes = &group_movers.specified_bind_hashes;
     if !(group_sql.bind_count == group_movers.bind_count
-        && group_sql
-            .parameter_types_sha256s
-            .iter()
-            .all(|hash| hash == &group_movers.parameter_types_sha256)
+        && group_sql.parameter_types_set_sha256 == group_movers.parameter_types_set_sha256
         && group_sql.typed_shifted_bind_set_sha256 == group_movers.typed_shifted_bind_set_sha256
         && specified_bind_hashes.len() == group_movers.specified_bind_count
         && specified_bind_hashes
@@ -1133,10 +1121,10 @@ fn compare_manifests(expected: &Manifest, actual: &Manifest) -> ComparisonReport
                 let bind_set_matches = expected_sql.bind_count == actual_sql.bind_count
                     && expected_sql.typed_shifted_bind_set_sha256
                         == actual_sql.typed_shifted_bind_set_sha256;
-                let parameter_types_match =
-                    expected_sql.parameter_types_sha256s == actual_sql.parameter_types_sha256s;
+                let parameter_types_match = expected_sql.parameter_types_set_sha256
+                    == actual_sql.parameter_types_set_sha256;
                 let shifted_bind_values_match =
-                    expected_sql.shifted_bind_hashes == actual_sql.shifted_bind_hashes;
+                    expected_sql.shifted_bind_set_sha256 == actual_sql.shifted_bind_set_sha256;
                 if !bind_set_matches {
                     bind_set_mismatch_sql_count += 1;
                 }
