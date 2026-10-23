@@ -169,6 +169,13 @@ describe('NotesPage', () => {
     await waitFor(() => {
       expect(router.state.location.search).toEqual({ tag: '架空タグ' })
     })
+  }, 30_000)
+
+  it('clears both filters with the clear action', async () => {
+    const user = userEvent.setup()
+    const { router } = await renderNotes(
+      '/notes?kind=sample-kind&tag=%E6%9E%B6%E7%A9%BA%E3%82%BF%E3%82%B0',
+    )
 
     await user.click(screen.getByRole('button', { name: '条件を解除' }))
     await waitFor(() => {
