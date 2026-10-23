@@ -46,6 +46,8 @@ function getHeaderOutput() {
       screen.queryByText('種別なし')?.textContent ??
       screen.queryByText('種別を読み込み中')?.textContent ??
       screen.queryByText('種別を取得できません')?.textContent ??
+      screen.queryByText('ノートの種別を読み込み中')?.textContent ??
+      screen.queryByText('ノートの種別を取得できません')?.textContent ??
       screen.queryByText('未登録の種別')?.textContent ??
       null,
     title: screen.getByRole('heading', { level: 1 }).textContent,
@@ -190,4 +192,36 @@ describe('NoteVersionHeader', () => {
       rawKeyVisible: false,
     })
   })
+
+  it.each([
+    ['loading', 'ノートの種別を読み込み中'],
+    ['error', 'ノートの種別を取得できません'],
+  ] as const)(
+    'distinguishes when the note kind is %s',
+    async (noteKindSourceState, kindLabel) => {
+      const router = createStoryRouter(
+        () => (
+          <NoteVersionHeader
+            version={version}
+            noteKind="sample-kind"
+            noteKinds={noteKinds}
+            noteKindCatalogState="loaded"
+            noteKindSourceState={noteKindSourceState}
+            executionOrigin={null}
+            onAsk={() => {}}
+          />
+        ),
+        { paths: ['/notes'], initialPath: '/notes' },
+      )
+      render(<RouterProvider router={router} />)
+      await screen.findByRole('heading', { name: version.title })
+
+      expect(getHeaderOutput()).toEqual({
+        kindLabel,
+        title: version.title,
+        originLinks: [],
+        kindLink: null,
+      })
+    },
+  )
 })

@@ -231,6 +231,8 @@ function noteKindOutput(): string | null {
     screen.queryByText('種別なし')?.textContent ??
     screen.queryByText('種別を読み込み中')?.textContent ??
     screen.queryByText('種別を取得できません')?.textContent ??
+    screen.queryByText('ノートの種別を読み込み中')?.textContent ??
+    screen.queryByText('ノートの種別を取得できません')?.textContent ??
     screen.queryByText('未登録の種別')?.textContent ??
     null
   )
@@ -354,7 +356,7 @@ describe('NoteDetailPage', () => {
     })
     expect(notePageOutput(requests.noteRequests)).toEqual([
       historicalVersion.title,
-      '種別を読み込み中',
+      'ノートの種別を読み込み中',
       null,
       null,
       null,
@@ -429,7 +431,7 @@ describe('NoteDetailPage', () => {
 
     expect(notePageOutput(requests.noteRequests)).toEqual([
       historicalVersion.title,
-      '種別を取得できません',
+      'ノートの種別を取得できません',
       null,
       'バージョンを読み込めませんでした。',
       null,

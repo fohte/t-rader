@@ -24,8 +24,8 @@ function getNoteKindText(
   catalogState: NoteKindCatalogState,
   sourceState: NoteKindSourceState,
 ): string {
-  if (sourceState === 'loading') return '種別を読み込み中'
-  if (sourceState === 'error') return '種別を取得できません'
+  if (sourceState === 'loading') return 'ノートの種別を読み込み中'
+  if (sourceState === 'error') return 'ノートの種別を取得できません'
   if (kind == null || kind === '') return '種別なし'
   if (catalogState === 'loading') return '種別を読み込み中'
   if (catalogState === 'error') return '種別を取得できません'
@@ -59,9 +59,10 @@ export function NoteKindLabel({
         to="/notes"
         search={{ kind, tag: undefined, tab: undefined }}
         aria-label={`${label} のノートを表示`}
-        className="inline-flex max-w-full rounded-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
+        className="inline-flex max-w-full items-center gap-1 rounded-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
       >
         {labelContent}
+        <span aria-hidden="true">↗</span>
       </Link>
     )
   }
