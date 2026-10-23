@@ -1,3 +1,15 @@
+CREATE TEMP TABLE synthetic_reference_date AS
+SELECT timezone('UTC', transaction_timestamp())::date AS reference_date;
+
+CREATE TABLE query_perf_seed_metadata (
+    profile_id text PRIMARY KEY,
+    reference_date date NOT NULL
+);
+
+INSERT INTO query_perf_seed_metadata (profile_id, reference_date)
+SELECT 'synthetic-market-v1', reference_date
+FROM synthetic_reference_date;
+
 CREATE TEMP TABLE synthetic_stocks AS
 SELECT
     n,
@@ -13,8 +25,8 @@ SELECT
     day::date AS bar_date,
     row_number() OVER (ORDER BY day)::integer AS day_number
 FROM generate_series(
-    (current_date - INTERVAL '3 years')::date::timestamp,
-    current_date::timestamp,
+    (SELECT reference_date - INTERVAL '12 years' FROM synthetic_reference_date)::timestamp,
+    (SELECT reference_date FROM synthetic_reference_date)::timestamp,
     INTERVAL '1 day'
 ) AS days(day)
 WHERE extract(isodow FROM day) BETWEEN 1 AND 5;
@@ -98,88 +110,119 @@ FROM (
     LIMIT 400
 ) AS recent_trading_days;
 
-WITH hourly_trading_days AS (
-    SELECT day::date AS bar_date
-    FROM generate_series(
-        (current_date - INTERVAL '90 days')::date::timestamp,
-        current_date::timestamp,
-        INTERVAL '1 day'
-    ) AS days(day)
-    WHERE extract(isodow FROM day) BETWEEN 1 AND 5
-),
-recent_minute_trading_days AS (
-    SELECT day::date AS bar_date
-    FROM generate_series(
-        (current_date - INTERVAL '14 days')::date::timestamp,
-        current_date::timestamp,
-        INTERVAL '1 day'
-    ) AS days(day)
-    WHERE extract(isodow FROM day) BETWEEN 1 AND 5
-    ORDER BY day DESC
-    LIMIT 10
-),
-bar_source AS (
-    SELECT
-        synthetic_stocks.id AS instrument_id,
-        '1d' AS timeframe,
-        synthetic_trading_days.bar_date::timestamp AT TIME ZONE 'UTC' AS timestamp,
-        synthetic_stocks.n,
-        synthetic_trading_days.day_number AS price_step
-    FROM synthetic_stocks
-    CROSS JOIN synthetic_trading_days
-    UNION ALL
-    SELECT
-        synthetic_stocks.id,
-        '1h',
-        (hourly_trading_days.bar_date + TIME '09:00' + make_interval(hours => hourly_bars.hour)) AT TIME ZONE 'UTC',
-        synthetic_stocks.n,
-        hourly_bars.hour
-    FROM synthetic_stocks
-    JOIN hourly_trading_days ON synthetic_stocks.n <= 300
-    CROSS JOIN LATERAL generate_series(0, 6) AS hourly_bars(hour)
-    UNION ALL
-    SELECT
-        synthetic_stocks.id,
-        '1m',
-        (recent_minute_trading_days.bar_date + TIME '09:00' + make_interval(mins => minute_bars.minute)) AT TIME ZONE 'UTC',
-        synthetic_stocks.n,
-        minute_bars.minute
-    FROM synthetic_stocks
-    JOIN recent_minute_trading_days ON synthetic_stocks.n <= 25
-    CROSS JOIN LATERAL generate_series(0, 389) AS minute_bars(minute)
-),
-bar_values AS (
-    SELECT
-        instrument_id,
-        timeframe,
-        timestamp,
-        n,
-        price_step,
-        (50 + n % 300 + price_step % 20 / 10.0)::numeric AS close
-    FROM bar_source
-)
+CREATE TEMP TABLE synthetic_hourly_trading_days AS
+SELECT day::date AS bar_date
+FROM synthetic_reference_date AS reference
+CROSS JOIN LATERAL generate_series(
+    (reference.reference_date - INTERVAL '90 days')::timestamp,
+    reference.reference_date::timestamp,
+    INTERVAL '1 day'
+) AS days(day)
+WHERE extract(isodow FROM day) BETWEEN 1 AND 5;
+
+CREATE TEMP TABLE synthetic_minute_trading_days AS
+SELECT day::date AS bar_date
+FROM synthetic_reference_date AS reference
+CROSS JOIN LATERAL generate_series(
+    (reference.reference_date - INTERVAL '14 days')::timestamp,
+    reference.reference_date::timestamp,
+    INTERVAL '1 day'
+) AS days(day)
+WHERE extract(isodow FROM day) BETWEEN 1 AND 5
+ORDER BY day DESC
+LIMIT 10;
+
+SELECT format(
+$daily$
 INSERT INTO bars (
-    instrument_id,
-    timeframe,
-    timestamp,
-    open,
-    high,
-    low,
-    close,
-    volume,
-    adjustment_factor
+    instrument_id, timeframe, timestamp, open, high, low, close, volume, adjustment_factor
 )
+SELECT
+    synthetic_stocks.id,
+    '1d',
+    synthetic_trading_days.bar_date::timestamp AT TIME ZONE 'UTC',
+    price.close - 0.1,
+    price.close + 0.2,
+    price.close - 0.3,
+    price.close,
+    1000 + synthetic_stocks.n * 17 + synthetic_trading_days.day_number,
+    1
+FROM synthetic_stocks
+CROSS JOIN synthetic_trading_days
+CROSS JOIN LATERAL (
+    SELECT (50 + synthetic_stocks.n %% 300 + synthetic_trading_days.day_number %% 20 / 10.0)::numeric AS close
+) AS price
+WHERE synthetic_trading_days.bar_date >= %L::date
+  AND synthetic_trading_days.bar_date < %L::date
+$daily$,
+    batch.month_start,
+    (batch.month_start + INTERVAL '1 month')::date
+)
+FROM (
+    SELECT DISTINCT date_trunc('month', bar_date)::date AS month_start
+    FROM synthetic_trading_days
+) AS batch
+ORDER BY batch.month_start
+\gexec
+
+INSERT INTO bars (
+    instrument_id, timeframe, timestamp, open, high, low, close, volume, adjustment_factor
+)
+SELECT
+    synthetic_stocks.id,
+    '1h',
+    (synthetic_hourly_trading_days.bar_date + TIME '09:00' + make_interval(hours => hourly_bars.hour)) AT TIME ZONE 'UTC',
+    price.close - 0.1,
+    price.close + 0.2,
+    price.close - 0.3,
+    price.close,
+    1000 + synthetic_stocks.n * 17 + hourly_bars.hour,
+    1
+FROM synthetic_stocks
+JOIN synthetic_hourly_trading_days ON synthetic_stocks.n <= 300
+CROSS JOIN LATERAL generate_series(0, 6) AS hourly_bars(hour)
+CROSS JOIN LATERAL (
+    SELECT (50 + synthetic_stocks.n % 300 + hourly_bars.hour % 20 / 10.0)::numeric AS close
+) AS price;
+
+SELECT format(
+$minute$
+INSERT INTO bars (
+    instrument_id, timeframe, timestamp, open, high, low, close, volume, adjustment_factor
+)
+SELECT
+    synthetic_stocks.id,
+    '1m',
+    (synthetic_minute_trading_days.bar_date + TIME '09:00' + make_interval(mins => minute_bars.minute)) AT TIME ZONE 'UTC',
+    price.close - 0.1,
+    price.close + 0.2,
+    price.close - 0.3,
+    price.close,
+    1000 + synthetic_stocks.n * 17 + minute_bars.minute,
+    1
+FROM synthetic_stocks
+JOIN synthetic_minute_trading_days ON synthetic_stocks.n <= 3000
+CROSS JOIN LATERAL generate_series(0, 389) AS minute_bars(minute)
+CROSS JOIN LATERAL (
+    SELECT (50 + synthetic_stocks.n %% 300 + minute_bars.minute %% 20 / 10.0)::numeric AS close
+) AS price
+WHERE synthetic_minute_trading_days.bar_date = %L::date
+$minute$,
+    synthetic_minute_trading_days.bar_date
+)
+FROM synthetic_minute_trading_days
+ORDER BY synthetic_minute_trading_days.bar_date
+\gexec
+
+CREATE TEMP TABLE synthetic_bar_profile AS
 SELECT
     instrument_id,
     timeframe,
-    timestamp,
-    close - 0.1,
-    close + 0.2,
-    close - 0.3,
-    close,
-    1000 + n * 17 + price_step,
-    1
-FROM bar_values;
+    MIN(timestamp) AS earliest_timestamp,
+    MAX(timestamp) AS latest_timestamp,
+    COUNT(*)::bigint AS row_count
+FROM bars
+GROUP BY instrument_id, timeframe;
 
 INSERT INTO bars_timestamp_coverage (
     instrument_id,
@@ -187,22 +230,8 @@ INSERT INTO bars_timestamp_coverage (
     earliest_timestamp,
     latest_timestamp
 )
-SELECT
-    instrument_id,
-    timeframe,
-    MIN(timestamp),
-    MAX(timestamp)
-FROM bars
-GROUP BY instrument_id, timeframe;
-
-INSERT INTO valuation (code, date, mkt_cap)
-SELECT synthetic_stocks.id || '0', latest_trading_day.latest_trading_day, 1000 + synthetic_stocks.n * 10
-FROM synthetic_stocks
-CROSS JOIN (SELECT max(bar_date) AS latest_trading_day FROM synthetic_trading_days) AS latest_trading_day
-WHERE NOT EXISTS (
-    SELECT FROM synthetic_range_candidates
-    WHERE synthetic_range_candidates.stock_id = synthetic_stocks.id
-);
+SELECT instrument_id, timeframe, earliest_timestamp, latest_timestamp
+FROM synthetic_bar_profile;
 
 CREATE TEMP TABLE synthetic_valuation_dates AS
 SELECT valuation_date.bar_date,
@@ -210,8 +239,8 @@ SELECT valuation_date.bar_date,
 FROM (
     SELECT DISTINCT ON (date_trunc('month', bar_date)) bar_date
     FROM synthetic_trading_days
-    WHERE bar_date >= current_date - INTERVAL '2 years'
-      AND bar_date < current_date - INTERVAL '30 days'
+    WHERE bar_date >= (SELECT reference_date - INTERVAL '2 years' FROM synthetic_reference_date)
+      AND bar_date < (SELECT reference_date - INTERVAL '30 days' FROM synthetic_reference_date)
     ORDER BY date_trunc('month', bar_date), bar_date
 ) AS valuation_date;
 
@@ -238,6 +267,18 @@ FROM synthetic_range_candidates
 JOIN synthetic_stocks ON synthetic_stocks.id = synthetic_range_candidates.stock_id
 CROSS JOIN synthetic_candidate_valuation_dates;
 
+WITH valuation_days AS (
+    SELECT bar_date
+    FROM synthetic_trading_days
+    ORDER BY bar_date DESC
+    LIMIT 150
+)
+INSERT INTO valuation (code, date, mkt_cap)
+SELECT synthetic_stocks.id || '0', valuation_days.bar_date, 1000 + synthetic_stocks.n * 10
+FROM synthetic_stocks
+CROSS JOIN valuation_days
+ON CONFLICT (code, date) DO NOTHING;
+
 INSERT INTO indicator (id, name, kind)
 VALUES ('demo-indicator', 'Demo Indicator', 'sample-kind');
 
@@ -256,8 +297,8 @@ ANALYZE stock;
 ANALYZE instruments;
 ANALYZE bars;
 ANALYZE valuation;
-ANALYZE indicator;
-ANALYZE indicator_observation;
 ANALYZE group_axis;
 ANALYZE stock_group;
 ANALYZE stock_group_member;
+ANALYZE indicator;
+ANALYZE indicator_observation;
