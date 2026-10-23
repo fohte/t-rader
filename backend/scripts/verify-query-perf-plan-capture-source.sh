@@ -30,7 +30,16 @@ while IFS= read -r path; do
       backend/scripts/verify-query-perf-plan-capture-source.sh | \
       backend/scripts/query-perf-input-manifest/Cargo.toml | \
       backend/scripts/query-perf-input-manifest/Cargo.lock | \
+      backend/scripts/query-perf-input-manifest/src/cli.rs | \
+      backend/scripts/query-perf-input-manifest/src/comparison.rs | \
+      backend/scripts/query-perf-input-manifest/src/comparison/tests.rs | \
+      backend/scripts/query-perf-input-manifest/src/constants.rs | \
+      backend/scripts/query-perf-input-manifest/src/manifest.rs | \
+      backend/scripts/query-perf-input-manifest/src/model.rs | \
       backend/scripts/query-perf-input-manifest/src/main.rs | \
+      backend/scripts/query-perf-input-manifest/src/replay_exclusions.rs | \
+      backend/scripts/query-perf-input-manifest/src/runner.rs | \
+      backend/scripts/query-perf-input-manifest/src/util.rs | \
       backend/scripts/query-perf-input-manifest/reference-manifest.json)
       ;;
     *)
