@@ -4,8 +4,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import type { NoteVersion } from '#lib/api/note-version-types'
+import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 import { getExecutionOriginLinks } from '#test/execution-origin-links.test-helper'
+
+type NoteKind = components['schemas']['NoteKind']
 
 const version: NoteVersion = {
   id: 'fake-version-a',
@@ -25,16 +28,53 @@ const version: NoteVersion = {
   reviewed_at: null,
 }
 
+const noteKinds: NoteKind[] = [
+  {
+    key: 'sample-kind',
+    display_name: '架空の種別表示名',
+    requires_approval: false,
+    sort_order: 0,
+  },
+]
+
 afterEach(cleanup)
 
 function getHeaderOutput() {
   return {
-    kindLabel: screen.getByText('架空の種別表示名').textContent,
+    kindLabel:
+      screen.queryByText('架空の種別表示名')?.textContent ??
+      screen.queryByText('種別なし')?.textContent ??
+      screen.queryByText('種別を読み込み中')?.textContent ??
+      screen.queryByText('種別を取得できません')?.textContent ??
+      screen.queryByText('未登録の種別')?.textContent ??
+      null,
     title: screen.getByRole('heading', { level: 1 }).textContent,
     originLinks: getExecutionOriginLinks().map((link) => ({
       name: link.textContent,
       href: link.getAttribute('href'),
     })),
+    kindLink:
+      screen
+        .queryByRole('link', { name: '架空の種別表示名 のノートを表示' })
+        ?.getAttribute('href') ?? null,
+  }
+}
+
+function getHeaderOutputWithLabelOrder() {
+  return {
+    ...getHeaderOutput(),
+    labelPrecedesTitle:
+      screen
+        .getByText('架空の種別表示名')
+        .compareDocumentPosition(screen.getByRole('heading', { level: 1 })) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  }
+}
+
+function getUnregisteredHeaderOutput() {
+  return {
+    ...getHeaderOutput(),
+    rawKeyVisible: screen.queryByText('unlisted-kind-key') != null,
   }
 }
 
@@ -44,8 +84,10 @@ describe('NoteVersionHeader', () => {
       () => (
         <NoteVersionHeader
           version={version}
-          noteKindLabel={null}
-          hasNoteError={false}
+          noteKind={null}
+          noteKinds={noteKinds}
+          noteKindCatalogState="loaded"
+          noteKindSourceState="available"
           executionOrigin={{
             strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
             strategyName: '架空戦略',
@@ -72,8 +114,10 @@ describe('NoteVersionHeader', () => {
       () => (
         <NoteVersionHeader
           version={{ ...version, created_by_kind: 'human', execution_id: null }}
-          noteKindLabel={null}
-          hasNoteError={false}
+          noteKind={null}
+          noteKinds={noteKinds}
+          noteKindCatalogState="loaded"
+          noteKindSourceState="available"
           executionOrigin={{
             strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
             strategyName: '架空戦略',
@@ -93,21 +137,57 @@ describe('NoteVersionHeader', () => {
     expect(getExecutionOriginLinks()).toEqual([])
   })
 
-  it('omits the unresolved origin for a generated version', () => {
-    render(
-      <NoteVersionHeader
-        version={version}
-        noteKindLabel="架空の種別表示名"
-        hasNoteError={false}
-        executionOrigin={null}
-        onAsk={() => {}}
-      />,
+  it('places the registered kind before the title and links to its filtered list', async () => {
+    const router = createStoryRouter(
+      () => (
+        <NoteVersionHeader
+          version={version}
+          noteKind="sample-kind"
+          noteKinds={noteKinds}
+          noteKindCatalogState="loaded"
+          noteKindSourceState="available"
+          executionOrigin={null}
+          onAsk={() => {}}
+        />
+      ),
+      { paths: ['/notes'], initialPath: '/notes' },
     )
+    render(<RouterProvider router={router} />)
+    await screen.findByRole('heading', { name: version.title })
 
-    expect(getHeaderOutput()).toEqual({
+    expect(getHeaderOutputWithLabelOrder()).toEqual({
       kindLabel: '架空の種別表示名',
       title: version.title,
       originLinks: [],
+      kindLink: '/notes?kind=sample-kind',
+      labelPrecedesTitle: Node.DOCUMENT_POSITION_FOLLOWING,
+    })
+  })
+
+  it('does not link an unregistered kind or expose its key', async () => {
+    const router = createStoryRouter(
+      () => (
+        <NoteVersionHeader
+          version={version}
+          noteKind="unlisted-kind-key"
+          noteKinds={[]}
+          noteKindCatalogState="loaded"
+          noteKindSourceState="available"
+          executionOrigin={null}
+          onAsk={() => {}}
+        />
+      ),
+      { paths: ['/notes'], initialPath: '/notes' },
+    )
+    render(<RouterProvider router={router} />)
+    await screen.findByRole('heading', { name: version.title })
+
+    expect(getUnregisteredHeaderOutput()).toEqual({
+      kindLabel: '未登録の種別',
+      title: version.title,
+      originLinks: [],
+      kindLink: null,
+      rawKeyVisible: false,
     })
   })
 })

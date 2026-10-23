@@ -9,7 +9,7 @@ import {
   notesTabSearch,
 } from '#components/notes/notes-tabs'
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
-import { NoteTagFilterSelect } from '#components/strategy-home/note-tag-filter-select'
+import { NotesFilters } from '#components/strategy-home/notes-filters'
 import { NotesList } from '#components/strategy-home/notes-list'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
@@ -17,7 +17,11 @@ import { $api } from '#lib/api/client'
 export const Route = createFileRoute('/notes/')({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tag?: string; tab?: NotesTab } => ({
+  ): { kind?: string; tag?: string; tab?: NotesTab } => ({
+    kind:
+      typeof search.kind === 'string' && search.kind.length > 0
+        ? search.kind
+        : undefined,
     tag:
       typeof search.tag === 'string' && search.tag.length > 0
         ? search.tag
@@ -28,20 +32,27 @@ export const Route = createFileRoute('/notes/')({
 })
 
 function NotesPage() {
-  const { tag, tab } = Route.useSearch()
+  const { kind, tag, tab } = Route.useSearch()
   const navigate = Route.useNavigate()
   const activeTab = tab ?? 'notes'
   const showingNotes = activeTab === 'notes'
+  const {
+    data: noteKinds,
+    isPending: noteKindsPending,
+    isError: noteKindsError,
+  } = $api.useQuery('get', '/api/note-kinds', undefined, {
+    enabled: showingNotes,
+  })
   const { data: availableNotes } = $api.useQuery(
     'get',
     '/api/notes',
     { params: { query: {} } },
-    { enabled: showingNotes && tag != null },
+    { enabled: showingNotes && (kind != null || tag != null) },
   )
   const { data: notes, isPending: notesPending } = $api.useQuery(
     'get',
     '/api/notes',
-    { params: { query: { tag } } },
+    { params: { query: { kind, tag } } },
     { enabled: showingNotes },
   )
   const { data: annotations, isPending: annotationsPending } = $api.useQuery(
@@ -50,7 +61,8 @@ function NotesPage() {
     undefined,
     { enabled: !showingNotes },
   )
-  const filterNotes = tag == null ? (notes ?? []) : (availableNotes ?? [])
+  const filterNotes =
+    kind == null && tag == null ? (notes ?? []) : (availableNotes ?? [])
   const tagSet = new Set(filterNotes.flatMap((note) => note.tags))
   if (tag != null) tagSet.add(tag)
   const tags = [...tagSet].sort((left, right) =>
@@ -68,17 +80,32 @@ function NotesPage() {
           <div className="flex flex-wrap items-center gap-2">
             <CreateNoteDialog />
             <ReviewLink />
-            <NoteTagFilterSelect
-              tags={tags}
-              value={tag}
-              onChange={(v) => {
-                void navigate({ search: (prev) => ({ ...prev, tag: v }) })
-              }}
-            />
           </div>
         )}
       </header>
       <NotesTabs activeTab={activeTab} />
+      {showingNotes && (
+        <NotesFilters
+          noteKinds={noteKinds ?? []}
+          catalogState={
+            noteKindsPending ? 'loading' : noteKindsError ? 'error' : 'loaded'
+          }
+          kind={kind}
+          tags={tags}
+          tag={tag}
+          onKindChange={(value) => {
+            void navigate({ search: (prev) => ({ ...prev, kind: value }) })
+          }}
+          onTagChange={(value) => {
+            void navigate({ search: (prev) => ({ ...prev, tag: value }) })
+          }}
+          onClear={() => {
+            void navigate({
+              search: (prev) => ({ ...prev, kind: undefined, tag: undefined }),
+            })
+          }}
+        />
+      )}
       <div
         id="notes-tabpanel"
         role="tabpanel"
@@ -88,7 +115,17 @@ function NotesPage() {
           notesPending ? (
             <Skeleton className="h-40 w-full" />
           ) : (
-            <NotesList notes={notes ?? []} />
+            <NotesList
+              notes={notes ?? []}
+              noteKinds={noteKinds ?? []}
+              noteKindCatalogState={
+                noteKindsPending
+                  ? 'loading'
+                  : noteKindsError
+                    ? 'error'
+                    : 'loaded'
+              }
+            />
           )
         ) : annotationsPending ? (
           <AnnotationsListSkeleton />

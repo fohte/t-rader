@@ -70,13 +70,18 @@ function getReviewItemTypeLabel(item: ReviewQueueItem): string {
     : `ノート更新 v${String(item.versionNo)}`
 }
 
+function getNoteKindText(kind: string | null, noteKinds: NoteKind[]): string {
+  if (kind == null) return '種別なし'
+  return resolveNoteKindLabel(kind, noteKinds) ?? '未登録の種別'
+}
+
 function getReviewItemDetails(
   item: ReviewQueueItem,
   noteKinds: NoteKind[],
 ): string[] {
   if (item.kind === 'note') {
     return [
-      resolveNoteKindLabel(item.noteKind, noteKinds) ?? '種別なし',
+      getNoteKindText(item.noteKind, noteKinds),
       item.createdByKind === 'llm' ? 'エージェント' : 'ユーザー',
       ...(item.unreadVersionCount > 1
         ? [`未読 ${String(item.unreadVersionCount)} 版`]
@@ -127,7 +132,7 @@ export function ReviewPageView({
     { value: 'all', label: 'すべて' },
     ...noteKindKeys.map((kind) => ({
       value: reviewQueueModel.noteKindFilterKey(kind),
-      label: resolveNoteKindLabel(kind, knownNoteKinds) ?? '種別なし',
+      label: getNoteKindText(kind, knownNoteKinds),
     })),
   ]
 

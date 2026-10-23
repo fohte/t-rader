@@ -3,7 +3,10 @@ import { RouterProvider } from '@tanstack/react-router'
 
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import type { NoteVersion } from '#lib/api/note-version-types'
+import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
+
+type NoteKind = components['schemas']['NoteKind']
 
 const baseVersion: NoteVersion = {
   id: 'fake-version-a',
@@ -29,13 +32,30 @@ const executionOrigin = {
   taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
 }
 
+const noteKinds: NoteKind[] = [
+  {
+    key: 'sample-kind',
+    display_name: '架空の種別表示名',
+    requires_approval: false,
+    sort_order: 0,
+  },
+  {
+    key: 'sample-long-kind',
+    display_name: '長い架空の種別表示名を折り返して読める状態',
+    requires_approval: false,
+    sort_order: 1,
+  },
+]
+
 const meta = {
   title: 'NoteDetail/NoteVersionHeader',
   component: NoteVersionHeader,
   parameters: { layout: 'padded' },
   args: {
-    noteKindLabel: '架空の種別表示名',
-    hasNoteError: false,
+    noteKind: 'sample-kind',
+    noteKinds,
+    noteKindCatalogState: 'loaded',
+    noteKindSourceState: 'available',
     executionOrigin: null,
     onAsk: () => {},
   },
@@ -49,7 +69,11 @@ const meta = {
             </div>
           ),
           {
-            paths: ['/strategies/$id', '/strategies/$id/runs/$taskId'],
+            paths: [
+              '/notes',
+              '/strategies/$id',
+              '/strategies/$id/runs/$taskId',
+            ],
             initialPath: '/strategies/sample-strategy',
           },
         )}
@@ -114,14 +138,66 @@ export const CurrentApproved: Story = {
       change_reason: null,
       reviewed_at: '2026-01-12T03:00:00Z',
     },
-    noteKindLabel: null,
+    noteKind: null,
+  },
+}
+
+export const KindUnset: Story = {
+  name: 'shows when a note has no kind.',
+  args: {
+    version: baseVersion,
+    noteKind: null,
+  },
+}
+
+export const KindLoading: Story = {
+  name: 'shows while the kind catalog is loading.',
+  args: {
+    version: baseVersion,
+    noteKindCatalogState: 'loading',
   },
 }
 
 export const KindUnavailable: Story = {
+  name: 'shows when the kind catalog could not be loaded.',
+  args: {
+    version: baseVersion,
+    noteKindCatalogState: 'error',
+  },
+}
+
+export const NoteKindLoading: Story = {
+  name: 'shows while the note kind is loading.',
+  args: {
+    version: baseVersion,
+    noteKindSourceState: 'loading',
+  },
+}
+
+export const NoteKindUnavailable: Story = {
   name: 'shows when the note kind could not be loaded.',
   args: {
     version: baseVersion,
-    hasNoteError: true,
+    noteKindSourceState: 'error',
+  },
+}
+
+export const KindUnregistered: Story = {
+  name: 'shows when the kind is absent from the loaded catalog.',
+  args: {
+    version: baseVersion,
+    noteKind: 'unlisted-kind',
+    noteKinds: [],
+  },
+}
+
+export const LongKind: Story = {
+  name: 'shows a long kind label before a long note title.',
+  args: {
+    version: {
+      ...baseVersion,
+      title: '架空の長いタイトルを表示しても読みやすく保つメモ',
+    },
+    noteKind: 'sample-long-kind',
   },
 }
