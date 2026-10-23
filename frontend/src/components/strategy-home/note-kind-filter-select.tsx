@@ -71,9 +71,9 @@ export function NoteKindFilterSelect({
     >
       <SelectTrigger
         aria-label="種別で絞り込み"
-        className="h-auto min-h-11 w-full min-w-0"
+        className="data-[size=default]:h-auto min-h-11 w-full min-w-0 whitespace-normal"
       >
-        <SelectValue className="whitespace-normal break-words">
+        <SelectValue className="min-w-0 whitespace-normal break-words">
           {getSelectedValueLabel(value, noteKinds, catalogState)}
         </SelectValue>
       </SelectTrigger>
