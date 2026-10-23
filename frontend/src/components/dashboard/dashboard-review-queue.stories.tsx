@@ -40,7 +40,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+          paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
         },
       )}
     />

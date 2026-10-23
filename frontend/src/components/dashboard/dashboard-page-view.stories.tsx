@@ -203,7 +203,6 @@ const paths = [
   '/trades',
   '/trades/$tradeId',
   '/calendar',
-  '/review',
   '/notes',
   '/notes/$noteId',
   '/annotations/$annoId',

@@ -65,7 +65,7 @@ function renderBand({
       />
     ),
     {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+      paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
       initialPath: '/annotations/sample-annotation-02',
     },
   )
@@ -121,9 +121,12 @@ describe('ReviewNavigationBand', () => {
         links: [
           {
             label: '← 前の未読',
-            href: '/annotations/sample-annotation-01',
+            href: '/annotations/sample-annotation-01?tab=annotations',
           },
-          { label: '次の未読へ →', href: '/annotations/sample-annotation-03' },
+          {
+            label: '次の未読へ →',
+            href: '/annotations/sample-annotation-03?tab=annotations',
+          },
         ],
       },
     },
@@ -152,7 +155,10 @@ describe('ReviewNavigationBand', () => {
             label: '← 前の未読',
             href: '/notes/sample-note-02?version=3&version_id=sample-version-02',
           },
-          { label: '次の未読へ →', href: '/annotations/sample-annotation-01' },
+          {
+            label: '次の未読へ →',
+            href: '/annotations/sample-annotation-01?tab=annotations',
+          },
         ],
       },
     },
@@ -165,18 +171,18 @@ describe('ReviewNavigationBand', () => {
         links: [
           {
             label: '未読の先頭へ →',
-            href: '/annotations/sample-annotation-01',
+            href: '/annotations/sample-annotation-01?tab=annotations',
           },
         ],
       },
     },
     {
-      name: 'links to the review page when the queue is empty',
+      name: 'links to the unified unread list when the queue is empty',
       items: [],
       currentItemKey: 'annotation:sample-annotation-01',
       expected: {
-        text: '未読はありません · レビューへ',
-        links: [{ label: 'レビューへ', href: '/review' }],
+        text: '未読はありません · 未読一覧へ',
+        links: [{ label: '未読一覧へ', href: '/notes?view=pending' }],
       },
     },
     {
@@ -205,7 +211,7 @@ describe('ReviewNavigationBand', () => {
 
   it('shows a busy state while the unread queue is loading', async () => {
     const router = createStoryRouter(() => <ReviewNavigationBand isPending />, {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+      paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
     })
     const { container } = render(<RouterProvider router={router} />)
     await screen.findByRole('status')
@@ -218,7 +224,7 @@ describe('ReviewNavigationBand', () => {
 
   it('shows an alert when unread navigation fails', async () => {
     const router = createStoryRouter(() => <ReviewNavigationBand isError />, {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+      paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
     })
     const { container } = render(<RouterProvider router={router} />)
     await screen.findByRole('alert')
@@ -232,7 +238,7 @@ describe('ReviewNavigationBand', () => {
   it('identifies a notes list navigation error', async () => {
     const router = createStoryRouter(
       () => <ReviewNavigationBand isError scope="notes" />,
-      { paths: ['/review', '/notes/$noteId', '/annotations/$annoId'] },
+      { paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'] },
     )
     const { container } = render(<RouterProvider router={router} />)
     await screen.findByRole('alert')

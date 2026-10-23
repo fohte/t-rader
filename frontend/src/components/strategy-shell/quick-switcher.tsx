@@ -39,9 +39,10 @@ const SCREEN_ITEMS = [
   },
   {
     id: 'review',
-    label: 'レビュー',
-    searchTerms: ['review'],
-    to: '/review',
+    label: '未読・レビュー待ち',
+    searchTerms: ['review', '未読', 'レビュー待ち'],
+    to: '/notes',
+    search: { view: 'pending' },
   },
   {
     id: 'notes',
@@ -136,6 +137,7 @@ function matchesQuery(query: string, values: string[]) {
 
 function navigateToScreen(router: AppRouter, item: ScreenItem) {
   switch (item.id) {
+    case 'review':
     case 'annotations':
       void router.navigate({ to: item.to, search: item.search })
       return

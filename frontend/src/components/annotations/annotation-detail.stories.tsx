@@ -137,7 +137,6 @@ const meta = {
               '/annotations/$annoId',
               '/notes',
               '/notes/$noteId',
-              '/review',
               '/stocks/$stockId',
               '/strategies/$id',
               '/strategies/$id/runs/$taskId',

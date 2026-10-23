@@ -239,7 +239,7 @@ describe('useReviewNavigation', () => {
     ).toEqual(expected)
   })
 
-  it('keeps the mixed review queue for a note opened from the legacy review route', async () => {
+  it('keeps the mixed queue snapshot when opening a note from the unified list', async () => {
     const user = userEvent.setup()
     vi.mocked(useReviewQueue).mockReturnValue({
       data: mixedQueueData,
@@ -248,8 +248,8 @@ describe('useReviewNavigation', () => {
       invalidate,
     })
     const router = createStoryRouter(() => <LegacyReviewNavigationProbe />, {
-      paths: ['/review', '/notes/$noteId'],
-      initialPath: '/review',
+      paths: ['/notes', '/notes/$noteId'],
+      initialPath: '/notes?view=pending',
     })
     render(<RouterProvider router={router} />)
 

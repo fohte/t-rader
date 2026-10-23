@@ -24,7 +24,7 @@ function ReviewItemLink({ item }: { item: ReviewQueueItem }) {
       <Link
         to="/notes/$noteId"
         params={{ noteId: item.noteId }}
-        search={{ version: item.versionNo }}
+        search={{ version: item.versionNo, view: 'pending' }}
         className={className}
       >
         <span className="truncate text-sm text-foreground">{item.title}</span>
@@ -37,6 +37,7 @@ function ReviewItemLink({ item }: { item: ReviewQueueItem }) {
     <Link
       to="/annotations/$annoId"
       params={{ annoId: item.id }}
+      search={{ tab: 'annotations', view: 'pending' }}
       className={className}
     >
       <span className="truncate text-sm text-foreground">{item.title}</span>
@@ -59,7 +60,8 @@ export function DashboardReviewQueue({
   if (variant === 'compact') {
     return (
       <Link
-        to="/review"
+        to="/notes"
+        search={{ view: 'pending' }}
         className="flex items-center justify-between gap-3 border border-border bg-card px-3.5 py-2.5 font-mono text-xs hover:border-primary"
       >
         <span className="text-foreground">レビュー待ち</span>
@@ -86,7 +88,8 @@ export function DashboardReviewQueue({
           レビュー待ち
         </h2>
         <Link
-          to="/review"
+          to="/notes"
+          search={{ view: 'pending' }}
           className="font-mono text-2xs text-primary hover:underline"
         >
           レビューへ →

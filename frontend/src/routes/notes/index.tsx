@@ -3,7 +3,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
 import { AnnotationsList } from '#components/annotations/annotations-list'
-import { AnnotationsListSkeleton } from '#components/annotations/annotations-list-skeleton'
 import { ReviewLink } from '#components/note-detail/review-link'
 import {
   type NotesTab,
@@ -14,6 +13,7 @@ import {
   type ReviewQueueData,
   type ReviewQueueItem,
   reviewQueueItemKey,
+  reviewQueueModel,
 } from '#components/review/review-queue-model'
 import { getReviewQueueQueryKeys } from '#components/review/review-queue-query-keys'
 import {
@@ -31,6 +31,7 @@ import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 
 type NoteOverview = components['schemas']['NoteOverviewResponse']
+type Annotation = components['schemas']['Annotation']
 
 export const Route = createFileRoute('/notes/')({
   validateSearch: (
@@ -77,6 +78,17 @@ function createReviewData(
   }
 }
 
+function createAnnotationReviewData(
+  annotations: Annotation[] | undefined,
+): ReviewQueueData | null {
+  if (annotations == null) return null
+  const items = reviewQueueModel.createAnnotationItems(annotations)
+  return {
+    counts: { notes: 0, annotations: items.length, total: items.length },
+    items,
+  }
+}
+
 function NotesPage() {
   const { view: requestedView, kind, tag, tab } = Route.useSearch()
   const navigate = Route.useNavigate()
@@ -115,15 +127,32 @@ function NotesPage() {
     { params: { query: { view, kind, tag } } },
     { enabled: showingNotes },
   )
-  const { data: annotations, isPending: annotationsPending } = $api.useQuery(
+  const {
+    data: annotations,
+    isPending: annotationsPending,
+    isError: annotationsError,
+  } = $api.useQuery(
     'get',
     '/api/annotations',
-    undefined,
+    view === 'pending'
+      ? { params: { query: { status: 'unread' } } }
+      : undefined,
     { enabled: !showingNotes },
   )
+  const {
+    data: unreadAnnotations,
+    isPending: unreadAnnotationsPending,
+    isError: unreadAnnotationsError,
+  } = $api.useQuery('get', '/api/annotations', {
+    params: { query: { status: 'unread' } },
+  })
   const approveVersion = $api.useMutation(
     'post',
     '/api/notes/{id}/versions/{n}/approve',
+  )
+  const approveAnnotation = $api.useMutation(
+    'post',
+    '/api/annotations/{id}/approve',
   )
   const tagSet = new Set(
     [...(allTagOverviews ?? []), ...(pendingTagOverviews ?? [])].flatMap(
@@ -134,7 +163,11 @@ function NotesPage() {
   const tags = [...tagSet].sort((left, right) =>
     left.localeCompare(right, 'ja'),
   )
-  const reviewData = createReviewData(overviews)
+  const reviewData = showingNotes
+    ? createReviewData(overviews)
+    : view === 'pending'
+      ? createAnnotationReviewData(annotations)
+      : null
 
   function invalidateReviewData(): void {
     for (const queryKey of getReviewQueueQueryKeys()) {
@@ -143,13 +176,22 @@ function NotesPage() {
     void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/notes').queryKey,
     })
+    void queryClient.invalidateQueries({
+      queryKey: $api.queryOptions('get', '/api/annotations').queryKey,
+    })
   }
 
   function approveItem(
     item: ReviewQueueItem,
     callbacks: ReviewApprovalCallbacks,
   ): void {
-    if (item.kind !== 'note') return
+    if (item.kind === 'annotation') {
+      approveAnnotation.mutate(
+        { params: { path: { id: item.id } }, body: {} },
+        callbacks,
+      )
+      return
+    }
     approveVersion.mutate(
       {
         params: { path: { id: item.noteId, n: item.versionNo } },
@@ -185,7 +227,17 @@ function NotesPage() {
           </div>
         )}
       </header>
-      <NotesTabs activeTab={activeTab} />
+      <NotesTabs
+        activeTab={activeTab}
+        annotationUnreadCount={unreadAnnotations?.length}
+        annotationUnreadCountState={
+          unreadAnnotationsPending
+            ? 'loading'
+            : unreadAnnotationsError
+              ? 'error'
+              : 'loaded'
+        }
+      />
       {showingNotes && (
         <NotesFilters
           noteKinds={noteKinds ?? []}
@@ -248,10 +300,31 @@ function NotesPage() {
             onToggleItem={approval.actions.toggleItem}
             onApproveSelected={approval.actions.approveSelected}
           />
-        ) : annotationsPending ? (
-          <AnnotationsListSkeleton />
         ) : (
-          <AnnotationsList annotations={annotations ?? []} />
+          <AnnotationsList
+            annotations={annotations ?? []}
+            view={view}
+            state={
+              annotationsPending
+                ? 'loading'
+                : annotationsError
+                  ? 'error'
+                  : 'loaded'
+            }
+            kind={kind}
+            tag={tag}
+            selectedItemIds={approval.state.selectedItemIds}
+            isApproving={approval.state.isApproving}
+            hasApprovalError={approval.state.hasApprovalError}
+            onViewChange={(value) => {
+              void navigate({
+                search: (previous) => ({ ...previous, view: value }),
+              })
+            }}
+            onToggleItem={approval.actions.toggleItem}
+            onToggleVisibleItems={approval.actions.toggleVisibleItems}
+            onApproveSelected={approval.actions.approveSelected}
+          />
         )}
       </div>
     </div>
