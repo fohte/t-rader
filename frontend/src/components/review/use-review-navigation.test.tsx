@@ -29,9 +29,31 @@ const item: ReviewQueueItem = {
   timestamp: '2026-01-14T02:30:00Z',
   price: null,
 }
+const reviewNoteItem: ReviewQueueItem = {
+  kind: 'note',
+  id: 'fake-review-version',
+  noteId: 'fake-review-note',
+  versionNo: 2,
+  title: '架空のレビュー対象ノート',
+  createdAt: '2026-01-14T04:00:00Z',
+  noteKind: null,
+  createdByKind: 'llm',
+  unreadVersionCount: 1,
+}
+const mixedItems = [reviewNoteItem, item]
+const mixedSnapshot = reviewQueueModel.createNavigationSnapshot(mixedItems)
+const mixedReviewNavigationState = {
+  snapshot: mixedSnapshot,
+  currentItemKey: 'note:fake-review-version',
+  items: mixedItems,
+}
 const queueData: ReviewQueueData = {
   counts: { notes: 0, annotations: 1, total: 1 },
   items: [item],
+}
+const mixedQueueData: ReviewQueueData = {
+  counts: { notes: 1, annotations: 1, total: 2 },
+  items: mixedItems,
 }
 const invalidate = vi.fn()
 const pendingQueue: ReviewQueueState = {
@@ -127,6 +149,31 @@ function ScopedReviewNavigationProbe() {
   )
 }
 
+function LegacyReviewNavigationProbe() {
+  const { navigation, isPending, isError } = useReviewNavigation(
+    'note:fake-review-version',
+    'fake-review-note',
+  )
+
+  return (
+    <>
+      <Link
+        to="/notes/$noteId"
+        params={{ noteId: 'fake-review-note' }}
+        state={(previous) => ({
+          ...previous,
+          reviewQueue: mixedReviewNavigationState,
+        })}
+      >
+        Open note from review
+      </Link>
+      <output data-testid="review-navigation-state">
+        {JSON.stringify({ navigation, isPending, isError })}
+      </output>
+    </>
+  )
+}
+
 describe('useReviewNavigation', () => {
   it('creates a fallback snapshot after a direct-open queue finishes loading', async () => {
     const user = userEvent.setup()
@@ -183,6 +230,38 @@ describe('useReviewNavigation', () => {
         snapshot: scopedSnapshot,
         currentItemKey: 'note:fake-version-approved',
         scope: 'notes',
+      },
+      isPending: false,
+      isError: false,
+    })
+    expect(
+      (await screen.findByTestId('review-navigation-state')).textContent,
+    ).toEqual(expected)
+  })
+
+  it('keeps the mixed review queue for a note opened from the legacy review route', async () => {
+    const user = userEvent.setup()
+    vi.mocked(useReviewQueue).mockReturnValue({
+      data: mixedQueueData,
+      isPending: false,
+      isError: false,
+      invalidate,
+    })
+    const router = createStoryRouter(() => <LegacyReviewNavigationProbe />, {
+      paths: ['/review', '/notes/$noteId'],
+      initialPath: '/review',
+    })
+    render(<RouterProvider router={router} />)
+
+    await user.click(
+      await screen.findByRole('link', { name: 'Open note from review' }),
+    )
+
+    const expected = JSON.stringify({
+      navigation: {
+        items: mixedItems,
+        snapshot: mixedSnapshot,
+        currentItemKey: 'note:fake-review-version',
       },
       isPending: false,
       isError: false,

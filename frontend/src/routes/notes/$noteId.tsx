@@ -26,7 +26,14 @@ import type { NoteVersionReviewResult } from '#components/note-detail/note-versi
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import { ReviewNavigationBand } from '#components/review/review-navigation-band'
 import { reviewQueueItemKey } from '#components/review/review-queue-model'
-import { useReviewNavigation } from '#components/review/use-review-navigation'
+import {
+  type NotesReviewNavigationScope,
+  useReviewNavigation,
+} from '#components/review/use-review-navigation'
+import {
+  type NoteOverviewView,
+  notesOverviewModel,
+} from '#components/strategy-home/notes-overview-model'
 import {
   openFloatingChat,
   useChatContext,
@@ -144,6 +151,41 @@ function NoteDetailPage() {
   } = $api.useQuery('get', '/api/history', {
     params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
   })
+  const hasNotesNavigationScope = view != null || kind != null || tag != null
+  const notesNavigationView: NoteOverviewView = view ?? 'all'
+  const {
+    data: notesNavigationOverviews,
+    isPending: areNotesNavigationOverviewsPending,
+    isError: hasNotesNavigationOverviewsError,
+  } = $api.useQuery(
+    'get',
+    '/api/notes/overview',
+    {
+      params: {
+        query: {
+          view: notesNavigationView,
+          kind,
+          tag,
+        },
+      },
+    },
+    { enabled: hasNotesNavigationScope },
+  )
+  const notesNavigationScope: NotesReviewNavigationScope | undefined =
+    hasNotesNavigationScope
+      ? {
+          key: JSON.stringify([notesNavigationView, kind ?? null, tag ?? null]),
+          items:
+            notesNavigationOverviews == null
+              ? undefined
+              : notesOverviewModel.createNavigationItems(
+                  notesNavigationOverviews,
+                  notesNavigationView,
+                ),
+          isPending: areNotesNavigationOverviewsPending,
+          isError: hasNotesNavigationOverviewsError,
+        }
+      : undefined
   const previousVersion =
     selectedVersion == null
       ? null
@@ -164,6 +206,7 @@ function NoteDetailPage() {
       ? ''
       : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
     noteId,
+    notesNavigationScope,
   )
   const {
     navigation,
