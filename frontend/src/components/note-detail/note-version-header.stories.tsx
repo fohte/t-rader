@@ -166,22 +166,6 @@ export const KindUnavailable: Story = {
   },
 }
 
-export const NoteKindLoading: Story = {
-  name: 'shows while the note kind is loading.',
-  args: {
-    version: baseVersion,
-    noteKindSourceState: 'loading',
-  },
-}
-
-export const NoteKindUnavailable: Story = {
-  name: 'shows when the note kind could not be loaded.',
-  args: {
-    version: baseVersion,
-    noteKindSourceState: 'error',
-  },
-}
-
 export const KindUnregistered: Story = {
   name: 'shows when the kind is absent from the loaded catalog.',
   args: {

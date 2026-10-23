@@ -51,11 +51,6 @@ export const Registered: Story = {
   name: 'shows the registered display name.',
 }
 
-export const FilterLink: Story = {
-  name: 'links the registered kind to its filtered note list.',
-  args: { linkToFilter: true },
-}
-
 export const LongName: Story = {
   name: 'shows a long display name without exposing its key.',
   args: { kind: 'sample-long-kind' },
@@ -78,19 +73,9 @@ export const Loading: Story = {
   args: { catalogState: 'loading' },
 }
 
-export const NoteLoading: Story = {
-  name: 'shows while the note kind is loading.',
-  args: { sourceState: 'loading' },
-}
-
 export const Failed: Story = {
   name: 'shows when the kind catalog could not be loaded.',
   args: { catalogState: 'error' },
-}
-
-export const NoteUnavailable: Story = {
-  name: 'shows when the note kind could not be loaded.',
-  args: { sourceState: 'error' },
 }
 
 export const Unregistered: Story = {
