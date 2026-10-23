@@ -21,7 +21,10 @@ import {
 } from '#components/review/review-queue-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import { resolveNoteKindLabel } from '#lib/note-kind-label'
+import {
+  type NoteKindCatalogState,
+  resolveNoteKindLabel,
+} from '#lib/note-kind-label'
 import { formatRelative } from '#lib/note-utils'
 import { cn } from '#lib/utils'
 
@@ -30,6 +33,7 @@ type NoteKind = components['schemas']['NoteKind']
 export interface ReviewPageViewProps {
   data: ReviewQueueData | null
   noteKinds: NoteKind[]
+  noteKindCatalogState: NoteKindCatalogState
   navigationSnapshot: ReviewNavigationSnapshot | null
   isPending: boolean
   isError: boolean
@@ -70,13 +74,25 @@ function getReviewItemTypeLabel(item: ReviewQueueItem): string {
     : `ノート更新 v${String(item.versionNo)}`
 }
 
+function getNoteKindText(
+  kind: string | null,
+  noteKinds: NoteKind[],
+  catalogState: NoteKindCatalogState,
+): string {
+  if (kind == null) return '種別なし'
+  if (catalogState === 'loading') return '種別を読み込み中'
+  if (catalogState === 'error') return '種別を取得できません'
+  return resolveNoteKindLabel(kind, noteKinds) ?? '未登録の種別'
+}
+
 function getReviewItemDetails(
   item: ReviewQueueItem,
   noteKinds: NoteKind[],
+  catalogState: NoteKindCatalogState,
 ): string[] {
   if (item.kind === 'note') {
     return [
-      resolveNoteKindLabel(item.noteKind, noteKinds) ?? '種別なし',
+      getNoteKindText(item.noteKind, noteKinds, catalogState),
       item.createdByKind === 'llm' ? 'エージェント' : 'ユーザー',
       ...(item.unreadVersionCount > 1
         ? [`未読 ${String(item.unreadVersionCount)} 版`]
@@ -95,6 +111,7 @@ function getReviewItemDetails(
 export function ReviewPageView({
   data,
   noteKinds: knownNoteKinds,
+  noteKindCatalogState,
   navigationSnapshot,
   isPending,
   isError,
@@ -127,7 +144,7 @@ export function ReviewPageView({
     { value: 'all', label: 'すべて' },
     ...noteKindKeys.map((kind) => ({
       value: reviewQueueModel.noteKindFilterKey(kind),
-      label: resolveNoteKindLabel(kind, knownNoteKinds) ?? '種別なし',
+      label: getNoteKindText(kind, knownNoteKinds, noteKindCatalogState),
     })),
   ]
 
@@ -253,7 +270,11 @@ export function ReviewPageView({
           <div>
             {visibleItems.map((item) => {
               const key = reviewQueueItemKey(item)
-              const details = getReviewItemDetails(item, knownNoteKinds)
+              const details = getReviewItemDetails(
+                item,
+                knownNoteKinds,
+                noteKindCatalogState,
+              )
               const reviewNavigation =
                 navigationSnapshot == null
                   ? undefined

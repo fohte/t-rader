@@ -61,7 +61,11 @@ const pendingVersion: NoteVersion = {
   created_by_kind: 'llm',
 }
 
-function noteForVersion(version: NoteVersion, body = displayBody): Note {
+function noteForVersion(
+  version: NoteVersion,
+  body = displayBody,
+  kind: string | null = noteKindKey,
+): Note {
   return {
     id: noteId,
     version_id: version.id,
@@ -74,7 +78,7 @@ function noteForVersion(version: NoteVersion, body = displayBody): Note {
     resolved_price_references_json: {},
     graphs_json: [],
     tags: [],
-    kind: noteKindKey,
+    kind,
     status: version.status,
     created_by_kind: version.created_by_kind,
     created_at: version.created_at,
@@ -99,6 +103,8 @@ type NoteRequest = {
 function setupFetch(
   versions: NoteVersion[],
   fetchNote: (request: Request) => Promise<Response>,
+  fetchNoteKinds: () => Promise<Response> = () =>
+    Promise.resolve(Response.json([noteKind])),
 ) {
   const noteRequests: NoteRequest[] = []
   stubFetch((input, init) => {
@@ -136,7 +142,7 @@ function setupFetch(
       )
     }
     if (url.pathname === '/api/note-kinds') {
-      return Promise.resolve(Response.json([noteKind]))
+      return fetchNoteKinds()
     }
     if (url.pathname === `/api/notes/${noteId}/links`) {
       return Promise.resolve(Response.json({ incoming: [], outgoing: [] }))
@@ -168,8 +174,9 @@ async function renderNoteDetail(
   versions: NoteVersion[],
   fetchNote: (request: Request) => Promise<Response>,
   initialEntry = `/notes/${noteId}`,
+  fetchNoteKinds?: () => Promise<Response>,
 ) {
-  const requests = setupFetch(versions, fetchNote)
+  const requests = setupFetch(versions, fetchNote, fetchNoteKinds)
   const { routeTree } = await import('#routeTree.gen')
   const router = createRouter({
     routeTree,
@@ -183,7 +190,7 @@ async function renderNoteDetail(
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   })
-  return requests
+  return { ...requests, router }
 }
 
 function displayedBodyText(): string | null {
@@ -221,9 +228,38 @@ function notePageOutput(noteRequests: NoteRequest[]) {
 function noteKindOutput(): string | null {
   return (
     screen.queryByText(noteKindLabel)?.textContent ??
-    screen.queryByText('種別を読み込めませんでした')?.textContent ??
+    screen.queryByText('種別なし')?.textContent ??
+    screen.queryByText('種別を読み込み中')?.textContent ??
+    screen.queryByText('種別を取得できません')?.textContent ??
+    screen.queryByText('ノートの種別を読み込み中')?.textContent ??
+    screen.queryByText('ノートの種別を取得できません')?.textContent ??
+    screen.queryByText('未登録の種別')?.textContent ??
     null
   )
+}
+
+function getCatalogLoadingOutput() {
+  return {
+    kindLabel: noteKindOutput(),
+    bodyAvailable: displayedBodyText() != null,
+  }
+}
+
+function getCatalogErrorOutput() {
+  return {
+    kindLabel: noteKindOutput(),
+    bodyAvailable: displayedBodyText() != null,
+    pageError: screen.queryByRole('alert')?.textContent ?? null,
+  }
+}
+
+function getUnsetOrUnregisteredKindOutput(kind: string | null) {
+  return {
+    label: noteKindOutput(),
+    keyVisible:
+      kind == null ? false : screen.queryByText(kind, { exact: true }) != null,
+    kindLink: screen.queryByRole('link', { name: /のノートを表示/ }) != null,
+  }
 }
 
 afterEach(() => {
@@ -318,7 +354,20 @@ describe('NoteDetailPage', () => {
         },
       ])
     })
-    expect(displayedBodyText()).toEqual(null)
+    expect(notePageOutput(requests.noteRequests)).toEqual([
+      historicalVersion.title,
+      'ノートの種別を読み込み中',
+      null,
+      null,
+      null,
+      [
+        {
+          method: 'GET',
+          path: `/api/notes/${noteId}`,
+          versionId: historicalVersion.id,
+        },
+      ],
+    ])
 
     resolveNoteResponse(Response.json(noteForVersion(historicalVersion)))
     await screen.findByRole(
@@ -327,9 +376,20 @@ describe('NoteDetailPage', () => {
       { timeout: 30_000 },
     )
 
-    expect(displayedBodyText()).toEqual(
+    expect(notePageOutput(requests.noteRequests)).toEqual([
+      historicalVersion.title,
+      noteKindLabel,
       '銘柄架空工業DEMO-A: 銘柄架空商事DEMO-B: 内容の続き',
-    )
+      null,
+      null,
+      [
+        {
+          method: 'GET',
+          path: `/api/notes/${noteId}`,
+          versionId: historicalVersion.id,
+        },
+      ],
+    ])
   }, 30_000)
 
   it('keeps raw body hidden when the detail response belongs to another version', async () => {
@@ -371,7 +431,7 @@ describe('NoteDetailPage', () => {
 
     expect(notePageOutput(requests.noteRequests)).toEqual([
       historicalVersion.title,
-      '種別を読み込めませんでした',
+      'ノートの種別を取得できません',
       null,
       'バージョンを読み込めませんでした。',
       null,
@@ -383,6 +443,88 @@ describe('NoteDetailPage', () => {
         },
       ],
     ])
+  }, 30_000)
+
+  it('keeps the note readable while the kind catalog is loading', async () => {
+    let resolveCatalog: (response: Response) => void = () => {}
+    const catalogResponse = new Promise<Response>((resolve) => {
+      resolveCatalog = resolve
+    })
+    await renderNoteDetail(
+      [historicalVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      undefined,
+      () => catalogResponse,
+    )
+
+    await screen.findByText('種別を読み込み中')
+    await screen.findByRole('region', { name: 'ノート本文' })
+    resolveCatalog(Response.json([noteKind]))
+    await screen.findByText(noteKindLabel)
+
+    expect(getCatalogLoadingOutput()).toEqual({
+      kindLabel: noteKindLabel,
+      bodyAvailable: true,
+    })
+  }, 30_000)
+
+  it('keeps the note readable when the kind catalog request fails', async () => {
+    await renderNoteDetail(
+      [historicalVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      undefined,
+      () => Promise.resolve(Response.json({}, { status: 500 })),
+    )
+
+    await screen.findByText('種別を取得できません')
+    await screen.findByRole('region', { name: 'ノート本文' })
+
+    expect(getCatalogErrorOutput()).toEqual({
+      kindLabel: '種別を取得できません',
+      bodyAvailable: true,
+      pageError: null,
+    })
+  }, 30_000)
+
+  it.each([
+    { kind: null, label: '種別なし' },
+    { kind: 'unlisted-kind-key', label: '未登録の種別' },
+  ])(
+    'distinguishes notes with kind $kind',
+    async ({ kind, label }) => {
+      await renderNoteDetail([historicalVersion], () =>
+        Promise.resolve(
+          Response.json(noteForVersion(historicalVersion, displayBody, kind)),
+        ),
+      )
+
+      await screen.findByText(label)
+
+      expect(getUnsetOrUnregisteredKindOutput(kind)).toEqual({
+        label,
+        keyVisible: false,
+        kindLink: false,
+      })
+    },
+    30_000,
+  )
+
+  it('opens the filtered note list from a registered kind label', async () => {
+    const result = await renderNoteDetail(
+      [historicalVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      `/notes/${noteId}?version=1&tag=sample-tag`,
+    )
+
+    const kindLink = await screen.findByRole('link', {
+      name: `${noteKindLabel} のノートを表示`,
+    })
+    fireEvent.click(kindLink)
+    await waitFor(() => {
+      expect(result.router.state.location.pathname).toEqual('/notes')
+    })
+
+    expect(result.router.state.location.search).toEqual({ kind: noteKindKey })
   }, 30_000)
 
   it('shows the pending note kind while reading a version without a current marker', async () => {

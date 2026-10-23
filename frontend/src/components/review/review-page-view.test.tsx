@@ -41,6 +41,7 @@ const props: ReviewPageViewProps = {
     ],
   },
   noteKinds,
+  noteKindCatalogState: 'loaded',
   navigationSnapshot: null,
   isPending: false,
   isError: false,
@@ -58,14 +59,17 @@ const props: ReviewPageViewProps = {
 
 afterEach(cleanup)
 
-function getKindPresentation(kindOption: HTMLElement) {
+function getKindPresentation(
+  kindOption: HTMLElement,
+  label = '架空の種別表示名',
+  rawKindKey = 'fabricated-kind-key',
+) {
   return {
     displayNames: screen
-      .getAllByText('架空の種別表示名')
+      .getAllByText(label)
       .map((element) => element.textContent),
     rawKeyText:
-      screen.queryByText('fabricated-kind-key', { exact: true })?.textContent ??
-      null,
+      screen.queryByText(rawKindKey, { exact: true })?.textContent ?? null,
     filterSelected: kindOption.getAttribute('aria-selected'),
   }
 }
@@ -110,6 +114,66 @@ describe('ReviewPageView', () => {
       filterSelected: 'true',
     })
   }, 15_000)
+
+  it.each([
+    { state: 'loading' as const, label: '種別を読み込み中' },
+    { state: 'error' as const, label: '種別を取得できません' },
+  ])(
+    'shows the catalog state as $label without exposing the kind key',
+    async ({ state, label }) => {
+      renderReviewPage({
+        noteKinds: [],
+        noteKindCatalogState: state,
+        typeFilter: 'note',
+        noteKindFilterOpen: true,
+      })
+      const kindOption = await screen.findByRole('option', { name: label })
+
+      expect(getKindPresentation(kindOption, label)).toEqual({
+        displayNames: [label, label],
+        rawKeyText: null,
+        filterSelected: 'false',
+      })
+    },
+  )
+
+  it('labels an unregistered kind without exposing its key', async () => {
+    const unregisteredKind = 'unlisted-kind-key'
+    renderReviewPage({
+      data: {
+        counts: { notes: 1, annotations: 0, total: 1 },
+        items: [
+          {
+            kind: 'note',
+            id: 'fake-version-c',
+            noteId: 'fake-note-c',
+            versionNo: 1,
+            title: '別の架空メモ',
+            createdAt: '2026-01-12T08:00:00Z',
+            noteKind: unregisteredKind,
+            createdByKind: 'human',
+            unreadVersionCount: 1,
+          },
+        ],
+      },
+      noteKinds: [],
+      noteKindCatalogState: 'loaded',
+      typeFilter: 'note',
+      noteKindFilter: reviewQueueModel.noteKindFilterKey(unregisteredKind),
+      noteKindFilterOpen: true,
+    })
+    const kindOption = await screen.findByRole('option', {
+      name: '未登録の種別',
+    })
+
+    expect(
+      getKindPresentation(kindOption, '未登録の種別', unregisteredKind),
+    ).toEqual({
+      displayNames: ['未登録の種別', '未登録の種別', '未登録の種別'],
+      rawKeyText: null,
+      filterSelected: 'true',
+    })
+  })
 
   it('passes the selected note kind to its filter callback', async () => {
     const user = userEvent.setup()

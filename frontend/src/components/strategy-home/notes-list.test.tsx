@@ -12,6 +12,16 @@ import { NotesList } from '#components/strategy-home/notes-list'
 import type { components } from '#lib/api/schema.gen'
 
 type Note = components['schemas']['Note']
+type NoteKind = components['schemas']['NoteKind']
+
+const noteKinds: NoteKind[] = [
+  {
+    key: 'sample-kind',
+    display_name: '架空の種別表示名',
+    requires_approval: false,
+    sort_order: 0,
+  },
+]
 
 function makeNote(overrides: Partial<Note> = {}): Note {
   return {
@@ -39,9 +49,21 @@ function makeNote(overrides: Partial<Note> = {}): Note {
 afterEach(cleanup)
 
 // Link が親ルートを要求するため、最低限のテストルーターを噛ませる
-async function renderInRouter(notes: Note[]) {
+async function renderInRouter(
+  notes: Note[],
+  options: {
+    noteKinds?: NoteKind[]
+    noteKindCatalogState?: 'loading' | 'error' | 'loaded'
+  } = {},
+) {
   const rootRoute = createRootRoute({
-    component: () => <NotesList notes={notes} />,
+    component: () => (
+      <NotesList
+        notes={notes}
+        noteKinds={options.noteKinds ?? noteKinds}
+        noteKindCatalogState={options.noteKindCatalogState ?? 'loaded'}
+      />
+    ),
   })
   const detailRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -66,6 +88,31 @@ function getNoteLinkSnapshot() {
   return [title.textContent, link.getAttribute('href')]
 }
 
+function getKindLabelOutput(label: string, key: string) {
+  return {
+    kindLabel: screen.queryByText(label)?.textContent ?? null,
+    rawKeyVisible: screen.queryByText(key) != null,
+  }
+}
+
+function getLinkedKindRowOutput() {
+  return {
+    ...getKindLabelOutput('架空の種別表示名', 'sample-kind'),
+    detailHref: screen
+      .getByRole('link', { name: /口座全体ノート/ })
+      .getAttribute('href'),
+  }
+}
+
+function getUnsetKindRowOutput() {
+  return {
+    label: screen.queryByText('種別なし')?.textContent ?? null,
+    kindLink: screen.queryByRole('link', {
+      name: '種別なし のノートを表示',
+    }),
+  }
+}
+
 describe('NotesList', () => {
   it('ノートを一覧表示し、詳細へのリンクを生成する', async () => {
     const note = makeNote({
@@ -87,6 +134,61 @@ describe('NotesList', () => {
     expect(
       ['架空タグ', '仮の分類'].map((tag) => screen.getByText(tag).textContent),
     ).toEqual(['架空タグ', '仮の分類'])
+  })
+
+  it('displays the catalog name instead of the key in the linked note row', async () => {
+    const note = makeNote({
+      id: 'note-1',
+      title: '口座全体ノート',
+      kind: 'sample-kind',
+    })
+    await renderInRouter([note])
+
+    expect(getLinkedKindRowOutput()).toEqual({
+      kindLabel: '架空の種別表示名',
+      rawKeyVisible: false,
+      detailHref: '/notes/note-1',
+    })
+  })
+
+  it.each([
+    {
+      state: 'loading' as const,
+      label: '種別を読み込み中',
+      noteKinds,
+    },
+    {
+      state: 'error' as const,
+      label: '種別を取得できません',
+      noteKinds,
+    },
+    {
+      state: 'loaded' as const,
+      label: '未登録の種別',
+      noteKinds: [],
+    },
+  ])(
+    'does not expose a kind key when catalog state is $state',
+    async ({ state, label, noteKinds: availableKinds }) => {
+      await renderInRouter([makeNote({ kind: 'unlisted-kind' })], {
+        noteKinds: availableKinds,
+        noteKindCatalogState: state,
+      })
+
+      expect(getKindLabelOutput(label, 'unlisted-kind')).toEqual({
+        kindLabel: label,
+        rawKeyVisible: false,
+      })
+    },
+  )
+
+  it('shows an unset kind as a non-linked label', async () => {
+    await renderInRouter([makeNote({ kind: null })])
+
+    expect(getUnsetKindRowOutput()).toEqual({
+      label: '種別なし',
+      kindLink: null,
+    })
   })
 
   it('ノートが無ければ空状態を表示する', async () => {

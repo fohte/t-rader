@@ -33,7 +33,6 @@ import {
 } from '#components/strategy-shell/floating-chat-store'
 import { useExecutionOrigin } from '#hooks/use-execution-origin'
 import { $api } from '#lib/api/client'
-import { resolveNoteKindLabel } from '#lib/note-kind-label'
 
 export const Route = createFileRoute('/notes/$noteId')({
   validateSearch: (
@@ -92,7 +91,11 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
-  const { data: note, isError: hasNoteError } = $api.useQuery(
+  const {
+    data: note,
+    isError: hasNoteError,
+    isPending: isNotePending,
+  } = $api.useQuery(
     'get',
     '/api/notes/{id}',
     {
@@ -103,7 +106,11 @@ function NoteDetailPage() {
     },
     { enabled: selectedVersion != null },
   )
-  const { data: noteKinds } = $api.useQuery('get', '/api/note-kinds', undefined)
+  const {
+    data: noteKinds,
+    isError: hasNoteKindsError,
+    isPending: areNoteKindsPending,
+  } = $api.useQuery('get', '/api/note-kinds', undefined)
   const {
     data: noteHistory,
     isPending: isNoteHistoryPending,
@@ -212,11 +219,18 @@ function NoteDetailPage() {
         <NoteBodyCard>
           <NoteVersionHeader
             version={selectedVersion}
-            noteKindLabel={resolveNoteKindLabel(
-              note?.kind ?? null,
-              noteKinds ?? [],
-            )}
-            hasNoteError={hasNoteError}
+            noteKind={note?.kind ?? null}
+            noteKinds={noteKinds ?? []}
+            noteKindCatalogState={
+              hasNoteKindsError
+                ? 'error'
+                : areNoteKindsPending
+                  ? 'loading'
+                  : 'loaded'
+            }
+            noteKindSourceState={
+              hasNoteError ? 'error' : isNotePending ? 'loading' : 'available'
+            }
             executionOrigin={executionOrigin}
             onAsk={(title) => {
               openFloatingChat('「' + title + '」について補足して')

@@ -19,6 +19,7 @@ interface NoteTagFilterSelectProps {
   tags: string[]
   value: string | undefined
   defaultOpen?: boolean
+  className?: string
   onChange: (value: string | undefined) => void
 }
 
@@ -26,6 +27,7 @@ export function NoteTagFilterSelect({
   tags,
   value,
   defaultOpen,
+  className,
   onChange,
 }: NoteTagFilterSelectProps) {
   const selectedTagLabel =
@@ -43,7 +45,7 @@ export function NoteTagFilterSelect({
         )
       }}
     >
-      <SelectTrigger aria-label="タグで絞り込み">
+      <SelectTrigger aria-label="タグで絞り込み" className={className}>
         <SelectValue>{selectedTagLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>

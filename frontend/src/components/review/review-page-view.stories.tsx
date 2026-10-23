@@ -67,6 +67,23 @@ const notesOnlyData: ReviewQueueData = {
   items: data.items.filter((item) => item.kind === 'note'),
 }
 
+const unregisteredKindData: ReviewQueueData = {
+  counts: { notes: 1, annotations: 0, total: 1 },
+  items: [
+    {
+      kind: 'note',
+      id: 'fake-version-c',
+      noteId: 'fake-note-c',
+      versionNo: 1,
+      title: '架空の確認メモ',
+      createdAt: '2026-01-12T08:00:00+09:00',
+      noteKind: 'unlisted-kind',
+      createdByKind: 'human',
+      unreadVersionCount: 1,
+    },
+  ],
+}
+
 function withRouter(Story: ComponentType) {
   return (
     <RouterProvider
@@ -83,6 +100,7 @@ function withRouter(Story: ComponentType) {
 const args: ReviewPageViewProps = {
   data,
   noteKinds,
+  noteKindCatalogState: 'loaded',
   navigationSnapshot: null,
   isPending: false,
   isError: false,
@@ -155,6 +173,40 @@ export const NoteKindFilterOpen: Story = {
   name: 'the note-kind filter displays its available options.',
   args: {
     typeFilter: 'note',
+    noteKindFilterOpen: true,
+    selectedItemIds: [],
+  },
+}
+
+export const KindCatalogLoading: Story = {
+  name: 'shows a loading label while note kinds load.',
+  args: {
+    noteKinds: [],
+    noteKindCatalogState: 'loading',
+    typeFilter: 'note',
+    noteKindFilterOpen: true,
+    selectedItemIds: [],
+  },
+}
+
+export const KindCatalogUnavailable: Story = {
+  name: 'shows an unavailable label when note kinds cannot load.',
+  args: {
+    noteKinds: [],
+    noteKindCatalogState: 'error',
+    typeFilter: 'note',
+    noteKindFilterOpen: true,
+    selectedItemIds: [],
+  },
+}
+
+export const UnregisteredKind: Story = {
+  name: 'shows an unregistered label when a kind is absent from the catalog.',
+  args: {
+    data: unregisteredKindData,
+    noteKinds: [],
+    typeFilter: 'note',
+    noteKindFilter: reviewQueueModel.noteKindFilterKey('unlisted-kind'),
     noteKindFilterOpen: true,
     selectedItemIds: [],
   },

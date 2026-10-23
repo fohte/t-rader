@@ -81,6 +81,13 @@ function ReviewPage() {
     <ReviewPageView
       data={data}
       noteKinds={noteKindsQuery.data ?? []}
+      noteKindCatalogState={
+        noteKindsQuery.isPending
+          ? 'loading'
+          : noteKindsQuery.isError
+            ? 'error'
+            : 'loaded'
+      }
       navigationSnapshot={navigationSnapshot}
       isPending={isPending}
       isError={isError}

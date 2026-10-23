@@ -1,17 +1,26 @@
 import { Chip } from '@fohte/ui/chip'
 import { Link } from '@tanstack/react-router'
 
+import { NoteKindLabel } from '#components/notes/note-kind-label'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { components } from '#lib/api/schema.gen'
+import type { NoteKindCatalogState } from '#lib/note-kind-label'
 import { formatRelative } from '#lib/note-utils'
 
 type Note = components['schemas']['Note']
+type NoteKind = components['schemas']['NoteKind']
 
 interface NotesListProps {
   notes: Note[]
+  noteKinds?: readonly NoteKind[]
+  noteKindCatalogState?: NoteKindCatalogState
 }
 
-export function NotesList({ notes }: NotesListProps) {
+export function NotesList({
+  notes,
+  noteKinds = [],
+  noteKindCatalogState = 'loading',
+}: NotesListProps) {
   return (
     <section className="border border-border bg-card">
       <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
@@ -39,13 +48,17 @@ export function NotesList({ notes }: NotesListProps) {
                 {n.title}
               </span>
               <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
-                {n.kind != null && n.kind !== '' && (
-                  <Chip tone="strong">{n.kind}</Chip>
-                )}
+                <NoteKindLabel
+                  kind={n.kind ?? null}
+                  noteKinds={noteKinds}
+                  catalogState={noteKindCatalogState}
+                />
+                <StatusPill status={n.status} />
+              </span>
+              <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
                 {n.tags.map((tag) => (
                   <Chip key={tag}>{tag}</Chip>
                 ))}
-                <StatusPill status={n.status} />
                 <span className="ml-auto text-muted-foreground">
                   {formatRelative(n.updated_at)}
                 </span>
