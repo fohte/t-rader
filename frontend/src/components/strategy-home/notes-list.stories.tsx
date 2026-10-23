@@ -98,67 +98,146 @@ const noteKinds: NoteKind[] = [
   },
 ]
 
-const allNotes: NoteOverview[] = [
-  makeOverview(
-    { id: 'fake-note-a', status: 'unread', title: '新しい架空ノート' },
-    {
-      current: makeVersion({
-        id: 'fake-version-a',
-        note_id: 'fake-note-a',
-        version_no: 1,
-        status: 'unread',
-        is_current: true,
-        created_by_kind: 'llm',
-      }),
-      latestUnread: makeVersion({
-        id: 'fake-version-a',
-        note_id: 'fake-note-a',
-        version_no: 1,
-        status: 'unread',
-        is_current: true,
-        created_by_kind: 'llm',
-      }),
-      unreadVersionCount: 1,
-    },
-  ),
-  makeOverview(
-    {
-      id: 'fake-note-b',
-      version_id: 'fake-version-b',
-      title: '更新がある架空ノート',
-    },
-    {
-      current: makeVersion({
-        id: 'fake-version-b',
-        note_id: 'fake-note-b',
-        version_no: 3,
-        status: 'approved',
-        is_current: true,
-      }),
-      latestUnread: makeVersion({
-        id: 'fake-version-b-unread',
-        note_id: 'fake-note-b',
-        version_no: 5,
-        status: 'unread',
-        is_current: false,
-        created_by_kind: 'llm',
-      }),
-      unreadVersionCount: 2,
-    },
-  ),
-  makeOverview(
-    {
-      id: 'fake-note-c',
-      version_id: 'fake-version-c',
-      version_no: 2,
+const currentUnreadNote = makeOverview(
+  {
+    id: 'fake-note-a',
+    version_id: 'fake-version-a',
+    version_no: 1,
+    is_current: true,
+    status: 'unread',
+    title: '新しい架空ノート',
+    created_by_kind: 'llm',
+  },
+  {
+    current: makeVersion({
+      id: 'fake-version-a',
+      note_id: 'fake-note-a',
+      version_no: 1,
+      status: 'unread',
+      is_current: true,
+      created_by_kind: 'llm',
+    }),
+    latestUnread: makeVersion({
+      id: 'fake-version-a',
+      note_id: 'fake-note-a',
+      version_no: 1,
+      status: 'unread',
+      is_current: true,
+      created_by_kind: 'llm',
+    }),
+    unreadVersionCount: 1,
+  },
+)
+
+const updatedNote = makeOverview(
+  {
+    id: 'fake-note-b',
+    version_id: 'fake-version-b',
+    version_no: 3,
+    is_current: true,
+    status: 'approved',
+    title: '更新がある架空ノート',
+  },
+  {
+    current: makeVersion({
+      id: 'fake-version-b',
+      note_id: 'fake-note-b',
+      version_no: 3,
+      status: 'approved',
+      is_current: true,
+    }),
+    latestUnread: makeVersion({
+      id: 'fake-version-b-unread',
+      note_id: 'fake-note-b',
+      version_no: 5,
+      status: 'unread',
       is_current: false,
-      title: '現行がない架空ノート',
-      status: 'rejected',
-      kind: null,
-      tags: [],
-    },
-    { current: null },
-  ),
+      created_by_kind: 'llm',
+    }),
+    unreadVersionCount: 2,
+  },
+)
+
+const rejectedWithoutCurrent = makeOverview(
+  {
+    id: 'fake-note-c',
+    version_id: 'fake-version-c',
+    version_no: 2,
+    is_current: false,
+    title: '現行がない架空ノート',
+    status: 'rejected',
+    kind: null,
+    tags: [],
+  },
+  { current: null },
+)
+
+const newUnreadWithoutCurrent = makeOverview(
+  {
+    id: 'fake-note-d',
+    version_id: 'fake-version-d',
+    version_no: 1,
+    is_current: false,
+    title: '現行がない新規架空ノート',
+    status: 'unread',
+    created_by_kind: 'llm',
+  },
+  {
+    current: null,
+    latestUnread: makeVersion({
+      id: 'fake-version-d',
+      note_id: 'fake-note-d',
+      version_no: 1,
+      title: '現行がない新規架空ノート',
+      status: 'unread',
+      is_current: false,
+      created_by_kind: 'llm',
+    }),
+    unreadVersionCount: 1,
+  },
+)
+
+const allNotes: NoteOverview[] = [
+  currentUnreadNote,
+  updatedNote,
+  rejectedWithoutCurrent,
+  newUnreadWithoutCurrent,
+]
+
+const pendingUpdatedNote = makeOverview(
+  {
+    id: 'fake-note-b',
+    version_id: 'fake-version-b-unread',
+    version_no: 5,
+    is_current: false,
+    title: '更新がある架空ノート',
+    status: 'unread',
+    created_by_kind: 'llm',
+  },
+  {
+    current: makeVersion({
+      id: 'fake-version-b',
+      note_id: 'fake-note-b',
+      version_no: 3,
+      status: 'approved',
+      is_current: true,
+    }),
+    latestUnread: makeVersion({
+      id: 'fake-version-b-unread',
+      note_id: 'fake-note-b',
+      version_no: 5,
+      status: 'unread',
+      is_current: false,
+      created_by_kind: 'llm',
+    }),
+    unreadVersionCount: 2,
+  },
+)
+
+const pendingNotes: NoteOverview[] = [
+  currentUnreadNote,
+  pendingUpdatedNote,
+  newUnreadWithoutCurrent,
 ]
 
 const firstOverview = allNotes[0] ?? makeOverview()
@@ -173,6 +252,18 @@ const selectedItem: ReviewQueueItem = {
   noteKind: 'sample-kind',
   createdByKind: 'llm',
   unreadVersionCount: 2,
+}
+
+const laterSelectedItem: ReviewQueueItem = {
+  kind: 'note',
+  id: 'fake-version-d',
+  noteId: 'fake-note-d',
+  versionNo: 1,
+  title: '現行がない新規架空ノート',
+  createdAt: '2026-01-01T00:00:00Z',
+  noteKind: 'sample-kind',
+  createdByKind: 'llm',
+  unreadVersionCount: 1,
 }
 
 function withRouter(Story: ComponentType) {
@@ -216,7 +307,12 @@ export const Overview: Story = {
 
 export const Pending: Story = {
   name: 'shows only notes with unread versions and their review counts.',
-  args: { overviews: allNotes.slice(0, 2), view: 'pending' },
+  args: { overviews: pendingNotes, view: 'pending' },
+}
+
+export const NewUnreadWithoutCurrent: Story = {
+  name: 'shows a new unread note that has no current version.',
+  args: { overviews: [newUnreadWithoutCurrent] },
 }
 
 export const SelectedForApproval: Story = {
@@ -231,8 +327,8 @@ export const SelectedForApproval: Story = {
 export const ApprovalFailed: Story = {
   name: 'keeps failed and later selections after an approval error.',
   args: {
-    selectedItemIds: ['note:fake-note-b'],
-    selectedItems: [selectedItem],
+    selectedItemIds: ['note:fake-note-b', 'note:fake-note-d'],
+    selectedItems: [selectedItem, laterSelectedItem],
     hasApprovalError: true,
   },
 }
