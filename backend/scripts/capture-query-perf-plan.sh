@@ -321,8 +321,23 @@ bind_index=0
 while IFS=$'\t' read -r axis original_from original_to shifted_from shifted_to min_turnover limit day_shift; do
   bind_index=$((bind_index + 1))
   bind_id=$(printf 'bind-%02d' "$bind_index")
-  if rg -Fq "Shifted parameters: [Some(\"$axis\"), Some(\"$shifted_from\"), Some(\"$shifted_to\"), Some(\"$min_turnover\"), Some(\"$limit\")]" "$CAPTURE_OUTPUT_DIR/replay/stdout.txt" "$CAPTURE_OUTPUT_DIR/replay/stderr.txt"; then
-    replay_outcome='statement timeout'
+  shifted_parameters="Shifted parameters: [Some(\"$axis\"), Some(\"$shifted_from\"), Some(\"$shifted_to\"), Some(\"$min_turnover\"), Some(\"$limit\")]"
+  if replay_failure_kind=$(awk -v target="$shifted_parameters" '
+    /^FAIL / {
+      failure_kind = $0
+      sub(/^FAIL /, "", failure_kind)
+      sub(/ after .*$/, "", failure_kind)
+    }
+    index($0, target) {
+      print (failure_kind == "" ? "failure kind unavailable" : failure_kind)
+      found = 1
+      exit
+    }
+    END {
+      if (!found) exit 1
+    }
+  ' "$CAPTURE_OUTPUT_DIR/replay/stderr.txt"); then
+    replay_outcome=$replay_failure_kind
   else
     replay_outcome='no failure recorded'
   fi
