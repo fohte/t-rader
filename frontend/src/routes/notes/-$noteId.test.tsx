@@ -104,6 +104,7 @@ type NoteRequest = {
 
 type DetailFetchOptions = {
   noteOverviews?: NoteOverview[]
+  noteOverviewsError?: boolean
   annotations?: Annotation[]
 }
 
@@ -163,6 +164,9 @@ function setupFetch(
         kind: url.searchParams.get('kind'),
         tag: url.searchParams.get('tag'),
       })
+      if (options.noteOverviewsError === true) {
+        return Promise.resolve(Response.json({}, { status: 500 }))
+      }
       return Promise.resolve(Response.json(options.noteOverviews ?? []))
     }
     if (url.pathname === `/api/notes/${noteId}/links`) {
@@ -323,6 +327,23 @@ function directNotesNavigationOutput({
             search: Object.fromEntries(nextLocation.searchParams),
           },
     legacyQueueLink: legacyQueueLink?.getAttribute('href') ?? null,
+  }
+}
+
+function notesNavigationErrorOutput(
+  overviewRequests: Array<{
+    view: string | null
+    kind: string | null
+    tag: string | null
+  }>,
+  alert: HTMLElement,
+) {
+  return {
+    overviewRequests,
+    alert: {
+      role: alert.getAttribute('role'),
+      text: alert.textContent,
+    },
   }
 }
 
@@ -693,6 +714,25 @@ describe('NoteDetailPage', () => {
         },
       },
       legacyQueueLink: null,
+    })
+  }, 30_000)
+
+  it('shows an error when a directly opened filtered list cannot load', async () => {
+    const result = await renderNoteDetail(
+      [pendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(pendingVersion))),
+      `/notes/${noteId}?tag=sample-tag`,
+      undefined,
+      { noteOverviewsError: true },
+    )
+    const alert = await screen.findByRole('alert')
+
+    expect(notesNavigationErrorOutput(result.overviewRequests, alert)).toEqual({
+      overviewRequests: [{ view: 'all', kind: null, tag: 'sample-tag' }],
+      alert: {
+        role: 'alert',
+        text: '一覧内の移動情報を読み込めませんでした。',
+      },
     })
   }, 30_000)
 

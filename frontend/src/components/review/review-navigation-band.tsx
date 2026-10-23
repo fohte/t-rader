@@ -8,8 +8,8 @@ import {
 } from '#components/review/review-queue-model'
 
 type ReviewNavigationBandProps =
-  | { isPending: true }
-  | { isError: true }
+  | { isPending: true; scope?: 'notes' }
+  | { isError: true; scope?: 'notes' }
   | (ReviewNavigationTarget & { isPending?: false; isError?: false })
 
 function ReviewQueueItemLink({
@@ -67,7 +67,9 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
   if ('isPending' in props && props.isPending === true) {
     return (
       <div className={className} aria-busy="true" role="status">
-        未読を読み込んでいます
+        {props.scope === 'notes'
+          ? '一覧内の移動情報を読み込んでいます'
+          : '未読を読み込んでいます'}
       </div>
     )
   }
@@ -75,7 +77,9 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
   if ('isError' in props && props.isError === true) {
     return (
       <div className={className} role="alert">
-        未読の移動情報を読み込めませんでした。
+        {props.scope === 'notes'
+          ? '一覧内の移動情報を読み込めませんでした。'
+          : '未読の移動情報を読み込めませんでした。'}
       </div>
     )
   }

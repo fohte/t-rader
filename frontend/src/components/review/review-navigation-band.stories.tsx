@@ -169,9 +169,19 @@ export const Loading: Story = {
   args: { isPending: true },
 }
 
+export const NotesLoading: Story = {
+  name: 'shows the loading state while notes list navigation is pending.',
+  args: { isPending: true, scope: 'notes' },
+}
+
 export const Error: Story = {
   name: 'shows an error inside the unread navigation band.',
   args: { isError: true },
+}
+
+export const NotesError: Story = {
+  name: 'shows an error when the notes list navigation could not load.',
+  args: { isError: true, scope: 'notes' },
 }
 
 export const NotesScopedNavigation: Story = {

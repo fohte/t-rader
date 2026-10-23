@@ -287,9 +287,15 @@ function NoteDetailPage() {
       {navigation != null ? (
         <ReviewNavigationBand {...navigation} />
       ) : isReviewNavigationError ? (
-        <ReviewNavigationBand isError />
+        <ReviewNavigationBand
+          isError
+          scope={hasNotesNavigationScope ? 'notes' : undefined}
+        />
       ) : isReviewNavigationPending ? (
-        <ReviewNavigationBand isPending />
+        <ReviewNavigationBand
+          isPending
+          scope={hasNotesNavigationScope ? 'notes' : undefined}
+        />
       ) : null}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <NoteBodyCard>

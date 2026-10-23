@@ -229,6 +229,20 @@ describe('ReviewNavigationBand', () => {
     })
   })
 
+  it('identifies a notes list navigation error', async () => {
+    const router = createStoryRouter(
+      () => <ReviewNavigationBand isError scope="notes" />,
+      { paths: ['/review', '/notes/$noteId', '/annotations/$annoId'] },
+    )
+    const { container } = render(<RouterProvider router={router} />)
+    await screen.findByRole('alert')
+
+    expect(getRenderedAlert(container)).toEqual({
+      text: '一覧内の移動情報を読み込めませんでした。',
+      role: 'alert',
+    })
+  })
+
   it('keeps the original snapshot and changes the current key when following a note', async () => {
     const user = userEvent.setup()
     const { router } = renderBand({
