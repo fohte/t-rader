@@ -151,10 +151,10 @@ pub async fn fingerprint(
                         binds.push(bind_fingerprint(&[], &[])?);
                         continue;
                     }
-                    return Err(format!(
-                        "parameter type resolution failed for SQL {sql_sha256}: {}",
-                        execution::error_kind(&error)
-                    ));
+                    let sqlstate = error
+                        .as_database_error()
+                        .and_then(sqlx::error::DatabaseError::code);
+                    return Err(prepare_failure_detail(&sql_sha256, sqlstate.as_deref()));
                 }
             };
 
@@ -398,6 +398,50 @@ fn bind_fingerprint(
         shifted_values_sha256: hash_serialized(shifted_parameters)?,
         typed_shifted_bind_sha256: hash_serialized(&(parameter_types, shifted_parameters))?,
     })
+}
+
+fn prepare_failure_detail(sql_sha256: &str, sqlstate: Option<&str>) -> String {
+    let sqlstate = sqlstate
+        .filter(|code| {
+            code.len() == 5
+                && code
+                    .chars()
+                    .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit())
+        })
+        .unwrap_or("unavailable");
+
+    format!(
+        "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate={sqlstate}"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prepare_failure_detail;
+
+    #[test]
+    fn prepare_failure_detail_keeps_only_phase_and_sqlstate() {
+        let sql_sha256 = "a".repeat(64);
+
+        assert_eq!(
+            [
+                prepare_failure_detail(&sql_sha256, Some("42P01")),
+                prepare_failure_detail(&sql_sha256, Some("private error text")),
+                prepare_failure_detail(&sql_sha256, None),
+            ],
+            [
+                format!(
+                    "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate=42P01"
+                ),
+                format!(
+                    "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate=unavailable"
+                ),
+                format!(
+                    "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate=unavailable"
+                ),
+            ],
+        );
+    }
 }
 
 fn is_group_movers_sql(sql: &str) -> bool {
