@@ -2,38 +2,83 @@
 set -euo pipefail
 
 readonly EXPECTED_IMAGE_REF='ghcr.io/fohte/t-rader/perf-db:e8715ae2cb74fa0a8a05d65f7af4ccfea9cb7658c56cb9bd2ee604572719922d'
-readonly SOURCE_RUN_ID='39714934810'
-readonly SOURCE_ARTIFACT_ID='12399056019'
+readonly EXPECTED_REPLAY_TARGET_DATE='2026-10-22'
+readonly EXPECTED_REPLAY_SQL_COUNT='350'
+readonly EXPECTED_APPLIED_EXCLUSION_COUNT='15'
+readonly REFERENCE_SOURCE_RUN_ID='39714934810'
+readonly REFERENCE_SOURCE_ARTIFACT_ID='12399056019'
+readonly REFERENCE_LOCAL_LOG_SHA256='6a095a31d0d22eaf1517c23ae48b374056017ad7eabf26fd882ebf6b6af3320b'
+readonly REFERENCE_SOURCE_ZIP_SHA256='50d7b38e3a07a9939cc87f9e1bdbf5084240c9ab13ecd53e1ddb34ad50b499e6'
 readonly SOURCE_PR_HEAD_SHA='556c691d809b11afa566533aa98f6a02bf68ef69'
 readonly SOURCE_CHECKOUT_SHA='d24a3e71dac02684f1d752c4d37aeb6462ca5c91'
 readonly DB_CONTAINER='query-perf-plan-capture-db'
 readonly DB_URL='postgres://t_rader:t_rader@127.0.0.1:5432/t_rader'
-readonly QUERY_LOG_FILE="${QUERY_LOG_FILE:-backend-query-log/postgresql.json}"
+readonly QUERY_LOG_FILE="${QUERY_LOG_FILE:-$RUNNER_TEMP/backend-query-log-regenerated/postgresql.json}"
+readonly INPUT_ARTIFACT_NAME="${INPUT_ARTIFACT_NAME:-}"
+readonly INPUT_ARTIFACT_ID="${INPUT_ARTIFACT_ID:-}"
 readonly CAPTURE_OUTPUT_DIR="${CAPTURE_OUTPUT_DIR:-query-perf-plan-capture}"
+readonly INPUT_MANIFEST_FILE="${INPUT_MANIFEST_FILE:-$CAPTURE_OUTPUT_DIR/input/regenerated-manifest.json}"
+readonly INPUT_COMPARISON_FILE="${INPUT_COMPARISON_FILE:-$CAPTURE_OUTPUT_DIR/input/comparison.json}"
+readonly INPUT_GROUP_BINDS_FILE="${INPUT_GROUP_BINDS_FILE:-$CAPTURE_OUTPUT_DIR/binds/source-binds.json}"
 readonly SOURCE_SQL_PATH='backend/crates/gateways/postgres/src/group_movers.rs'
 
 overall_status=0
+replay_status='not-run'
+plans_collected=false
 container_started=false
-mkdir -p "$CAPTURE_OUTPUT_DIR"/{environment,profile,replay,sql,binds,plans}
+mkdir -p "$CAPTURE_OUTPUT_DIR"/{environment,profile,replay,sql,binds,plans,input}
 
 # EXIT trap から呼ぶため、直接の関数呼び出しとしては検出されない。
 # shellcheck disable=SC2329
 cleanup() {
+  local exit_status=$?
+  if ((exit_status != 0 && overall_status == 0)); then
+    overall_status=$exit_status
+  fi
   if [[ "$container_started" == true ]]; then
     docker rm --force "$DB_CONTAINER" > "$CAPTURE_OUTPUT_DIR/environment/container-cleanup.stdout" 2> "$CAPTURE_OUTPUT_DIR/environment/container-cleanup.stderr" || true
   fi
+  printf 'script_exit_code=%s\nreplay_exit_code=%s\noverall_status=%s\nplans_collected=%s\n' \
+    "$exit_status" "$replay_status" "$overall_status" "$plans_collected" \
+    > "$CAPTURE_OUTPUT_DIR/result.txt"
 }
 trap cleanup EXIT
 
 record_environment() {
+  local input_log_sha256='unavailable'
+  local input_manifest_sha256='unavailable'
+  local input_group_binds_sha256='unavailable'
+  local comparison_matches='unavailable'
+  if [[ -f "$QUERY_LOG_FILE" ]]; then
+    input_log_sha256=$(sha256sum "$QUERY_LOG_FILE" | cut -d ' ' -f 1)
+  fi
+  if [[ -f "$INPUT_MANIFEST_FILE" ]]; then
+    input_manifest_sha256=$(sha256sum "$INPUT_MANIFEST_FILE" | cut -d ' ' -f 1)
+  fi
+  if [[ -f "$INPUT_GROUP_BINDS_FILE" ]]; then
+    input_group_binds_sha256=$(sha256sum "$INPUT_GROUP_BINDS_FILE" | cut -d ' ' -f 1)
+  fi
+  if [[ -f "$INPUT_COMPARISON_FILE" ]]; then
+    comparison_matches=$(jq -r '.matches' "$INPUT_COMPARISON_FILE")
+  fi
   {
     printf 'diagnostic_checkout_sha=%s\n' "$(git rev-parse HEAD)"
     printf 'diagnostic_branch=%s\n' "$(git branch --show-current)"
     printf 'source_checkout_sha=%s\n' "$SOURCE_CHECKOUT_SHA"
     printf 'source_pr_head_sha=%s\n' "$SOURCE_PR_HEAD_SHA"
-    printf 'source_run_url=https://github.com/fohte/t-rader/actions/runs/%s\n' "$SOURCE_RUN_ID"
-    printf 'source_run_id=%s\n' "$SOURCE_RUN_ID"
-    printf 'source_artifact_id=%s\n' "$SOURCE_ARTIFACT_ID"
+    printf 'source_run_url=https://github.com/fohte/t-rader/actions/runs/%s\n' "$REFERENCE_SOURCE_RUN_ID"
+    printf 'reference_source_run_id=%s\n' "$REFERENCE_SOURCE_RUN_ID"
+    printf 'reference_source_artifact_id=%s\n' "$REFERENCE_SOURCE_ARTIFACT_ID"
+    printf 'reference_local_log_sha256=%s\n' "$REFERENCE_LOCAL_LOG_SHA256"
+    printf 'reference_source_zip_sha256=%s\n' "$REFERENCE_SOURCE_ZIP_SHA256"
+    printf 'reference_source_zip_identity_proven=false\n'
+    printf 'input_kind=ci-regenerated\n'
+    printf 'input_artifact_name=%s\n' "$INPUT_ARTIFACT_NAME"
+    printf 'input_artifact_id=%s\n' "$INPUT_ARTIFACT_ID"
+    printf 'input_log_sha256=%s\n' "$input_log_sha256"
+    printf 'input_manifest_sha256=%s\n' "$input_manifest_sha256"
+    printf 'input_group_binds_sha256=%s\n' "$input_group_binds_sha256"
+    printf 'input_comparison_matches=%s\n' "$comparison_matches"
     printf 'runner_os=%s\n' "$(uname -a)"
     printf 'cpu_count=%s\n' "$(nproc)"
     printf 'image_expected=%s\n' "$EXPECTED_IMAGE_REF"
@@ -46,13 +91,33 @@ record_environment() {
 
 record_environment
 
-if [[ ! -f "$QUERY_LOG_FILE" ]]; then
-  printf 'Missing source query log: %s\n' "$QUERY_LOG_FILE" > "$CAPTURE_OUTPUT_DIR/replay/source-log-error.txt"
+if ! backend/scripts/verify-query-perf-plan-capture-source.sh \
+  "$CAPTURE_OUTPUT_DIR/environment/source-change-check.txt"; then
+  printf 'Diagnostic source ancestry or protected-source check failed.\n' > "$CAPTURE_OUTPUT_DIR/environment/source-check-error.txt"
   exit 1
 fi
 
-if [[ "$(git rev-parse HEAD^)" != "$SOURCE_CHECKOUT_SHA" ]]; then
-  printf 'Expected diagnostic commit parent %s, found %s\n' "$SOURCE_CHECKOUT_SHA" "$(git rev-parse HEAD^)" > "$CAPTURE_OUTPUT_DIR/environment/source-checkout-error.txt"
+if [[ -z "$INPUT_ARTIFACT_NAME" || -z "$INPUT_ARTIFACT_ID" ]]; then
+  printf 'Regenerated Actions artifact metadata is missing.\n' > "$CAPTURE_OUTPUT_DIR/input/artifact-metadata-error.txt"
+  exit 1
+fi
+
+if [[ ! -f "$INPUT_MANIFEST_FILE" || ! -f "$INPUT_COMPARISON_FILE" || ! -f "$INPUT_GROUP_BINDS_FILE" ]]; then
+  printf 'Hash-only input manifest, comparison report, or source-shifted bind set is missing.\n' > "$CAPTURE_OUTPUT_DIR/input/manifest-error.txt"
+  exit 1
+fi
+
+if ! jq -e --arg target_date "$EXPECTED_REPLAY_TARGET_DATE" \
+  '.provenance.input_kind == "ci-regenerated" and .comparison.target_date == $target_date' \
+  "$INPUT_MANIFEST_FILE" > "$CAPTURE_OUTPUT_DIR/input/manifest-validation.stdout" 2> "$CAPTURE_OUTPUT_DIR/input/manifest-validation.stderr" ||
+  ! jq -e '.matches == true' "$INPUT_COMPARISON_FILE" \
+    > "$CAPTURE_OUTPUT_DIR/input/comparison-validation.stdout" 2> "$CAPTURE_OUTPUT_DIR/input/comparison-validation.stderr"; then
+  printf 'Regenerated input comparison did not pass before replay.\n' > "$CAPTURE_OUTPUT_DIR/input/comparison-error.txt"
+  exit 1
+fi
+
+if [[ ! -f "$QUERY_LOG_FILE" ]]; then
+  printf 'Missing regenerated query log: %s\n' "$QUERY_LOG_FILE" > "$CAPTURE_OUTPUT_DIR/replay/source-log-error.txt"
   exit 1
 fi
 
@@ -86,7 +151,7 @@ if docker manifest inspect --verbose "$EXPECTED_IMAGE_REF" > "$CAPTURE_OUTPUT_DI
     exit 1
   fi
 else
-  if rg -q 'no such manifest|manifest unknown|404 Not Found' \
+  if grep -Eq 'no such manifest|manifest unknown|404 Not Found' \
     "$CAPTURE_OUTPUT_DIR/environment/image-manifest.stderr" \
     "$CAPTURE_OUTPUT_DIR/environment/image-manifest.json"; then
     printf 'image_source=local-build\n' >> "$CAPTURE_OUTPUT_DIR/environment/image-summary.txt"
@@ -182,6 +247,11 @@ if [[ ! "$reference_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ! "$target_date" =~
   printf 'Could not read the profile reference_date and replay target_date.\n' > "$CAPTURE_OUTPUT_DIR/profile/date-error.txt"
   exit 1
 fi
+if [[ "$target_date" != "$EXPECTED_REPLAY_TARGET_DATE" ]]; then
+  printf 'Expected profile replay target date %s, found %s.\n' \
+    "$EXPECTED_REPLAY_TARGET_DATE" "$target_date" > "$CAPTURE_OUTPUT_DIR/profile/target-date-mismatch.txt"
+  exit 1
+fi
 reference_date_epoch=$(date -u -d "$reference_date 00:00:00" +%s)
 target_date_epoch=$(date -u -d "$target_date 00:00:00" +%s)
 reference_to_target_days=$(((target_date_epoch - reference_date_epoch) / 86400))
@@ -212,13 +282,49 @@ else
   overall_status=1
 fi
 replay_elapsed_ms=$((($(date +%s%N) - replay_started) / 1000000))
-if rg -q 'FAIL statement timeout|query-perf found [1-9][0-9]* failing SQL statement' \
+if grep -Eq 'FAIL statement timeout|query-perf found [1-9][0-9]* failing SQL statement' \
   "$CAPTURE_OUTPUT_DIR/replay/stdout.txt" "$CAPTURE_OUTPUT_DIR/replay/stderr.txt"; then
   overall_status=1
 fi
 printf '%s\n' "$replay_status" > "$CAPTURE_OUTPUT_DIR/replay/exit_code"
 printf '%s\n' "$replay_elapsed_ms" > "$CAPTURE_OUTPUT_DIR/replay/elapsed_ms"
 printf 'exit_code=%s\nelapsed_ms=%s\n' "$replay_status" "$replay_elapsed_ms" > "$CAPTURE_OUTPUT_DIR/replay/result.txt"
+
+if ! grep -Eq "^Replayed ${EXPECTED_REPLAY_SQL_COUNT} SQL statement\\(s\\) against data through ${EXPECTED_REPLAY_TARGET_DATE}\\.$" \
+  "$CAPTURE_OUTPUT_DIR/replay/stdout.txt"; then
+  printf 'expected_replay_sql_count=%s\nexpected_target_date=%s\n' \
+    "$EXPECTED_REPLAY_SQL_COUNT" "$EXPECTED_REPLAY_TARGET_DATE" \
+    > "$CAPTURE_OUTPUT_DIR/replay/replay-input-validation-error.txt"
+  printf 'Replay summary did not match the fixed SQL count and target date; EXPLAIN was skipped.\n' \
+    >> "$CAPTURE_OUTPUT_DIR/replay/replay-input-validation-error.txt"
+  exit 1
+fi
+
+applied_exclusions_file="$CAPTURE_OUTPUT_DIR/replay/applied-exclusions.json"
+if cargo run --locked --manifest-path backend/scripts/query-perf-input-manifest/Cargo.toml -- \
+  verify-replay-exclusions \
+  --stdout "$CAPTURE_OUTPUT_DIR/replay/stdout.txt" \
+  --exclusions-file backend/crates/apps/query-perf/exclusions.json \
+  --output "$applied_exclusions_file" \
+  > "$CAPTURE_OUTPUT_DIR/replay/exclusion-validation.stdout" \
+  2> "$CAPTURE_OUTPUT_DIR/replay/exclusion-validation.stderr"; then
+  expected_exclusion_sha256=$(jq -r '.provenance.reference_applied_exclusion_set_sha256' "$INPUT_MANIFEST_FILE")
+  if ! jq -e \
+    --arg expected_sha256 "$expected_exclusion_sha256" \
+    --argjson expected_count "$EXPECTED_APPLIED_EXCLUSION_COUNT" \
+    '.matches_configured_set == true and .configured_count == $expected_count and .observed_count == $expected_count and .missing_count == 0 and .unexpected_count == 0 and .configured_set_sha256 == $expected_sha256' \
+    "$applied_exclusions_file" \
+    > "$CAPTURE_OUTPUT_DIR/replay/exclusion-reference-validation.stdout" \
+    2> "$CAPTURE_OUTPUT_DIR/replay/exclusion-reference-validation.stderr"; then
+    printf 'Applied exclusion set differs from the original replay reference.\n' \
+      > "$CAPTURE_OUTPUT_DIR/replay/applied-exclusion-mismatch.txt"
+    exit 1
+  fi
+else
+  printf 'Could not verify the applied exclusion set; EXPLAIN was skipped.\n' \
+    > "$CAPTURE_OUTPUT_DIR/replay/applied-exclusion-validation-error.txt"
+  exit 1
+fi
 
 if jq -s -e '
   [ .[] | select((.message // "") | contains("eligible_stocks AS") and contains("period_bars AS MATERIALIZED")) ] as $rows
@@ -239,7 +345,7 @@ for required_source in \
   'latest_period_bars AS (' \
   'avg_turnover AS MATERIALIZED (' \
   'ranked_returns AS ('; do
-  if ! rg -Fq "$required_source" "$SOURCE_SQL_PATH"; then
+  if ! grep -Fq -- "$required_source" "$SOURCE_SQL_PATH"; then
     printf 'Source query does not contain expected SQL fragment: %s\n' "$required_source" >> "$CAPTURE_OUTPUT_DIR/sql/source-query-validation.error.txt"
     exit 1
   fi
@@ -251,22 +357,17 @@ jq -s -er '
   | if length == 1 then .[0] else error("source SQL was not unique") end
 ' "$QUERY_LOG_FILE" > "$CAPTURE_OUTPUT_DIR/sql/full.sql"
 
-jq -r '
-  select((.message // "") | contains("eligible_stocks AS") and contains("period_bars AS MATERIALIZED"))
-  | .detail
-  | capture("Parameters: \\$1 = \u0027(?<p1>[^\u0027]*)\u0027, \\$2 = \u0027(?<p2>[^\u0027]*)\u0027, \\$3 = \u0027(?<p3>[^\u0027]*)\u0027, \\$4 = \u0027(?<p4>[^\u0027]*)\u0027, \\$5 = \u0027(?<p5>[^\u0027]*)\u0027")
-  | [.p1, .p2, .p3, .p4, .p5]
-  | @tsv
-' "$QUERY_LOG_FILE" | LC_ALL=C sort -u > "$CAPTURE_OUTPUT_DIR/binds/original.tsv"
-
-if [[ "$(wc -l < "$CAPTURE_OUTPUT_DIR/binds/original.tsv" | tr -d ' ')" != 6 ]]; then
-  printf 'Expected six unique parameter sets for LIST_GROUP_MOVERS_SQL.\n' > "$CAPTURE_OUTPUT_DIR/binds/validation-error.txt"
+if ! jq -e 'length == 6 and all(.[]; .parameter_types == ["text", "date", "date", "numeric", "bigint"] and (.original_parameters | length) == 5 and (.shifted_parameters | length) == 5)' \
+  "$INPUT_GROUP_BINDS_FILE" > "$CAPTURE_OUTPUT_DIR/binds/source-validation.stdout" \
+  2> "$CAPTURE_OUTPUT_DIR/binds/source-validation.stderr"; then
+  printf 'Expected six source-shifted LIST_GROUP_MOVERS_SQL binds with application parameter types.\n' \
+    > "$CAPTURE_OUTPUT_DIR/binds/validation-error.txt"
   exit 1
 fi
 
 perl -0777 -ne 's/SELECT group_metrics\.group_key,.*\z//s or die "could not locate LIST_GROUP_MOVERS_SQL final SELECT\n"; print' \
   "$CAPTURE_OUTPUT_DIR/sql/full.sql" > "$CAPTURE_OUTPUT_DIR/sql/cte-prefix.sql"
-if ! rg -q '^WITH requested_axes AS' "$CAPTURE_OUTPUT_DIR/sql/cte-prefix.sql"; then
+if ! grep -Eq '^WITH requested_axes AS' "$CAPTURE_OUTPUT_DIR/sql/cte-prefix.sql"; then
   printf 'Extracted SQL prefix does not begin with the application CTE chain.\n' > "$CAPTURE_OUTPUT_DIR/sql/component-error.txt"
   exit 1
 fi
@@ -278,50 +379,27 @@ for component in period_bars latest_period_bars stock_change_prices avg_turnover
   } > "$CAPTURE_OUTPUT_DIR/sql/$component.sql"
 done
 
-shifted_tsv="$CAPTURE_OUTPUT_DIR/binds/shifted.tsv"
-: > "$shifted_tsv"
-while IFS=$'\t' read -r axis original_from original_to min_turnover limit; do
-  if [[ ! "$axis" =~ ^[A-Za-z0-9-]+$ || ! "$original_from" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ! "$original_to" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ! "$min_turnover" =~ ^[0-9]+$ || ! "$limit" =~ ^[0-9]+$ ]]; then
-    printf 'Unexpected source bind value format.\n' > "$CAPTURE_OUTPUT_DIR/binds/validation-error.txt"
-    exit 1
-  fi
-
-  latest_date=$original_from
-  if [[ "$original_to" > "$latest_date" ]]; then
-    latest_date=$original_to
-  fi
-  target_epoch=$(date -u -d "$target_date 00:00:00" +%s)
-  latest_epoch=$(date -u -d "$latest_date 00:00:00" +%s)
-  day_shift=$(((target_epoch - latest_epoch) / 86400))
-  from_epoch=$(date -u -d "$original_from 00:00:00" +%s)
-  to_epoch=$(date -u -d "$original_to 00:00:00" +%s)
-  shifted_from=$(date -u -d "@$((from_epoch + day_shift * 86400))" +%F)
-  shifted_to=$(date -u -d "@$((to_epoch + day_shift * 86400))" +%F)
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$axis" "$original_from" "$original_to" "$shifted_from" "$shifted_to" "$min_turnover" "$limit" "$day_shift" \
-    >> "$shifted_tsv"
-done < "$CAPTURE_OUTPUT_DIR/binds/original.tsv"
-
-expected_shifted_binds=$(
-  cat << 'EXPECTED'
-demo-axis	2026-10-18	2026-10-22	0	5
-sample-axis	2026-10-21	2026-10-22	0	5
-sample-axis	2026-10-21	2026-10-22	150	5
-sample-axis	2026-10-22	2026-10-22	0	5
-EXPECTED
-)
-actual_shifted_binds=$(cut -f1,4,5,6,7 "$shifted_tsv" | LC_ALL=C sort -u)
-if [[ "$(printf '%s\n' "$actual_shifted_binds" | LC_ALL=C sort -u)" != "$(printf '%s\n' "$expected_shifted_binds" | LC_ALL=C sort -u)" ]]; then
-  printf 'Expected and extracted shifted parameter sets differ.\n' > "$CAPTURE_OUTPUT_DIR/binds/validation-error.txt"
-  printf 'expected:\n%s\nactual:\n%s\n' "$expected_shifted_binds" "$actual_shifted_binds" >> "$CAPTURE_OUTPUT_DIR/binds/validation-error.txt"
+if ! jq -e '.comparison.group_movers.bind_count == 6 and .comparison.group_movers.specified_bind_count == 4 and (.comparison.group_movers.specified_bind_hashes | length) == 4' \
+  "$INPUT_MANIFEST_FILE" > "$CAPTURE_OUTPUT_DIR/binds/source-manifest-validation.stdout" \
+  2> "$CAPTURE_OUTPUT_DIR/binds/source-manifest-validation.stderr"; then
+  printf 'The source bind hash set does not contain the expected six and four bind counts.\n' \
+    > "$CAPTURE_OUTPUT_DIR/binds/validation-error.txt"
   exit 1
 fi
 
 bind_index=0
-while IFS=$'\t' read -r axis original_from original_to shifted_from shifted_to min_turnover limit day_shift; do
+while IFS= read -r bind_json; do
   bind_index=$((bind_index + 1))
   bind_id=$(printf 'bind-%02d' "$bind_index")
-  shifted_parameters="Shifted parameters: [Some(\"$axis\"), Some(\"$shifted_from\"), Some(\"$shifted_to\"), Some(\"$min_turnover\"), Some(\"$limit\")]"
+  original_parameters=$(jq -c '.original_parameters' <<< "$bind_json")
+  shifted_parameter_values=$(jq -c '.shifted_parameters' <<< "$bind_json")
+  parameter_types=$(jq -c '.parameter_types' <<< "$bind_json")
+  axis=$(jq -r '.shifted_parameters[0]' <<< "$bind_json")
+  from_date=$(jq -r '.shifted_parameters[1]' <<< "$bind_json")
+  to_date=$(jq -r '.shifted_parameters[2]' <<< "$bind_json")
+  min_turnover=$(jq -r '.shifted_parameters[3]' <<< "$bind_json")
+  limit=$(jq -r '.shifted_parameters[4]' <<< "$bind_json")
+  shifted_parameters="Shifted parameters: [Some(\"$axis\"), Some(\"$from_date\"), Some(\"$to_date\"), Some(\"$min_turnover\"), Some(\"$limit\")]"
   if replay_failure_kind=$(awk -v target="$shifted_parameters" '
     /^FAIL / {
       failure_kind = $0
@@ -345,24 +423,18 @@ while IFS=$'\t' read -r axis original_from original_to shifted_from shifted_to m
     --arg id "$bind_id" \
     --arg replay_outcome "$replay_outcome" \
     --arg target_date "$target_date" \
-    --argjson day_shift "$day_shift" \
-    --arg original_axis "$axis" \
-    --arg original_from "$original_from" \
-    --arg original_to "$original_to" \
-    --arg shifted_from "$shifted_from" \
-    --arg shifted_to "$shifted_to" \
-    --arg min_turnover "$min_turnover" \
-    --arg limit "$limit" \
-    ' {
+    --argjson parameter_types "$parameter_types" \
+    --argjson original_parameters "$original_parameters" \
+    --argjson shifted_parameters "$shifted_parameter_values" \
+    '{
       bind_id: $id,
       replay_outcome: $replay_outcome,
       target_date: $target_date,
-      day_shift: $day_shift,
-      parameter_types: ["text", "date", "date", "numeric", "bigint"],
-      original_parameters: [$original_axis, $original_from, $original_to, $min_turnover, $limit],
-      shifted_parameters: [$original_axis, $shifted_from, $shifted_to, $min_turnover, $limit]
+      parameter_types: $parameter_types,
+      original_parameters: $original_parameters,
+      shifted_parameters: $shifted_parameters
     }' > "$CAPTURE_OUTPUT_DIR/binds/$bind_id.json"
-done < "$shifted_tsv"
+done < <(jq -c '.[]' "$INPUT_GROUP_BINDS_FILE")
 jq -s '.' "$CAPTURE_OUTPUT_DIR"/binds/bind-*.json > "$CAPTURE_OUTPUT_DIR/binds/binds.json"
 
 run_explain() {
@@ -424,10 +496,13 @@ run_explain() {
 cat > "$CAPTURE_OUTPUT_DIR/README.md" << 'EOF'
 # Query plan capture
 
-- `replay/` には source artifact の 350 SQL replay の stdout、stderr、exit code を保存しています。EXPLAIN の観測結果とは分けています。
+- 入力は固定 source の backend test を Actions 内で再実行して生成した `regenerated input` です。消失した元 artifact と byte 同一とは主張しません。元 ZIP の SHA-256 は upload log から記録した参照値で、手元に ZIP がなく同一性は検証できていません。
+- `input/` には raw SQL/bind を含めない manifest と全件比較結果を保存しています。再生成 JSONL は別の `backend-query-log-regenerated-*` artifact として retention 1 日で保存します。
+- `binds/source-binds.json` には regenerated input の対象 6 bind と source `shift_parameters` の出力を保存します。shell 側では parameter 値を変換しません。
+- `replay/` には regenerated input の 350 SQL replay の stdout、stderr、exit code と適用除外集合の照合結果を保存しています。EXPLAIN の観測結果とは分けています。
 - `sql/full.sql` は source query log から抽出した application SQL です。component SQL は元の CTE 全体を保持し、終端 SELECT だけを `SELECT * FROM <component>` に置き換えています。
 - 各 EXPLAIN は新しい PostgreSQL connection と read-only transaction で実行し、`statement_timeout = '5s'` を設定します。application と同じ parameter type を使い、bind ごとに新しい prepared statement の初回実行として計画します。error と timeout は個別の stdout、stderr、exit code、所要時間を記録します。
-- profile の `reference_date` と replay の `target_date` は別々に記録しています。EXPLAIN は元 replay の後に実行するため buffer cache が warm で、`EXPLAIN ANALYZE` には計測 overhead もあります。full query と component の所要時間は別観測なので、合算しないでください。
+- profile の `reference_date` と replay の `target_date` は別々に記録しています。EXPLAIN は replay の後に実行するため buffer cache が warm で、`EXPLAIN ANALYZE` には計測 overhead もあります。full query と component の所要時間は別観測なので、合算しないでください。
 EOF
 
 printf 'bind_id\tobservation\texit_code\telapsed_ms\n' > "$CAPTURE_OUTPUT_DIR/observation-order.tsv"
@@ -448,5 +523,5 @@ for bind_json in "$CAPTURE_OUTPUT_DIR"/binds/bind-*.json; do
   fi
 done
 
-printf 'replay_exit_code=%s\noverall_status=%s\n' "$replay_status" "$overall_status" > "$CAPTURE_OUTPUT_DIR/result.txt"
+plans_collected=true
 exit "$overall_status"

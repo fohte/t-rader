@@ -1,0 +1,15 @@
+[package]
+name = "query-perf-input-manifest"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+chrono = { version = "=0.4.45", default-features = false, features = ["clock"] }
+clap = { version = "=4.5.60", features = ["derive", "env"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.151", features = ["arbitrary_precision"] }
+sha2 = "=0.10.9"
+sqlx = { version = "=0.9.0", features = ["runtime-tokio", "tls-native-tls", "postgres"] }
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread"] }
