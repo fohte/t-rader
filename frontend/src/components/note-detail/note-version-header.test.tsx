@@ -10,6 +10,14 @@ import { getExecutionOriginLinks } from '#test/execution-origin-links.test-helpe
 
 type NoteKind = components['schemas']['NoteKind']
 
+function getVersionStatusOutput(label: string, current: string) {
+  return {
+    version: screen.getByText('v7').textContent,
+    status: screen.getByText(label).textContent,
+    current: screen.getByText(current).textContent,
+  }
+}
+
 const version: NoteVersion = {
   id: 'fake-version-a',
   note_id: 'fake-note-a',
@@ -81,6 +89,52 @@ function getUnregisteredHeaderOutput() {
 }
 
 describe('NoteVersionHeader', () => {
+  it.each([
+    {
+      isCurrent: false,
+      status: 'unread' as const,
+      label: '未レビュー',
+      current: '非現行',
+    },
+    {
+      isCurrent: true,
+      status: 'approved' as const,
+      label: '承認済み',
+      current: '現行',
+    },
+  ])(
+    'labels a version as $current while showing its $label review status',
+    async ({ isCurrent, status, label, current }) => {
+      const router = createStoryRouter(
+        () => (
+          <NoteVersionHeader
+            version={{
+              ...version,
+              version_no: 7,
+              is_current: isCurrent,
+              status,
+            }}
+            noteKind={null}
+            noteKinds={[]}
+            noteKindCatalogState="loaded"
+            noteKindSourceState="available"
+            executionOrigin={null}
+            onAsk={() => {}}
+          />
+        ),
+        { paths: ['/notes'], initialPath: '/notes' },
+      )
+      render(<RouterProvider router={router} />)
+      await screen.findByRole('heading', { name: version.title })
+
+      expect(getVersionStatusOutput(label, current)).toEqual({
+        version: 'v7',
+        status: label,
+        current,
+      })
+    },
+  )
+
   it('shows the strategy and run that generated the displayed version', async () => {
     const router = createStoryRouter(
       () => (

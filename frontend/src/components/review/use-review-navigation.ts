@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   type ReviewNavigationSnapshot,
   type ReviewNavigationTarget,
+  reviewQueueItemKey,
   reviewQueueModel,
 } from '#components/review/review-queue-model'
 import { useReviewQueue } from '#components/review/use-review-queue'
@@ -20,14 +21,33 @@ export interface ReviewNavigationResult extends ReviewNavigationViewState {
 
 export function useReviewNavigation(
   currentItemKey: string,
+  currentNoteId?: string,
 ): ReviewNavigationResult {
   const reviewQueue = useReviewQueue()
   const historyState = useRouterState({
     select: (routerState) =>
       reviewQueueModel.readNavigationState(routerState.location.state),
   })
-  const hasMatchingHistoryState =
-    historyState?.currentItemKey === currentItemKey
+  const scopedHistoryItems =
+    historyState?.scope === 'notes' && Array.isArray(historyState.items)
+      ? historyState.items
+      : null
+  const currentNoteItem =
+    scopedHistoryItems != null && currentNoteId != null
+      ? scopedHistoryItems.find(
+          (item) => item.kind === 'note' && item.noteId === currentNoteId,
+        )
+      : undefined
+  const hasMatchingScopedHistoryState =
+    historyState?.scope === 'notes' &&
+    scopedHistoryItems != null &&
+    (historyState.currentItemKey === currentItemKey || currentNoteItem != null)
+  const matchingHistoryState =
+    historyState != null &&
+    (historyState.currentItemKey === currentItemKey ||
+      hasMatchingScopedHistoryState)
+      ? historyState
+      : null
   const [fallbackNavigation, setFallbackNavigation] = useState<{
     currentItemKey: string
     snapshot: ReviewNavigationSnapshot
@@ -39,7 +59,7 @@ export function useReviewNavigation(
 
   useEffect(() => {
     if (
-      hasMatchingHistoryState ||
+      matchingHistoryState != null ||
       fallbackSnapshot != null ||
       reviewQueue.data == null
     ) {
@@ -51,29 +71,32 @@ export function useReviewNavigation(
         reviewQueue.data.items,
       ),
     })
-  }, [
-    currentItemKey,
-    fallbackSnapshot,
-    hasMatchingHistoryState,
-    reviewQueue.data,
-  ])
+  }, [currentItemKey, fallbackSnapshot, matchingHistoryState, reviewQueue.data])
 
-  const snapshot = hasMatchingHistoryState
-    ? historyState.snapshot
-    : fallbackSnapshot
+  const snapshot = matchingHistoryState?.snapshot ?? fallbackSnapshot
+  const navigationItems = hasMatchingScopedHistoryState
+    ? scopedHistoryItems
+    : reviewQueue.data?.items
 
   return {
     navigation:
-      snapshot == null || reviewQueue.data == null
+      snapshot == null || navigationItems == null
         ? null
         : {
-            items: reviewQueue.data.items,
+            items: navigationItems,
             snapshot,
-            currentItemKey,
+            currentItemKey:
+              currentNoteItem == null
+                ? currentItemKey
+                : reviewQueueItemKey(currentNoteItem),
+            ...(hasMatchingScopedHistoryState
+              ? { scope: 'notes' as const }
+              : {}),
           },
     isPending:
-      reviewQueue.isPending || (snapshot == null && !reviewQueue.isError),
-    isError: reviewQueue.isError,
+      (navigationItems == null && reviewQueue.isPending) ||
+      (snapshot == null && !reviewQueue.isError),
+    isError: navigationItems == null && reviewQueue.isError,
     invalidate: reviewQueue.invalidate,
   }
 }

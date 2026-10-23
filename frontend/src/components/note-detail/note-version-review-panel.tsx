@@ -68,6 +68,9 @@ export function NoteVersionReviewPanel({
       queryKey: $api.queryOptions('get', '/api/notes').queryKey,
     })
     void queryClient.invalidateQueries({
+      queryKey: $api.queryOptions('get', '/api/notes/overview').queryKey,
+    })
+    void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/history', {
         params: {
           query: {

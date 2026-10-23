@@ -59,6 +59,13 @@ const version: NoteVersion = {
   reviewed_at: null,
 }
 
+function getQueryInvalidationOutput(
+  noteVersionsInvalidated: (boolean | undefined)[],
+  overviewInvalidated: boolean | undefined,
+) {
+  return { noteVersionsInvalidated, overviewInvalidated }
+}
+
 afterEach(() => {
   cleanup()
   apiMock.callbacks = {}
@@ -113,6 +120,8 @@ describe('NoteVersionReviewPanel', () => {
     const user = userEvent.setup()
     const onReviewed = vi.fn<(status: NoteVersionReviewResult) => void>()
     const queryClient = renderPanel(onReviewed)
+    const overviewQueryKey = ['get', '/api/notes/overview', undefined] as const
+    queryClient.setQueryData(overviewQueryKey, [])
     const versionQueryKeys = ['fake-version-a', 'fake-version-b'].map(
       (versionId) =>
         [
@@ -136,9 +145,15 @@ describe('NoteVersionReviewPanel', () => {
     })
 
     expect(
-      versionQueryKeys.map(
-        (queryKey) => queryClient.getQueryState(queryKey)?.isInvalidated,
+      getQueryInvalidationOutput(
+        versionQueryKeys.map(
+          (queryKey) => queryClient.getQueryState(queryKey)?.isInvalidated,
+        ),
+        queryClient.getQueryState(overviewQueryKey)?.isInvalidated,
       ),
-    ).toEqual([true, true])
+    ).toEqual({
+      noteVersionsInvalidated: [true, true],
+      overviewInvalidated: true,
+    })
   })
 })

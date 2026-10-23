@@ -98,6 +98,18 @@ function getRenderedAlert(container: HTMLElement) {
   }
 }
 
+function getNotesNavigationOutput(
+  pathname: string,
+  search: unknown,
+  state: unknown,
+) {
+  return {
+    pathname,
+    search,
+    navigation: reviewQueueModel.readNavigationState(state),
+  }
+}
+
 describe('ReviewNavigationBand', () => {
   it.each([
     {
@@ -122,7 +134,10 @@ describe('ReviewNavigationBand', () => {
       expected: {
         text: 'レビュー · 残り 3 件 次の未読へ →',
         links: [
-          { label: '次の未読へ →', href: '/notes/sample-note-02?version=3' },
+          {
+            label: '次の未読へ →',
+            href: '/notes/sample-note-02?version=3&version_id=sample-version-02',
+          },
         ],
       },
     },
@@ -133,7 +148,10 @@ describe('ReviewNavigationBand', () => {
       expected: {
         text: 'レビュー · 残り 3 件 ← 前の未読次の未読へ →',
         links: [
-          { label: '← 前の未読', href: '/notes/sample-note-02?version=3' },
+          {
+            label: '← 前の未読',
+            href: '/notes/sample-note-02?version=3&version_id=sample-version-02',
+          },
           { label: '次の未読へ →', href: '/annotations/sample-annotation-01' },
         ],
       },
@@ -226,6 +244,78 @@ describe('ReviewNavigationBand', () => {
     ).toEqual({
       snapshot,
       currentItemKey: 'note:sample-version-02',
+    })
+  })
+
+  it('moves within the note overview snapshot and keeps its URL filters', async () => {
+    const user = userEvent.setup()
+    const noteItems: ReviewQueueItem[] = [
+      {
+        kind: 'note',
+        id: 'fake-version-current',
+        noteId: 'fake-note-current',
+        versionNo: 2,
+        title: '架空の現行ノート',
+        createdAt: '2026-10-15T03:00:00Z',
+        noteKind: 'sample-kind',
+        createdByKind: 'human',
+        unreadVersionCount: 0,
+      },
+      {
+        kind: 'note',
+        id: 'fake-version-next',
+        noteId: 'fake-note-next',
+        versionNo: 4,
+        title: '架空の未読ノート',
+        createdAt: '2026-10-15T02:00:00Z',
+        noteKind: 'sample-kind',
+        createdByKind: 'llm',
+        unreadVersionCount: 1,
+      },
+    ]
+    const noteSnapshot = reviewQueueModel.createNavigationSnapshot(noteItems)
+    const router = createStoryRouter(
+      () => (
+        <ReviewNavigationBand
+          items={noteItems}
+          snapshot={noteSnapshot}
+          currentItemKey="note:fake-version-current"
+          scope="notes"
+        />
+      ),
+      {
+        paths: ['/notes/$noteId'],
+        initialPath:
+          '/notes/fake-note-current?view=pending&kind=sample-kind&tag=sample-tag',
+      },
+    )
+    render(<RouterProvider router={router} />)
+
+    await user.click(await screen.findByRole('link', { name: '次へ →' }))
+
+    expect(
+      getNotesNavigationOutput(
+        router.state.location.pathname,
+        router.state.location.search,
+        router.state.location.state,
+      ),
+    ).toEqual({
+      pathname: '/notes/fake-note-next',
+      search: {
+        view: 'pending',
+        kind: 'sample-kind',
+        tag: 'sample-tag',
+        version: 4,
+        version_id: 'fake-version-next',
+      },
+      navigation: {
+        snapshot: {
+          itemKeys: ['note:fake-version-current', 'note:fake-version-next'],
+        },
+        currentItemKey: 'note:fake-version-next',
+        items: noteItems,
+        scope: 'notes',
+      },
     })
   })
 })

@@ -18,8 +18,9 @@ function readDialogOpenOutput(
 function readNoteCreationOutput(
   requests: Array<{ path: string; method: string; body: unknown }>,
   dialogOpen: boolean,
+  overviewInvalidated: boolean | undefined,
 ) {
-  return { requests, dialogOpen }
+  return { requests, dialogOpen, overviewInvalidated }
 }
 
 afterEach(() => {
@@ -147,6 +148,10 @@ describe('CreateNoteDialog', () => {
         $api.queryOptions('get', '/api/note-kinds').queryKey,
         noteKinds,
       )
+      const overviewQueryKey = $api.queryOptions('get', '/api/notes/overview', {
+        params: { query: { view: 'all' } },
+      }).queryKey
+      queryClient.setQueryData(overviewQueryKey, [])
       render(
         <QueryClientProvider client={queryClient}>
           <CreateNoteDialog />
@@ -175,7 +180,11 @@ describe('CreateNoteDialog', () => {
       await screen.findByRole('button', { name: '+ 新しいノート' })
 
       expect(
-        readNoteCreationOutput(requests, screen.queryByRole('dialog') != null),
+        readNoteCreationOutput(
+          requests,
+          screen.queryByRole('dialog') != null,
+          queryClient.getQueryState(overviewQueryKey)?.isInvalidated,
+        ),
       ).toEqual({
         requests: [
           {
@@ -189,6 +198,7 @@ describe('CreateNoteDialog', () => {
           },
         ],
         dialogOpen: false,
+        overviewInvalidated: true,
       })
     },
     15_000,

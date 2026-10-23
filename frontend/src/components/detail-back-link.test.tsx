@@ -27,6 +27,10 @@ function getExpectedBackLinkOutput(
   }
 }
 
+function getNotesReturnOutput(pathname: string, search: unknown) {
+  return { pathname, search }
+}
+
 describe('DetailBackLink', () => {
   it.each([
     {
@@ -68,4 +72,39 @@ describe('DetailBackLink', () => {
       ).toEqual(getExpectedBackLinkOutput(tab, label))
     },
   )
+
+  it('restores the view and note filters from the overview detail', async () => {
+    const user = userEvent.setup()
+    const router = createStoryRouter(
+      () => (
+        <DetailBackLink
+          label="ノート一覧に戻る"
+          notesSearch={{
+            view: 'pending',
+            kind: 'sample-kind',
+            tag: 'sample-tag',
+          }}
+        />
+      ),
+      {
+        paths: ['/notes', '/notes/$noteId'],
+        initialPath: '/notes/sample-note?version=3',
+      },
+    )
+    render(<RouterProvider router={router} />)
+
+    await user.click(
+      await screen.findByRole('link', { name: '< ノート一覧に戻る' }),
+    )
+
+    expect(
+      getNotesReturnOutput(
+        router.state.location.pathname,
+        router.state.location.search,
+      ),
+    ).toEqual({
+      pathname: '/notes',
+      search: { view: 'pending', kind: 'sample-kind', tag: 'sample-tag' },
+    })
+  })
 })

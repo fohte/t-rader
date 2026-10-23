@@ -78,6 +78,9 @@ export function CreateNoteDialog({
           void queryClient.invalidateQueries({
             queryKey: $api.queryOptions('get', '/api/notes').queryKey,
           })
+          void queryClient.invalidateQueries({
+            queryKey: $api.queryOptions('get', '/api/notes/overview').queryKey,
+          })
           onCreated?.(note.id)
           handleOpenChange(false)
         },

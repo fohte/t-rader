@@ -1,153 +1,287 @@
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { RouterProvider } from '@tanstack/react-router'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { ReviewQueueItem } from '#components/review/review-queue-model'
+import { reviewQueueModel } from '#components/review/review-queue-model'
 import { NotesList } from '#components/strategy-home/notes-list'
+import {
+  type NoteOverview,
+  type NoteOverviewView,
+} from '#components/strategy-home/notes-overview-model'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type Note = components['schemas']['Note']
+type NoteVersion = components['schemas']['NoteVersion']
 type NoteKind = components['schemas']['NoteKind']
 
-const noteKinds: NoteKind[] = [
-  {
-    key: 'sample-kind',
-    display_name: '架空の種別表示名',
-    requires_approval: false,
-    sort_order: 0,
-  },
-]
+const noteKind: NoteKind = {
+  key: 'sample-kind',
+  display_name: '架空の種別表示名',
+  requires_approval: true,
+  sort_order: 0,
+}
 
 function makeNote(overrides: Partial<Note> = {}): Note {
   return {
-    id: overrides.id ?? crypto.randomUUID(),
-    version_id: overrides.version_id ?? crypto.randomUUID(),
-    version_no: overrides.version_no ?? 1,
-    is_current: overrides.is_current ?? true,
-    title: overrides.title ?? 'title',
-    body_md: overrides.body_md ?? 'body',
-    frontmatter_json: overrides.frontmatter_json ?? {},
-    resolved_price_references_json:
-      overrides.resolved_price_references_json ?? {},
-    graphs_json: overrides.graphs_json ?? [],
-    tags: overrides.tags ?? [],
-    kind: overrides.kind ?? null,
-    status: overrides.status ?? 'unread',
-    trigger: overrides.trigger ?? null,
-    trigger_label: overrides.trigger_label ?? null,
-    created_by_kind: overrides.created_by_kind ?? 'llm',
-    created_at: overrides.created_at ?? '2026-01-01T00:00:00Z',
-    updated_at: overrides.updated_at ?? '2026-01-01T00:00:00Z',
+    id: 'fake-note-a',
+    version_id: 'fake-version-a',
+    version_no: 2,
+    is_current: true,
+    title: '架空の確認ノート',
+    body_md: '架空の本文です。',
+    frontmatter_json: {},
+    resolved_price_references_json: {},
+    graphs_json: [],
+    tags: ['架空タグ'],
+    kind: 'sample-kind',
+    status: 'approved',
+    trigger: null,
+    trigger_label: null,
+    created_by_kind: 'human',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...overrides,
   }
+}
+
+function makeVersion(overrides: Partial<NoteVersion> = {}): NoteVersion {
+  return {
+    id: 'fake-version-a',
+    note_id: 'fake-note-a',
+    version_no: 2,
+    is_current: true,
+    title: '架空の確認ノート',
+    body_md: '架空の本文です。',
+    frontmatter_json: {},
+    resolved_price_references_json: {},
+    graphs_json: [],
+    status: 'approved',
+    created_by_kind: 'human',
+    created_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function makeOverview(
+  noteOverrides: Partial<Note> = {},
+  options: {
+    current?: NoteVersion | null
+    latestUnread?: NoteVersion | null
+    unreadVersionCount?: number
+  } = {},
+): NoteOverview {
+  const representative = makeNote(noteOverrides)
+  return {
+    representative,
+    current:
+      options.current === undefined
+        ? makeVersion({
+            id: representative.version_id,
+            note_id: representative.id,
+            version_no: representative.version_no,
+            title: representative.title,
+            status: representative.status,
+            is_current: representative.is_current,
+          })
+        : options.current,
+    latest_unread: options.latestUnread ?? null,
+    unread_version_count: options.unreadVersionCount ?? 0,
+  }
+}
+
+const representative = makeVersion()
+const latestUnread = makeVersion({
+  id: 'fake-version-unread',
+  version_no: 4,
+  is_current: false,
+  status: 'unread',
+  created_by_kind: 'llm',
+})
+const overview = makeOverview(
+  { status: 'approved' },
+  { current: representative, latestUnread, unreadVersionCount: 2 },
+)
+
+function getOverviewRowOutput(titleLink: HTMLElement, unreadLink: HTMLElement) {
+  const row = screen.getByRole('listitem')
+  return {
+    rowCount: screen.getAllByRole('listitem').length,
+    titleHref: titleLink.getAttribute('href'),
+    unreadHref: unreadLink.getAttribute('href'),
+    rowMetadata: Array.from(row.querySelectorAll('[data-slot="chip"]')).map(
+      (chip) => chip.textContent,
+    ),
+    currentStatus: screen.getByText('承認済み').textContent,
+  }
+}
+
+function getNoteNavigationOutput(search: unknown, state: unknown) {
+  return {
+    search,
+    navigation: reviewQueueModel.readNavigationState(state),
+  }
+}
+
+function getRejectedRepresentativeOutput() {
+  return {
+    versionLabel: screen.getByText('代表 v3 · 非現行').textContent,
+    status: screen.getByText('却下').textContent,
+    currentLabel: screen.getByText('現行なし').textContent,
+    kindLabel: screen.getByText('種別なし').textContent,
+  }
+}
+
+function getCatalogStateOutput(label: string) {
+  return {
+    label: screen.getByText(label).textContent,
+    rawKeyVisible: screen.queryByText('fabricated-kind-key') != null,
+  }
+}
+
+function getSelectedSnapshotOutput() {
+  return {
+    selectedVersion: screen.getByText('v3 を選択中').textContent,
+    selectionNote: screen.getByText('承認対象は選択時の v3 です。').textContent,
+    approvalButtons: screen.getAllByRole('button', {
+      name: '選択した 1 件を承認',
+    }).length,
+  }
+}
+
+async function renderList(
+  overviews: NoteOverview[],
+  options: {
+    view?: NoteOverviewView
+    state?: 'loading' | 'error' | 'loaded'
+    noteKinds?: NoteKind[]
+    noteKindCatalogState?: 'loading' | 'error' | 'loaded'
+    selectedItemIds?: string[]
+    selectedItems?: ReviewQueueItem[]
+    hasApprovalError?: boolean
+    onToggleItem?: (itemKey: string, checked: boolean) => void
+    onApproveSelected?: () => void
+  } = {},
+) {
+  const router = createStoryRouter(
+    () => (
+      <NotesList
+        overviews={overviews}
+        view={options.view ?? 'all'}
+        kind="sample-kind"
+        tag="sample-tag"
+        state={options.state ?? 'loaded'}
+        noteKinds={options.noteKinds ?? [noteKind]}
+        noteKindCatalogState={options.noteKindCatalogState ?? 'loaded'}
+        selectedItemIds={options.selectedItemIds ?? []}
+        selectedItems={options.selectedItems ?? []}
+        isApproving={false}
+        hasApprovalError={options.hasApprovalError ?? false}
+        onToggleItem={options.onToggleItem ?? (() => {})}
+        onApproveSelected={options.onApproveSelected ?? (() => {})}
+      />
+    ),
+    { paths: ['/notes/$noteId'] },
+  )
+  render(<RouterProvider router={router} />)
+  await screen.findByRole('heading', { name: 'ノート一覧' })
+  return router
 }
 
 afterEach(cleanup)
 
-// Link が親ルートを要求するため、最低限のテストルーターを噛ませる
-async function renderInRouter(
-  notes: Note[],
-  options: {
-    noteKinds?: NoteKind[]
-    noteKindCatalogState?: 'loading' | 'error' | 'loaded'
-  } = {},
-) {
-  const rootRoute = createRootRoute({
-    component: () => (
-      <NotesList
-        notes={notes}
-        noteKinds={options.noteKinds ?? noteKinds}
-        noteKindCatalogState={options.noteKindCatalogState ?? 'loaded'}
-      />
-    ),
-  })
-  const detailRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/notes/$noteId',
-    component: () => null,
-  })
-  const router = createRouter({
-    routeTree: rootRoute.addChildren([detailRoute]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
-  render(<RouterProvider router={router} />)
-  await waitFor(() => {
-    expect(
-      document.body.firstElementChild?.children.length ?? 0,
-    ).toBeGreaterThan(0)
-  })
-}
-
-function getNoteLinkSnapshot() {
-  const link = screen.getByRole('link', { name: /口座全体ノート/ })
-  const title = screen.getByText('口座全体ノート')
-  return [title.textContent, link.getAttribute('href')]
-}
-
-function getKindLabelOutput(label: string, key: string) {
-  return {
-    kindLabel: screen.queryByText(label)?.textContent ?? null,
-    rawKeyVisible: screen.queryByText(key) != null,
-  }
-}
-
-function getLinkedKindRowOutput() {
-  return {
-    ...getKindLabelOutput('架空の種別表示名', 'sample-kind'),
-    detailHref: screen
-      .getByRole('link', { name: /口座全体ノート/ })
-      .getAttribute('href'),
-  }
-}
-
-function getUnsetKindRowOutput() {
-  return {
-    label: screen.queryByText('種別なし')?.textContent ?? null,
-    kindLink: screen.queryByRole('link', {
-      name: '種別なし のノートを表示',
-    }),
-  }
-}
-
 describe('NotesList', () => {
-  it('ノートを一覧表示し、詳細へのリンクを生成する', async () => {
-    const note = makeNote({
-      id: 'note-1',
-      title: '口座全体ノート',
+  it('shows one row and separate links for the representative and latest unread version', async () => {
+    const user = userEvent.setup()
+    const router = await renderList([overview])
+    const titleLink = screen.getByRole('link', { name: '架空の確認ノート' })
+    const unreadLink = screen.getByRole('link', {
+      name: '最新未読 v4 を確認・レビュー',
     })
-    const expected = ['口座全体ノート', '/notes/note-1']
-    await renderInRouter([note])
 
-    await waitFor(() => {
-      expect(getNoteLinkSnapshot()).toEqual(expected)
+    expect(getOverviewRowOutput(titleLink, unreadLink)).toEqual({
+      rowCount: 1,
+      titleHref:
+        '/notes/fake-note-a?version=2&version_id=fake-version-a&view=all&kind=sample-kind&tag=sample-tag',
+      unreadHref:
+        '/notes/fake-note-a?version=4&version_id=fake-version-unread&view=all&kind=sample-kind&tag=sample-tag',
+      rowMetadata: ['架空の種別表示名', '現行 v2', '未読 2 版', '架空タグ'],
+      currentStatus: '承認済み',
+    })
+
+    await user.click(titleLink)
+    expect(router.state.location.search).toEqual({
+      version: 2,
+      version_id: 'fake-version-a',
+      view: 'all',
+      kind: 'sample-kind',
+      tag: 'sample-tag',
     })
   })
 
-  it('ノートに設定されたタグを一覧表示する', async () => {
-    const note = makeNote({ tags: ['架空タグ', '仮の分類'] })
-    await renderInRouter([note])
+  it('opens the unread version as the row target in the pending view', async () => {
+    const router = await renderList([overview], { view: 'pending' })
+    const titleLink = screen.getByRole('link', { name: '架空の確認ノート' })
+
+    await userEvent.click(titleLink)
 
     expect(
-      ['架空タグ', '仮の分類'].map((tag) => screen.getByText(tag).textContent),
-    ).toEqual(['架空タグ', '仮の分類'])
+      getNoteNavigationOutput(
+        router.state.location.search,
+        router.state.location.state,
+      ),
+    ).toEqual({
+      search: {
+        version: 4,
+        version_id: 'fake-version-unread',
+        view: 'pending',
+        kind: 'sample-kind',
+        tag: 'sample-tag',
+      },
+      navigation: {
+        snapshot: { itemKeys: ['note:fake-version-unread'] },
+        currentItemKey: 'note:fake-version-unread',
+        items: [
+          {
+            kind: 'note',
+            id: 'fake-version-unread',
+            noteId: 'fake-note-a',
+            versionNo: 4,
+            title: '架空の確認ノート',
+            createdAt: '2026-01-01T00:00:00Z',
+            noteKind: 'sample-kind',
+            createdByKind: 'llm',
+            unreadVersionCount: 2,
+          },
+        ],
+        scope: 'notes',
+      },
+    })
   })
 
-  it('displays the catalog name instead of the key in the linked note row', async () => {
-    const note = makeNote({
-      id: 'note-1',
-      title: '口座全体ノート',
-      kind: 'sample-kind',
-    })
-    await renderInRouter([note])
+  it('shows a rejected representative separately from the missing current version', async () => {
+    await renderList([
+      makeOverview(
+        {
+          id: 'fake-note-b',
+          version_id: 'fake-version-b',
+          version_no: 3,
+          is_current: false,
+          status: 'rejected',
+          kind: null,
+          tags: [],
+        },
+        { current: null },
+      ),
+    ])
 
-    expect(getLinkedKindRowOutput()).toEqual({
-      kindLabel: '架空の種別表示名',
-      rawKeyVisible: false,
-      detailHref: '/notes/note-1',
+    expect(getRejectedRepresentativeOutput()).toEqual({
+      versionLabel: '代表 v3 · 非現行',
+      status: '却下',
+      currentLabel: '現行なし',
+      kindLabel: '種別なし',
     })
   })
 
@@ -155,47 +289,80 @@ describe('NotesList', () => {
     {
       state: 'loading' as const,
       label: '種別を読み込み中',
-      noteKinds,
+      noteKinds: [noteKind],
     },
     {
       state: 'error' as const,
       label: '種別を取得できません',
-      noteKinds,
+      noteKinds: [noteKind],
     },
-    {
-      state: 'loaded' as const,
-      label: '未登録の種別',
-      noteKinds: [],
-    },
+    { state: 'loaded' as const, label: '未登録の種別', noteKinds: [] },
   ])(
-    'does not expose a kind key when catalog state is $state',
-    async ({ state, label, noteKinds: availableKinds }) => {
-      await renderInRouter([makeNote({ kind: 'unlisted-kind' })], {
-        noteKinds: availableKinds,
+    'does not expose an unregistered kind key when the catalog is $state',
+    async ({ state, label, noteKinds }) => {
+      await renderList([makeOverview({ kind: 'fabricated-kind-key' })], {
+        noteKinds,
         noteKindCatalogState: state,
       })
 
-      expect(getKindLabelOutput(label, 'unlisted-kind')).toEqual({
-        kindLabel: label,
+      expect(getCatalogStateOutput(label)).toEqual({
+        label,
         rawKeyVisible: false,
       })
     },
   )
 
-  it('shows an unset kind as a non-linked label', async () => {
-    await renderInRouter([makeNote({ kind: null })])
+  it('passes the note selection key and checked state to its callback', async () => {
+    const onToggleItem = vi.fn()
+    await renderList([overview], { onToggleItem })
 
-    expect(getUnsetKindRowOutput()).toEqual({
-      label: '種別なし',
-      kindLink: null,
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: '架空の確認ノート の最新未読バージョンを選択',
+      }),
+    )
+
+    expect(onToggleItem.mock.calls).toEqual([['note:fake-note-a', true]])
+  })
+
+  it('shows the selected snapshot version and its approval action', async () => {
+    const selectedItem: ReviewQueueItem = {
+      kind: 'note',
+      id: 'fake-version-older-unread',
+      noteId: 'fake-note-a',
+      versionNo: 3,
+      title: '架空の確認ノート',
+      createdAt: '2026-01-01T00:00:00Z',
+      noteKind: 'sample-kind',
+      createdByKind: 'llm',
+      unreadVersionCount: 2,
+    }
+    await renderList([overview], {
+      selectedItemIds: ['note:fake-note-a'],
+      selectedItems: [selectedItem],
+    })
+
+    expect(getSelectedSnapshotOutput()).toEqual({
+      selectedVersion: 'v3 を選択中',
+      selectionNote: '承認対象は選択時の v3 です。',
+      approvalButtons: 2,
     })
   })
 
-  it('ノートが無ければ空状態を表示する', async () => {
-    await renderInRouter([])
+  it('shows loading, error, and empty states for the selected view', async () => {
+    await renderList([], { state: 'loading' })
+    expect(screen.getByRole('status').getAttribute('aria-busy')).toEqual('true')
+    cleanup()
 
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await renderList([], { state: 'error' })
+    expect(screen.getByRole('alert').textContent).toEqual(
+      'ノート一覧を読み込めませんでした。',
+    )
+    cleanup()
+
+    await renderList([], { view: 'pending' })
+    expect(
+      screen.getByText('未読・レビュー待ちのノートはありません。').textContent,
+    ).toEqual('未読・レビュー待ちのノートはありません。')
   })
 })

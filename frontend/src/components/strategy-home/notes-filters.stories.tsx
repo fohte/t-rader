@@ -29,6 +29,8 @@ const meta = {
     kind: undefined,
     tags: ['架空タグ', '仮の分類'],
     tag: undefined,
+    view: 'all',
+    onViewChange: () => {},
     onKindChange: () => {},
     onTagChange: () => {},
     onClear: () => {},
@@ -52,6 +54,11 @@ export const Available: Story = {
 export const Combined: Story = {
   name: 'shows a kind and tag selected together.',
   args: { kind: 'sample-kind', tag: '架空タグ' },
+}
+
+export const PendingNotes: Story = {
+  name: 'shows the unread and review-waiting view selected.',
+  args: { view: 'pending' },
 }
 
 export const LongKind: Story = {

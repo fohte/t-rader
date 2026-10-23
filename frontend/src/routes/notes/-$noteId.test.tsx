@@ -267,6 +267,10 @@ afterEach(() => {
   resetFetch()
 })
 
+function getNoteOverviewReturnOutput(pathname: string, search: unknown) {
+  return { pathname, search }
+}
+
 describe('NoteDetailPage', () => {
   it('shows the selected version’s saved indicator change as a percentage chip', async () => {
     const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
@@ -525,6 +529,34 @@ describe('NoteDetailPage', () => {
     })
 
     expect(result.router.state.location.search).toEqual({ kind: noteKindKey })
+  }, 30_000)
+
+  it('returns to the note overview with its view and filters intact', async () => {
+    const result = await renderNoteDetail(
+      [pendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(pendingVersion))),
+      `/notes/${noteId}?version_id=${pendingVersion.id}&view=pending&kind=sample-kind&tag=sample-tag`,
+    )
+
+    await screen.findByRole('region', { name: 'ノート本文' })
+    fireEvent.click(screen.getByRole('link', { name: '< ノート一覧に戻る' }))
+    await waitFor(() => {
+      expect(result.router.state.location.pathname).toEqual('/notes')
+    })
+
+    expect(
+      getNoteOverviewReturnOutput(
+        result.router.state.location.pathname,
+        result.router.state.location.search,
+      ),
+    ).toEqual({
+      pathname: '/notes',
+      search: {
+        view: 'pending',
+        kind: 'sample-kind',
+        tag: 'sample-tag',
+      },
+    })
   }, 30_000)
 
   it('shows the pending note kind while reading a version without a current marker', async () => {

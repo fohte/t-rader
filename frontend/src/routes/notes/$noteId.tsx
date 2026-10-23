@@ -37,9 +37,21 @@ import { $api } from '#lib/api/client'
 export const Route = createFileRoute('/notes/$noteId')({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { version?: number; version_id?: string } => {
+  ): {
+    version?: number
+    version_id?: string
+    view?: 'all' | 'pending'
+    kind?: string
+    tag?: string
+  } => {
     const version = search.version
-    const validated: { version?: number; version_id?: string } = {}
+    const validated: {
+      version?: number
+      version_id?: string
+      view?: 'all' | 'pending'
+      kind?: string
+      tag?: string
+    } = {}
     if (
       typeof version === 'number' &&
       Number.isInteger(version) &&
@@ -53,6 +65,15 @@ export const Route = createFileRoute('/notes/$noteId')({
     if (typeof search.version_id === 'string') {
       validated.version_id = search.version_id
     }
+    if (search.view === 'all' || search.view === 'pending') {
+      validated.view = search.view
+    }
+    if (typeof search.kind === 'string' && search.kind.length > 0) {
+      validated.kind = search.kind
+    }
+    if (typeof search.tag === 'string' && search.tag.length > 0) {
+      validated.tag = search.tag
+    }
     return validated
   },
   component: NoteDetailPage,
@@ -60,8 +81,13 @@ export const Route = createFileRoute('/notes/$noteId')({
 
 function NoteDetailPage() {
   const { noteId } = Route.useParams()
-  const { version: requestedVersionNo, version_id: requestedVersionId } =
-    Route.useSearch()
+  const {
+    version: requestedVersionNo,
+    version_id: requestedVersionId,
+    view,
+    kind,
+    tag,
+  } = Route.useSearch()
   const navigate = Route.useNavigate()
   const [contentTab, setContentTab] = useState<{
     versionId: string
@@ -137,6 +163,7 @@ function NoteDetailPage() {
     selectedVersion == null
       ? ''
       : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
+    noteId,
   )
   const {
     navigation,
@@ -173,7 +200,10 @@ function NoteDetailPage() {
 
     return (
       <div className="space-y-4 font-sans text-foreground">
-        <DetailBackLink label="ノート一覧に戻る" />
+        <DetailBackLink
+          label="ノート一覧に戻る"
+          notesSearch={{ view, kind, tag }}
+        />
         <NoteVersionFallback state={fallbackState} />
       </div>
     )
@@ -207,7 +237,10 @@ function NoteDetailPage() {
     <div
       className={`space-y-4 font-sans text-foreground ${showInlineReview ? 'pb-20 lg:pb-0' : ''}`}
     >
-      <DetailBackLink label="ノート一覧に戻る" />
+      <DetailBackLink
+        label="ノート一覧に戻る"
+        notesSearch={{ view, kind, tag }}
+      />
       {navigation != null ? (
         <ReviewNavigationBand {...navigation} />
       ) : isReviewNavigationError ? (
@@ -284,10 +317,21 @@ function NoteDetailPage() {
                 (version) => version.version_no === versionNo,
               )
               void navigate({
-                search: { version: versionNo, version_id: undefined },
+                search: (previous) => ({
+                  ...previous,
+                  version: versionNo,
+                  version_id: undefined,
+                }),
                 state: (previous) => {
-                  const snapshot = reviewNavigation.navigation?.snapshot
-                  if (snapshot == null || targetVersion == null) return previous
+                  const navigation = reviewNavigation.navigation
+                  const snapshot = navigation?.snapshot
+                  if (
+                    navigation == null ||
+                    snapshot == null ||
+                    targetVersion == null
+                  ) {
+                    return previous
+                  }
                   return {
                     ...previous,
                     reviewQueue: {
@@ -296,6 +340,9 @@ function NoteDetailPage() {
                         kind: 'note',
                         id: targetVersion.id,
                       }),
+                      ...(navigation.scope === 'notes'
+                        ? { scope: 'notes' as const, items: navigation.items }
+                        : {}),
                     },
                   }
                 },

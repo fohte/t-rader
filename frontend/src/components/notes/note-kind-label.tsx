@@ -57,7 +57,7 @@ export function NoteKindLabel({
     return (
       <Link
         to="/notes"
-        search={{ kind, tag: undefined, tab: undefined }}
+        search={{ kind, tag: undefined, tab: undefined, view: undefined }}
         aria-label={`${label} のノートを表示`}
         className="inline-flex max-w-full items-center gap-1 rounded-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
       >
