@@ -65,6 +65,34 @@ const overview: NoteOverview = {
   unread_version_count: 1,
 }
 
+const pendingOnlyOverview: NoteOverview = {
+  ...overview,
+  representative: {
+    ...representative,
+    id: 'fake-note-pending',
+    version_id: unreadVersion.id,
+    version_no: unreadVersion.version_no,
+    is_current: false,
+    tags: ['pending-only-tag'],
+    status: 'unread',
+    created_by_kind: 'llm',
+    created_at: unreadVersion.created_at,
+  },
+  current: null,
+  latest_unread: { ...unreadVersion, note_id: 'fake-note-pending' },
+}
+
+function getPendingTagFilterOutput(search: unknown, tagOption: HTMLElement) {
+  return {
+    search,
+    emptyMessage: screen.getByText('未読・レビュー待ちのノートはありません。')
+      .textContent,
+    tagOption: tagOption.textContent,
+    selectedTag: screen.getByRole('combobox', { name: 'タグで絞り込み' })
+      .textContent,
+  }
+}
+
 afterEach(() => {
   cleanup()
   resetFetch()
@@ -145,7 +173,78 @@ describe('/notes overview route', () => {
           view: 'pending',
         }),
         JSON.stringify({ view: 'all' }),
+        JSON.stringify({ view: 'pending' }),
       ].sort(),
     )
+  }, 30_000)
+
+  it('offers tags from pending representatives and keeps a selected tag with no results', async () => {
+    const user = userEvent.setup()
+    stubFetch((input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init)
+      const url = new URL(request.url)
+
+      if (url.pathname === '/api/notes/overview') {
+        const view = url.searchParams.get('view')
+        const isFiltered =
+          url.searchParams.has('kind') || url.searchParams.has('tag')
+        if (isFiltered) return Promise.resolve(Response.json([]))
+        return Promise.resolve(
+          Response.json(
+            view === 'pending' ? [pendingOnlyOverview] : [overview],
+          ),
+        )
+      }
+      if (url.pathname === '/api/note-kinds') {
+        return Promise.resolve(Response.json([]))
+      }
+      if (url.pathname === '/api/annotations') {
+        return Promise.resolve(Response.json([]))
+      }
+      return Promise.resolve(Response.json([]))
+    })
+
+    const { routeTree } = await import('#routeTree.gen')
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: ['/notes'] }),
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(<RouterProvider router={router} />, {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    })
+
+    await screen.findByRole('link', { name: '架空の確認ノート' })
+    await user.click(screen.getByRole('button', { name: '未読・レビュー待ち' }))
+    await screen.findByText('架空の確認ノート')
+    await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
+    await user.click(
+      await screen.findByRole('option', { name: 'pending-only-tag' }),
+    )
+    const expectedSearch = { view: 'pending', tag: 'pending-only-tag' }
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual(expectedSearch)
+    })
+    await screen.findByText('未読・レビュー待ちのノートはありません。')
+    await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
+    const tagOption = await screen.findByRole('option', {
+      name: 'pending-only-tag',
+    })
+
+    expect(
+      getPendingTagFilterOutput(router.state.location.search, tagOption),
+    ).toEqual({
+      search: expectedSearch,
+      emptyMessage: '未読・レビュー待ちのノートはありません。',
+      tagOption: 'pending-only-tag',
+      selectedTag: 'pending-only-tag',
+    })
   }, 30_000)
 })

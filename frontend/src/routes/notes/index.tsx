@@ -91,10 +91,16 @@ function NotesPage() {
   } = $api.useQuery('get', '/api/note-kinds', undefined, {
     enabled: showingNotes,
   })
-  const { data: availableOverviews } = $api.useQuery(
+  const { data: allTagOverviews } = $api.useQuery(
     'get',
     '/api/notes/overview',
     { params: { query: { view: 'all' } } },
+    { enabled: showingNotes },
+  )
+  const { data: pendingTagOverviews } = $api.useQuery(
+    'get',
+    '/api/notes/overview',
+    { params: { query: { view: 'pending' } } },
     { enabled: showingNotes },
   )
   const {
@@ -117,9 +123,10 @@ function NotesPage() {
     'post',
     '/api/notes/{id}/versions/{n}/approve',
   )
-  const filterNotes = availableOverviews ?? []
   const tagSet = new Set(
-    filterNotes.flatMap((overview) => overview.representative.tags),
+    [...(allTagOverviews ?? []), ...(pendingTagOverviews ?? [])].flatMap(
+      (overview) => overview.representative.tags,
+    ),
   )
   if (tag != null) tagSet.add(tag)
   const tags = [...tagSet].sort((left, right) =>
