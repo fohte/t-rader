@@ -29,6 +29,8 @@ const meta = {
     kind: undefined,
     tags: ['架空タグ', '仮の分類'],
     tag: undefined,
+    view: 'all',
+    onViewChange: () => {},
     onKindChange: () => {},
     onTagChange: () => {},
     onClear: () => {},
@@ -54,6 +56,11 @@ export const Combined: Story = {
   args: { kind: 'sample-kind', tag: '架空タグ' },
 }
 
+export const PendingNotes: Story = {
+  name: 'shows the unread and review-waiting view selected.',
+  args: { view: 'pending' },
+}
+
 export const LongKind: Story = {
   name: 'keeps a long kind label readable in a narrow layout.',
   args: { kind: 'sample-long-kind' },
@@ -67,6 +74,11 @@ export const CatalogLoading: Story = {
 export const CatalogFailed: Story = {
   name: 'keeps the selected kind after a catalog failure.',
   args: { kind: 'unknown-kind', catalogState: 'error' },
+}
+
+export const TagCandidatesFailed: Story = {
+  name: 'shows when some tag candidates could not be loaded.',
+  args: { tagCandidatesError: true },
 }
 
 export const UnregisteredKind: Story = {

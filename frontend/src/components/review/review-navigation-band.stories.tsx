@@ -48,6 +48,42 @@ const lastUnreadSnapshot =
 const onlyCurrentItems = items.slice(0, 1)
 const onlyCurrentSnapshot =
   reviewQueueModel.createNavigationSnapshot(onlyCurrentItems)
+const notesItems: ReviewQueueItem[] = [
+  {
+    kind: 'note',
+    id: 'fake-version-01',
+    noteId: 'fake-note-01',
+    versionNo: 2,
+    title: '架空の現行ノート',
+    createdAt: '2026-01-14T04:00:00Z',
+    noteKind: null,
+    createdByKind: 'human',
+    unreadVersionCount: 0,
+  },
+  {
+    kind: 'note',
+    id: 'fake-version-02',
+    noteId: 'fake-note-02',
+    versionNo: 3,
+    title: '架空のレビュー対象ノート',
+    createdAt: '2026-01-14T03:00:00Z',
+    noteKind: null,
+    createdByKind: 'llm',
+    unreadVersionCount: 1,
+  },
+  {
+    kind: 'note',
+    id: 'fake-version-03',
+    noteId: 'fake-note-03',
+    versionNo: 4,
+    title: '架空の次のノート',
+    createdAt: '2026-01-14T02:00:00Z',
+    noteKind: null,
+    createdByKind: 'human',
+    unreadVersionCount: 0,
+  },
+]
+const notesSnapshot = reviewQueueModel.createNavigationSnapshot(notesItems)
 
 function withRouter(Story: ComponentType) {
   return (
@@ -133,7 +169,27 @@ export const Loading: Story = {
   args: { isPending: true },
 }
 
+export const NotesLoading: Story = {
+  name: 'shows the loading state while notes list navigation is pending.',
+  args: { isPending: true, scope: 'notes' },
+}
+
 export const Error: Story = {
   name: 'shows an error inside the unread navigation band.',
   args: { isError: true },
+}
+
+export const NotesError: Story = {
+  name: 'shows an error when the notes list navigation could not load.',
+  args: { isError: true, scope: 'notes' },
+}
+
+export const NotesScopedNavigation: Story = {
+  name: 'keeps previous and next links inside the filtered notes list.',
+  args: {
+    items: notesItems,
+    snapshot: notesSnapshot,
+    currentItemKey: 'note:fake-version-02',
+    scope: 'notes',
+  },
 }

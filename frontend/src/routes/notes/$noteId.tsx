@@ -26,7 +26,14 @@ import type { NoteVersionReviewResult } from '#components/note-detail/note-versi
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import { ReviewNavigationBand } from '#components/review/review-navigation-band'
 import { reviewQueueItemKey } from '#components/review/review-queue-model'
-import { useReviewNavigation } from '#components/review/use-review-navigation'
+import {
+  type NotesReviewNavigationScope,
+  useReviewNavigation,
+} from '#components/review/use-review-navigation'
+import {
+  type NoteOverviewView,
+  notesOverviewModel,
+} from '#components/strategy-home/notes-overview-model'
 import {
   openFloatingChat,
   useChatContext,
@@ -37,9 +44,21 @@ import { $api } from '#lib/api/client'
 export const Route = createFileRoute('/notes/$noteId')({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { version?: number; version_id?: string } => {
+  ): {
+    version?: number
+    version_id?: string
+    view?: 'all' | 'pending'
+    kind?: string
+    tag?: string
+  } => {
     const version = search.version
-    const validated: { version?: number; version_id?: string } = {}
+    const validated: {
+      version?: number
+      version_id?: string
+      view?: 'all' | 'pending'
+      kind?: string
+      tag?: string
+    } = {}
     if (
       typeof version === 'number' &&
       Number.isInteger(version) &&
@@ -53,6 +72,15 @@ export const Route = createFileRoute('/notes/$noteId')({
     if (typeof search.version_id === 'string') {
       validated.version_id = search.version_id
     }
+    if (search.view === 'all' || search.view === 'pending') {
+      validated.view = search.view
+    }
+    if (typeof search.kind === 'string' && search.kind.length > 0) {
+      validated.kind = search.kind
+    }
+    if (typeof search.tag === 'string' && search.tag.length > 0) {
+      validated.tag = search.tag
+    }
     return validated
   },
   component: NoteDetailPage,
@@ -60,8 +88,13 @@ export const Route = createFileRoute('/notes/$noteId')({
 
 function NoteDetailPage() {
   const { noteId } = Route.useParams()
-  const { version: requestedVersionNo, version_id: requestedVersionId } =
-    Route.useSearch()
+  const {
+    version: requestedVersionNo,
+    version_id: requestedVersionId,
+    view,
+    kind,
+    tag,
+  } = Route.useSearch()
   const navigate = Route.useNavigate()
   const [contentTab, setContentTab] = useState<{
     versionId: string
@@ -118,6 +151,41 @@ function NoteDetailPage() {
   } = $api.useQuery('get', '/api/history', {
     params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
   })
+  const hasNotesNavigationScope = view != null || kind != null || tag != null
+  const notesNavigationView: NoteOverviewView = view ?? 'all'
+  const {
+    data: notesNavigationOverviews,
+    isPending: areNotesNavigationOverviewsPending,
+    isError: hasNotesNavigationOverviewsError,
+  } = $api.useQuery(
+    'get',
+    '/api/notes/overview',
+    {
+      params: {
+        query: {
+          view: notesNavigationView,
+          kind,
+          tag,
+        },
+      },
+    },
+    { enabled: hasNotesNavigationScope },
+  )
+  const notesNavigationScope: NotesReviewNavigationScope | undefined =
+    hasNotesNavigationScope
+      ? {
+          key: JSON.stringify([notesNavigationView, kind ?? null, tag ?? null]),
+          items:
+            notesNavigationOverviews == null
+              ? undefined
+              : notesOverviewModel.createNavigationItems(
+                  notesNavigationOverviews,
+                  notesNavigationView,
+                ),
+          isPending: areNotesNavigationOverviewsPending,
+          isError: hasNotesNavigationOverviewsError,
+        }
+      : undefined
   const previousVersion =
     selectedVersion == null
       ? null
@@ -137,6 +205,8 @@ function NoteDetailPage() {
     selectedVersion == null
       ? ''
       : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
+    noteId,
+    notesNavigationScope,
   )
   const {
     navigation,
@@ -173,7 +243,10 @@ function NoteDetailPage() {
 
     return (
       <div className="space-y-4 font-sans text-foreground">
-        <DetailBackLink label="ノート一覧に戻る" />
+        <DetailBackLink
+          label="ノート一覧に戻る"
+          notesSearch={{ view, kind, tag }}
+        />
         <NoteVersionFallback state={fallbackState} />
       </div>
     )
@@ -207,13 +280,22 @@ function NoteDetailPage() {
     <div
       className={`space-y-4 font-sans text-foreground ${showInlineReview ? 'pb-20 lg:pb-0' : ''}`}
     >
-      <DetailBackLink label="ノート一覧に戻る" />
+      <DetailBackLink
+        label="ノート一覧に戻る"
+        notesSearch={{ view, kind, tag }}
+      />
       {navigation != null ? (
         <ReviewNavigationBand {...navigation} />
       ) : isReviewNavigationError ? (
-        <ReviewNavigationBand isError />
+        <ReviewNavigationBand
+          isError
+          scope={hasNotesNavigationScope ? 'notes' : undefined}
+        />
       ) : isReviewNavigationPending ? (
-        <ReviewNavigationBand isPending />
+        <ReviewNavigationBand
+          isPending
+          scope={hasNotesNavigationScope ? 'notes' : undefined}
+        />
       ) : null}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <NoteBodyCard>
@@ -284,10 +366,21 @@ function NoteDetailPage() {
                 (version) => version.version_no === versionNo,
               )
               void navigate({
-                search: { version: versionNo, version_id: undefined },
+                search: (previous) => ({
+                  ...previous,
+                  version: versionNo,
+                  version_id: undefined,
+                }),
                 state: (previous) => {
-                  const snapshot = reviewNavigation.navigation?.snapshot
-                  if (snapshot == null || targetVersion == null) return previous
+                  const navigation = reviewNavigation.navigation
+                  const snapshot = navigation?.snapshot
+                  if (
+                    navigation == null ||
+                    snapshot == null ||
+                    targetVersion == null
+                  ) {
+                    return previous
+                  }
                   return {
                     ...previous,
                     reviewQueue: {
@@ -296,6 +389,9 @@ function NoteDetailPage() {
                         kind: 'note',
                         id: targetVersion.id,
                       }),
+                      ...(navigation.scope === 'notes'
+                        ? { scope: 'notes' as const, items: navigation.items }
+                        : {}),
                     },
                   }
                 },

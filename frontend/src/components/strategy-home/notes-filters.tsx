@@ -1,7 +1,9 @@
 import { Button } from '@fohte/ui/button'
+import { SegmentedControl } from '@fohte/ui/segmented-control'
 
 import { NoteKindFilterSelect } from '#components/strategy-home/note-kind-filter-select'
 import { NoteTagFilterSelect } from '#components/strategy-home/note-tag-filter-select'
+import type { NoteOverviewView } from '#components/strategy-home/notes-overview-model'
 import type { components } from '#lib/api/schema.gen'
 import type { NoteKindCatalogState } from '#lib/note-kind-label'
 
@@ -13,6 +15,9 @@ interface NotesFiltersProps {
   kind: string | undefined
   tags: string[]
   tag: string | undefined
+  tagCandidatesError?: boolean
+  view: NoteOverviewView
+  onViewChange: (view: NoteOverviewView) => void
   onKindChange: (value: string | undefined) => void
   onTagChange: (value: string | undefined) => void
   onClear: () => void
@@ -24,12 +29,26 @@ export function NotesFilters({
   kind,
   tags,
   tag,
+  tagCandidatesError = false,
+  view,
+  onViewChange,
   onKindChange,
   onTagChange,
   onClear,
 }: NotesFiltersProps) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 sm:items-center">
+      <div className="sm:col-span-2">
+        <SegmentedControl
+          aria-label="表示するノート"
+          value={view}
+          options={[
+            { value: 'all', label: 'すべて' },
+            { value: 'pending', label: '未読・レビュー待ち' },
+          ]}
+          onValueChange={onViewChange}
+        />
+      </div>
       <NoteKindFilterSelect
         noteKinds={noteKinds}
         catalogState={catalogState}
@@ -42,6 +61,11 @@ export function NotesFilters({
         onChange={onTagChange}
         className="h-auto min-h-11 w-full min-w-0"
       />
+      {tagCandidatesError && (
+        <p role="alert" className="text-xs text-destructive sm:col-span-2">
+          一部のタグ候補を読み込めませんでした。
+        </p>
+      )}
       <Button
         variant="plain"
         onClick={onClear}

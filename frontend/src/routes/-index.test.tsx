@@ -12,8 +12,14 @@ import type { components } from '#lib/api/schema.gen'
 import { resetFetch, stubFetch } from '#test/stub-fetch.test-helper'
 
 type Note = components['schemas']['Note']
+type NoteVersion = components['schemas']['NoteVersion']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 type NoteKind = components['schemas']['NoteKind']
-type NoteRequest = { kind: string | null; tag: string | null }
+type NoteRequest = {
+  kind: string | null
+  tag: string | null
+  view: string | null
+}
 
 const noteKinds: NoteKind[] = [
   {
@@ -44,6 +50,26 @@ const allNote: Note = {
   updated_at: '2026-01-12T02:00:00Z',
 }
 
+const allNoteOverview: NoteOverview = {
+  representative: allNote,
+  current: {
+    id: allNote.version_id,
+    note_id: allNote.id,
+    version_no: allNote.version_no,
+    is_current: true,
+    title: allNote.title,
+    body_md: allNote.body_md,
+    frontmatter_json: allNote.frontmatter_json,
+    resolved_price_references_json: allNote.resolved_price_references_json,
+    graphs_json: allNote.graphs_json,
+    status: allNote.status,
+    created_by_kind: allNote.created_by_kind,
+    created_at: allNote.created_at,
+  } satisfies NoteVersion,
+  latest_unread: null,
+  unread_version_count: 0,
+}
+
 function getCombinedFilterOutput(
   search: unknown,
   kindSelect: HTMLElement,
@@ -57,9 +83,9 @@ function getCombinedFilterOutput(
     kindOptions: screen
       .getAllByRole('option')
       .map((option) => option.textContent),
-    combinedQueries: noteRequests.filter(
-      ({ kind, tag }) => kind != null || tag != null,
-    ),
+    combinedQueries: noteRequests
+      .filter(({ kind, tag }) => kind != null || tag != null)
+      .map(({ kind, tag, view }) => ({ kind, tag, view })),
   }
 }
 
@@ -79,18 +105,20 @@ afterEach(() => {
 })
 
 async function renderNotes(initialEntry: string) {
-  const noteRequests: { kind: string | null; tag: string | null }[] = []
+  const noteRequests: NoteRequest[] = []
   stubFetch((input, init) => {
     const request = input instanceof Request ? input : new Request(input, init)
     const url = new URL(request.url)
 
-    if (url.pathname === '/api/notes') {
+    if (url.pathname === '/api/notes/overview') {
       const kind = url.searchParams.get('kind')
       const tag = url.searchParams.get('tag')
-      noteRequests.push({ kind, tag })
-      return Promise.resolve(
-        Response.json(kind != null || tag != null ? [] : [allNote]),
-      )
+      const view = url.searchParams.get('view')
+      noteRequests.push({ kind, tag, view })
+      const matches =
+        (kind == null || allNote.kind === kind) &&
+        (tag == null || allNote.tags.includes(tag))
+      return Promise.resolve(Response.json(matches ? [allNoteOverview] : []))
     }
     if (url.pathname === '/api/note-kinds') {
       return Promise.resolve(Response.json(noteKinds))
@@ -124,11 +152,12 @@ describe('NotesPage', () => {
     const { router, noteRequests } = await renderNotes(
       '/notes?kind=sample-kind&tag=%E6%9E%B6%E7%A9%BA%E3%82%BF%E3%82%B0',
     )
-    await screen.findByRole('heading', { name: /ノート/ })
+    await screen.findByRole('heading', { level: 1, name: /> ノート/ })
     const kindSelect = screen.getByRole('combobox', {
       name: '種別で絞り込み',
     })
     await user.click(kindSelect)
+    await screen.findByRole('option', { name: 'すべての種別' })
 
     expect(
       getCombinedFilterOutput(
@@ -141,7 +170,7 @@ describe('NotesPage', () => {
       selectedKind: '架空の種別表示名',
       selectedTag: '架空タグ',
       kindOptions: ['すべての種別', '架空の種別表示名'],
-      combinedQueries: [{ kind: 'sample-kind', tag: '架空タグ' }],
+      combinedQueries: [{ kind: 'sample-kind', tag: '架空タグ', view: 'all' }],
     })
   }, 30_000)
 
@@ -230,6 +259,7 @@ describe('NotesPage', () => {
       name: '種別で絞り込み',
     })
     await user.click(kindSelect)
+    await screen.findByRole('option', { name: 'すべての種別' })
 
     expect(
       getUnknownKindFilterOutput(router.state.location.search, kindSelect),

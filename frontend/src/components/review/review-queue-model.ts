@@ -119,6 +119,8 @@ export interface ReviewNavigationSnapshot {
 export interface ReviewQueueNavigationState {
   snapshot: ReviewNavigationSnapshot
   currentItemKey: string
+  items?: ReviewQueueItem[]
+  scope?: 'notes'
 }
 
 export type ReviewNavigationTarget = ReviewQueueNavigationState & {
@@ -133,14 +135,36 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
 }
 
+function isNoteReviewItem(
+  value: unknown,
+): value is Extract<ReviewQueueItem, { kind: 'note' }> {
+  if (!isRecord(value) || value.kind !== 'note') return false
+  return (
+    typeof value.id === 'string' &&
+    typeof value.noteId === 'string' &&
+    typeof value.versionNo === 'number' &&
+    typeof value.title === 'string' &&
+    typeof value.createdAt === 'string' &&
+    (typeof value.noteKind === 'string' || value.noteKind === null) &&
+    typeof value.createdByKind === 'string' &&
+    typeof value.unreadVersionCount === 'number'
+  )
+}
+
+function isNoteReviewItemArray(value: unknown): value is ReviewQueueItem[] {
+  return Array.isArray(value) && value.every(isNoteReviewItem)
+}
+
 function isReviewQueueNavigationState(
   value: unknown,
 ): value is ReviewQueueNavigationState {
   if (!isRecord(value) || !isRecord(value.snapshot)) return false
-  return (
+  const hasSnapshot =
     isStringArray(value.snapshot.itemKeys) &&
     typeof value.currentItemKey === 'string'
-  )
+  if (!hasSnapshot) return false
+  if (value.scope === 'notes') return isNoteReviewItemArray(value.items)
+  return value.scope == null && value.items == null
 }
 
 function readReviewQueueNavigationState(

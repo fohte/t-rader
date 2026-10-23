@@ -64,7 +64,7 @@ export function NoteVersionHeader({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-2xs text-muted-foreground">
-        {version.is_current && <Chip>現行</Chip>}
+        <Chip>{version.is_current ? '現行' : '非現行'}</Chip>
         <span>{formatRelative(version.created_at)} 作成</span>
       </div>
       {version.version_no > 1 &&

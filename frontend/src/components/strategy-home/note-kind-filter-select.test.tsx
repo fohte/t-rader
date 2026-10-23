@@ -50,6 +50,7 @@ describe('NoteKindFilterSelect', () => {
 
     const select = screen.getByRole('combobox', { name: '種別で絞り込み' })
     await user.click(select)
+    await screen.findAllByRole('option')
 
     expect(getKnownKindSelectOutput(select)).toEqual({
       selected: '架空の種別表示名',

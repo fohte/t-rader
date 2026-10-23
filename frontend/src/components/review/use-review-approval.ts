@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import {
   type ReviewQueueData,
@@ -18,14 +18,21 @@ export interface UseReviewApprovalOptions {
     callbacks: ReviewApprovalCallbacks,
   ) => void
   invalidate: () => void
+  getSelectionKey?: (item: ReviewQueueItem) => string
+  preserveSelectedItems?: boolean
 }
 
 export function useReviewApproval({
   data,
   approveItem,
   invalidate,
+  getSelectionKey = reviewQueueItemKey,
+  preserveSelectedItems = false,
 }: UseReviewApprovalOptions) {
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
+  const [selectedItemsByKey, setSelectedItemsByKey] = useState<
+    Map<string, ReviewQueueItem>
+  >(() => new Map())
   const [isApproving, setIsApproving] = useState(false)
   const [hasApprovalError, setHasApprovalError] = useState(false)
 
@@ -34,16 +41,22 @@ export function useReviewApproval({
     if (item == null) {
       setIsApproving(false)
       setSelectedItemIds([])
+      setSelectedItemsByKey(new Map())
       invalidate()
       return
     }
 
     approveItem(item, {
       onSuccess: () => {
-        const itemKey = reviewQueueItemKey(item)
+        const itemKey = getSelectionKey(item)
         setSelectedItemIds((selected) =>
           selected.filter((selectedKey) => selectedKey !== itemKey),
         )
+        setSelectedItemsByKey((selected) => {
+          const next = new Map(selected)
+          next.delete(itemKey)
+          return next
+        })
         approveInOrder(items, index + 1)
       },
       onError: () => {
@@ -57,16 +70,36 @@ export function useReviewApproval({
   function approveSelected(): void {
     if (data == null || isApproving) return
     const selected = new Set(selectedItemIds)
-    const selectedItems = data.items.filter((item) =>
-      selected.has(reviewQueueItemKey(item)),
-    )
-    if (selectedItems.length === 0) return
+    const items = preserveSelectedItems
+      ? selectedItemIds.flatMap((key) => {
+          const item = selectedItemsByKey.get(key)
+          return item == null ? [] : [item]
+        })
+      : data.items.filter((item) => selected.has(getSelectionKey(item)))
+    if (items.length === 0) return
     setHasApprovalError(false)
     setIsApproving(true)
-    approveInOrder(selectedItems, 0)
+    approveInOrder(items, 0)
   }
 
   function toggleItem(itemKey: string, checked: boolean): void {
+    if (preserveSelectedItems && checked) {
+      const item = data?.items.find(
+        (candidate) => getSelectionKey(candidate) === itemKey,
+      )
+      if (item == null) return
+      setSelectedItemsByKey((selected) => {
+        if (selected.has(itemKey)) return selected
+        return new Map(selected).set(itemKey, item)
+      })
+    } else if (preserveSelectedItems) {
+      setSelectedItemsByKey((selected) => {
+        const next = new Map(selected)
+        next.delete(itemKey)
+        return next
+      })
+    }
+
     setSelectedItemIds((selected) =>
       checked
         ? [...new Set([...selected, itemKey])]
@@ -75,6 +108,24 @@ export function useReviewApproval({
   }
 
   function toggleVisibleItems(itemKeys: string[], checked: boolean): void {
+    if (preserveSelectedItems) {
+      setSelectedItemsByKey((selected) => {
+        const next = new Map(selected)
+        if (checked) {
+          for (const itemKey of itemKeys) {
+            if (next.has(itemKey)) continue
+            const item = data?.items.find(
+              (candidate) => getSelectionKey(candidate) === itemKey,
+            )
+            if (item != null) next.set(itemKey, item)
+          }
+        } else {
+          for (const itemKey of itemKeys) next.delete(itemKey)
+        }
+        return next
+      })
+    }
+
     setSelectedItemIds((selected) =>
       checked
         ? [...new Set([...selected, ...itemKeys])]
@@ -82,12 +133,17 @@ export function useReviewApproval({
     )
   }
 
-  function clearSelection(): void {
+  const clearSelection = useCallback((): void => {
     setSelectedItemIds([])
-  }
+    setSelectedItemsByKey(new Map())
+  }, [])
 
   return {
     state: { selectedItemIds, isApproving, hasApprovalError },
+    selectedItems: selectedItemIds.flatMap((key) => {
+      const item = selectedItemsByKey.get(key)
+      return item == null ? [] : [item]
+    }),
     actions: {
       approveSelected,
       toggleItem,

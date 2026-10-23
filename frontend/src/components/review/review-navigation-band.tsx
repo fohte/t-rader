@@ -8,21 +8,29 @@ import {
 } from '#components/review/review-queue-model'
 
 type ReviewNavigationBandProps =
-  | { isPending: true }
-  | { isError: true }
+  | { isPending: true; scope?: 'notes' }
+  | { isError: true; scope?: 'notes' }
   | (ReviewNavigationTarget & { isPending?: false; isError?: false })
 
 function ReviewQueueItemLink({
   item,
   snapshot,
+  scope,
+  items,
   children,
 }: {
   item: ReviewNavigationTarget['items'][number]
   snapshot: ReviewNavigationTarget['snapshot']
+  scope?: 'notes'
+  items: ReviewNavigationTarget['items']
   children: ReactNode
 }) {
   const key = reviewQueueItemKey(item)
-  const reviewQueue = { snapshot, currentItemKey: key }
+  const reviewQueue = {
+    snapshot,
+    currentItemKey: key,
+    ...(scope === 'notes' ? { scope, items } : {}),
+  }
   const linkClassName =
     'whitespace-nowrap border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-border-strong hover:text-foreground'
 
@@ -30,7 +38,11 @@ function ReviewQueueItemLink({
     <Link
       to="/notes/$noteId"
       params={{ noteId: item.noteId }}
-      search={{ version: item.versionNo }}
+      search={(previous) => ({
+        ...previous,
+        version: item.versionNo,
+        version_id: item.id,
+      })}
       state={(previous) => ({ ...previous, reviewQueue })}
       className={linkClassName}
     >
@@ -55,7 +67,9 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
   if ('isPending' in props && props.isPending === true) {
     return (
       <div className={className} aria-busy="true" role="status">
-        未読を読み込んでいます
+        {props.scope === 'notes'
+          ? '一覧内の移動情報を読み込んでいます'
+          : '未読を読み込んでいます'}
       </div>
     )
   }
@@ -63,12 +77,14 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
   if ('isError' in props && props.isError === true) {
     return (
       <div className={className} role="alert">
-        未読の移動情報を読み込めませんでした。
+        {props.scope === 'notes'
+          ? '一覧内の移動情報を読み込めませんでした。'
+          : '未読の移動情報を読み込めませんでした。'}
       </div>
     )
   }
 
-  const { items, snapshot, currentItemKey } = props
+  const { items, snapshot, currentItemKey, scope } = props
   const navigation = reviewQueueModel.getNavigation(
     snapshot,
     currentItemKey,
@@ -77,13 +93,19 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
   if (navigation.kind === 'empty') {
     return (
       <div className={className}>
-        <span>未読はありません · </span>
-        <Link
-          to="/review"
-          className="whitespace-nowrap text-foreground hover:underline"
-        >
-          レビューへ
-        </Link>
+        {scope === 'notes' ? (
+          <span>一覧の対象はありません</span>
+        ) : (
+          <>
+            <span>未読はありません · </span>
+            <Link
+              to="/review"
+              className="whitespace-nowrap text-foreground hover:underline"
+            >
+              レビューへ
+            </Link>
+          </>
+        )}
       </div>
     )
   }
@@ -92,12 +114,17 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
     return (
       <div className={className}>
         <span>
-          未読 {String(navigation.total)} 件
+          {scope === 'notes' ? '一覧' : '未読'} {String(navigation.total)} 件
           {navigation.firstItem != null && ' · '}
         </span>
         {navigation.firstItem != null && (
-          <ReviewQueueItemLink item={navigation.firstItem} snapshot={snapshot}>
-            未読の先頭へ →
+          <ReviewQueueItemLink
+            item={navigation.firstItem}
+            snapshot={snapshot}
+            scope={scope}
+            items={items}
+          >
+            {scope === 'notes' ? '先頭へ →' : '未読の先頭へ →'}
           </ReviewQueueItemLink>
         )}
       </div>
@@ -107,23 +134,34 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
   return (
     <div className={className}>
       <span>
-        レビュー · 残り {String(navigation.total)} 件
+        {scope === 'notes' ? '一覧' : 'レビュー'} · 残り{' '}
+        {String(navigation.total)} 件
         {(navigation.previousItem != null || navigation.nextItem != null) &&
           ' '}
       </span>
       {(navigation.previousItem != null || navigation.nextItem != null) && (
-        <nav aria-label="未読の移動" className="ml-auto flex gap-2">
+        <nav
+          aria-label={scope === 'notes' ? '一覧内の移動' : '未読の移動'}
+          className="ml-auto flex gap-2"
+        >
           {navigation.previousItem != null && (
             <ReviewQueueItemLink
               item={navigation.previousItem}
               snapshot={snapshot}
+              scope={scope}
+              items={items}
             >
-              ← 前の未読
+              {scope === 'notes' ? '← 前へ' : '← 前の未読'}
             </ReviewQueueItemLink>
           )}
           {navigation.nextItem != null && (
-            <ReviewQueueItemLink item={navigation.nextItem} snapshot={snapshot}>
-              次の未読へ →
+            <ReviewQueueItemLink
+              item={navigation.nextItem}
+              snapshot={snapshot}
+              scope={scope}
+              items={items}
+            >
+              {scope === 'notes' ? '次へ →' : '次の未読へ →'}
             </ReviewQueueItemLink>
           )}
         </nav>

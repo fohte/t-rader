@@ -4,12 +4,13 @@ import { getReviewQueueQueryKeys } from '#components/review/review-queue-query-k
 import { $api } from '#lib/api/client'
 
 describe('getReviewQueueQueryKeys', () => {
-  it('returns the pending note-version and unread annotation query keys', () => {
+  it('returns the pending note-version, unread annotation, and note overview query keys', () => {
     expect(getReviewQueueQueryKeys()).toEqual([
       $api.queryOptions('get', '/api/note-versions/pending').queryKey,
       $api.queryOptions('get', '/api/annotations', {
         params: { query: { status: 'unread' } },
       }).queryKey,
+      $api.queryOptions('get', '/api/notes/overview').queryKey,
     ])
   })
 })
