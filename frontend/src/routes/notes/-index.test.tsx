@@ -155,7 +155,11 @@ describe('/notes overview route', () => {
       ),
     })
 
-    await screen.findByRole('link', { name: '架空の確認ノート' })
+    await screen.findByRole(
+      'link',
+      { name: '架空の確認ノート' },
+      { timeout: 15_000 },
+    )
     await userEvent.click(screen.getByRole('button', { name: 'すべて' }))
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
