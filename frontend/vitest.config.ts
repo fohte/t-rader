@@ -6,7 +6,7 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig, mergeConfig } from 'vitest/config'
 
-import { tapElementOnTouch } from './src/vitest/browser-commands.test-helper'
+import { touchBrowserTestHelpers } from './src/vitest/browser-commands.test-helper'
 import viteConfig from './vite.config'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -56,7 +56,9 @@ export default mergeConfig(
               }),
               headless: true,
               instances: [{ browser: 'chromium' }],
-              commands: { tapElementOnTouch },
+              commands: {
+                tapElementOnTouch: touchBrowserTestHelpers.tapElementOnTouch,
+              },
             },
             setupFiles: ['./src/test-setup.ts'],
           },

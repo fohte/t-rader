@@ -8,10 +8,9 @@ import { cdp, page } from 'vitest/browser'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
-import {
-  tapLinkOnTouch,
-  withMobileViewport,
-} from '#vitest/touch-browser-test-helper'
+import { touchBrowserTestHelpers } from '#vitest/browser-commands.test-helper'
+
+const { tapLinkOnTouch, withMobileViewport } = touchBrowserTestHelpers
 
 const NOTE_ID = '00000000-0000-4000-8000-000000000101'
 const VERSION_ID = '00000000-0000-4000-8000-000000000201'

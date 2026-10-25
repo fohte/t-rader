@@ -13,13 +13,15 @@ import {
 import { CalendarPageView } from '#components/calendar/calendar-page-view'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
-import {
+import { touchBrowserTestHelpers } from '#vitest/browser-commands.test-helper'
+
+const {
   EXPECTED_MOBILE_VIEWPORT,
   readMobileViewportState,
-  tapElementOnTouch,
   tapLinkOnTouch,
+  tapTouchTarget,
   withMobileViewport,
-} from '#vitest/touch-browser-test-helper'
+} = touchBrowserTestHelpers
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Scenario = {
@@ -175,13 +177,13 @@ describe('CalendarPageView on mobile', () => {
         const outputs: InteractionOutput[] = [readInteractionOutput(router)]
         const toggle = page.getByRole('button', { name: '他 1 社' })
 
-        await tapElementOnTouch(toggle.selector)
+        await tapTouchTarget(toggle.selector)
         outputs.push(readInteractionOutput(router))
 
-        await tapElementOnTouch(toggle.selector)
+        await tapTouchTarget(toggle.selector)
         outputs.push(readInteractionOutput(router))
 
-        await tapElementOnTouch(toggle.selector)
+        await tapTouchTarget(toggle.selector)
         outputs.push(readInteractionOutput(router))
 
         await tapLinkOnTouch(scenario.expectedLinkName)
