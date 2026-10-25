@@ -32,6 +32,8 @@ minimumReleaseAgeExclude:
   - hono@4.12.34
   # Renovate security update: wrangler@3.114.17
   - wrangler@3.114.17
+  # Renovate security update: @storybook/addon-vitest@10.6.2
+  - "@storybook/addon-vitest@10.6.2"
 
 peerDependencyRules:
   allowedVersions:
