@@ -32,6 +32,8 @@ minimumReleaseAgeExclude:
   - hono@4.12.34
   # Renovate security update: wrangler@3.114.17
   - wrangler@3.114.17
+  # Renovate security update: vite@8.3.3
+  - vite@8.3.3
 
 peerDependencyRules:
   allowedVersions:
