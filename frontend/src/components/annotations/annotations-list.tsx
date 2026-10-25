@@ -15,8 +15,8 @@ import type { components } from '#lib/api/schema.gen'
 import { buildSnippet, formatRelative } from '#lib/note-utils'
 
 type Annotation = components['schemas']['Annotation']
-export type AnnotationView = 'all' | 'pending'
-export type AnnotationListState = 'loading' | 'error' | 'loaded'
+type AnnotationView = 'all' | 'pending'
+type AnnotationListState = 'loading' | 'error' | 'loaded'
 
 export interface AnnotationsListProps {
   annotations: Annotation[]
