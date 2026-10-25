@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use core_application::calendar::{
-    read_use_cases::CalendarEventReadUseCases, target_source::CalendarEventTargetSourceAdapter,
-    use_cases::CalendarEventUseCases,
+    read_use_cases::CalendarEventReadUseCases,
+    references::CalendarEventReferenceUseCases,
+    target_source::CalendarEventTargetSourceAdapter, use_cases::CalendarEventUseCases,
 };
 use gateway_postgres::{PostgresCalendarEventRepository, PostgresUnitOfWork};
 
@@ -23,6 +24,13 @@ impl UseCases {
                 self.strategy_earnings_targets(),
                 self.stock_groups(),
             )),
+        )
+    }
+
+    pub fn calendar_event_references(&self) -> CalendarEventReferenceUseCases {
+        CalendarEventReferenceUseCases::new(
+            Arc::new(PostgresCalendarEventRepository::new(self.db.clone())),
+            Arc::new(PostgresUnitOfWork::new(self.db.clone())),
         )
     }
 }

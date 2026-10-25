@@ -7,7 +7,37 @@ type Bar = components['schemas']['Bar']
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 const DATE_RANGE_RADIUS_DAYS = 182
 
-export type StockPageSearch = { date?: string }
+export type StockPageTab = 'annotations' | 'notes' | 'trades' | 'financials'
+export type FinancialPeriodType = 'FY' | '1Q' | '2Q' | '3Q' | '4Q'
+
+export type StockPageSearch = {
+  date?: string
+  stockTab?: StockPageTab
+  periodEnd?: string
+  periodType?: FinancialPeriodType
+}
+
+const STOCK_PAGE_TABS = [
+  'annotations',
+  'notes',
+  'trades',
+  'financials',
+] as const satisfies readonly StockPageTab[]
+const FINANCIAL_PERIOD_TYPES = [
+  'FY',
+  '1Q',
+  '2Q',
+  '3Q',
+  '4Q',
+] as const satisfies readonly FinancialPeriodType[]
+
+function isStockPageTab(value: string): value is StockPageTab {
+  return STOCK_PAGE_TABS.some((tab) => tab === value)
+}
+
+function isFinancialPeriodType(value: string): value is FinancialPeriodType {
+  return FINANCIAL_PERIOD_TYPES.some((periodType) => periodType === value)
+}
 
 function parseCalendarDate(value: string): Date | null {
   const match = DATE_PATTERN.exec(value)
@@ -53,9 +83,27 @@ export function validateStockPageSearch(
   search: Record<string, unknown>,
 ): StockPageSearch {
   const date = search.date
-  return typeof date === 'string' && parseCalendarDate(date) != null
-    ? { date }
-    : {}
+  const stockTab = search.stockTab
+  const periodEnd = search.periodEnd
+  const periodType = search.periodType
+
+  return {
+    ...(typeof date === 'string' && parseCalendarDate(date) != null
+      ? { date }
+      : {}),
+    ...(typeof stockTab === 'string' && isStockPageTab(stockTab)
+      ? { stockTab }
+      : {}),
+    ...(typeof periodEnd === 'string' &&
+    parseCalendarDate(periodEnd) != null &&
+    typeof periodType === 'string' &&
+    isFinancialPeriodType(periodType)
+      ? {
+          periodEnd,
+          periodType,
+        }
+      : {}),
+  }
 }
 
 export function getDailyBarsRangeAroundDate(date: string): BarsRange | null {

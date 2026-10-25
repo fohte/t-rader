@@ -81,6 +81,7 @@ mod tests {
         calendar::{
             error::CalendarEventUseCaseError,
             fake::FakeCalendarEventSource,
+            references::CalendarEventReferenceUseCases,
             repository::{
                 CalendarEventRepository, CalendarEventRepositoryError,
                 SharedCalendarEventRepository,
@@ -94,7 +95,8 @@ mod tests {
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_domain::calendar_event::{
-        CalendarEvent, CalendarEventCategory, CalendarEventTimeOfDay,
+        CalendarEvent, CalendarEventCategory, CalendarEventReadModel, CalendarEventReference,
+        CalendarEventTimeOfDay,
     };
 
     #[derive(Default)]
@@ -131,6 +133,7 @@ mod tests {
     #[derive(Default)]
     struct FakeCalendarEventRepository {
         events: Mutex<HashMap<(String, String), CalendarEvent>>,
+        references: Mutex<Vec<CalendarEventReference>>,
     }
 
     impl FakeCalendarEventRepository {
@@ -142,6 +145,7 @@ mod tests {
                         .map(|event| ((event.source.clone(), event.external_id.clone()), event))
                         .collect(),
                 ),
+                references: Mutex::new(Vec::new()),
             }
         }
 
@@ -192,6 +196,39 @@ mod tests {
             Ok(events)
         }
 
+        async fn enrich_events(
+            &self,
+            events: Vec<CalendarEvent>,
+        ) -> Result<Vec<CalendarEventReadModel>, CalendarEventRepositoryError> {
+            Ok(events.into_iter().map(Into::into).collect())
+        }
+
+        async fn list_references_for_event(
+            &self,
+            event_source: &str,
+            event_external_id: &str,
+        ) -> Result<Vec<CalendarEventReference>, CalendarEventRepositoryError> {
+            if !self
+                .events
+                .lock()
+                .expect("events lock")
+                .contains_key(&(event_source.to_owned(), event_external_id.to_owned()))
+            {
+                return Err(CalendarEventRepositoryError::MissingEvent);
+            }
+            Ok(self
+                .references
+                .lock()
+                .expect("references lock")
+                .iter()
+                .filter(|reference| {
+                    reference.event_source == event_source
+                        && reference.event_external_id == event_external_id
+                })
+                .cloned()
+                .collect())
+        }
+
         async fn find_next_earnings_for_stock(
             &self,
             stock_id: &str,
@@ -224,6 +261,29 @@ mod tests {
             for event in events {
                 stored.insert((event.source.clone(), event.external_id.clone()), event);
             }
+            Ok(count)
+        }
+
+        async fn upsert_references(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            references: Vec<CalendarEventReference>,
+        ) -> Result<usize, CalendarEventRepositoryError> {
+            let events = self.events.lock().expect("events lock");
+            if references.iter().any(|reference| {
+                !events.contains_key(&(
+                    reference.event_source.clone(),
+                    reference.event_external_id.clone(),
+                ))
+            }) {
+                return Err(CalendarEventRepositoryError::MissingEvent);
+            }
+            drop(events);
+            let count = references.len();
+            self.references
+                .lock()
+                .expect("references lock")
+                .extend(references);
             Ok(count)
         }
 
@@ -481,5 +541,51 @@ mod tests {
                 vec![existing],
             ),
         );
+    }
+
+    #[tokio::test]
+    async fn reference_use_cases_store_and_return_references_for_an_event_key() {
+        let event = event(
+            "sample_source",
+            "0001:2Q:2031-06-30",
+            "架空銘柄",
+            date(2031, 8, 1),
+        );
+        let repository = Arc::new(FakeCalendarEventRepository::with_events(vec![event]));
+        let unit_of_work = Arc::new(FakeUnitOfWork::default());
+        let use_cases = CalendarEventReferenceUseCases::new(
+            repository.clone() as SharedCalendarEventRepository,
+            unit_of_work.clone() as SharedUnitOfWork,
+        );
+        let reference = CalendarEventReference {
+            event_source: "sample_source".into(),
+            event_external_id: "0001:2Q:2031-06-30".into(),
+            kind: core_domain::calendar_event::CalendarEventReferenceKind::IndividualDocument,
+            source: "sample_source".into(),
+            external_id: "sample-document".into(),
+            title: "架空の資料".into(),
+            url: Some("https://example.invalid/sample".into()),
+            target_period_start: None,
+            target_period_end: Some(date(2031, 6, 30)),
+            target_period_type: Some("2Q".into()),
+            publication_evidence: Some("sample-publication-record".into()),
+            publication_evidence_url: Some("https://example.invalid/evidence".into()),
+            checked_at: chrono::DateTime::from_timestamp(1_700_000_000, 0)
+                .expect("valid timestamp"),
+        };
+
+        let actual = (
+            use_cases
+                .upsert(vec![reference.clone()])
+                .await
+                .map_err(|error| error.to_string()),
+            use_cases
+                .list_for_event("sample_source", "0001:2Q:2031-06-30")
+                .await
+                .map_err(|error| error.to_string()),
+            unit_of_work.counts(),
+        );
+
+        assert_eq!(actual, (Ok(1), Ok(vec![reference]), (1, 1)));
     }
 }

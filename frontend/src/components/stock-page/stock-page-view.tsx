@@ -7,6 +7,7 @@ import { StockPageHeader } from '#components/stock-page/stock-page-header'
 import type { Timeframe } from '#components/timeframe-selector'
 import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'
+import type { FinancialPeriodType } from '#lib/stock-page-date'
 import type { StockPageListState, StockQuote } from '#lib/stock-page-model'
 
 type Stock = components['schemas']['Stock']
@@ -39,6 +40,7 @@ export function StockPageView({
   valuationState,
   financialSummaries,
   financialSummariesState,
+  selectedPeriod,
   position,
   holdingsState,
   timeframe,
@@ -75,6 +77,7 @@ export function StockPageView({
   valuationState: StockPageListState
   financialSummaries: FinancialSummary[]
   financialSummariesState: StockPageListState
+  selectedPeriod?: { end: string; type: FinancialPeriodType }
   position: Position | null
   holdingsState: StockPageListState
   timeframe: Timeframe
@@ -143,6 +146,7 @@ export function StockPageView({
         trades={trades}
         financialSummaries={financialSummaries}
         financialSummariesState={financialSummariesState}
+        selectedPeriod={selectedPeriod}
         groups={groups}
         groupsState={groupsState}
         activeTab={activeTab}

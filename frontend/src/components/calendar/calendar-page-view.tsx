@@ -237,6 +237,7 @@ export function CalendarPageView({
                         category={row.category}
                         title={row.title}
                         stockId={row.stockId}
+                        earningsStatus={row.earningsStatus}
                         emphasized={row.emphasized}
                         target={row.target}
                         muted={row.muted}
@@ -282,6 +283,7 @@ export function CalendarPageView({
                                 category={earning.category}
                                 title={earning.title}
                                 stockId={earning.stockId}
+                                earningsStatus={earning.earningsStatus}
                                 emphasized={earning.emphasized}
                                 target={earning.target}
                                 muted={earning.muted}

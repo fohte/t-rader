@@ -51,6 +51,7 @@
 | [public.stock_group_member](public.stock_group_member.md)                                       | 3       | 銘柄と銘柄グループの所属関係を保持する。                                                                                                           | BASE TABLE        |
 | [public.ingest_run](public.ingest_run.md)                                                       | 7       | データ取り込みジョブの実行履歴と結果を記録する。                                                                                                   | BASE TABLE        |
 | [public.calendar_event](public.calendar_event.md)                                               | 13      | 指標、中銀イベント、決算などの予定を取得元ごとに保持する。                                                                                         | BASE TABLE        |
+| [public.calendar_event_reference](public.calendar_event_reference.md)                           | 15      | カレンダーイベントに対応する実績要約や公式資料への参照先と確認根拠を保持する。                                                                     | BASE TABLE        |
 | [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)             | 1       | 決算予定を取得した公表日を記録する。                                                                                                               | BASE TABLE        |
 | [public.news_item_content](public.news_item_content.md)                                         | 6       | ニュース記事の本文と取得状態を保持する。                                                                                                           | BASE TABLE        |
 | [public.strategy_earnings_target](public.strategy_earnings_target.md)                           | 4       | 戦略ごとに決算を追う銘柄とグループを保持する。                                                                                                     | BASE TABLE        |
@@ -230,6 +231,7 @@ erDiagram
 "public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 "public.stock_group_member" }o--|| "public.stock_group" : "FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE"
 "public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
+"public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 "public.strategy_earnings_target" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.paper_account" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.paper_account" }o--o| "public.stock" : "FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)"
@@ -750,6 +752,23 @@ erDiagram
   date event_date
   timestamp_with_time_zone event_at
   text time_of_day
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.calendar_event_reference" {
+  uuid id
+  uuid calendar_event_id FK
+  text kind
+  text source
+  text external_id
+  text title
+  text url
+  date target_period_start
+  date target_period_end
+  text target_period_type
+  text publication_evidence
+  text publication_evidence_url
+  timestamp_with_time_zone checked_at
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }

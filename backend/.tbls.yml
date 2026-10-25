@@ -542,6 +542,21 @@ comments:
       event_date: 'イベントが予定されている JST の日付。'
       event_at: '時刻が分かる場合のイベント日時。'
       time_of_day: '時刻の代わりに寄り前または引け後が分かる場合の区分。'
+  - table: calendar_event_reference
+    tableComment: 'カレンダーイベントに対応する実績要約や公式資料への参照先と確認根拠を保持する。'
+    columnComments:
+      calendar_event_id: '参照先が対応するカレンダーイベント。'
+      kind: '参照先の種類。earnings_summary、individual_document、official_listing のいずれか。'
+      source: '参照先と根拠を確認した取得元の識別子。'
+      external_id: '取得元内で参照先を識別するキー。'
+      title: '参照先の表示名。'
+      url: '遷移先の URL。遷移先が確認できない場合は null。'
+      target_period_start: '参照先が対象にする期間の開始日。'
+      target_period_end: '参照先が対象にする期間の終了日。'
+      target_period_type: '参照先が対象にする期間の区分。'
+      publication_evidence: '個別資料の公表を確認した取得元の識別情報。'
+      publication_evidence_url: '公表根拠を確認できる URL。'
+      checked_at: '取得元で参照先と根拠を確認した日時。'
   - table: earnings_schedule_ingested_date
     tableComment: '決算予定を取得した公表日を記録する。'
     columnComments:

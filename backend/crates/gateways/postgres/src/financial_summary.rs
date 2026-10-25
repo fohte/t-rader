@@ -4,7 +4,7 @@ use core_application::financial_summary::{
     FinancialSummaryRepository, FinancialSummaryRepositoryError,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
-use core_domain::financial_summary::FinancialSummary;
+use core_domain::financial_summary::{FinancialSummary, FinancialSummaryPeriodType};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, Iterable, QueryOrder, Set,
@@ -32,6 +32,15 @@ const FIND_FOR_SYMBOL_SQL: &str = r#"
     FROM deduped
     ORDER BY disclosure_date DESC, disclosure_no_num DESC
     LIMIT $2
+"#;
+
+const FIND_FOR_PERIOD_SQL: &str = r#"
+    SELECT *
+    FROM financial_summary
+    WHERE (code = $1 OR (char_length($1) = 4 AND code = $1 || '0'))
+      AND current_period_end = $2
+      AND current_period_type = $3
+    ORDER BY disclosure_date DESC, document_type ASC, report_group_key ASC
 "#;
 
 #[derive(Clone)]
@@ -113,6 +122,33 @@ impl FinancialSummaryRepository for PostgresFinancialSummaryRepository {
                 DatabaseBackend::Postgres,
                 FIND_FOR_SYMBOL_SQL,
                 [symbol.into(), limit.into()],
+            ))
+            .await
+            .map_err(repository_error)?;
+
+        rows.iter()
+            .map(|row| financial_summary::Model::from_query_result(row, ""))
+            .map(|row| row.map(to_domain))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(repository_error)
+    }
+
+    async fn find_for_period(
+        &self,
+        symbol: &str,
+        period_end: NaiveDate,
+        period_type: FinancialSummaryPeriodType,
+    ) -> Result<Vec<FinancialSummary>, FinancialSummaryRepositoryError> {
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                FIND_FOR_PERIOD_SQL,
+                [
+                    symbol.into(),
+                    period_end.into(),
+                    period_type.as_str().into(),
+                ],
             ))
             .await
             .map_err(repository_error)?;
@@ -227,7 +263,7 @@ mod tests {
 
     use super::PostgresFinancialSummaryRepository;
     use crate::unit_of_work::PostgresUnitOfWork;
-    use core_domain::financial_summary::FinancialSummary;
+    use core_domain::financial_summary::{FinancialSummary, FinancialSummaryPeriodType};
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
@@ -279,6 +315,22 @@ mod tests {
             next_forecast_net_profit: None,
             next_forecast_eps: None,
         }
+    }
+
+    fn period_summary(
+        code: &str,
+        disclosure_no: &str,
+        disclosure_date: NaiveDate,
+        report_group_key: &str,
+        document_type: &str,
+        current_period_type: &str,
+        current_period_end: NaiveDate,
+    ) -> FinancialSummary {
+        let mut summary = summary(code, disclosure_no, disclosure_date, report_group_key, 10.0);
+        summary.document_type = Some(document_type.to_owned());
+        summary.current_period_type = Some(current_period_type.to_owned());
+        summary.current_period_end = Some(current_period_end);
+        summary
     }
 
     async fn upsert_summaries(
@@ -385,6 +437,127 @@ mod tests {
             vec![
                 summary("ZQXZ0", "3", date(2042, 4, 3), "group-c", 30.0),
                 summary("ZQXZ0", "2", date(2042, 4, 2), "group-b", 20.0),
+            ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn find_for_period_keeps_all_exact_period_candidates_without_deduplication(
+        db: crate::DatabaseHandle,
+    ) {
+        let repository = PostgresFinancialSummaryRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let period_end = date(2042, 6, 30);
+        upsert_summaries(
+            &repository,
+            &unit_of_work,
+            vec![
+                period_summary(
+                    "ZQXZ0",
+                    "1",
+                    date(2042, 8, 1),
+                    "sample-group-a",
+                    "2QFinancialStatements_SampleA",
+                    "2Q",
+                    period_end,
+                ),
+                period_summary(
+                    "ZQXZ0",
+                    "2",
+                    date(2042, 8, 1),
+                    "sample-group-a",
+                    "2QFinancialStatements_SampleB",
+                    "2Q",
+                    period_end,
+                ),
+                period_summary(
+                    "ZQXZ0",
+                    "3",
+                    date(2042, 8, 1),
+                    "sample-forecast",
+                    "EarnForecastRevision",
+                    "2Q",
+                    period_end,
+                ),
+                period_summary(
+                    "ZQXZ0",
+                    "4",
+                    date(2042, 8, 1),
+                    "sample-other-quarter",
+                    "1QFinancialStatements_SampleC",
+                    "1Q",
+                    period_end,
+                ),
+                period_summary(
+                    "ZQXZ0",
+                    "5",
+                    date(2042, 8, 1),
+                    "sample-other-period",
+                    "2QFinancialStatements_SampleD",
+                    "2Q",
+                    date(2042, 6, 29),
+                ),
+                period_summary(
+                    "ABCD0",
+                    "6",
+                    date(2042, 8, 1),
+                    "sample-other-stock",
+                    "2QFinancialStatements_SampleE",
+                    "2Q",
+                    period_end,
+                ),
+                period_summary(
+                    "ZQXZ1",
+                    "7",
+                    date(2042, 8, 1),
+                    "sample-prefix-collision",
+                    "2QFinancialStatements_SampleF",
+                    "2Q",
+                    period_end,
+                ),
+            ],
+        )
+        .await;
+
+        let rows = repository
+            .find_for_period(
+                "ZQXZ",
+                period_end,
+                FinancialSummaryPeriodType::SecondQuarter,
+            )
+            .await
+            .expect("find period candidates");
+        let actual = rows
+            .into_iter()
+            .map(|row| {
+                (
+                    row.disclosure_no,
+                    row.document_type,
+                    row.current_period_type,
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut actual = actual;
+        actual.sort_by(|left, right| left.1.cmp(&right.1));
+
+        assert_eq!(
+            actual,
+            vec![
+                (
+                    "1".to_owned(),
+                    Some("2QFinancialStatements_SampleA".to_owned()),
+                    Some("2Q".to_owned()),
+                ),
+                (
+                    "2".to_owned(),
+                    Some("2QFinancialStatements_SampleB".to_owned()),
+                    Some("2Q".to_owned()),
+                ),
+                (
+                    "3".to_owned(),
+                    Some("EarnForecastRevision".to_owned()),
+                    Some("2Q".to_owned()),
+                ),
             ],
         );
     }
