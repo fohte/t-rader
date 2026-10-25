@@ -20,40 +20,54 @@ export interface ReviewNavigationResult extends ReviewNavigationViewState {
   invalidate: () => void
 }
 
-export interface NotesReviewNavigationScope {
+export interface ScopedReviewNavigationScope {
   key: string
   items: ReviewQueueItem[] | undefined
   isPending: boolean
   isError: boolean
+  scope: 'notes' | 'annotations'
 }
+
+export type NotesReviewNavigationScope = Omit<
+  ScopedReviewNavigationScope,
+  'scope'
+> & { scope?: 'notes' }
+
+type ReviewNavigationScope =
+  | NotesReviewNavigationScope
+  | (ScopedReviewNavigationScope & { scope: 'annotations' })
 
 export function useReviewNavigation(
   currentItemKey: string,
   currentNoteId?: string,
-  notesScope?: NotesReviewNavigationScope,
+  navigationScope?: ReviewNavigationScope,
 ): ReviewNavigationResult {
-  const reviewQueue = useReviewQueue()
+  const reviewQueue = useReviewQueue({ enabled: navigationScope == null })
   const historyState = useRouterState({
     select: (routerState) =>
       reviewQueueModel.readNavigationState(routerState.location.state),
   })
   const scopedHistoryItems =
-    historyState?.scope === 'notes' && Array.isArray(historyState.items)
+    historyState?.scope != null &&
+    (navigationScope == null || historyState.scope === navigationScope.scope) &&
+    Array.isArray(historyState.items)
       ? historyState.items
       : null
   const currentNoteItem =
-    scopedHistoryItems != null && currentNoteId != null
+    historyState?.scope === 'notes' &&
+    scopedHistoryItems != null &&
+    currentNoteId != null
       ? scopedHistoryItems.find(
           (item) => item.kind === 'note' && item.noteId === currentNoteId,
         )
       : undefined
   const hasMatchingScopedHistoryState =
-    historyState?.scope === 'notes' &&
+    historyState?.scope != null &&
     scopedHistoryItems != null &&
     (historyState.currentItemKey === currentItemKey || currentNoteItem != null)
   const matchingHistoryState = hasMatchingScopedHistoryState
     ? historyState
-    : notesScope == null && historyState?.currentItemKey === currentItemKey
+    : navigationScope == null && historyState?.currentItemKey === currentItemKey
       ? historyState
       : null
   const [fallbackNavigation, setFallbackNavigation] = useState<{
@@ -64,12 +78,12 @@ export function useReviewNavigation(
   } | null>(null)
   const fallbackSnapshot =
     fallbackNavigation?.currentItemKey === currentItemKey &&
-    fallbackNavigation.scopeKey === (notesScope?.key ?? null)
+    fallbackNavigation.scopeKey === (navigationScope?.key ?? null)
       ? fallbackNavigation.snapshot
       : null
   const fallbackItems =
     fallbackNavigation?.currentItemKey === currentItemKey &&
-    fallbackNavigation.scopeKey === (notesScope?.key ?? null)
+    fallbackNavigation.scopeKey === (navigationScope?.key ?? null)
       ? fallbackNavigation.items
       : null
 
@@ -77,15 +91,16 @@ export function useReviewNavigation(
     if (
       matchingHistoryState != null ||
       fallbackSnapshot != null ||
-      (notesScope == null ? reviewQueue.data : notesScope.items) == null
+      (navigationScope == null ? reviewQueue.data : navigationScope.items) ==
+        null
     ) {
       return
     }
-    const items = notesScope?.items ?? reviewQueue.data?.items
+    const items = navigationScope?.items ?? reviewQueue.data?.items
     if (items == null) return
     setFallbackNavigation({
       currentItemKey,
-      scopeKey: notesScope?.key ?? null,
+      scopeKey: navigationScope?.key ?? null,
       snapshot: reviewQueueModel.createNavigationSnapshot(items),
       items,
     })
@@ -93,19 +108,24 @@ export function useReviewNavigation(
     currentItemKey,
     fallbackSnapshot,
     matchingHistoryState,
-    notesScope,
+    navigationScope,
     reviewQueue.data,
   ])
 
   const snapshot = matchingHistoryState?.snapshot ?? fallbackSnapshot
-  const isUsingNotesScope = hasMatchingScopedHistoryState || notesScope != null
+  const isUsingScopedNavigation =
+    hasMatchingScopedHistoryState || navigationScope != null
+  const activeScope =
+    navigationScope == null
+      ? historyState?.scope
+      : (navigationScope.scope ?? 'notes')
   const navigationItems = hasMatchingScopedHistoryState
     ? scopedHistoryItems
-    : notesScope != null
-      ? (fallbackItems ?? notesScope.items)
+    : navigationScope != null
+      ? (fallbackItems ?? navigationScope.items)
       : reviewQueue.data?.items
   const notesScopeCurrentItem =
-    isUsingNotesScope && currentNoteId != null
+    activeScope === 'notes' && currentNoteId != null
       ? navigationItems?.find(
           (item) => item.kind === 'note' && item.noteId === currentNoteId,
         )
@@ -123,16 +143,19 @@ export function useReviewNavigation(
               navigationNoteItem == null
                 ? currentItemKey
                 : reviewQueueItemKey(navigationNoteItem),
-            ...(isUsingNotesScope ? { scope: 'notes' as const } : {}),
+            ...(isUsingScopedNavigation && activeScope != null
+              ? { scope: activeScope }
+              : {}),
           },
-    isPending: isUsingNotesScope
+    isPending: isUsingScopedNavigation
       ? (navigationItems == null &&
-          (notesScope?.isPending ?? reviewQueue.isPending)) ||
-        (snapshot == null && !(notesScope?.isError ?? reviewQueue.isError))
+          (navigationScope?.isPending ?? reviewQueue.isPending)) ||
+        (snapshot == null && !(navigationScope?.isError ?? reviewQueue.isError))
       : (navigationItems == null && reviewQueue.isPending) ||
         (snapshot == null && !reviewQueue.isError),
-    isError: isUsingNotesScope
-      ? navigationItems == null && (notesScope?.isError ?? reviewQueue.isError)
+    isError: isUsingScopedNavigation
+      ? navigationItems == null &&
+        (navigationScope?.isError ?? reviewQueue.isError)
       : navigationItems == null && reviewQueue.isError,
     invalidate: reviewQueue.invalidate,
   }

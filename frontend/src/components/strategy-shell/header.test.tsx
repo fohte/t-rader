@@ -29,7 +29,6 @@ function renderHeader(
       '/strategies/$id/performance',
       '/strategies/$id/runs',
       '/strategies/$id/settings',
-      '/review',
       '/notes',
       '/dashboards',
       '/dashboards/$key',
@@ -88,7 +87,6 @@ function getExpectedMenuOutput(
   return {
     menuActive: true,
     links: [
-      { label: 'ノート', href: '/notes', active: activeLabel === 'ノート' },
       {
         label: 'ダッシュボード',
         href: '/dashboards',
@@ -200,48 +198,48 @@ describe('Header', () => {
       const navigation = await screen.findByRole('navigation', {
         name: 'メインナビゲーション',
       })
-      await screen.findByRole('link', { name: 'レビュー2' })
+      await screen.findByRole('link', { name: 'ノート2' })
 
       expect(getNavigationOutput(navigation)).toEqual([
         { label: '資産', href: '/portfolio', active: true },
         {
-          label: 'レビュー2',
-          href: '/review',
+          label: 'ノート2',
+          href: '/notes',
           active: false,
         },
       ])
     },
   )
 
-  it('レビュー画面で未読数付きのレビューを active にする', async () => {
-    renderHeader('/review')
+  it('ノート画面で未読数付きの統一入口を active にする', async () => {
+    renderHeader('/notes?view=pending')
     const navigation = await screen.findByRole('navigation', {
       name: 'メインナビゲーション',
     })
-    await screen.findByRole('link', { name: 'レビュー2' })
+    await screen.findByRole('link', { name: 'ノート2' })
 
     expect(getNavigationOutput(navigation)).toEqual([
       { label: '資産', href: '/portfolio', active: false },
       {
-        label: 'レビュー2',
-        href: '/review',
+        label: 'ノート2',
+        href: '/notes',
         active: true,
       },
     ])
   })
 
-  it('未読が 0 件ならレビューのバッジを表示しない', async () => {
+  it('未読が 0 件なら統一入口のバッジを表示しない', async () => {
     renderHeader('/portfolio', 0)
     const navigation = await screen.findByRole('navigation', {
       name: 'メインナビゲーション',
     })
-    await screen.findByRole('link', { name: 'レビュー' })
+    await screen.findByRole('link', { name: 'ノート' })
 
     expect(getNavigationOutput(navigation)).toEqual([
       { label: '資産', href: '/portfolio', active: true },
       {
-        label: 'レビュー',
-        href: '/review',
+        label: 'ノート',
+        href: '/notes',
         active: false,
       },
     ])
@@ -252,13 +250,13 @@ describe('Header', () => {
     const navigation = await screen.findByRole('navigation', {
       name: 'メインナビゲーション',
     })
-    await screen.findByRole('link', { name: 'レビュー—' })
+    await screen.findByRole('link', { name: 'ノート—' })
 
     expect(getNavigationOutput(navigation)).toEqual([
       { label: '資産', href: '/portfolio', active: true },
       {
-        label: 'レビュー—',
-        href: '/review',
+        label: 'ノート—',
+        href: '/notes',
         active: false,
       },
     ])
@@ -274,7 +272,6 @@ describe('Header', () => {
     })
 
     expect(getNavigationOutput(navigation)).toEqual([
-      { label: 'ノート', href: '/notes', active: false },
       { label: 'ダッシュボード', href: '/dashboards', active: false },
       { label: '戦略', href: '/strategies', active: false },
       { label: 'ペーパートレード', href: '/paper-trading', active: false },
@@ -346,11 +343,6 @@ describe('Header', () => {
       pageName: '全体の設定',
       path: '/settings/rss-feeds',
       activeLabel: '全体の設定',
-    },
-    {
-      pageName: 'アノテーション詳細',
-      path: '/annotations/demo-annotation',
-      activeLabel: 'ノート',
     },
   ])(
     '$pageName ではメニューと該当項目を active にする',

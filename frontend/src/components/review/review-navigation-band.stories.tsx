@@ -42,6 +42,9 @@ const items: ReviewQueueItem[] = [
 ]
 
 const snapshot = reviewQueueModel.createNavigationSnapshot(items)
+const annotationItems = items.filter((item) => item.kind === 'annotation')
+const annotationSnapshot =
+  reviewQueueModel.createNavigationSnapshot(annotationItems)
 const lastUnreadItems = items.slice(0, 2)
 const lastUnreadSnapshot =
   reviewQueueModel.createNavigationSnapshot(lastUnreadItems)
@@ -93,7 +96,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+          paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
         },
       )}
     />
@@ -147,7 +150,7 @@ export const ItemOutsideQueue: Story = {
 }
 
 export const NoUnreadItems: Story = {
-  name: 'links to the review page when no unread items remain.',
+  name: 'links to the unread list when no unread items remain.',
   args: {
     items: [],
     snapshot,
@@ -191,5 +194,15 @@ export const NotesScopedNavigation: Story = {
     snapshot: notesSnapshot,
     currentItemKey: 'note:fake-version-02',
     scope: 'notes',
+  },
+}
+
+export const AnnotationsScopedNavigation: Story = {
+  name: 'keeps previous and next links inside the selected annotation list.',
+  args: {
+    items: annotationItems,
+    snapshot: annotationSnapshot,
+    currentItemKey: 'annotation:sample-annotation-03',
+    scope: 'annotations',
   },
 }

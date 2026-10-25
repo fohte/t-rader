@@ -232,7 +232,7 @@ describe('NotesPage', () => {
       '/notes?kind=sample-kind&tag=%E6%9E%B6%E7%A9%BA%E3%82%BF%E3%82%B0',
     )
 
-    await user.click(screen.getByRole('tab', { name: 'アノテーション' }))
+    await user.click(screen.getByRole('tab', { name: /アノテーション/ }))
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
         kind: 'sample-kind',

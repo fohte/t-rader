@@ -13,7 +13,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/review'],
+          paths: ['/notes'],
         },
       )}
     />
@@ -35,5 +35,5 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  name: 'links to the review screen from a note.',
+  name: 'opens the unified unread list from a note.',
 }
