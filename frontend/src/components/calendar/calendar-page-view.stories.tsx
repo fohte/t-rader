@@ -60,7 +60,7 @@ const events: CalendarEvent[] = [
     category: 'earnings',
     country: 'US',
     title: '架空電子',
-    stock_id: 'FICT1',
+    stock_id: 'US:FICT1',
     fiscal_period: '2099-01-01',
     event_date: '2099-01-06',
     event_at: null,
@@ -206,6 +206,79 @@ export const OtherEarningsExpanded: Story = {
     },
     expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
     otherEarningsEvents,
+  },
+}
+
+export const MobileOverseasEarningsExpanded: Story = {
+  name: '390 px 幅で海外決算の展開行と銘柄リンクを表示します。',
+  args: {
+    calendar: {
+      from: weekRange.from,
+      to: weekRange.to,
+      events: [
+        {
+          kind: 'event',
+          source: 'alpha_vantage',
+          external_id: 'sample-mobile-overseas-earnings',
+          category: 'earnings',
+          country: 'US',
+          title: '架空電子',
+          stock_id: 'US:FICT1',
+          fiscal_period: '2099-01-01',
+          event_date: '2099-01-06',
+          event_at: null,
+          time_of_day: 'pre_market',
+        },
+        {
+          kind: 'other_earnings_summary',
+          country: 'US',
+          event_date: '2099-01-06',
+          count: 2,
+        },
+      ],
+    },
+    expandedOtherEarnings: { country: 'US', eventDate: '2099-01-06' },
+    otherEarningsEvents: [
+      {
+        kind: 'event',
+        source: 'alpha_vantage',
+        external_id: 'sample-mobile-other-earnings-a',
+        category: 'earnings',
+        country: 'US',
+        title: '架空地域情報通信設備総合開発研究製造会社',
+        stock_id: 'US:FICT2',
+        fiscal_period: '2099-01-01',
+        event_date: '2099-01-06',
+        event_at: null,
+        time_of_day: 'pre_market',
+      },
+      {
+        kind: 'event',
+        source: 'alpha_vantage',
+        external_id: 'sample-mobile-other-earnings-b',
+        category: 'earnings',
+        country: 'US',
+        title: '架空広域通信設備開発会社',
+        stock_id: 'US:FICT3',
+        fiscal_period: '2099-01-01',
+        event_date: '2099-01-06',
+        event_at: null,
+        time_of_day: 'post_market',
+      },
+    ],
+  },
+  globals: { viewport: { value: 'mobileCalendar' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileCalendar: {
+          name: 'Mobile calendar',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: { viewport: { width: 390, height: 700 } },
   },
 }
 

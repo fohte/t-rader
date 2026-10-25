@@ -180,7 +180,7 @@ export function CalendarPageView({
             <SelectTrigger aria-label="国">
               <SelectValue placeholder="すべての国" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent alignItemWithTrigger={false}>
               {COUNTRY_FILTER_OPTIONS.map(({ value, label }) => (
                 <SelectItem key={value ?? 'all-countries'} value={value}>
                   {label}
