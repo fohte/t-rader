@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 import { cdp, commands, page } from 'vitest/browser'
 
-export const MOBILE_VIEWPORT = { width: 390, height: 844 }
+const MOBILE_VIEWPORT = { width: 390, height: 844 }
 export const EXPECTED_MOBILE_VIEWPORT = {
   width: MOBILE_VIEWPORT.width,
   height: MOBILE_VIEWPORT.height,
