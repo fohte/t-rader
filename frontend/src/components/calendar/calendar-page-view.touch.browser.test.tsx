@@ -4,7 +4,7 @@ import { Outlet, RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { cdp, commands, page } from 'vitest/browser'
+import { cdp, page } from 'vitest/browser'
 
 import {
   isSameOtherEarningsSelection,
@@ -13,6 +13,13 @@ import {
 import { CalendarPageView } from '#components/calendar/calendar-page-view'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
+import {
+  EXPECTED_MOBILE_VIEWPORT,
+  readMobileViewportState,
+  tapElementOnTouch,
+  tapLinkOnTouch,
+  withMobileViewport,
+} from '#vitest/touch-browser-test-helper'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Scenario = {
@@ -29,14 +36,6 @@ type Scenario = {
 
 const EVENT_DATE = '2099-01-06'
 const WEEK_RANGE = { from: '2099-01-05', to: '2099-01-11' }
-const MOBILE_VIEWPORT = { width: 390, height: 844 }
-const EXPECTED_MOBILE_VIEWPORT = {
-  width: MOBILE_VIEWPORT.width,
-  height: MOBILE_VIEWPORT.height,
-  hasNoHover: true,
-  hasCoarsePointer: true,
-  maxTouchPoints: 1,
-}
 const SCENARIOS: Scenario[] = [
   {
     country: 'JP',
@@ -62,16 +61,6 @@ const SCENARIOS: Scenario[] = [
     expectedDetailsText: '寄り前US決算架空地域情報通信設備総合開発研究製造会社',
   },
 ]
-
-declare module 'vitest/browser' {
-  interface CDPSession {
-    send(method: string, params?: Record<string, unknown>): Promise<unknown>
-  }
-
-  interface BrowserCommands {
-    tapLinkOnTouch(selector: string): Promise<void>
-  }
-}
 
 function createEarning(scenario: Scenario): CalendarEvent {
   return {
@@ -151,16 +140,6 @@ function renderScenario(scenario: Scenario) {
   return router
 }
 
-function readMobileViewport() {
-  return {
-    width: window.innerWidth,
-    height: window.innerHeight,
-    hasNoHover: window.matchMedia('(hover: none)').matches,
-    hasCoarsePointer: window.matchMedia('(pointer: coarse)').matches,
-    maxTouchPoints: navigator.maxTouchPoints,
-  }
-}
-
 function readInteractionOutput(router: ReturnType<typeof createStoryRouter>) {
   const toggle = screen.queryByRole('button', { name: '他 1 社' })
   const detailsId = toggle?.getAttribute('aria-controls') ?? null
@@ -168,7 +147,7 @@ function readInteractionOutput(router: ReturnType<typeof createStoryRouter>) {
   const pathname = decodeURIComponent(router.state.location.pathname)
 
   return {
-    viewport: readMobileViewport(),
+    viewport: readMobileViewportState(),
     pathname,
     expanded: toggle?.getAttribute('aria-expanded') ?? null,
     detailsId: details?.id ?? null,
@@ -183,45 +162,6 @@ function readInteractionOutput(router: ReturnType<typeof createStoryRouter>) {
 
 type InteractionOutput = ReturnType<typeof readInteractionOutput>
 
-async function withMobileViewport<T>(
-  session: ReturnType<typeof cdp>,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const originalViewport = {
-    width: window.innerWidth,
-    height: window.innerHeight,
-  }
-
-  try {
-    await session.send('Emulation.setDeviceMetricsOverride', {
-      ...MOBILE_VIEWPORT,
-      deviceScaleFactor: 1,
-      mobile: true,
-    })
-    await session.send('Emulation.setTouchEmulationEnabled', {
-      enabled: true,
-      maxTouchPoints: 1,
-    })
-    await page.viewport(MOBILE_VIEWPORT.width, MOBILE_VIEWPORT.height)
-
-    return await operation()
-  } finally {
-    try {
-      await Promise.all([
-        session.send('Emulation.setTouchEmulationEnabled', { enabled: false }),
-        session.send('Emulation.clearDeviceMetricsOverride'),
-      ])
-    } finally {
-      await page.viewport(originalViewport.width, originalViewport.height)
-    }
-  }
-}
-
-async function tapLink(name: string) {
-  const link = page.getByRole('link', { name })
-  await commands.tapLinkOnTouch(link.selector)
-}
-
 afterEach(cleanup)
 
 describe('CalendarPageView on mobile', () => {
@@ -235,16 +175,16 @@ describe('CalendarPageView on mobile', () => {
         const outputs: InteractionOutput[] = [readInteractionOutput(router)]
         const toggle = page.getByRole('button', { name: '他 1 社' })
 
-        await toggle.click()
+        await tapElementOnTouch(toggle.selector)
         outputs.push(readInteractionOutput(router))
 
-        await toggle.click()
+        await tapElementOnTouch(toggle.selector)
         outputs.push(readInteractionOutput(router))
 
-        await toggle.click()
+        await tapElementOnTouch(toggle.selector)
         outputs.push(readInteractionOutput(router))
 
-        await tapLink(scenario.expectedLinkName)
+        await tapLinkOnTouch(scenario.expectedLinkName)
         await screen.findByTestId('stock-page')
         outputs.push(readInteractionOutput(router))
 

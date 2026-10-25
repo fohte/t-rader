@@ -3,16 +3,19 @@ import '#index.css'
 import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { cdp, commands, page } from 'vitest/browser'
+import { cdp, page } from 'vitest/browser'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
+import {
+  tapLinkOnTouch,
+  withMobileViewport,
+} from '#vitest/touch-browser-test-helper'
 
 const NOTE_ID = '00000000-0000-4000-8000-000000000101'
 const VERSION_ID = '00000000-0000-4000-8000-000000000201'
 const CURRENT_NOTE_ID = '00000000-0000-4000-8000-000000000102'
-const MOBILE_VIEWPORT = { width: 390, height: 844 }
 const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
   {
     note_id: NOTE_ID,
@@ -36,13 +39,8 @@ interface CdpTargetInfo {
 
 declare module 'vitest/browser' {
   interface CDPSession {
-    send(method: string, params?: Record<string, unknown>): Promise<unknown>
     on(event: string, listener: (target: CdpTargetInfo) => void): void
     off(event: string, listener: (target: CdpTargetInfo) => void): void
-  }
-
-  interface BrowserCommands {
-    tapLinkOnTouch(selector: string): Promise<void>
   }
 }
 
@@ -63,62 +61,6 @@ function readLocation(router: ReturnType<typeof createStoryRouter>) {
 }
 
 type CdpSession = ReturnType<typeof cdp>
-
-async function withMobileViewport<T>(
-  session: CdpSession,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const originalViewport = {
-    width: window.innerWidth,
-    height: window.innerHeight,
-  }
-  await session.send('Emulation.setDeviceMetricsOverride', {
-    ...MOBILE_VIEWPORT,
-    deviceScaleFactor: 1,
-    mobile: true,
-  })
-  await session.send('Emulation.setTouchEmulationEnabled', {
-    enabled: true,
-    maxTouchPoints: 1,
-  })
-  await page.viewport(MOBILE_VIEWPORT.width, MOBILE_VIEWPORT.height)
-
-  try {
-    expect(readMobileViewportState()).toEqual({
-      width: MOBILE_VIEWPORT.width,
-      height: MOBILE_VIEWPORT.height,
-      hasNoHover: true,
-      hasCoarsePointer: true,
-      maxTouchPoints: 1,
-    })
-
-    return await operation()
-  } finally {
-    try {
-      await Promise.all([
-        session.send('Emulation.setTouchEmulationEnabled', { enabled: false }),
-        session.send('Emulation.clearDeviceMetricsOverride'),
-      ])
-    } finally {
-      await page.viewport(originalViewport.width, originalViewport.height)
-    }
-  }
-}
-
-function readMobileViewportState() {
-  return {
-    width: window.innerWidth,
-    height: window.innerHeight,
-    hasNoHover: window.matchMedia('(hover: none)').matches,
-    hasCoarsePointer: window.matchMedia('(pointer: coarse)').matches,
-    maxTouchPoints: navigator.maxTouchPoints,
-  }
-}
-
-async function tapLink(name: string) {
-  const link = page.getByRole('link', { name })
-  await commands.tapLinkOnTouch(link.selector)
-}
 
 async function expectNewTab(
   session: CdpSession,
@@ -297,7 +239,7 @@ describe('MarkdownBody links', () => {
       await withMobileViewport(session, async () => {
         renderNote(source(targetUrl))
         await expectNewTab(session, targetUrl, () =>
-          tapLink(linkName(targetUrl)),
+          tapLinkOnTouch(linkName(targetUrl)),
         )
       })
     },
@@ -346,7 +288,7 @@ describe('MarkdownBody links', () => {
       await withMobileViewport(session, async () => {
         const router = renderNote(source, noteLinks)
 
-        await tapLink(linkName)
+        await tapLinkOnTouch(linkName)
         await waitFor(() => {
           expect(readLocation(router)).toEqual(expectedLocation)
         })

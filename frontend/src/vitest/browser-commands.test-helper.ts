@@ -1,15 +1,23 @@
 import type { BrowserCommand } from 'vitest/node'
 
-export const tapLinkOnTouch: BrowserCommand<[selector: string]> = async (
+declare module 'vitest/browser' {
+  interface BrowserCommands {
+    tapElementOnTouch(selector: string): Promise<void>
+  }
+}
+
+const tapOnTouch: BrowserCommand<[selector: string]> = async (
   context,
   selector,
 ) => {
   if (context.provider.name !== 'playwright') {
-    return Promise.reject(new Error('Touch link tests require Playwright'))
+    return Promise.reject(
+      new Error('Touch interaction tests require Playwright'),
+    )
   }
 
-  const link = (await context.frame()).locator(selector)
-  const position = await link.evaluate((element) => {
+  const target = (await context.frame()).locator(selector)
+  const position = await target.evaluate((element) => {
     const bounds = element.getBoundingClientRect()
     const firstRect = element.getClientRects().item(0)
     if (firstRect == null) return null
@@ -23,5 +31,7 @@ export const tapLinkOnTouch: BrowserCommand<[selector: string]> = async (
     return Promise.reject(new Error('The touch target has no visible bounds'))
   }
 
-  await link.tap({ position })
+  await target.tap({ position })
 }
+
+export const tapElementOnTouch = tapOnTouch
