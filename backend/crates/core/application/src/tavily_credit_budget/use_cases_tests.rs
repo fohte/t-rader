@@ -1248,9 +1248,7 @@ async fn monthly_reset_carries_unknown_credit_when_provider_usage_increases() {
 #[case::above_reserved(Decimal::new(2, 0))]
 #[case::zero_for_basic_search(Decimal::ZERO)]
 #[tokio::test]
-async fn invalid_usage_value_is_unknown_and_extract_failure_settles_reported_credits(
-    #[case] invalid_search_usage: Decimal,
-) {
+async fn invalid_search_usage_is_unknown(#[case] invalid_search_usage: Decimal) {
     let provider =
         TestProvider::new(free_usage(Decimal::ZERO)).with_search_response(Ok(WebSearchResponse {
             results: Vec::new(),
@@ -1267,6 +1265,23 @@ async fn invalid_usage_value_is_unknown_and_extract_failure_settles_reported_cre
         )
         .await;
 
+    assert_eq!(
+        (invalid_usage, provider.call_counts()),
+        (
+            Err(TavilyCreditBudgetUseCasesError::Denied(
+                TavilyCreditBudgetDenial::new(
+                    TavilyCreditBudgetReason::UsageConfirmationFailed,
+                    TavilyCreditBudgetScope::Confirmation,
+                    None,
+                ),
+            )),
+            (2, 1, 0),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn extract_failure_settles_provider_reported_credits() {
     let failed_provider = TestProvider::new(free_usage(Decimal::ZERO)).with_extract_response(Ok(
         WebPageExtractionResponse {
             raw_content: None,
@@ -1277,38 +1292,34 @@ async fn invalid_usage_value_is_unknown_and_extract_failure_settles_reported_cre
             credits_used: Some(Decimal::ZERO),
         },
     ));
-    let (extract_cases, _repository, _clock, failed_provider) =
+    let (use_cases, repository, _clock, failed_provider) =
         bootstrapped(failed_provider, Decimal::ZERO).await;
-    let extraction = extract_cases
+    let extraction = use_cases
         .extract_page(
             "extract-call".into(),
             fingerprint('b'),
             "https://example.invalid/article".into(),
         )
         .await;
+    let state = repository.0.lock().await;
+
     assert_eq!(
         (
-            invalid_usage,
             extraction,
-            provider.call_counts(),
             failed_provider.call_counts(),
+            state.daily_used,
+            state.monthly_used,
         ),
         (
-            Err(TavilyCreditBudgetUseCasesError::Denied(
-                TavilyCreditBudgetDenial::new(
-                    TavilyCreditBudgetReason::UsageConfirmationFailed,
-                    TavilyCreditBudgetScope::Confirmation,
-                    None,
-                ),
-            )),
             Err(TavilyCreditBudgetUseCasesError::Provider(
                 WebSearchError::ExtractionFailed {
                     url: "https://example.invalid/article".into(),
                     message: "synthetic extraction failure".into(),
                 },
             )),
-            (2, 1, 0),
             (2, 0, 1),
+            Decimal::ZERO,
+            Decimal::ZERO,
         ),
     );
 }
@@ -1337,13 +1348,41 @@ async fn concurrent_reservations_cannot_pass_the_daily_limit() {
             None,
         ),
     );
-    let results = [first, second];
+    let mut outcomes = [first, second]
+        .map(|result| match result {
+            Ok(results) => Ok(results),
+            Err(TavilyCreditBudgetUseCasesError::Denied(denial)) => {
+                Err((denial.reason, denial.scope, denial.next_reset))
+            }
+            Err(_) => Err((
+                TavilyCreditBudgetReason::UsageConfirmationFailed,
+                TavilyCreditBudgetScope::Confirmation,
+                None,
+            )),
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
+    outcomes.sort_by_key(|outcome| match outcome {
+        Ok(_) => 0,
+        Err(_) => 1,
+    });
     assert_eq!(
+        (outcomes, provider.call_counts()),
         (
-            results.iter().filter(|result| result.is_ok()).count(),
-            results.iter().filter(|result| result.is_err()).count(),
-            provider.call_counts(),
+            vec![
+                Ok(vec![WebSearchResult {
+                    title: "Example result".into(),
+                    url: "https://example.invalid/article".into(),
+                    published_date: None,
+                    snippet: "Example excerpt".into(),
+                }]),
+                Err((
+                    TavilyCreditBudgetReason::DailyLimitExceeded,
+                    TavilyCreditBudgetScope::Daily,
+                    Some(utc(2026, 1, 6, 0, 0)),
+                )),
+            ],
+            (3, 1, 0),
         ),
-        (1, 1, (3, 1, 0)),
     );
 }

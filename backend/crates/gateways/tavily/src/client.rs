@@ -78,6 +78,22 @@ impl TavilyClient {
     }
 }
 
+fn network_error(error: reqwest::Error) -> WebSearchError {
+    if error.is_timeout() {
+        WebSearchError::NetworkTimeout
+    } else {
+        WebSearchError::Network(error.to_string())
+    }
+}
+
+fn usage_error(error: reqwest::Error) -> WebSearchError {
+    if error.is_timeout() {
+        WebSearchError::UsageTimeout
+    } else {
+        WebSearchError::Usage(error.to_string())
+    }
+}
+
 #[async_trait]
 impl WebSearchClient for TavilyClient {
     async fn search(
@@ -100,7 +116,7 @@ impl WebSearchClient for TavilyClient {
             })
             .send()
             .await
-            .map_err(|error| WebSearchError::Network(error.to_string()))?;
+            .map_err(network_error)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -137,7 +153,7 @@ impl WebSearchClient for TavilyClient {
             })
             .send()
             .await
-            .map_err(|error| WebSearchError::Network(error.to_string()))?;
+            .map_err(network_error)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -185,7 +201,7 @@ impl WebSearchClient for TavilyClient {
             .get(&self.usage_endpoint)
             .send()
             .await
-            .map_err(|error| WebSearchError::Usage(error.to_string()))?;
+            .map_err(usage_error)?;
         let status = response.status();
         if !status.is_success() {
             let message = response.text().await.unwrap_or_default();

@@ -83,6 +83,9 @@ pub enum WebSearchError {
     #[error("network error: {0}")]
     Network(String),
 
+    #[error("network request timed out")]
+    NetworkTimeout,
+
     #[error("web search API error (status {status}): {message}")]
     Api { status: u16, message: String },
 
@@ -97,6 +100,24 @@ pub enum WebSearchError {
 
     #[error("web search account usage could not be confirmed: {0}")]
     Usage(String),
+
+    #[error("web search account usage request timed out")]
+    UsageTimeout,
+}
+
+impl WebSearchError {
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Network(_) => "network",
+            Self::NetworkTimeout => "network_timeout",
+            Self::Api { .. } => "provider_api",
+            Self::Parse(_) => "response_parse",
+            Self::ExtractionFailed { .. } => "extraction_failure",
+            Self::Init(_) => "initialization",
+            Self::Usage(_) => "usage_confirmation",
+            Self::UsageTimeout => "usage_timeout",
+        }
+    }
 }
 
 #[async_trait]

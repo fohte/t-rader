@@ -507,14 +507,23 @@ fn tavily_call_identity(
     tool_name: &str,
     arguments: serde_json::Value,
 ) -> Result<(String, String), McpError> {
-    let execution_id =
-        execution_id_from_ctx(context).unwrap_or_else(|| format!("direct:{strategy_id}"));
-    let call_id = format!("{execution_id}:{}", context.id);
+    let call_id = tavily_call_id(strategy_id, execution_id_from_ctx(context), &context.id);
     let fingerprint = super::execution_budget_router::request_fingerprint(&serde_json::json!({
         "name": tool_name,
         "arguments": arguments,
     }))?;
     Ok((call_id, fingerprint))
+}
+
+fn tavily_call_id(
+    strategy_id: uuid::Uuid,
+    execution_id: Option<String>,
+    request_id: &impl std::fmt::Display,
+) -> String {
+    match execution_id {
+        Some(execution_id) => format!("{execution_id}:{request_id}"),
+        None => format!("direct:{strategy_id}:{}", uuid::Uuid::new_v4()),
+    }
 }
 
 impl StrategyServer {

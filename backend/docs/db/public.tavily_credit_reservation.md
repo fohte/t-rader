@@ -49,6 +49,8 @@ Tavily provider へ送る検索・抽出の account credit 予約、精算、再
 | tavily_credit_reservation_pkey             | CREATE UNIQUE INDEX tavily_credit_reservation_pkey ON public.tavily_credit_reservation USING btree (reservation_id)                     |
 | tavily_credit_reservation_call_id_key      | CREATE UNIQUE INDEX tavily_credit_reservation_call_id_key ON public.tavily_credit_reservation USING btree (call_id)                     |
 | idx_tavily_credit_reservation_period_state | CREATE INDEX idx_tavily_credit_reservation_period_state ON public.tavily_credit_reservation USING btree (month_start, day_start, state) |
+| idx_tavily_credit_reservation_day_state    | CREATE INDEX idx_tavily_credit_reservation_day_state ON public.tavily_credit_reservation USING btree (day_start, state)                 |
+| idx_tavily_credit_reservation_month_state  | CREATE INDEX idx_tavily_credit_reservation_month_state ON public.tavily_credit_reservation USING btree (month_start, state)             |
 
 ## Relations
 

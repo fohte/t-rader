@@ -165,6 +165,13 @@ impl TavilyCreditBudgetUseCases {
         operation: TavilyCreditBudgetOperation,
         error: WebSearchError,
     ) -> TavilyCreditBudgetUseCasesError {
+        warn!(
+            target: "tavily_credit_budget",
+            event = "provider_call_failed",
+            operation = operation.as_str(),
+            error_kind = error.kind(),
+            "Tavily provider call failed"
+        );
         let (state, denial) = match error {
             WebSearchError::Api { status, .. } => (
                 ReservationFailureState::ProviderRejected,
@@ -175,7 +182,7 @@ impl TavilyCreditBudgetUseCases {
                 )
                 .with_provider_status(status),
             ),
-            WebSearchError::Usage(_) => (
+            WebSearchError::Usage(_) | WebSearchError::UsageTimeout => (
                 ReservationFailureState::Unknown,
                 TavilyCreditBudgetDenial::new(
                     TavilyCreditBudgetReason::UsageConfirmationFailed,

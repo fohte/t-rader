@@ -10,7 +10,7 @@ use rust_decimal::Decimal;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::super::mcp_tool::call_tool_output_with_headers;
+use super::super::mcp_tool::{call_tool_output_with_headers, call_tool_output_with_headers_and_id};
 use super::SEARCH_WEB_MAX_CALLS_PER_TASK;
 use super::dto::SearchWebParams;
 use super::test_credit_budget::expected_denial;
@@ -185,6 +185,123 @@ async fn search_web_returns_article_results_without_tool_model_header(
                 topic: Some(WebSearchTopic::News),
                 time_range: Some(WebSearchTimeRange::Month),
             }],
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn direct_search_web_calls_with_reused_json_rpc_id_get_distinct_reservations(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = insert_strategy(&db, "example strategy").await;
+    let (client, calls) = client(vec![example_result()], false);
+    let server = build_server(db).with_web_search_client(Some(client));
+    let mut request_headers = HeaderMap::new();
+    request_headers.insert(
+        "x-strategy-id",
+        HeaderValue::from_str(&strategy_id.to_string()).expect("valid strategy ID"),
+    );
+    let arguments = serde_json::to_value(params("example query")).expect("serialize params");
+
+    let first = call_tool_output_with_headers_and_id::<_, serde_json::Value>(
+        server.entrypoint_server(),
+        "search_web",
+        arguments.clone(),
+        rmcp::model::NumberOrString::Number(1),
+        request_headers.clone(),
+    )
+    .await;
+    let second = call_tool_output_with_headers_and_id::<_, serde_json::Value>(
+        server.entrypoint_server(),
+        "search_web",
+        arguments,
+        rmcp::model::NumberOrString::Number(1),
+        request_headers,
+    )
+    .await;
+
+    assert_eq!(
+        (first, second, calls.lock().expect("record calls").len()),
+        (
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            2,
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn search_web_replays_the_same_task_request_without_a_second_provider_call(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution =
+        create_task_with_subagent_limits(&db, strategy_id, "researcher", "search_web", 1, 20).await;
+    let (client, calls) = client(vec![example_result()], false);
+    let server = build_server(db).with_web_search_client(Some(client));
+    let mut request_headers = HeaderMap::new();
+    request_headers.insert(
+        "x-strategy-id",
+        HeaderValue::from_str(&strategy_id.to_string()).expect("valid strategy ID"),
+    );
+    request_headers.insert(
+        "x-strategy-task-id",
+        HeaderValue::from_str(&task_execution.task_id.to_string()).expect("valid task ID"),
+    );
+    request_headers.insert(
+        "x-execution-id",
+        HeaderValue::from_str(&format!(
+            "{}:{}",
+            task_execution.a2a_task_id,
+            Uuid::from_u128(305),
+        ))
+        .expect("valid execution ID"),
+    );
+    let arguments = serde_json::to_value(params("example query")).expect("serialize params");
+
+    let first = call_tool_output_with_headers_and_id::<_, serde_json::Value>(
+        server.entrypoint_server(),
+        "search_web",
+        arguments.clone(),
+        rmcp::model::NumberOrString::Number(1),
+        request_headers.clone(),
+    )
+    .await;
+    let replay = call_tool_output_with_headers_and_id::<_, serde_json::Value>(
+        server.entrypoint_server(),
+        "search_web",
+        arguments,
+        rmcp::model::NumberOrString::Number(1),
+        request_headers,
+    )
+    .await;
+
+    assert_eq!(
+        (first, replay, calls.lock().expect("record calls").len()),
+        (
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            1,
         ),
     );
 }

@@ -560,17 +560,49 @@ async fn main() -> Result<(), StartupError> {
 }
 
 fn tavily_credit_budget_config_from_env() -> Option<TavilyCreditBudgetConfig> {
-    let paygo_disabled_confirmed = std::env::var("TAVILY_PAYGO_DISABLED").as_deref() == Ok("true");
-    std::env::var("TAVILY_CREDIT_ACCOUNT_ID")
-        .ok()
+    let account_id = std::env::var("TAVILY_CREDIT_ACCOUNT_ID").ok();
+    let paygo_disabled = std::env::var("TAVILY_PAYGO_DISABLED").ok();
+    tavily_credit_budget_config(account_id.as_deref(), paygo_disabled.as_deref())
+}
+
+fn tavily_credit_budget_config(
+    account_id: Option<&str>,
+    paygo_disabled: Option<&str>,
+) -> Option<TavilyCreditBudgetConfig> {
+    let paygo_disabled_confirmed = paygo_disabled == Some("true");
+    account_id
+        .filter(|value| !value.trim().is_empty())
         .and_then(|account_id| {
-            TavilyCreditBudgetConfig::free_tier(account_id, paygo_disabled_confirmed)
+            TavilyCreditBudgetConfig::free_tier(account_id.to_owned(), paygo_disabled_confirmed)
         })
 }
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
+    use super::tavily_credit_budget_config;
     use super::us_stock_master_source;
+
+    #[rstest]
+    #[case::missing(None, false)]
+    #[case::false_value(Some("false"), false)]
+    #[case::case_mismatch(Some("TRUE"), false)]
+    #[case::confirmed(Some("true"), true)]
+    fn tavily_credit_budget_requires_explicit_paygo_confirmation(
+        #[case] paygo_disabled: Option<&str>,
+        #[case] expected_enabled: bool,
+    ) {
+        assert_eq!(
+            tavily_credit_budget_config(Some("example-account"), paygo_disabled).is_some(),
+            expected_enabled,
+        );
+    }
+
+    #[test]
+    fn tavily_credit_budget_requires_an_account_id() {
+        assert_eq!(tavily_credit_budget_config(None, Some("true")), None,);
+    }
 
     #[test]
     fn api_only_mode_does_not_validate_the_sec_user_agent() {

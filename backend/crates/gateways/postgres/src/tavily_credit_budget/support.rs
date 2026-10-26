@@ -243,8 +243,7 @@ pub(super) async fn reconcile_periods<C: ConnectionTrait>(
     Ok(None)
 }
 
-pub(super) async fn reconcile_usage<C: ConnectionTrait>(
-    connection: &C,
+pub(super) async fn reconcile_usage(
     state: &mut BudgetState,
     command: &ReservationCommand,
 ) -> Result<Option<TavilyCreditBudgetDenial>, TavilyCreditBudgetRepositoryError> {
@@ -255,42 +254,26 @@ pub(super) async fn reconcile_usage<C: ConnectionTrait>(
             next_month_start(state.month_start).map(|value| value.with_timezone(&Utc)),
         )));
     }
-    let in_flight_monthly = sum_reservations(
-        connection,
-        "month_start",
-        state.month_start,
-        &["prepared", "dispatching", "unknown", "provider_rejected"],
-    )
-    .await?;
-    let provider_upper_bound = checked_add(command.monthly_provider_usage, in_flight_monthly)?;
     let tracked_current_month = state
         .monthly_used
         .checked_sub(state.monthly_carry)
         .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
     state.monthly_used = checked_add(
         state.monthly_carry,
-        tracked_current_month.max(provider_upper_bound),
+        tracked_current_month.max(command.monthly_provider_usage),
     )?;
 
     let daily_provider_delta = command
         .monthly_provider_usage
         .checked_sub(state.day_provider_usage)
         .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
-    let in_flight_daily = sum_reservations(
-        connection,
-        "day_start",
-        state.day_start,
-        &["prepared", "dispatching", "unknown", "provider_rejected"],
-    )
-    .await?;
-    let provider_daily_upper_bound = checked_add(daily_provider_delta, in_flight_daily)?;
     let tracked_current_day = state
         .daily_used
         .checked_sub(state.daily_carry)
         .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
     state.daily_used = checked_add(
         state.daily_carry,
-        tracked_current_day.max(provider_daily_upper_bound),
+        tracked_current_day.max(daily_provider_delta),
     )?;
     state.provider_usage = command.monthly_provider_usage;
     Ok(None)
@@ -340,33 +323,6 @@ pub(super) fn capacity_denial(
         ));
     }
     None
-}
-
-pub(super) async fn sum_reservations<C: ConnectionTrait>(
-    connection: &C,
-    period_column: &str,
-    period_start: NaiveDate,
-    states: &[&str],
-) -> Result<Decimal, TavilyCreditBudgetRepositoryError> {
-    let states = states
-        .iter()
-        .map(|state| format!("'{state}'"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "SELECT COALESCE(SUM(reserved_credits), 0)::numeric AS credits FROM tavily_credit_reservation \
-         WHERE {period_column} = $1 AND state IN ({states})"
-    );
-    let row = connection
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            sql,
-            [period_start.into()],
-        ))
-        .await
-        .map_err(database_error)?
-        .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
-    row.try_get("", "credits").map_err(database_error)
 }
 
 pub(super) fn next_day_start(day: NaiveDate) -> Option<DateTime<Utc>> {

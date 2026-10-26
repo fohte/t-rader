@@ -271,6 +271,84 @@ async fn unknown_reservation_remains_in_budget_after_month_reset(db: DatabaseHan
 }
 
 #[backend_test_macros::database_test]
+async fn provider_usage_includes_dispatching_reservations_without_double_counting(
+    db: DatabaseHandle,
+) {
+    let unit_of_work = PostgresUnitOfWork::new(db.clone());
+    let repository = PostgresTavilyCreditBudgetRepository::new();
+    let config = TavilyCreditBudgetConfig::free_tier("example-account".into(), true)
+        .expect("valid synthetic config");
+    let current_day = day(2026, 3, 2);
+    let bootstrap = unit_of_work.begin().await.expect("begin bootstrap");
+    repository
+        .initialize(
+            &bootstrap,
+            BootstrapCommand {
+                config: config.clone(),
+                monthly_provider_usage: Decimal::ZERO,
+                month_start: day(2026, 3, 1),
+                day_start: current_day,
+                daily_blocked_until: utc(current_day, 0, 0),
+                now: utc(current_day, 0, 0),
+            },
+        )
+        .await
+        .expect("initialize account budget");
+    unit_of_work
+        .commit(bootstrap)
+        .await
+        .expect("commit bootstrap");
+
+    let first = ReservationCommand {
+        config: config.clone(),
+        call_id: "dispatching-call".into(),
+        request_fingerprint: "a".repeat(64),
+        operation: TavilyCreditBudgetOperation::Search,
+        monthly_provider_usage: Decimal::ZERO,
+        month_start: day(2026, 3, 1),
+        day_start: current_day,
+        now: utc(current_day, 0, 1),
+    };
+    assert_eq!(
+        reserve(&repository, &unit_of_work, first.clone()).await,
+        ReservationOutcome::Reserved {
+            daily_used: Decimal::ONE,
+            monthly_used: Decimal::ONE,
+        },
+    );
+    claim(
+        &repository,
+        &unit_of_work,
+        &first.call_id,
+        &first.request_fingerprint,
+        first.now,
+    )
+    .await;
+
+    assert_eq!(
+        reserve(
+            &repository,
+            &unit_of_work,
+            ReservationCommand {
+                config,
+                call_id: "next-call".into(),
+                request_fingerprint: "b".repeat(64),
+                operation: TavilyCreditBudgetOperation::Search,
+                monthly_provider_usage: Decimal::ONE,
+                month_start: day(2026, 3, 1),
+                day_start: current_day,
+                now: utc(current_day, 0, 2),
+            },
+        )
+        .await,
+        ReservationOutcome::Reserved {
+            daily_used: Decimal::new(2, 0),
+            monthly_used: Decimal::new(2, 0),
+        },
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn concurrent_reservations_are_serialized_by_postgres(_db: DatabaseHandle) {
     let pool = crate::test_support::create_test_pool_with_max_connections(3).await;
     let database = DatabaseHandle::from(SqlxPostgresConnector::from_sqlx_postgres_pool(pool));

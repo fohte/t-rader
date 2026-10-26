@@ -157,9 +157,7 @@ impl TavilyCreditBudgetRepository for PostgresTavilyCreditBudgetRepository {
                             save_state(transaction, &state, command.now).await?;
                             return Ok(denied_outcome(denial, &state));
                         }
-                        if let Some(denial) =
-                            reconcile_usage(transaction, &mut state, &command).await?
-                        {
+                        if let Some(denial) = reconcile_usage(&mut state, &command).await? {
                             save_state(transaction, &state, command.now).await?;
                             return Ok(denied_outcome(denial, &state));
                         }
@@ -207,8 +205,7 @@ impl TavilyCreditBudgetRepository for PostgresTavilyCreditBudgetRepository {
                         save_state(transaction, &state, command.now).await?;
                         return Ok(denied_outcome(denial, &state));
                     }
-                    if let Some(denial) = reconcile_usage(transaction, &mut state, &command).await?
-                    {
+                    if let Some(denial) = reconcile_usage(&mut state, &command).await? {
                         save_state(transaction, &state, command.now).await?;
                         return Ok(denied_outcome(denial, &state));
                     }
@@ -242,7 +239,7 @@ impl TavilyCreditBudgetRepository for PostgresTavilyCreditBudgetRepository {
             save_state(transaction, &state, command.now).await?;
             return Ok(denied_outcome(denial, &state));
         }
-        if let Some(denial) = reconcile_usage(transaction, &mut state, &command).await? {
+        if let Some(denial) = reconcile_usage(&mut state, &command).await? {
             save_state(transaction, &state, command.now).await?;
             return Ok(denied_outcome(denial, &state));
         }
@@ -379,6 +376,9 @@ impl TavilyCreditBudgetRepository for PostgresTavilyCreditBudgetRepository {
     ) -> Result<(), TavilyCreditBudgetRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
+        let mut state = load_state(transaction, true)
+            .await?
+            .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
         let Some(row) = load_reservation(transaction, call_id, true).await? else {
             return Err(TavilyCreditBudgetRepositoryError::InvalidState);
         };
@@ -395,9 +395,6 @@ impl TavilyCreditBudgetRepository for PostgresTavilyCreditBudgetRepository {
         if row.state != "dispatching" {
             return Err(TavilyCreditBudgetRepositoryError::InvalidState);
         }
-        let mut state = load_state(transaction, true)
-            .await?
-            .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
         let adjustment = actual_credits - row.reserved_credits;
         state.daily_used = checked_add(state.daily_used, adjustment)?;
         state.monthly_used = checked_add(state.monthly_used, adjustment)?;

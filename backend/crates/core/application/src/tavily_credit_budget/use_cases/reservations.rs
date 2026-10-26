@@ -1,15 +1,27 @@
+use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 use tracing::info;
 
 use super::super::{
     BudgetReadiness, ExistingReservation, ReservationClaim, ReservationCommand, ReservationOutcome,
-    TavilyCreditBudgetDenial, TavilyCreditBudgetOperation, TavilyCreditBudgetReason,
-    TavilyCreditBudgetScope,
+    TavilyCreditBudgetConfig, TavilyCreditBudgetDenial, TavilyCreditBudgetOperation,
+    TavilyCreditBudgetReason, TavilyCreditBudgetScope,
 };
 use super::helpers::{
     confirmation_failed, denied, log_denial, log_reconciliation, month_start, replay_claim,
     validate_account_usage,
 };
 use super::{TavilyCreditBudgetUseCases, TavilyCreditBudgetUseCasesError};
+
+struct ReservationContext<'a> {
+    call_id: &'a str,
+    request_fingerprint: &'a str,
+    operation: TavilyCreditBudgetOperation,
+    monthly_provider_usage: Decimal,
+    config: &'a TavilyCreditBudgetConfig,
+    now: DateTime<Utc>,
+}
+
 impl TavilyCreditBudgetUseCases {
     pub(super) async fn prepare_reservation(
         &self,
@@ -29,39 +41,11 @@ impl TavilyCreditBudgetUseCases {
             ));
         }
 
-        let transaction = self
-            .unit_of_work
-            .begin()
-            .await
-            .map_err(|_| confirmation_failed())?;
-        let existing = self
-            .repository
-            .find_reservation(&transaction, call_id, request_fingerprint)
-            .await
-            .map_err(|_| confirmation_failed())?;
-        self.unit_of_work
-            .commit(transaction)
-            .await
-            .map_err(|_| confirmation_failed())?;
-        match existing {
-            ExistingReservation::Replay(outcome) => {
-                return replay_claim(outcome, operation);
-            }
-            ExistingReservation::InProgress => {
-                return Err(denied(
-                    TavilyCreditBudgetReason::OutcomeUnknown,
-                    TavilyCreditBudgetScope::Confirmation,
-                    None,
-                ));
-            }
-            ExistingReservation::Conflict => {
-                return Err(denied(
-                    TavilyCreditBudgetReason::IdempotencyConflict,
-                    TavilyCreditBudgetScope::Account,
-                    None,
-                ));
-            }
-            ExistingReservation::Missing | ExistingReservation::Prepared => {}
+        if let Some(claim) = self
+            .existing_claim(call_id, request_fingerprint, operation)
+            .await?
+        {
+            return Ok(claim);
         }
 
         let Some(config) = self.config.as_ref() else {
@@ -95,6 +79,87 @@ impl TavilyCreditBudgetUseCases {
                 .await);
         };
 
+        self.ensure_ready(call_id, request_fingerprint, operation, config)
+            .await?;
+        let now = self.clock.now();
+        let monthly_provider_usage = self
+            .confirmed_account_usage(
+                provider.as_ref(),
+                call_id,
+                request_fingerprint,
+                operation,
+                now,
+            )
+            .await?;
+        let reservation = self
+            .reserve_credits(
+                call_id,
+                request_fingerprint,
+                operation,
+                config,
+                monthly_provider_usage,
+                now,
+            )
+            .await?;
+        let context = ReservationContext {
+            call_id,
+            request_fingerprint,
+            operation,
+            monthly_provider_usage,
+            config,
+            now,
+        };
+        if let Some(claim) = self.resolve_reservation(&context, reservation).await? {
+            return Ok(claim);
+        }
+
+        self.claim_reservation(call_id, request_fingerprint, operation)
+            .await
+    }
+
+    async fn existing_claim(
+        &self,
+        call_id: &str,
+        request_fingerprint: &str,
+        operation: TavilyCreditBudgetOperation,
+    ) -> Result<Option<ReservationClaim>, TavilyCreditBudgetUseCasesError> {
+        let transaction = self
+            .unit_of_work
+            .begin()
+            .await
+            .map_err(|_| confirmation_failed())?;
+        let existing = self
+            .repository
+            .find_reservation(&transaction, call_id, request_fingerprint)
+            .await
+            .map_err(|_| confirmation_failed())?;
+        self.unit_of_work
+            .commit(transaction)
+            .await
+            .map_err(|_| confirmation_failed())?;
+        match existing {
+            ExistingReservation::Replay(outcome) => replay_claim(outcome, operation).map(Some),
+            ExistingReservation::InProgress => Err(denied(
+                TavilyCreditBudgetReason::OutcomeUnknown,
+                TavilyCreditBudgetScope::Confirmation,
+                None,
+            )),
+            ExistingReservation::Conflict => Err(denied(
+                TavilyCreditBudgetReason::IdempotencyConflict,
+                TavilyCreditBudgetScope::Account,
+                None,
+            )),
+            ExistingReservation::Missing | ExistingReservation::Prepared => Ok(None),
+        }
+    }
+
+    async fn ensure_ready(
+        &self,
+        call_id: &str,
+        request_fingerprint: &str,
+        operation: TavilyCreditBudgetOperation,
+        config: &TavilyCreditBudgetConfig,
+    ) -> Result<(), TavilyCreditBudgetUseCasesError> {
         let transaction = self
             .unit_of_work
             .begin()
@@ -109,59 +174,52 @@ impl TavilyCreditBudgetUseCases {
             .commit(transaction)
             .await
             .map_err(|_| confirmation_failed())?;
-        match readiness {
-            BudgetReadiness::Ready => {}
-            BudgetReadiness::NotInitialized => {
-                return Err(self
-                    .persist_denial(
-                        call_id,
-                        request_fingerprint,
-                        operation,
-                        TavilyCreditBudgetDenial::new(
-                            TavilyCreditBudgetReason::BootstrapRequired,
-                            TavilyCreditBudgetScope::Account,
-                            None,
-                        ),
-                        self.clock.now(),
-                    )
-                    .await);
-            }
-            BudgetReadiness::AccountMismatch => {
-                return Err(self
-                    .persist_denial(
-                        call_id,
-                        request_fingerprint,
-                        operation,
-                        TavilyCreditBudgetDenial::new(
-                            TavilyCreditBudgetReason::AccountMismatch,
-                            TavilyCreditBudgetScope::Account,
-                            None,
-                        ),
-                        self.clock.now(),
-                    )
-                    .await);
-            }
-            BudgetReadiness::ConfigurationChanged => {
-                return Err(self
-                    .persist_denial(
-                        call_id,
-                        request_fingerprint,
-                        operation,
-                        TavilyCreditBudgetDenial::new(
-                            TavilyCreditBudgetReason::ConfigurationChanged,
-                            TavilyCreditBudgetScope::Account,
-                            None,
-                        ),
-                        self.clock.now(),
-                    )
-                    .await);
-            }
-        }
+        let denial = match readiness {
+            BudgetReadiness::Ready => return Ok(()),
+            BudgetReadiness::NotInitialized => TavilyCreditBudgetDenial::new(
+                TavilyCreditBudgetReason::BootstrapRequired,
+                TavilyCreditBudgetScope::Account,
+                None,
+            ),
+            BudgetReadiness::AccountMismatch => TavilyCreditBudgetDenial::new(
+                TavilyCreditBudgetReason::AccountMismatch,
+                TavilyCreditBudgetScope::Account,
+                None,
+            ),
+            BudgetReadiness::ConfigurationChanged => TavilyCreditBudgetDenial::new(
+                TavilyCreditBudgetReason::ConfigurationChanged,
+                TavilyCreditBudgetScope::Account,
+                None,
+            ),
+        };
+        Err(self
+            .persist_denial(
+                call_id,
+                request_fingerprint,
+                operation,
+                denial,
+                self.clock.now(),
+            )
+            .await)
+    }
 
-        let now = self.clock.now();
+    async fn confirmed_account_usage(
+        &self,
+        provider: &dyn crate::web_search::WebSearchClient,
+        call_id: &str,
+        request_fingerprint: &str,
+        operation: TavilyCreditBudgetOperation,
+        now: DateTime<Utc>,
+    ) -> Result<rust_decimal::Decimal, TavilyCreditBudgetUseCasesError> {
         let usage = match provider.account_usage().await {
             Ok(usage) => usage,
-            Err(_) => {
+            Err(error) => {
+                tracing::warn!(
+                    target: "tavily_credit_budget",
+                    event = "usage_confirmation_failed",
+                    error_kind = error.kind(),
+                    "Tavily account usage could not be confirmed"
+                );
                 let denial = confirmation_failed().denial();
                 return Err(self
                     .persist_denial(call_id, request_fingerprint, operation, denial, now)
@@ -188,7 +246,18 @@ impl TavilyCreditBudgetUseCases {
                 )
                 .await);
         };
+        Ok(monthly_provider_usage)
+    }
 
+    async fn reserve_credits(
+        &self,
+        call_id: &str,
+        request_fingerprint: &str,
+        operation: TavilyCreditBudgetOperation,
+        config: &TavilyCreditBudgetConfig,
+        monthly_provider_usage: Decimal,
+        now: DateTime<Utc>,
+    ) -> Result<ReservationOutcome, TavilyCreditBudgetUseCasesError> {
         let current_day = now.date_naive();
         let transaction = self
             .unit_of_work
@@ -216,7 +285,14 @@ impl TavilyCreditBudgetUseCases {
             .commit(transaction)
             .await
             .map_err(|_| confirmation_failed())?;
+        Ok(reservation)
+    }
 
+    async fn resolve_reservation(
+        &self,
+        context: &ReservationContext<'_>,
+        reservation: ReservationOutcome,
+    ) -> Result<Option<ReservationClaim>, TavilyCreditBudgetUseCasesError> {
         match reservation {
             ReservationOutcome::Reserved {
                 daily_used,
@@ -226,47 +302,74 @@ impl TavilyCreditBudgetUseCases {
                 daily_used,
                 monthly_used,
             } => {
-                log_reconciliation(monthly_provider_usage, daily_used, monthly_used, config);
+                log_reconciliation(
+                    context.monthly_provider_usage,
+                    daily_used,
+                    monthly_used,
+                    context.config,
+                );
                 info!(
                     target: "tavily_credit_budget",
                     event = "reservation_created",
-                    operation = operation.as_str(),
-                    reserved_credits = %operation.reservation(),
+                    operation = context.operation.as_str(),
+                    reserved_credits = %context.operation.reservation(),
                     daily_used = %daily_used,
-                    daily_limit = %config.daily_limit(),
+                    daily_limit = %context.config.daily_limit(),
                     monthly_used = %monthly_used,
-                    monthly_limit = %config.monthly_limit(),
+                    monthly_limit = %context.config.monthly_limit(),
                     "Tavily account credits reserved"
                 );
+                Ok(None)
             }
-            ReservationOutcome::Replay(outcome) => return replay_claim(outcome, operation),
-            ReservationOutcome::InProgress => {
-                return Err(denied(
-                    TavilyCreditBudgetReason::OutcomeUnknown,
-                    TavilyCreditBudgetScope::Confirmation,
-                    None,
-                ));
+            ReservationOutcome::Replay(outcome) => {
+                replay_claim(outcome, context.operation).map(Some)
             }
+            ReservationOutcome::InProgress => Err(denied(
+                TavilyCreditBudgetReason::OutcomeUnknown,
+                TavilyCreditBudgetScope::Confirmation,
+                None,
+            )),
             ReservationOutcome::Denied {
                 denial,
                 daily_used,
                 monthly_used,
             } => {
-                log_reconciliation(monthly_provider_usage, daily_used, monthly_used, config);
-                log_denial(&denial, operation, Some(daily_used), Some(monthly_used));
-                self.record_denial(call_id, request_fingerprint, operation, denial.clone(), now)
-                    .await;
-                return Err(TavilyCreditBudgetUseCasesError::Denied(denial));
+                log_reconciliation(
+                    context.monthly_provider_usage,
+                    daily_used,
+                    monthly_used,
+                    context.config,
+                );
+                log_denial(
+                    &denial,
+                    context.operation,
+                    Some(daily_used),
+                    Some(monthly_used),
+                );
+                self.record_denial(
+                    context.call_id,
+                    context.request_fingerprint,
+                    context.operation,
+                    denial.clone(),
+                    context.now,
+                )
+                .await;
+                Err(TavilyCreditBudgetUseCasesError::Denied(denial))
             }
-            ReservationOutcome::Conflict => {
-                return Err(denied(
-                    TavilyCreditBudgetReason::IdempotencyConflict,
-                    TavilyCreditBudgetScope::Account,
-                    None,
-                ));
-            }
+            ReservationOutcome::Conflict => Err(denied(
+                TavilyCreditBudgetReason::IdempotencyConflict,
+                TavilyCreditBudgetScope::Account,
+                None,
+            )),
         }
+    }
 
+    async fn claim_reservation(
+        &self,
+        call_id: &str,
+        request_fingerprint: &str,
+        operation: TavilyCreditBudgetOperation,
+    ) -> Result<ReservationClaim, TavilyCreditBudgetUseCasesError> {
         let transaction = self
             .unit_of_work
             .begin()
