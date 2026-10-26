@@ -116,7 +116,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -429,7 +431,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -439,7 +443,13 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
+<<<<<<< before updating
       - run: pnpm install --frozen-lockfile
+||||||| last update
+      - run: pnpm install --filter ./${{ matrix.package }}... --frozen-lockfile
+=======
+      - run: pnpm install --filter "{./${{ matrix.package }}}..." --frozen-lockfile
+>>>>>>> after updating
 
       - name: Get Playwright version
         id: playwright-version
@@ -1050,7 +1060,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
