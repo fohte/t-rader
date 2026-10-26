@@ -11,6 +11,7 @@ use core_application::{
     unit_of_work::SharedUnitOfWork,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, Statement};
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::transaction::transaction_ref;
@@ -22,6 +23,7 @@ mod tests;
 const EXPIRED_CACHE_CLEANUP_LIMIT: i64 = 100;
 const CACHE_FILL_LEASE_TTL: Duration = Duration::minutes(5);
 const CACHE_LOOKUP_POLL_INTERVAL: StdDuration = StdDuration::from_millis(50);
+const CACHE_LOOKUP_WAIT_LIMIT: StdDuration = StdDuration::from_secs(90);
 
 #[derive(Clone)]
 pub struct PostgresTavilyRetrievalCacheRepository {
@@ -43,15 +45,22 @@ impl TavilyRetrievalCacheRepository for PostgresTavilyRetrievalCacheRepository {
     ) -> Result<TavilyRetrievalCacheLookup, TavilyRetrievalCacheError> {
         let started_at = Instant::now();
         loop {
-            let elapsed = Duration::from_std(started_at.elapsed())
-                .map_err(|_| TavilyRetrievalCacheError::Storage)?;
+            let elapsed_std = started_at.elapsed();
+            if elapsed_std >= CACHE_LOOKUP_WAIT_LIMIT {
+                return Err(TavilyRetrievalCacheError::Storage);
+            }
+            let elapsed =
+                Duration::from_std(elapsed_std).map_err(|_| TavilyRetrievalCacheError::Storage)?;
             let lookup_time = now
                 .checked_add_signed(elapsed)
                 .ok_or(TavilyRetrievalCacheError::Storage)?;
             if let Some(lookup) = acquire_once(&self.unit_of_work, &key, lookup_time).await? {
                 return Ok(lookup);
             }
-            tokio::time::sleep(CACHE_LOOKUP_POLL_INTERVAL).await;
+            tokio::time::sleep(
+                CACHE_LOOKUP_POLL_INTERVAL.min(CACHE_LOOKUP_WAIT_LIMIT - elapsed_std),
+            )
+            .await;
         }
     }
 }
@@ -208,10 +217,9 @@ struct PostgresTavilyRetrievalCacheLease {
     lease_token: Uuid,
 }
 
-#[async_trait]
-impl TavilyRetrievalCacheLease for PostgresTavilyRetrievalCacheLease {
-    async fn store(
-        self: Box<Self>,
+impl PostgresTavilyRetrievalCacheLease {
+    async fn store_entry(
+        &self,
         entry: TavilyRetrievalCacheWrite,
     ) -> Result<(), TavilyRetrievalCacheError> {
         let transaction = self
@@ -245,7 +253,7 @@ impl TavilyRetrievalCacheLease for PostgresTavilyRetrievalCacheLease {
             .map_err(|_| TavilyRetrievalCacheError::Storage)
     }
 
-    async fn release(self: Box<Self>) -> Result<(), TavilyRetrievalCacheError> {
+    async fn release_claim(&self) -> Result<(), TavilyRetrievalCacheError> {
         let transaction = self
             .unit_of_work
             .begin()
@@ -257,7 +265,7 @@ impl TavilyRetrievalCacheLease for PostgresTavilyRetrievalCacheLease {
             .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "DELETE FROM tavily_retrieval_cache WHERE cache_key = $1 AND lease_token = $2 AND payload_json IS NULL",
-                [self.key_bytes.into(), self.lease_token.into()],
+                [self.key_bytes.clone().into(), self.lease_token.into()],
             ))
             .await
             .map_err(|_| TavilyRetrievalCacheError::Storage)?;
@@ -265,5 +273,27 @@ impl TavilyRetrievalCacheLease for PostgresTavilyRetrievalCacheLease {
             .commit(transaction)
             .await
             .map_err(|_| TavilyRetrievalCacheError::Storage)
+    }
+}
+
+#[async_trait]
+impl TavilyRetrievalCacheLease for PostgresTavilyRetrievalCacheLease {
+    async fn store(
+        self: Box<Self>,
+        entry: TavilyRetrievalCacheWrite,
+    ) -> Result<(), TavilyRetrievalCacheError> {
+        let result = self.store_entry(entry).await;
+        if result.is_err() && self.release_claim().await.is_err() {
+            warn!(
+                target: "tavily_retrieval_cache",
+                event = "cache_claim_cleanup_failed",
+                "Tavily retrieval cache claim could not be released after a failed store"
+            );
+        }
+        result
+    }
+
+    async fn release(self: Box<Self>) -> Result<(), TavilyRetrievalCacheError> {
+        self.release_claim().await
     }
 }

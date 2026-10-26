@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
@@ -53,9 +56,13 @@ struct TestRetrievalCache;
 struct TestRetrievalCacheLease;
 
 #[derive(Default)]
-struct MemoryTestRetrievalCache(
-    Arc<std::sync::Mutex<HashMap<TavilyRetrievalCacheKey, MemoryCacheEntry>>>,
-);
+struct MemoryTestRetrievalCache(Arc<std::sync::Mutex<MemoryTestRetrievalCacheState>>);
+
+#[derive(Default)]
+struct MemoryTestRetrievalCacheState {
+    entries: HashMap<TavilyRetrievalCacheKey, MemoryCacheEntry>,
+    leased_keys: HashSet<TavilyRetrievalCacheKey>,
+}
 
 #[derive(Clone)]
 struct MemoryCacheEntry {
@@ -65,7 +72,7 @@ struct MemoryCacheEntry {
 }
 
 struct MemoryTestRetrievalCacheLease {
-    cache: Arc<std::sync::Mutex<HashMap<TavilyRetrievalCacheKey, MemoryCacheEntry>>>,
+    cache: Arc<std::sync::Mutex<MemoryTestRetrievalCacheState>>,
     key: TavilyRetrievalCacheKey,
 }
 
@@ -103,27 +110,28 @@ impl TavilyRetrievalCacheRepository for MemoryTestRetrievalCache {
         key: TavilyRetrievalCacheKey,
         now: DateTime<Utc>,
     ) -> Result<TavilyRetrievalCacheLookup, TavilyRetrievalCacheError> {
-        let entry = {
-            let mut entries = self.0.lock().expect("lock memory cache");
-            match entries.get(&key) {
-                Some(entry) if entry.expires_at > now => Some(entry.clone()),
-                Some(_) => {
-                    entries.remove(&key);
-                    None
-                }
-                None => None,
-            }
-        };
-        Ok(match entry {
-            Some(entry) => TavilyRetrievalCacheLookup::Hit(TavilyRetrievalCacheEntry {
-                payload: entry.payload,
+        let mut cache = self.0.lock().expect("lock memory cache");
+        if let Some(entry) = cache
+            .entries
+            .get(&key)
+            .filter(|entry| entry.expires_at > now)
+        {
+            return Ok(TavilyRetrievalCacheLookup::Hit(TavilyRetrievalCacheEntry {
+                payload: entry.payload.clone(),
                 fetched_at: entry.fetched_at,
-            }),
-            None => TavilyRetrievalCacheLookup::Miss(Box::new(MemoryTestRetrievalCacheLease {
+            }));
+        }
+        cache.entries.remove(&key);
+        if !cache.leased_keys.insert(key.clone()) {
+            return Err(TavilyRetrievalCacheError::Storage);
+        }
+        drop(cache);
+        Ok(TavilyRetrievalCacheLookup::Miss(Box::new(
+            MemoryTestRetrievalCacheLease {
                 cache: self.0.clone(),
                 key,
-            })),
-        })
+            },
+        )))
     }
 }
 
@@ -133,7 +141,8 @@ impl TavilyRetrievalCacheLease for MemoryTestRetrievalCacheLease {
         self: Box<Self>,
         entry: TavilyRetrievalCacheWrite,
     ) -> Result<(), TavilyRetrievalCacheError> {
-        self.cache.lock().expect("lock memory cache").insert(
+        let mut cache = self.cache.lock().expect("lock memory cache");
+        cache.entries.insert(
             self.key.clone(),
             MemoryCacheEntry {
                 payload: entry.payload,
@@ -141,10 +150,16 @@ impl TavilyRetrievalCacheLease for MemoryTestRetrievalCacheLease {
                 expires_at: entry.expires_at,
             },
         );
+        cache.leased_keys.remove(&self.key);
         Ok(())
     }
 
     async fn release(self: Box<Self>) -> Result<(), TavilyRetrievalCacheError> {
+        self.cache
+            .lock()
+            .expect("lock memory cache")
+            .leased_keys
+            .remove(&self.key);
         Ok(())
     }
 }

@@ -21,11 +21,17 @@ impl TavilyCreditBudgetUseCases {
     ) -> Result<ReservationClaim, TavilyCreditBudgetUseCasesError> {
         let outcome = serde_json::to_value(outcome)
             .map_err(|_| TavilyCreditBudgetUseCasesError::RetrievalCache)?;
-        let transaction = self
-            .unit_of_work
-            .begin()
-            .await
-            .map_err(|_| TavilyCreditBudgetUseCasesError::RetrievalCache)?;
+        let transaction = self.unit_of_work.begin().await.map_err(|error| {
+            warn!(
+                target: "tavily_retrieval_cache",
+                event = "cache_hit_record_failed",
+                operation = operation.as_str(),
+                phase = "begin",
+                error = %error,
+                "Tavily retrieval cache hit could not be recorded"
+            );
+            TavilyCreditBudgetUseCasesError::RetrievalCache
+        })?;
         let claim = self
             .repository
             .record_cache_hit(
@@ -39,11 +45,31 @@ impl TavilyCreditBudgetUseCases {
                 },
             )
             .await
-            .map_err(|_| TavilyCreditBudgetUseCasesError::RetrievalCache)?;
+            .map_err(|error| {
+                warn!(
+                    target: "tavily_retrieval_cache",
+                    event = "cache_hit_record_failed",
+                    operation = operation.as_str(),
+                    phase = "repository",
+                    error = %error,
+                    "Tavily retrieval cache hit could not be recorded"
+                );
+                TavilyCreditBudgetUseCasesError::RetrievalCache
+            })?;
         self.unit_of_work
             .commit(transaction)
             .await
-            .map_err(|_| TavilyCreditBudgetUseCasesError::RetrievalCache)?;
+            .map_err(|error| {
+                warn!(
+                    target: "tavily_retrieval_cache",
+                    event = "cache_hit_record_failed",
+                    operation = operation.as_str(),
+                    phase = "commit",
+                    error = %error,
+                    "Tavily retrieval cache hit could not be recorded"
+                );
+                TavilyCreditBudgetUseCasesError::RetrievalCache
+            })?;
         Ok(claim)
     }
 }

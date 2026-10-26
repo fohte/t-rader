@@ -94,6 +94,41 @@ async fn expires_cache_entries_at_the_expiry_timestamp(_db: DatabaseHandle) {
 }
 
 #[backend_test_macros::database_test]
+async fn failed_cache_store_releases_its_claim(_db: DatabaseHandle) {
+    let repository = repository(test_database().await);
+    let key = key();
+    let fetched_at = timestamp();
+    let lookup = repository
+        .acquire(key.clone(), fetched_at)
+        .await
+        .expect("acquire cache key");
+    let lease = match lookup {
+        TavilyRetrievalCacheLookup::Miss(lease) => lease,
+        TavilyRetrievalCacheLookup::Hit(_) => panic!("fresh cache is empty"),
+    };
+    let store_result = lease
+        .store(TavilyRetrievalCacheWrite {
+            payload: json!({"content": "Synthetic page"}),
+            fetched_at,
+            expires_at: fetched_at,
+        })
+        .await;
+    let retry = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        repository.acquire(key, fetched_at),
+    )
+    .await
+    .expect("released claim can be acquired promptly")
+    .expect("acquire cache key after failed store");
+    let retry_is_miss = matches!(&retry, TavilyRetrievalCacheLookup::Miss(_));
+
+    assert_eq!((store_result.is_err(), retry_is_miss), (true, true));
+    if let TavilyRetrievalCacheLookup::Miss(lease) = retry {
+        lease.release().await.expect("release retry lease");
+    }
+}
+
+#[backend_test_macros::database_test]
 async fn concurrent_misses_share_the_first_stored_result(_db: DatabaseHandle) {
     let db = test_database().await;
     let repository = repository(db.clone());
@@ -111,12 +146,16 @@ async fn concurrent_misses_share_the_first_stored_result(_db: DatabaseHandle) {
     let second_repository = repository.clone();
     let second_key = key.clone();
     let (started_sender, started_receiver) = oneshot::channel();
-    let second = tokio::spawn(async move {
+    let mut second = tokio::spawn(async move {
         let _ = started_sender.send(());
         second_repository.acquire(second_key, fetched_at).await
     });
     started_receiver.await.expect("second cache lookup started");
-    tokio::task::yield_now().await;
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut second)
+            .await
+            .is_err(),
+    );
     first_lease
         .store(TavilyRetrievalCacheWrite {
             payload: json!({"content": "Synthetic page"}),
