@@ -4,12 +4,17 @@
 //! テーマを深掘りするための tool。1 回の戦略タスク実行 (agent 視点の 1 task = 複数 step
 //! からなる) あたりの呼び出し回数に上限を設ける。
 
-use core_application::strategy_scope::StrategyScope;
-use core_application::web_search::{WebSearchError, WebSearchTimeRange, WebSearchTopic};
+use core_application::tavily_credit_budget::{
+    TavilyCreditBudgetDenial, TavilyCreditBudgetReason, TavilyCreditBudgetScope,
+};
+use core_application::web_search::{WebSearchTimeRange, WebSearchTopic};
 use rmcp::ErrorData as McpError;
 
 use super::dto::{SearchWebArticle, SearchWebParams, SearchWebResult};
-use super::{StrategyServer, internal_error, invalid_params};
+use super::{
+    StrategyServer, invalid_params, tavily_credit_budget_denial_to_mcp,
+    tavily_credit_budget_error_to_mcp,
+};
 
 pub(super) const TOOL_NAME: &str = "search_web";
 
@@ -20,29 +25,32 @@ pub(super) const SEARCH_WEB_MAX_CALLS_PER_TASK: u32 = 20;
 impl StrategyServer {
     pub(super) async fn search_web_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: SearchWebParams,
+        call_id: String,
+        request_fingerprint: String,
     ) -> Result<SearchWebResult, McpError> {
-        let session_strategy_id = scope.into().id();
         let query = params.query.trim().to_string();
         if query.is_empty() {
             return Err(invalid_params("query must not be empty"));
         }
 
-        let client = self
+        let use_cases = self
             .dependencies
-            .web_search_client
+            .tavily_credit_budget
             .as_ref()
-            .ok_or_else(|| internal_error("TAVILY_API_KEY is not configured"))?;
-        tracing::info!(
-            strategy_id = %session_strategy_id,
-            query,
-            "search_web: dispatching web search request"
-        );
+            .ok_or_else(|| {
+                tavily_credit_budget_denial_to_mcp(TavilyCreditBudgetDenial::new(
+                    TavilyCreditBudgetReason::ConfigurationUnavailable,
+                    TavilyCreditBudgetScope::Account,
+                    None,
+                ))
+            })?;
 
-        let outcome = match client
+        let outcome = match use_cases
             .search(
-                &query,
+                call_id,
+                request_fingerprint,
+                query,
                 params.topic.map(Into::<WebSearchTopic>::into),
                 params.time_range.map(Into::<WebSearchTimeRange>::into),
             )
@@ -50,13 +58,8 @@ impl StrategyServer {
         {
             Ok(outcome) => outcome,
             Err(error) => {
-                tracing::warn!(
-                    strategy_id = %session_strategy_id,
-                    query,
-                    error = %error,
-                    "search_web: web search request failed"
-                );
-                return Err(web_search_error_to_mcp(error));
+                tracing::warn!("search_web request stopped");
+                return Err(tavily_credit_budget_error_to_mcp(error));
             }
         };
 
@@ -72,10 +75,6 @@ impl StrategyServer {
                 .collect(),
         })
     }
-}
-
-fn web_search_error_to_mcp(error: WebSearchError) -> McpError {
-    internal_error(format!("web search failed: {error}"))
 }
 
 impl From<super::dto::SearchWebTopic> for WebSearchTopic {

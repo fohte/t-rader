@@ -56,7 +56,8 @@ impl StrategyServer {
         mut self,
         web_search_client: Option<core_application::web_search::SharedWebSearchClient>,
     ) -> Self {
-        self.server = self.server.with_web_search_client(web_search_client);
+        let budget = super::test_credit_budget::test_tavily_credit_budget(web_search_client);
+        self.server = self.server.with_tavily_credit_budget(Some(budget));
         self
     }
 

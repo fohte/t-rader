@@ -2,14 +2,17 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use core_application::web_search::{
-    WebSearchClient, WebSearchError, WebSearchResult, WebSearchTimeRange, WebSearchTopic,
+    WebPageExtractionFailure, WebPageExtractionResponse, WebSearchAccountUsage, WebSearchClient,
+    WebSearchError, WebSearchResponse, WebSearchResult, WebSearchTimeRange, WebSearchTopic,
 };
 use reqwest::Client;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 const SEARCH_ENDPOINT: &str = "https://api.tavily.com/search";
 const EXTRACT_ENDPOINT: &str = "https://api.tavily.com/extract";
+const USAGE_ENDPOINT: &str = "https://api.tavily.com/usage";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
@@ -17,6 +20,7 @@ pub struct TavilyClient {
     http: Client,
     search_endpoint: String,
     extract_endpoint: String,
+    usage_endpoint: String,
 }
 
 impl TavilyClient {
@@ -35,6 +39,7 @@ impl TavilyClient {
         match Self::with_endpoints(
             SEARCH_ENDPOINT.to_owned(),
             EXTRACT_ENDPOINT.to_owned(),
+            USAGE_ENDPOINT.to_owned(),
             &api_key,
         ) {
             Ok(client) => Some(client),
@@ -48,6 +53,7 @@ impl TavilyClient {
     fn with_endpoints(
         search_endpoint: String,
         extract_endpoint: String,
+        usage_endpoint: String,
         api_key: &str,
     ) -> Result<Self, WebSearchError> {
         let mut headers = HeaderMap::new();
@@ -67,7 +73,24 @@ impl TavilyClient {
             http,
             search_endpoint,
             extract_endpoint,
+            usage_endpoint,
         })
+    }
+}
+
+fn network_error(error: reqwest::Error) -> WebSearchError {
+    if error.is_timeout() {
+        WebSearchError::NetworkTimeout
+    } else {
+        WebSearchError::Network(error.to_string())
+    }
+}
+
+fn usage_error(error: reqwest::Error) -> WebSearchError {
+    if error.is_timeout() {
+        WebSearchError::UsageTimeout
+    } else {
+        WebSearchError::Usage(error.to_string())
     }
 }
 
@@ -78,7 +101,7 @@ impl WebSearchClient for TavilyClient {
         query: &str,
         topic: Option<WebSearchTopic>,
         time_range: Option<WebSearchTimeRange>,
-    ) -> Result<Vec<WebSearchResult>, WebSearchError> {
+    ) -> Result<WebSearchResponse, WebSearchError> {
         let response = self
             .http
             .post(&self.search_endpoint)
@@ -89,10 +112,11 @@ impl WebSearchClient for TavilyClient {
                 topic: topic.map(WebSearchTopic::as_str),
                 time_range: time_range.map(WebSearchTimeRange::as_str),
                 include_published_date: true,
+                include_usage: true,
             })
             .send()
             .await
-            .map_err(|error| WebSearchError::Network(error.to_string()))?;
+            .map_err(network_error)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -107,14 +131,17 @@ impl WebSearchClient for TavilyClient {
             .json()
             .await
             .map_err(|error| WebSearchError::Parse(error.to_string()))?;
-        Ok(body
-            .results
-            .into_iter()
-            .map(SearchResult::into_domain)
-            .collect())
+        Ok(WebSearchResponse {
+            results: body
+                .results
+                .into_iter()
+                .map(SearchResult::into_domain)
+                .collect(),
+            credits_used: body.usage.map(|usage| usage.credits),
+        })
     }
 
-    async fn extract_page(&self, url: &str) -> Result<String, WebSearchError> {
+    async fn extract_page(&self, url: &str) -> Result<WebPageExtractionResponse, WebSearchError> {
         let response = self
             .http
             .post(&self.extract_endpoint)
@@ -122,10 +149,11 @@ impl WebSearchClient for TavilyClient {
                 urls: [url],
                 extract_depth: "basic",
                 format: "markdown",
+                include_usage: true,
             })
             .send()
             .await
-            .map_err(|error| WebSearchError::Network(error.to_string()))?;
+            .map_err(network_error)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -140,19 +168,57 @@ impl WebSearchClient for TavilyClient {
             .json()
             .await
             .map_err(|error| WebSearchError::Parse(error.to_string()))?;
-        if let Some(result) = body.results.into_iter().next() {
-            return Ok(result.raw_content);
-        }
-        if let Some(failure) = body.failed_results.into_iter().next() {
-            return Err(WebSearchError::ExtractionFailed {
-                url: failure.url,
-                message: failure.error,
-            });
-        }
+        let extraction = match (
+            body.results.into_iter().next(),
+            body.failed_results.into_iter().next(),
+        ) {
+            (Some(result), None) => WebPageExtractionResponse {
+                raw_content: Some(result.raw_content),
+                failure: None,
+                credits_used: body.usage.map(|usage| usage.credits),
+            },
+            (None, Some(failure)) => WebPageExtractionResponse {
+                raw_content: None,
+                failure: Some(WebPageExtractionFailure {
+                    url: failure.url,
+                    message: failure.error,
+                }),
+                credits_used: body.usage.map(|usage| usage.credits),
+            },
+            _ => {
+                return Err(WebSearchError::Parse(
+                    "Tavily extract response contains no result".to_string(),
+                ));
+            }
+        };
 
-        Err(WebSearchError::Parse(
-            "Tavily extract response contains no results".to_string(),
-        ))
+        Ok(extraction)
+    }
+
+    async fn account_usage(&self) -> Result<WebSearchAccountUsage, WebSearchError> {
+        let response = self
+            .http
+            .get(&self.usage_endpoint)
+            .send()
+            .await
+            .map_err(usage_error)?;
+        let status = response.status();
+        if !status.is_success() {
+            let message = response.text().await.unwrap_or_default();
+            return Err(WebSearchError::Usage(format!(
+                "status {}: {message}",
+                status.as_u16()
+            )));
+        }
+        let body: AccountUsageResponse = response
+            .json()
+            .await
+            .map_err(|error| WebSearchError::Usage(error.to_string()))?;
+        Ok(WebSearchAccountUsage {
+            current_plan: body.current_plan,
+            plan_credits_used: body.plan_usage.credits_used,
+            paygo_credits_used: body.paygo_usage.credits_used,
+        })
     }
 }
 
@@ -178,11 +244,14 @@ struct SearchRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     time_range: Option<&'static str>,
     include_published_date: bool,
+    include_usage: bool,
 }
 
 #[derive(Deserialize)]
 struct SearchResponse {
     results: Vec<SearchResult>,
+    #[serde(default)]
+    usage: Option<Usage>,
 }
 
 #[derive(Deserialize)]
@@ -199,6 +268,7 @@ struct ExtractRequest<'a> {
     urls: [&'a str; 1],
     extract_depth: &'static str,
     format: &'static str,
+    include_usage: bool,
 }
 
 #[derive(Deserialize)]
@@ -207,6 +277,25 @@ struct ExtractResponse {
     results: Vec<ExtractResult>,
     #[serde(default)]
     failed_results: Vec<ExtractFailure>,
+    #[serde(default)]
+    usage: Option<Usage>,
+}
+
+#[derive(Deserialize)]
+struct Usage {
+    credits: Decimal,
+}
+
+#[derive(Deserialize)]
+struct AccountUsageResponse {
+    current_plan: String,
+    plan_usage: AccountUsageCredits,
+    paygo_usage: AccountUsageCredits,
+}
+
+#[derive(Deserialize)]
+struct AccountUsageCredits {
+    credits_used: Decimal,
 }
 
 #[derive(Deserialize)]
@@ -251,7 +340,8 @@ mod tests {
                     "title": "Invalid address",
                     "url": "invalid address",
                     "content": "[relative](/reports/annual) remains unchanged."
-                }]
+                }],
+                "usage": { "credits": 1 }
             })))
             .mount(&mock)
             .await;
@@ -259,6 +349,7 @@ mod tests {
         let client = TavilyClient::with_endpoints(
             format!("{}/search", mock.uri()),
             format!("{}/extract", mock.uri()),
+            format!("{}/usage", mock.uri()),
             "fake-tavily-key",
         )
         .expect("build client");
@@ -282,9 +373,11 @@ mod tests {
                     "max_results": 5,
                     "topic": "news",
                     "time_range": "week",
-                    "include_published_date": true
+                    "include_published_date": true,
+                    "include_usage": true
                 }),
-                vec![
+                WebSearchResponse {
+                    results: vec![
                     WebSearchResult {
                         title: "Example article".into(),
                         url: "https://news.example.com/reports/section/overview".into(),
@@ -297,7 +390,9 @@ mod tests {
                         published_date: None,
                         snippet: "[relative](/reports/annual) remains unchanged.".into(),
                     },
-                ],
+                    ],
+                    credits_used: Some(Decimal::ONE),
+                },
             ),
         );
     }
@@ -317,6 +412,7 @@ mod tests {
         let client = TavilyClient::with_endpoints(
             format!("{}/search", mock.uri()),
             format!("{}/extract", mock.uri()),
+            format!("{}/usage", mock.uri()),
             "fake-tavily-key",
         )
         .expect("build client");
@@ -344,6 +440,7 @@ mod tests {
         let client = TavilyClient::with_endpoints(
             format!("{}/search", mock.uri()),
             format!("{}/extract", mock.uri()),
+            format!("{}/usage", mock.uri()),
             "fake-tavily-key",
         )
         .expect("build client");
@@ -368,7 +465,8 @@ mod tests {
                     "url": "https://example.invalid/article",
                     "raw_content": raw_content
                 }],
-                "failed_results": []
+                "failed_results": [],
+                "usage": { "credits": 1 }
             })))
             .mount(&mock)
             .await;
@@ -376,6 +474,7 @@ mod tests {
         let client = TavilyClient::with_endpoints(
             format!("{}/search", mock.uri()),
             format!("{}/extract", mock.uri()),
+            format!("{}/usage", mock.uri()),
             "fake-tavily-key",
         )
         .expect("build client");
@@ -392,9 +491,14 @@ mod tests {
                 json!({
                     "urls": ["https://example.invalid/article"],
                     "extract_depth": "basic",
-                    "format": "markdown"
+                    "format": "markdown",
+                    "include_usage": true
                 }),
-                "あ".repeat(100_001),
+                WebPageExtractionResponse {
+                    raw_content: Some("あ".repeat(100_001)),
+                    failure: None,
+                    credits_used: Some(Decimal::ONE),
+                },
             ),
         );
     }
@@ -409,7 +513,8 @@ mod tests {
                 "failed_results": [{
                     "url": "https://example.invalid/article",
                     "error": "page requires a subscription"
-                }]
+                }],
+                "usage": { "credits": 0 }
             })))
             .mount(&mock)
             .await;
@@ -417,15 +522,52 @@ mod tests {
         let client = TavilyClient::with_endpoints(
             format!("{}/search", mock.uri()),
             format!("{}/extract", mock.uri()),
+            format!("{}/usage", mock.uri()),
             "fake-tavily-key",
         )
         .expect("build client");
 
         assert_eq!(
             client.extract_page("https://example.invalid/article").await,
-            Err(WebSearchError::ExtractionFailed {
-                url: "https://example.invalid/article".into(),
-                message: "page requires a subscription".into(),
+            Ok(WebPageExtractionResponse {
+                raw_content: None,
+                failure: Some(WebPageExtractionFailure {
+                    url: "https://example.invalid/article".into(),
+                    message: "page requires a subscription".into(),
+                }),
+                credits_used: Some(Decimal::ZERO),
+            }),
+        );
+    }
+
+    #[tokio::test]
+    async fn account_usage_reads_plan_and_paygo_credit_totals() {
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/usage"))
+            .and(header("authorization", "Bearer fake-tavily-key"))
+            .respond_with(ResponseTemplate::new(StatusCode::OK).set_body_json(json!({
+                "current_plan": "Researcher",
+                "plan_usage": { "credits_used": 12 },
+                "paygo_usage": { "credits_used": 0 }
+            })))
+            .mount(&mock)
+            .await;
+
+        let client = TavilyClient::with_endpoints(
+            format!("{}/search", mock.uri()),
+            format!("{}/extract", mock.uri()),
+            format!("{}/usage", mock.uri()),
+            "fake-tavily-key",
+        )
+        .expect("build client");
+
+        assert_eq!(
+            client.account_usage().await,
+            Ok(WebSearchAccountUsage {
+                current_plan: "Researcher".into(),
+                plan_credits_used: Decimal::new(12, 0),
+                paygo_credits_used: Decimal::ZERO,
             }),
         );
     }

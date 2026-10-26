@@ -3,11 +3,16 @@
 use axum::http::Uri;
 use core_application::llm_client::{ChatMessage, ContentPart};
 use core_application::strategy_scope::StrategyScope;
-use core_application::web_search::WebSearchError;
+use core_application::tavily_credit_budget::{
+    TavilyCreditBudgetDenial, TavilyCreditBudgetReason, TavilyCreditBudgetScope,
+};
 use rmcp::ErrorData as McpError;
 
 use super::dto::{ReadPageParams, ReadPageResult};
-use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
+use super::{
+    StrategyServer, internal_error, invalid_params, litellm_error_to_mcp,
+    tavily_credit_budget_denial_to_mcp, tavily_credit_budget_error_to_mcp,
+};
 
 pub(super) const TOOL_NAME: &str = "read_page";
 pub(super) const READ_PAGE_MAX_CALLS_PER_TASK: u32 = 20;
@@ -19,6 +24,8 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         model: String,
         params: ReadPageParams,
+        call_id: String,
+        request_fingerprint: String,
     ) -> Result<ReadPageResult, McpError> {
         let strategy_id = scope.into().id();
         let url = params.url.trim().to_string();
@@ -29,17 +36,26 @@ impl StrategyServer {
             return Err(invalid_params("prompt must not be empty"));
         }
 
-        let page_client = self
+        let credit_budget = self
             .dependencies
-            .web_search_client
+            .tavily_credit_budget
             .as_ref()
-            .ok_or_else(|| internal_error("TAVILY_API_KEY is not configured"))?;
+            .ok_or_else(|| {
+                tavily_credit_budget_denial_to_mcp(TavilyCreditBudgetDenial::new(
+                    TavilyCreditBudgetReason::ConfigurationUnavailable,
+                    TavilyCreditBudgetScope::Account,
+                    None,
+                ))
+            })?;
         let llm_client = self
             .dependencies
             .llm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
-        let (page_content, page_content_truncated) = match page_client.extract_page(&url).await {
+        let (page_content, page_content_truncated) = match credit_budget
+            .extract_page(call_id, request_fingerprint, url.clone())
+            .await
+        {
             Ok(content) => {
                 let mut chars = content.chars();
                 let page_content = chars
@@ -49,13 +65,8 @@ impl StrategyServer {
                 (page_content, chars.next().is_some())
             }
             Err(error) => {
-                tracing::warn!(
-                    strategy_id = %strategy_id,
-                    url,
-                    error = %error,
-                    "read_page: page extraction failed"
-                );
-                return Err(page_extraction_error_to_mcp(error));
+                tracing::warn!("read_page extraction stopped");
+                return Err(tavily_credit_budget_error_to_mcp(error));
             }
         };
 
@@ -113,8 +124,4 @@ fn validate_page_url(url: &str) -> Result<(), McpError> {
         return Err(invalid_params("url must be a valid HTTP or HTTPS URL"));
     }
     Ok(())
-}
-
-fn page_extraction_error_to_mcp(error: WebSearchError) -> McpError {
-    internal_error(format!("page extraction failed: {error}"))
 }

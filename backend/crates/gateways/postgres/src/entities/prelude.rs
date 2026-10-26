@@ -60,6 +60,8 @@ pub use super::task_execution_definition_snapshot::Entity as TaskExecutionDefini
 pub use super::task_execution_payload::Entity as TaskExecutionPayload;
 pub use super::task_execution_payload_chunk::Entity as TaskExecutionPayloadChunk;
 pub use super::task_execution_state::Entity as TaskExecutionState;
+pub use super::tavily_credit_budget_state::Entity as TavilyCreditBudgetState;
+pub use super::tavily_credit_reservation::Entity as TavilyCreditReservation;
 pub use super::trade::Entity as Trade;
 pub use super::trade_note::Entity as TradeNote;
 pub use super::trigger::Entity as Trigger;
