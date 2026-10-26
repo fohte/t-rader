@@ -1,6 +1,11 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use core_application::tavily_retrieval_cache::{
+    EXTRACT_DEPTH, EXTRACT_FORMAT, EXTRACT_INCLUDE_USAGE, SEARCH_DEPTH,
+    SEARCH_INCLUDE_PUBLISHED_DATE, SEARCH_INCLUDE_USAGE, SEARCH_MAX_RESULTS,
+    TavilyCredentialGeneration,
+};
 use core_application::web_search::{
     WebPageExtractionFailure, WebPageExtractionResponse, WebSearchAccountUsage, WebSearchClient,
     WebSearchError, WebSearchResponse, WebSearchResult, WebSearchTimeRange, WebSearchTopic,
@@ -21,6 +26,7 @@ pub struct TavilyClient {
     search_endpoint: String,
     extract_endpoint: String,
     usage_endpoint: String,
+    credential_generation: TavilyCredentialGeneration,
 }
 
 impl TavilyClient {
@@ -74,7 +80,12 @@ impl TavilyClient {
             search_endpoint,
             extract_endpoint,
             usage_endpoint,
+            credential_generation: TavilyCredentialGeneration::from_secret(api_key.as_bytes()),
         })
+    }
+
+    pub fn credential_generation(&self) -> TavilyCredentialGeneration {
+        self.credential_generation
     }
 }
 
@@ -107,12 +118,12 @@ impl WebSearchClient for TavilyClient {
             .post(&self.search_endpoint)
             .json(&SearchRequest {
                 query,
-                search_depth: "basic",
-                max_results: 5,
+                search_depth: SEARCH_DEPTH,
+                max_results: usize::from(SEARCH_MAX_RESULTS),
                 topic: topic.map(WebSearchTopic::as_str),
                 time_range: time_range.map(WebSearchTimeRange::as_str),
-                include_published_date: true,
-                include_usage: true,
+                include_published_date: SEARCH_INCLUDE_PUBLISHED_DATE,
+                include_usage: SEARCH_INCLUDE_USAGE,
             })
             .send()
             .await
@@ -147,9 +158,9 @@ impl WebSearchClient for TavilyClient {
             .post(&self.extract_endpoint)
             .json(&ExtractRequest {
                 urls: [url],
-                extract_depth: "basic",
-                format: "markdown",
-                include_usage: true,
+                extract_depth: EXTRACT_DEPTH,
+                format: EXTRACT_FORMAT,
+                include_usage: EXTRACT_INCLUDE_USAGE,
             })
             .send()
             .await

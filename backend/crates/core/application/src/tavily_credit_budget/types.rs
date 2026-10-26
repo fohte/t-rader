@@ -214,7 +214,21 @@ impl std::fmt::Display for TavilyCreditBudgetDenial {
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum CachedTavilyOutcome {
     SearchResults(Vec<crate::web_search::WebSearchResult>),
+    SearchResultsWithFetchedAt {
+        results: Vec<crate::web_search::WebSearchResult>,
+        fetched_at: DateTime<Utc>,
+    },
     ExtractedPage(String),
+    ExtractedPageWithFetchedAt {
+        content: String,
+        fetched_at: DateTime<Utc>,
+    },
     ExtractionFailed(WebSearchError),
     Denied(TavilyCreditBudgetDenial),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TavilyRetrieved<T> {
+    pub value: T,
+    pub fetched_at: Option<DateTime<Utc>>,
 }

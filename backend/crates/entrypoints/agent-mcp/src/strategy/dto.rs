@@ -457,6 +457,8 @@ pub struct ReadPageParams {
 pub struct ReadPageResult {
     pub url: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retrieved_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -491,6 +493,8 @@ pub enum SearchWebTimeRange {
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct SearchWebResult {
     pub results: Vec<SearchWebArticle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retrieved_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]

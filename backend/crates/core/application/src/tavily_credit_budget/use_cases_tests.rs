@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
@@ -16,6 +19,12 @@ use crate::{
         TavilyCreditBudgetRepository, TavilyCreditBudgetRepositoryError, TavilyCreditBudgetScope,
         TavilyCreditBudgetUseCases, TavilyCreditBudgetUseCasesError,
         TavilyCreditBudgetUseCasesPort,
+    },
+    tavily_retrieval_cache::{
+        SharedTavilyRetrievalCacheRepository, TavilyCredentialGeneration,
+        TavilyRetrievalCacheEntry, TavilyRetrievalCacheError, TavilyRetrievalCacheKey,
+        TavilyRetrievalCacheLease, TavilyRetrievalCacheLookup, TavilyRetrievalCacheRepository,
+        TavilyRetrievalCacheWrite,
     },
     unit_of_work::{UnitOfWork, UnitOfWorkError, UnitOfWorkTransaction},
     web_search::{
@@ -39,6 +48,119 @@ impl UnitOfWork for TestUnitOfWork {
             .downcast::<()>()
             .map(|_| ())
             .map_err(|_| UnitOfWorkError::InvalidTransaction)
+    }
+}
+
+struct TestRetrievalCache;
+
+struct TestRetrievalCacheLease;
+
+#[derive(Default)]
+struct MemoryTestRetrievalCache(Arc<std::sync::Mutex<MemoryTestRetrievalCacheState>>);
+
+#[derive(Default)]
+struct MemoryTestRetrievalCacheState {
+    entries: HashMap<TavilyRetrievalCacheKey, MemoryCacheEntry>,
+    leased_keys: HashSet<TavilyRetrievalCacheKey>,
+}
+
+#[derive(Clone)]
+struct MemoryCacheEntry {
+    payload: Value,
+    fetched_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+}
+
+struct MemoryTestRetrievalCacheLease {
+    cache: Arc<std::sync::Mutex<MemoryTestRetrievalCacheState>>,
+    key: TavilyRetrievalCacheKey,
+}
+
+#[async_trait]
+impl TavilyRetrievalCacheRepository for TestRetrievalCache {
+    async fn acquire(
+        &self,
+        _key: TavilyRetrievalCacheKey,
+        _now: DateTime<Utc>,
+    ) -> Result<TavilyRetrievalCacheLookup, TavilyRetrievalCacheError> {
+        Ok(TavilyRetrievalCacheLookup::Miss(Box::new(
+            TestRetrievalCacheLease,
+        )))
+    }
+}
+
+#[async_trait]
+impl TavilyRetrievalCacheLease for TestRetrievalCacheLease {
+    async fn store(
+        self: Box<Self>,
+        _entry: TavilyRetrievalCacheWrite,
+    ) -> Result<(), TavilyRetrievalCacheError> {
+        Ok(())
+    }
+
+    async fn release(self: Box<Self>) -> Result<(), TavilyRetrievalCacheError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl TavilyRetrievalCacheRepository for MemoryTestRetrievalCache {
+    async fn acquire(
+        &self,
+        key: TavilyRetrievalCacheKey,
+        now: DateTime<Utc>,
+    ) -> Result<TavilyRetrievalCacheLookup, TavilyRetrievalCacheError> {
+        let mut cache = self.0.lock().expect("lock memory cache");
+        if let Some(entry) = cache
+            .entries
+            .get(&key)
+            .filter(|entry| entry.expires_at > now)
+        {
+            return Ok(TavilyRetrievalCacheLookup::Hit(TavilyRetrievalCacheEntry {
+                payload: entry.payload.clone(),
+                fetched_at: entry.fetched_at,
+            }));
+        }
+        cache.entries.remove(&key);
+        if !cache.leased_keys.insert(key.clone()) {
+            return Err(TavilyRetrievalCacheError::Storage);
+        }
+        drop(cache);
+        Ok(TavilyRetrievalCacheLookup::Miss(Box::new(
+            MemoryTestRetrievalCacheLease {
+                cache: self.0.clone(),
+                key,
+            },
+        )))
+    }
+}
+
+#[async_trait]
+impl TavilyRetrievalCacheLease for MemoryTestRetrievalCacheLease {
+    async fn store(
+        self: Box<Self>,
+        entry: TavilyRetrievalCacheWrite,
+    ) -> Result<(), TavilyRetrievalCacheError> {
+        let mut cache = self.cache.lock().expect("lock memory cache");
+        cache.entries.insert(
+            self.key.clone(),
+            MemoryCacheEntry {
+                payload: entry.payload,
+                fetched_at: entry.fetched_at,
+                expires_at: entry.expires_at,
+            },
+        );
+        cache.leased_keys.remove(&self.key);
+        Ok(())
+    }
+
+    async fn release(self: Box<Self>) -> Result<(), TavilyRetrievalCacheError> {
+        self.cache
+            .lock()
+            .expect("lock memory cache")
+            .leased_keys
+            .remove(&self.key);
+        Ok(())
     }
 }
 
@@ -410,6 +532,56 @@ impl TavilyCreditBudgetRepository for TestRepository {
         Ok(())
     }
 
+    async fn record_cache_hit(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        command: crate::tavily_credit_budget::RecordCacheHitCommand,
+    ) -> Result<ReservationClaim, TavilyCreditBudgetRepositoryError> {
+        let mut state = self.0.lock().await;
+        if let Some(existing) = state.reservations.get(&command.call_id).cloned() {
+            if existing.fingerprint != command.request_fingerprint
+                || existing.operation != command.operation
+            {
+                return Ok(ReservationClaim::Conflict);
+            }
+            return match existing.state {
+                "prepared" => {
+                    state.daily_used -= existing.reserved;
+                    state.monthly_used -= existing.reserved;
+                    let reservation = state
+                        .reservations
+                        .get_mut(&command.call_id)
+                        .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
+                    reservation.state = "settled";
+                    reservation.settled = Some(Decimal::ZERO);
+                    reservation.outcome = Some(command.outcome.clone());
+                    reservation.updated_at = command.now;
+                    Ok(ReservationClaim::Replay(command.outcome))
+                }
+                "dispatching" => Ok(ReservationClaim::InProgress),
+                _ => existing
+                    .outcome
+                    .map(ReservationClaim::Replay)
+                    .ok_or(TavilyCreditBudgetRepositoryError::InvalidState),
+            };
+        }
+        state.reservations.insert(
+            command.call_id,
+            TestReservation {
+                fingerprint: command.request_fingerprint,
+                operation: command.operation,
+                state: "settled",
+                reserved: Decimal::ZERO,
+                settled: Some(Decimal::ZERO),
+                day_start: command.now.date_naive(),
+                month_start: first_of_month(command.now.date_naive()),
+                outcome: Some(command.outcome.clone()),
+                updated_at: command.now,
+            },
+        );
+        Ok(ReservationClaim::Replay(command.outcome))
+    }
+
     async fn claim(
         &self,
         _transaction: &UnitOfWorkTransaction,
@@ -676,11 +848,31 @@ fn make_use_cases(
     clock: TestClock,
     config: Option<TavilyCreditBudgetConfig>,
 ) -> TavilyCreditBudgetUseCases {
+    make_use_cases_with_cache(
+        repository,
+        provider,
+        clock,
+        config,
+        Arc::new(TestRetrievalCache),
+    )
+}
+
+fn make_use_cases_with_cache(
+    repository: TestRepository,
+    provider: TestProvider,
+    clock: TestClock,
+    config: Option<TavilyCreditBudgetConfig>,
+    retrieval_cache: SharedTavilyRetrievalCacheRepository,
+) -> TavilyCreditBudgetUseCases {
     TavilyCreditBudgetUseCases::new(
         Arc::new(TestUnitOfWork),
         Arc::new(repository),
+        retrieval_cache,
         Some(Arc::new(provider)),
         config,
+        Some(TavilyCredentialGeneration::from_secret(
+            b"synthetic-test-key",
+        )),
         Arc::new(clock),
     )
 }
@@ -711,18 +903,300 @@ async fn bootstrapped(
     TestClock,
     TestProvider,
 ) {
+    bootstrapped_with_cache(provider, initial_usage, Arc::new(TestRetrievalCache)).await
+}
+
+async fn bootstrapped_with_cache(
+    provider: TestProvider,
+    initial_usage: Decimal,
+    retrieval_cache: SharedTavilyRetrievalCacheRepository,
+) -> (
+    TavilyCreditBudgetUseCases,
+    TestRepository,
+    TestClock,
+    TestProvider,
+) {
     provider.set_usage(Ok(free_usage(initial_usage)));
     let repository = TestRepository::default();
     let clock = TestClock::at(utc(2026, 1, 4, 23, 59));
-    let use_cases = make_use_cases(
+    let use_cases = make_use_cases_with_cache(
         repository.clone(),
         provider.clone(),
         clock.clone(),
         Some(test_config()),
+        retrieval_cache,
     );
     use_cases.bootstrap().await.expect("bootstrap budget");
     clock.set(utc(2026, 1, 5, 0, 0));
     (use_cases, repository, clock, provider)
+}
+
+#[tokio::test]
+async fn search_cache_hit_skips_provider_and_credit_usage_until_ttl_expires() {
+    let provider = TestProvider::new(free_usage(Decimal::ZERO));
+    let (use_cases, repository, clock, provider) = bootstrapped_with_cache(
+        provider,
+        Decimal::ZERO,
+        Arc::new(MemoryTestRetrievalCache::default()),
+    )
+    .await;
+    let first = use_cases
+        .search(
+            "cache-miss-call".into(),
+            fingerprint('a'),
+            "synthetic-scope".into(),
+            "synthetic query".into(),
+            None,
+            None,
+        )
+        .await;
+    let state_after_miss = {
+        let state = repository.0.lock().await;
+        (state.daily_used, state.monthly_used)
+    };
+    let second = use_cases
+        .search(
+            "cache-hit-call".into(),
+            fingerprint('b'),
+            "synthetic-scope".into(),
+            "synthetic query".into(),
+            None,
+            None,
+        )
+        .await;
+    let (state_after_hit, cache_hit_reservation) = {
+        let state = repository.0.lock().await;
+        let reservation = state.reservations.get("cache-hit-call");
+        (
+            (state.daily_used, state.monthly_used),
+            reservation
+                .map(|reservation| (reservation.state, reservation.reserved, reservation.settled)),
+        )
+    };
+
+    clock.set(utc(2026, 1, 5, 0, 15));
+    let third = use_cases
+        .search(
+            "cache-expiry-call".into(),
+            fingerprint('c'),
+            "synthetic-scope".into(),
+            "synthetic query".into(),
+            None,
+            None,
+        )
+        .await;
+    let state_after_expiry = {
+        let state = repository.0.lock().await;
+        (state.daily_used, state.monthly_used)
+    };
+    let result = (
+        first,
+        second,
+        third,
+        provider.call_counts(),
+        state_after_miss,
+        state_after_hit,
+        cache_hit_reservation,
+        state_after_expiry,
+    );
+    let expected_results = vec![WebSearchResult {
+        title: "Example result".into(),
+        url: "https://example.invalid/article".into(),
+        published_date: None,
+        snippet: "Example excerpt".into(),
+    }];
+
+    assert_eq!(
+        result,
+        (
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: expected_results.clone(),
+                fetched_at: Some(utc(2026, 1, 5, 0, 0)),
+            }),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: expected_results.clone(),
+                fetched_at: Some(utc(2026, 1, 5, 0, 0)),
+            }),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: expected_results,
+                fetched_at: Some(utc(2026, 1, 5, 0, 15)),
+            }),
+            (3, 2, 0),
+            (Decimal::ONE, Decimal::ONE),
+            (Decimal::ONE, Decimal::ONE),
+            Some(("settled", Decimal::ZERO, Some(Decimal::ZERO))),
+            (Decimal::new(2, 0), Decimal::new(2, 0)),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn extraction_cache_is_valid_until_the_24_hour_expiry() {
+    let provider = TestProvider::new(free_usage(Decimal::ZERO));
+    let (use_cases, _repository, clock, provider) = bootstrapped_with_cache(
+        provider,
+        Decimal::ZERO,
+        Arc::new(MemoryTestRetrievalCache::default()),
+    )
+    .await;
+    let first = use_cases
+        .extract_page(
+            "extract-cache-miss".into(),
+            fingerprint('a'),
+            "synthetic-scope".into(),
+            "https://example.invalid/article?section=one".into(),
+        )
+        .await;
+    clock.set(utc(2026, 1, 5, 23, 59));
+    let second = use_cases
+        .extract_page(
+            "extract-cache-hit".into(),
+            fingerprint('b'),
+            "synthetic-scope".into(),
+            "https://example.invalid/article?section=one".into(),
+        )
+        .await;
+    clock.set(utc(2026, 1, 6, 0, 0));
+    let third = use_cases
+        .extract_page(
+            "extract-cache-expiry".into(),
+            fingerprint('c'),
+            "synthetic-scope".into(),
+            "https://example.invalid/article?section=one".into(),
+        )
+        .await;
+
+    assert_eq!(
+        (first, second, third, provider.call_counts()),
+        (
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: "Example page content".into(),
+                fetched_at: Some(utc(2026, 1, 5, 0, 0)),
+            }),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: "Example page content".into(),
+                fetched_at: Some(utc(2026, 1, 5, 0, 0)),
+            }),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: "Example page content".into(),
+                fetched_at: Some(utc(2026, 1, 6, 0, 0)),
+            }),
+            (3, 0, 2),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn empty_extractions_are_fetched_again_instead_of_cached() {
+    let provider = TestProvider::new(free_usage(Decimal::ZERO)).with_extract_response(Ok(
+        WebPageExtractionResponse {
+            raw_content: Some(String::new()),
+            failure: None,
+            credits_used: Some(Decimal::ONE),
+        },
+    ));
+    let (use_cases, repository, clock, provider) = bootstrapped_with_cache(
+        provider,
+        Decimal::ZERO,
+        Arc::new(MemoryTestRetrievalCache::default()),
+    )
+    .await;
+    let first = use_cases
+        .extract_page(
+            "empty-first-call".into(),
+            fingerprint('a'),
+            "synthetic-scope".into(),
+            "https://example.invalid/article?section=one".into(),
+        )
+        .await;
+    clock.set(utc(2026, 1, 5, 0, 1));
+    let second = use_cases
+        .extract_page(
+            "empty-second-call".into(),
+            fingerprint('b'),
+            "synthetic-scope".into(),
+            "https://example.invalid/article?section=one".into(),
+        )
+        .await;
+    let state = repository.0.lock().await;
+
+    assert_eq!(
+        (
+            first,
+            second,
+            provider.call_counts(),
+            (state.daily_used, state.monthly_used),
+        ),
+        (
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: String::new(),
+                fetched_at: Some(utc(2026, 1, 5, 0, 0)),
+            }),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: String::new(),
+                fetched_at: Some(utc(2026, 1, 5, 0, 1)),
+            }),
+            (3, 0, 2),
+            (Decimal::new(2, 0), Decimal::new(2, 0)),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn failed_extractions_are_fetched_again_instead_of_cached() {
+    let provider = TestProvider::new(free_usage(Decimal::ZERO)).with_extract_response(Ok(
+        WebPageExtractionResponse {
+            raw_content: None,
+            failure: Some(WebPageExtractionFailure {
+                url: "https://example.invalid/article?section=one".into(),
+                message: "synthetic extraction failure".into(),
+            }),
+            credits_used: Some(Decimal::ZERO),
+        },
+    ));
+    let (use_cases, repository, _clock, provider) = bootstrapped_with_cache(
+        provider,
+        Decimal::ZERO,
+        Arc::new(MemoryTestRetrievalCache::default()),
+    )
+    .await;
+    let first = use_cases
+        .extract_page(
+            "failed-first-call".into(),
+            fingerprint('a'),
+            "synthetic-scope".into(),
+            "https://example.invalid/article?section=one".into(),
+        )
+        .await;
+    let second = use_cases
+        .extract_page(
+            "failed-second-call".into(),
+            fingerprint('b'),
+            "synthetic-scope".into(),
+            "https://example.invalid/article?section=one".into(),
+        )
+        .await;
+    let state = repository.0.lock().await;
+    let expected_error =
+        TavilyCreditBudgetUseCasesError::Provider(WebSearchError::ExtractionFailed {
+            url: "https://example.invalid/article?section=one".into(),
+            message: "synthetic extraction failure".into(),
+        });
+
+    assert_eq!(
+        (
+            first,
+            second,
+            provider.call_counts(),
+            (state.daily_used, state.monthly_used),
+        ),
+        (
+            Err(expected_error.clone()),
+            Err(expected_error),
+            (3, 0, 2),
+            (Decimal::ZERO, Decimal::ZERO),
+        ),
+    );
 }
 
 fn utc(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Utc> {
@@ -748,6 +1222,7 @@ async fn bootstrap_restores_monthly_usage_and_blocks_until_next_utc_day() {
         .search(
             "call-one".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -781,6 +1256,7 @@ async fn same_call_reuses_settled_response_after_restart_and_rejects_changed_req
         .search(
             "call-one".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -791,6 +1267,7 @@ async fn same_call_reuses_settled_response_after_restart_and_rejects_changed_req
         .search(
             "call-one".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -800,6 +1277,7 @@ async fn same_call_reuses_settled_response_after_restart_and_rejects_changed_req
         .search(
             "call-one".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "different query".into(),
             None,
             None,
@@ -808,12 +1286,15 @@ async fn same_call_reuses_settled_response_after_restart_and_rejects_changed_req
     assert_eq!(
         (result.clone(), replay, conflict, provider.call_counts()),
         (
-            Ok(vec![WebSearchResult {
-                title: "Example result".into(),
-                url: "https://example.invalid/article".into(),
-                published_date: None,
-                snippet: "Example excerpt".into(),
-            }]),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: vec![WebSearchResult {
+                    title: "Example result".into(),
+                    url: "https://example.invalid/article".into(),
+                    published_date: None,
+                    snippet: "Example excerpt".into(),
+                }],
+                fetched_at: Some(utc(2026, 1, 5, 0, 0)),
+            }),
             result,
             Err(TavilyCreditBudgetUseCasesError::Denied(
                 TavilyCreditBudgetDenial::new(
@@ -851,6 +1332,7 @@ async fn paid_plan_or_paygo_usage_stops_before_search(
         .search(
             "call-one".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -894,6 +1376,7 @@ async fn unavailable_or_invalid_account_usage_stops_before_search(
         .search(
             "call-one".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -923,6 +1406,7 @@ async fn provider_timeout_and_missing_usage_keep_the_reservation_and_never_retry
         .search(
             "timeout-call".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -938,6 +1422,7 @@ async fn provider_timeout_and_missing_usage_keep_the_reservation_and_never_retry
         .search(
             "timeout-call".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -974,6 +1459,7 @@ async fn provider_timeout_and_missing_usage_keep_the_reservation_and_never_retry
         .search(
             "missing-usage".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -984,6 +1470,7 @@ async fn provider_timeout_and_missing_usage_keep_the_reservation_and_never_retry
         .search(
             "missing-usage".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1024,6 +1511,7 @@ async fn provider_rejection_is_structured_and_same_call_does_not_retry() {
         .search(
             "rejected-call".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1034,6 +1522,7 @@ async fn provider_rejection_is_structured_and_same_call_does_not_retry() {
         .search(
             "rejected-call".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1065,6 +1554,7 @@ async fn external_usage_and_monthly_threshold_deny_before_search() {
         .search(
             "last-credit".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1075,6 +1565,7 @@ async fn external_usage_and_monthly_threshold_deny_before_search() {
         .search(
             "over-limit".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1087,12 +1578,15 @@ async fn external_usage_and_monthly_threshold_deny_before_search() {
             provider.call_counts(),
         ),
         (
-            Ok(vec![WebSearchResult {
-                title: "Example result".into(),
-                url: "https://example.invalid/article".into(),
-                published_date: None,
-                snippet: "Example excerpt".into(),
-            }]),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: vec![WebSearchResult {
+                    title: "Example result".into(),
+                    url: "https://example.invalid/article".into(),
+                    published_date: None,
+                    snippet: "Example excerpt".into(),
+                }],
+                fetched_at: Some(utc(2026, 1, 5, 0, 0)),
+            }),
             Err(TavilyCreditBudgetUseCasesError::Denied(
                 TavilyCreditBudgetDenial::new(
                     TavilyCreditBudgetReason::MonthlyLimitExceeded,
@@ -1114,6 +1608,7 @@ async fn daily_boundary_carries_unknown_credit_and_unmatched_provider_usage() {
         .search(
             "unknown-call".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1125,6 +1620,7 @@ async fn daily_boundary_carries_unknown_credit_and_unmatched_provider_usage() {
         .search(
             "next-day-call".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1171,6 +1667,7 @@ async fn monthly_reset_carries_unknown_credit_when_provider_usage_increases() {
         .search(
             "unknown-call".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1191,6 +1688,7 @@ async fn monthly_reset_carries_unknown_credit_when_provider_usage_increases() {
         .search(
             "after-reset".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1201,6 +1699,7 @@ async fn monthly_reset_carries_unknown_credit_when_provider_usage_increases() {
         .search(
             "after-external-usage".into(),
             fingerprint('c'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1224,12 +1723,15 @@ async fn monthly_reset_carries_unknown_credit_when_provider_usage_increases() {
                     None,
                 ),
             )),
-            Ok(vec![WebSearchResult {
-                title: "Example result".into(),
-                url: "https://example.invalid/article".into(),
-                published_date: None,
-                snippet: "Example excerpt".into(),
-            }]),
+            Ok(crate::tavily_credit_budget::TavilyRetrieved {
+                value: vec![WebSearchResult {
+                    title: "Example result".into(),
+                    url: "https://example.invalid/article".into(),
+                    published_date: None,
+                    snippet: "Example excerpt".into(),
+                }],
+                fetched_at: Some(utc(2026, 2, 1, 0, 0)),
+            }),
             Err(TavilyCreditBudgetUseCasesError::Denied(
                 TavilyCreditBudgetDenial::new(
                     TavilyCreditBudgetReason::DailyLimitExceeded,
@@ -1259,6 +1761,7 @@ async fn invalid_search_usage_is_unknown(#[case] invalid_search_usage: Decimal) 
         .search(
             "invalid-usage".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1298,6 +1801,7 @@ async fn extract_failure_settles_provider_reported_credits() {
         .extract_page(
             "extract-call".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "https://example.invalid/article".into(),
         )
         .await;
@@ -1336,6 +1840,7 @@ async fn concurrent_reservations_cannot_pass_the_daily_limit() {
         first_use_case.search(
             "parallel-one".into(),
             fingerprint('a'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1343,6 +1848,7 @@ async fn concurrent_reservations_cannot_pass_the_daily_limit() {
         second_use_case.search(
             "parallel-two".into(),
             fingerprint('b'),
+            "synthetic-scope".into(),
             "synthetic query".into(),
             None,
             None,
@@ -1350,7 +1856,7 @@ async fn concurrent_reservations_cannot_pass_the_daily_limit() {
     );
     let mut outcomes = [first, second]
         .map(|result| match result {
-            Ok(results) => Ok(results),
+            Ok(results) => Ok(results.value),
             Err(TavilyCreditBudgetUseCasesError::Denied(denial)) => {
                 Err((denial.reason, denial.scope, denial.next_reset))
             }

@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use tracing::info;
 
 use crate::{
+    tavily_retrieval_cache::{SharedTavilyRetrievalCacheRepository, TavilyCredentialGeneration},
     unit_of_work::SharedUnitOfWork,
     web_search::{
         SharedWebSearchClient, WebSearchError, WebSearchResult, WebSearchTimeRange, WebSearchTopic,
@@ -20,6 +21,7 @@ use helpers::{confirmation_failed, denied, month_start, next_day_start, validate
 mod execution;
 mod helpers;
 mod reservations;
+mod retrieval_cache;
 mod settlement;
 
 #[async_trait]
@@ -30,17 +32,19 @@ pub trait TavilyCreditBudgetUseCasesPort: Send + Sync {
         &self,
         call_id: String,
         request_fingerprint: String,
+        authorization_scope: String,
         query: String,
         topic: Option<WebSearchTopic>,
         time_range: Option<WebSearchTimeRange>,
-    ) -> Result<Vec<WebSearchResult>, TavilyCreditBudgetUseCasesError>;
+    ) -> Result<super::TavilyRetrieved<Vec<WebSearchResult>>, TavilyCreditBudgetUseCasesError>;
 
     async fn extract_page(
         &self,
         call_id: String,
         request_fingerprint: String,
+        authorization_scope: String,
         url: String,
-    ) -> Result<String, TavilyCreditBudgetUseCasesError>;
+    ) -> Result<super::TavilyRetrieved<String>, TavilyCreditBudgetUseCasesError>;
 }
 
 pub type SharedTavilyCreditBudgetUseCases = Arc<dyn TavilyCreditBudgetUseCasesPort + Send + Sync>;
@@ -51,13 +55,15 @@ pub enum TavilyCreditBudgetUseCasesError {
     Denied(TavilyCreditBudgetDenial),
     #[error("{0}")]
     Provider(WebSearchError),
+    #[error("Tavily retrieval cache is unavailable")]
+    RetrievalCache,
 }
 
 impl TavilyCreditBudgetUseCasesError {
     fn denial(&self) -> TavilyCreditBudgetDenial {
         match self {
             Self::Denied(denial) => denial.clone(),
-            Self::Provider(_) => TavilyCreditBudgetDenial::new(
+            Self::Provider(_) | Self::RetrievalCache => TavilyCreditBudgetDenial::new(
                 TavilyCreditBudgetReason::OutcomeUnknown,
                 TavilyCreditBudgetScope::Confirmation,
                 None,
@@ -83,8 +89,10 @@ impl TavilyCreditBudgetClock for SystemTavilyCreditBudgetClock {
 pub struct TavilyCreditBudgetUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedTavilyCreditBudgetRepository,
+    retrieval_cache: SharedTavilyRetrievalCacheRepository,
     provider: Option<SharedWebSearchClient>,
     config: Option<TavilyCreditBudgetConfig>,
+    credential_generation: Option<TavilyCredentialGeneration>,
     clock: Arc<dyn TavilyCreditBudgetClock>,
 }
 
@@ -92,15 +100,19 @@ impl TavilyCreditBudgetUseCases {
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         repository: SharedTavilyCreditBudgetRepository,
+        retrieval_cache: SharedTavilyRetrievalCacheRepository,
         provider: Option<SharedWebSearchClient>,
         config: Option<TavilyCreditBudgetConfig>,
+        credential_generation: Option<TavilyCredentialGeneration>,
         clock: Arc<dyn TavilyCreditBudgetClock>,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
+            retrieval_cache,
             provider,
             config,
+            credential_generation,
             clock,
         }
     }

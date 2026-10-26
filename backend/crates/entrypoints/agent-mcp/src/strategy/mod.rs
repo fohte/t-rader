@@ -349,6 +349,9 @@ pub(super) fn tavily_credit_budget_error_to_mcp(
         TavilyCreditBudgetUseCasesError::Provider(error) => {
             internal_error(format!("Tavily request failed: {error}"))
         }
+        TavilyCreditBudgetUseCasesError::RetrievalCache => {
+            internal_error("Tavily retrieval cache is unavailable")
+        }
     }
 }
 

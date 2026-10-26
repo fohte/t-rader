@@ -76,6 +76,7 @@
 | [public.execution_reservation](public.execution_reservation.md)                                 | 12      | task の実行量予約と送信状態を記録する。                                                                                                            | BASE TABLE        |
 | [public.tavily_credit_budget_state](public.tavily_credit_budget_state.md)                       | 14      | Tavily account 単位の UTC 日次・月次 credit 上限と照合状態を保持する。                                                                             | BASE TABLE        |
 | [public.tavily_credit_reservation](public.tavily_credit_reservation.md)                         | 12      | Tavily provider へ送る検索・抽出の account credit 予約、精算、再送結果を保持する。                                                                 | BASE TABLE        |
+| [public.tavily_retrieval_cache](public.tavily_retrieval_cache.md)                               | 7       | 認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。                                                    | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -986,6 +987,15 @@ erDiagram
   jsonb outcome_json
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.tavily_retrieval_cache" {
+  bytea cache_key
+  varchar_16_ kind
+  jsonb payload_json
+  timestamp_with_time_zone fetched_at
+  timestamp_with_time_zone expires_at
+  uuid lease_token
+  timestamp_with_time_zone lease_expires_at
 }
 ```
 

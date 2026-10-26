@@ -28,6 +28,7 @@ impl StrategyServer {
         params: SearchWebParams,
         call_id: String,
         request_fingerprint: String,
+        authorization_scope: String,
     ) -> Result<SearchWebResult, McpError> {
         let query = params.query.trim().to_string();
         if query.is_empty() {
@@ -50,6 +51,7 @@ impl StrategyServer {
             .search(
                 call_id,
                 request_fingerprint,
+                authorization_scope,
                 query,
                 params.topic.map(Into::<WebSearchTopic>::into),
                 params.time_range.map(Into::<WebSearchTimeRange>::into),
@@ -65,6 +67,7 @@ impl StrategyServer {
 
         Ok(SearchWebResult {
             results: outcome
+                .value
                 .into_iter()
                 .map(|result| SearchWebArticle {
                     title: result.title,
@@ -73,6 +76,7 @@ impl StrategyServer {
                     snippet: result.snippet,
                 })
                 .collect(),
+            retrieved_at: outcome.fetched_at,
         })
     }
 }

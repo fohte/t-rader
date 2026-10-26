@@ -65,6 +65,7 @@ pub mod task_execution_payload_chunk;
 pub mod task_execution_state;
 pub mod tavily_credit_budget_state;
 pub mod tavily_credit_reservation;
+pub mod tavily_retrieval_cache;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;

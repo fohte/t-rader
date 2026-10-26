@@ -4,11 +4,17 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use core_application::tavily_credit_budget::{
     BootstrapCommand, BudgetReadiness, ExistingReservation, FinishFailureCommand,
-    RecordDenialCommand, ReservationClaim, ReservationCommand, ReservationFailureState,
-    ReservationOutcome, SharedTavilyCreditBudgetRepository, SharedTavilyCreditBudgetUseCases,
-    SystemTavilyCreditBudgetClock, TavilyCreditBudgetConfig, TavilyCreditBudgetDenial,
-    TavilyCreditBudgetOperation, TavilyCreditBudgetReason, TavilyCreditBudgetRepository,
-    TavilyCreditBudgetRepositoryError, TavilyCreditBudgetScope, TavilyCreditBudgetUseCases,
+    RecordCacheHitCommand, RecordDenialCommand, ReservationClaim, ReservationCommand,
+    ReservationFailureState, ReservationOutcome, SharedTavilyCreditBudgetRepository,
+    SharedTavilyCreditBudgetUseCases, TavilyCreditBudgetClock, TavilyCreditBudgetConfig,
+    TavilyCreditBudgetDenial, TavilyCreditBudgetOperation, TavilyCreditBudgetReason,
+    TavilyCreditBudgetRepository, TavilyCreditBudgetRepositoryError, TavilyCreditBudgetScope,
+    TavilyCreditBudgetUseCases,
+};
+use core_application::tavily_retrieval_cache::{
+    SharedTavilyRetrievalCacheRepository, TavilyCredentialGeneration, TavilyRetrievalCacheError,
+    TavilyRetrievalCacheKey, TavilyRetrievalCacheLease, TavilyRetrievalCacheLookup,
+    TavilyRetrievalCacheRepository, TavilyRetrievalCacheWrite,
 };
 use core_application::unit_of_work::{FakeUnitOfWork, UnitOfWorkTransaction};
 use core_application::web_search::SharedWebSearchClient;
@@ -63,16 +69,66 @@ impl Default for TestCreditBudgetRepository {
 pub(super) fn test_tavily_credit_budget(
     provider: Option<SharedWebSearchClient>,
 ) -> SharedTavilyCreditBudgetUseCases {
+    test_tavily_credit_budget_with_cache(provider, Arc::new(TestRetrievalCache))
+}
+
+pub(super) fn test_tavily_credit_budget_with_cache(
+    provider: Option<SharedWebSearchClient>,
+    retrieval_cache: SharedTavilyRetrievalCacheRepository,
+) -> SharedTavilyCreditBudgetUseCases {
     let config = TavilyCreditBudgetConfig::free_tier("example-account".into(), true);
     let repository: SharedTavilyCreditBudgetRepository =
         Arc::new(TestCreditBudgetRepository::default());
     Arc::new(TavilyCreditBudgetUseCases::new(
         Arc::new(FakeUnitOfWork::new()),
         repository,
+        retrieval_cache,
         provider,
         config,
-        Arc::new(SystemTavilyCreditBudgetClock),
+        Some(TavilyCredentialGeneration::from_secret(
+            b"synthetic-test-key",
+        )),
+        Arc::new(TestCreditBudgetClock),
     ))
+}
+
+struct TestCreditBudgetClock;
+
+impl TavilyCreditBudgetClock for TestCreditBudgetClock {
+    fn now(&self) -> DateTime<Utc> {
+        DateTime::from_timestamp(1_767_225_600, 0).expect("fixed test timestamp")
+    }
+}
+
+struct TestRetrievalCache;
+
+struct TestRetrievalCacheLease;
+
+#[async_trait]
+impl TavilyRetrievalCacheRepository for TestRetrievalCache {
+    async fn acquire(
+        &self,
+        _key: TavilyRetrievalCacheKey,
+        _now: DateTime<Utc>,
+    ) -> Result<TavilyRetrievalCacheLookup, TavilyRetrievalCacheError> {
+        Ok(TavilyRetrievalCacheLookup::Miss(Box::new(
+            TestRetrievalCacheLease,
+        )))
+    }
+}
+
+#[async_trait]
+impl TavilyRetrievalCacheLease for TestRetrievalCacheLease {
+    async fn store(
+        self: Box<Self>,
+        _entry: TavilyRetrievalCacheWrite,
+    ) -> Result<(), TavilyRetrievalCacheError> {
+        Ok(())
+    }
+
+    async fn release(self: Box<Self>) -> Result<(), TavilyRetrievalCacheError> {
+        Ok(())
+    }
 }
 
 pub(super) fn expected_denial(
@@ -243,6 +299,52 @@ impl TavilyCreditBudgetRepository for TestCreditBudgetRepository {
             },
         );
         Ok(())
+    }
+
+    async fn record_cache_hit(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        command: RecordCacheHitCommand,
+    ) -> Result<ReservationClaim, TavilyCreditBudgetRepositoryError> {
+        let mut state = self.0.lock().await;
+        if let Some(existing) = state.reservations.get(&command.call_id).cloned() {
+            if existing.fingerprint != command.request_fingerprint
+                || existing.operation != command.operation
+            {
+                return Ok(ReservationClaim::Conflict);
+            }
+            return match existing.state {
+                TestReservationState::Prepared => {
+                    state.daily_used -= existing.reserved;
+                    state.monthly_used -= existing.reserved;
+                    let reservation = state
+                        .reservations
+                        .get_mut(&command.call_id)
+                        .ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
+                    reservation.state = TestReservationState::Settled;
+                    reservation.settled = Some(Decimal::ZERO);
+                    reservation.outcome = Some(command.outcome.clone());
+                    Ok(ReservationClaim::Replay(command.outcome))
+                }
+                TestReservationState::Dispatching => Ok(ReservationClaim::InProgress),
+                _ => existing
+                    .outcome
+                    .map(ReservationClaim::Replay)
+                    .ok_or(TavilyCreditBudgetRepositoryError::InvalidState),
+            };
+        }
+        state.reservations.insert(
+            command.call_id,
+            TestReservation {
+                fingerprint: command.request_fingerprint,
+                operation: command.operation,
+                state: TestReservationState::Settled,
+                reserved: Decimal::ZERO,
+                settled: Some(Decimal::ZERO),
+                outcome: Some(command.outcome.clone()),
+            },
+        );
+        Ok(ReservationClaim::Replay(command.outcome))
     }
 
     async fn claim(
