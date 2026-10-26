@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use core_application::tavily_credit_budget::{
-    BootstrapCommand, FinishFailureCommand, ReservationClaim, ReservationCommand,
-    ReservationFailureState, ReservationOutcome, TavilyCreditBudgetConfig,
+    BootstrapCommand, FinishFailureCommand, RecordCacheHitCommand, ReservationClaim,
+    ReservationCommand, ReservationFailureState, ReservationOutcome, TavilyCreditBudgetConfig,
     TavilyCreditBudgetDenial, TavilyCreditBudgetOperation, TavilyCreditBudgetReason,
     TavilyCreditBudgetRepository, TavilyCreditBudgetScope,
 };
@@ -10,7 +10,10 @@ use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, SqlxPostgresConnector};
 use serde_json::json;
 
-use super::{PostgresTavilyCreditBudgetRepository, support::load_state};
+use super::{
+    PostgresTavilyCreditBudgetRepository,
+    support::{load_reservation, load_state},
+};
 use crate::transaction::transaction_ref;
 use crate::{DatabaseHandle, PostgresUnitOfWork};
 
@@ -549,4 +552,141 @@ async fn prepared_reservation_moves_to_the_new_period_once(db: DatabaseHandle) {
         .commit(transaction)
         .await
         .expect("commit state inspection");
+}
+
+#[backend_test_macros::database_test]
+async fn cache_hit_settles_a_prepared_call_without_consuming_credits(db: DatabaseHandle) {
+    db.execute_unprepared("DELETE FROM tavily_credit_reservation")
+        .await
+        .expect("clear reservations from previous run");
+    db.execute_unprepared("DELETE FROM tavily_credit_budget_state")
+        .await
+        .expect("clear budget state from previous run");
+    let unit_of_work = PostgresUnitOfWork::new(db.clone());
+    let repository = PostgresTavilyCreditBudgetRepository::new();
+    let config = TavilyCreditBudgetConfig::new(
+        "synthetic-account".into(),
+        Decimal::ONE,
+        Decimal::new(2, 0),
+        true,
+    )
+    .expect("valid synthetic config");
+    let current_day = day(2026, 3, 2);
+    let bootstrap = unit_of_work.begin().await.expect("begin bootstrap");
+    repository
+        .initialize(
+            &bootstrap,
+            BootstrapCommand {
+                config: config.clone(),
+                monthly_provider_usage: Decimal::ZERO,
+                month_start: day(2026, 3, 1),
+                day_start: current_day,
+                daily_blocked_until: utc(current_day, 0, 0),
+                now: utc(current_day, 0, 0),
+            },
+        )
+        .await
+        .expect("initialize account budget");
+    unit_of_work
+        .commit(bootstrap)
+        .await
+        .expect("commit bootstrap");
+
+    let prepared = ReservationCommand {
+        config: config.clone(),
+        call_id: "cached-call".into(),
+        request_fingerprint: "a".repeat(64),
+        operation: TavilyCreditBudgetOperation::Search,
+        monthly_provider_usage: Decimal::ZERO,
+        month_start: day(2026, 3, 1),
+        day_start: current_day,
+        now: utc(current_day, 0, 1),
+    };
+    assert_eq!(
+        reserve(&repository, &unit_of_work, prepared.clone()).await,
+        ReservationOutcome::Reserved {
+            daily_used: Decimal::ONE,
+            monthly_used: Decimal::ONE,
+        },
+    );
+
+    let outcome = json!({
+        "kind": "search_results_with_fetched_at",
+        "value": {
+            "results": [],
+            "fetched_at": "2026-03-02T00:02:00Z",
+        },
+    });
+    let transaction = unit_of_work.begin().await.expect("begin cache hit");
+    assert_eq!(
+        repository
+            .record_cache_hit(
+                &transaction,
+                RecordCacheHitCommand {
+                    call_id: prepared.call_id.clone(),
+                    request_fingerprint: prepared.request_fingerprint.clone(),
+                    operation: prepared.operation,
+                    outcome: outcome.clone(),
+                    now: utc(current_day, 0, 2),
+                },
+            )
+            .await
+            .expect("record cache hit"),
+        ReservationClaim::Replay(outcome.clone()),
+    );
+    unit_of_work
+        .commit(transaction)
+        .await
+        .expect("commit cache hit");
+
+    let transaction = unit_of_work.begin().await.expect("begin state inspection");
+    let database_transaction = transaction_ref(&transaction).expect("postgres transaction");
+    let state = load_state(database_transaction, false)
+        .await
+        .expect("load account state")
+        .expect("account state exists");
+    let reservation = load_reservation(database_transaction, &prepared.call_id, false)
+        .await
+        .expect("load cache hit reservation")
+        .expect("cache hit reservation exists");
+    assert_eq!(
+        (
+            state.daily_used,
+            state.monthly_used,
+            reservation.state,
+            reservation.reserved_credits,
+            reservation.settled_credits,
+            reservation.outcome_json,
+        ),
+        (
+            Decimal::ZERO,
+            Decimal::ZERO,
+            "settled".to_owned(),
+            Decimal::ZERO,
+            Some(Decimal::ZERO),
+            Some(outcome),
+        ),
+    );
+    unit_of_work
+        .commit(transaction)
+        .await
+        .expect("commit state inspection");
+
+    assert_eq!(
+        reserve(
+            &repository,
+            &unit_of_work,
+            ReservationCommand {
+                call_id: "available-after-cache-hit".into(),
+                request_fingerprint: "b".repeat(64),
+                now: utc(current_day, 0, 3),
+                ..prepared
+            },
+        )
+        .await,
+        ReservationOutcome::Reserved {
+            daily_used: Decimal::ONE,
+            monthly_used: Decimal::ONE,
+        },
+    );
 }

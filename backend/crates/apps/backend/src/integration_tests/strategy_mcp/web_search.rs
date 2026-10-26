@@ -20,6 +20,8 @@ use super::tests_common::{
 };
 use core_application::tavily_credit_budget::{TavilyCreditBudgetReason, TavilyCreditBudgetScope};
 
+const RETRIEVED_AT: &str = "2026-01-01T00:00:00Z";
+
 #[derive(Clone)]
 struct FakeWebSearchClient {
     calls: Arc<Mutex<Vec<SearchCall>>>,
@@ -179,6 +181,7 @@ async fn search_web_returns_article_results_without_tool_model_header(
                     "published_date": "2026-04-05",
                     "snippet": "Example snippet",
                 }],
+                "retrieved_at": "2026-01-01T00:00:00Z",
             }),
             vec![SearchCall {
                 query: "example query".into(),
@@ -228,13 +231,13 @@ async fn direct_search_web_calls_with_reused_json_rpc_id_get_distinct_reservatio
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             Ok(json!({"results": [{
                 "title": "Example article",
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             2,
         ),
     );
@@ -294,13 +297,13 @@ async fn search_web_replays_the_same_task_request_without_a_second_provider_call
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             Ok(json!({"results": [{
                 "title": "Example article",
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             1,
         ),
     );
@@ -480,13 +483,13 @@ async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::Data
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             Ok(json!({"results": [{
                 "title": "Example article",
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             Err(rmcp::ErrorData::invalid_params(
                 "execution budget limit was exceeded for researcher:search_web",
                 None,
@@ -496,13 +499,13 @@ async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::Data
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             Ok(json!({"results": [{
                 "title": "Example article",
                 "url": "https://example.invalid/article",
                 "published_date": "2026-04-05",
                 "snippet": "Example snippet",
-            }]})),
+            }], "retrieved_at": RETRIEVED_AT})),
             Err(rmcp::ErrorData::invalid_params(
                 "execution budget limit was exceeded for search_web",
                 None,

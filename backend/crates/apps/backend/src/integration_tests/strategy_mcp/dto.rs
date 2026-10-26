@@ -385,6 +385,8 @@ pub struct ReadPageParams {
 pub struct ReadPageResult {
     pub url: String,
     pub text: String,
+    #[serde(default)]
+    pub retrieved_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -399,6 +401,8 @@ pub struct SearchWebParams {
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SearchWebResult {
     pub results: Vec<SearchWebArticle>,
+    #[serde(default)]
+    pub retrieved_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]

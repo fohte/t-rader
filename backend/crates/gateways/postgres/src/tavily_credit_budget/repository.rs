@@ -329,6 +329,16 @@ impl TavilyCreditBudgetRepository for PostgresTavilyCreditBudgetRepository {
         Ok(())
     }
 
+    async fn record_cache_hit(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        command: core_application::tavily_credit_budget::RecordCacheHitCommand,
+    ) -> Result<ReservationClaim, TavilyCreditBudgetRepositoryError> {
+        let transaction =
+            transaction_ref(transaction).ok_or(TavilyCreditBudgetRepositoryError::InvalidState)?;
+        super::cache_hit::record_cache_hit(transaction, command).await
+    }
+
     async fn claim(
         &self,
         transaction: &UnitOfWorkTransaction,

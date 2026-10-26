@@ -297,7 +297,7 @@ impl StrategyServer {
         })?;
         let (call_id, fingerprint) =
             tavily_call_identity(&ctx, scope.id(), "search_web", arguments)?;
-        self.search_web_inner(params, call_id, fingerprint)
+        self.search_web_inner(params, call_id, fingerprint, scope.id().to_string())
             .await
             .map(Json)
     }

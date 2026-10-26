@@ -52,22 +52,29 @@ impl StrategyServer {
             .llm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
-        let (page_content, page_content_truncated) = match credit_budget
-            .extract_page(call_id, request_fingerprint, url.clone())
+        let retrieved_page = match credit_budget
+            .extract_page(
+                call_id,
+                request_fingerprint,
+                strategy_id.to_string(),
+                url.clone(),
+            )
             .await
         {
-            Ok(content) => {
-                let mut chars = content.chars();
-                let page_content = chars
-                    .by_ref()
-                    .take(MAX_PAGE_CONTENT_CHARS)
-                    .collect::<String>();
-                (page_content, chars.next().is_some())
-            }
+            Ok(page) => page,
             Err(error) => {
                 tracing::warn!("read_page extraction stopped");
                 return Err(tavily_credit_budget_error_to_mcp(error));
             }
+        };
+        let retrieved_at = retrieved_page.fetched_at;
+        let (page_content, page_content_truncated) = {
+            let mut chars = retrieved_page.value.chars();
+            let page_content = chars
+                .by_ref()
+                .take(MAX_PAGE_CONTENT_CHARS)
+                .collect::<String>();
+            (page_content, chars.next().is_some())
         };
 
         let messages = vec![
@@ -108,7 +115,11 @@ impl StrategyServer {
             }
         };
 
-        Ok(ReadPageResult { url, text })
+        Ok(ReadPageResult {
+            url,
+            text,
+            retrieved_at,
+        })
     }
 }
 

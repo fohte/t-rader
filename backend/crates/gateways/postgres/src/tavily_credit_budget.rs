@@ -1,3 +1,4 @@
+mod cache_hit;
 mod repository;
 mod support;
 

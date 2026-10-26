@@ -85,6 +85,15 @@ pub struct RecordDenialCommand {
     pub now: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordCacheHitCommand {
+    pub call_id: String,
+    pub request_fingerprint: String,
+    pub operation: TavilyCreditBudgetOperation,
+    pub outcome: Value,
+    pub now: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReservationFailureState {
     Unknown,
@@ -140,6 +149,12 @@ pub trait TavilyCreditBudgetRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         command: RecordDenialCommand,
     ) -> Result<(), TavilyCreditBudgetRepositoryError>;
+
+    async fn record_cache_hit(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        command: RecordCacheHitCommand,
+    ) -> Result<ReservationClaim, TavilyCreditBudgetRepositoryError>;
 
     async fn claim(
         &self,

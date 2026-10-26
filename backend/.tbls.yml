@@ -151,6 +151,16 @@ comments:
       day_start: '予約時に適用した UTC 日次期間。'
       month_start: '予約時に適用した UTC 月次期間。'
       outcome_json: '同一 call_id の再送へ返す保存済み結果または構造化停止理由。'
+  - table: tavily_retrieval_cache
+    tableComment: '認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。'
+    columnComments:
+      cache_key: '要求・認可範囲・credential 世代から生成した固定長 digest。元の要求値は保存しない。'
+      kind: 'cache した取得操作の種類。'
+      payload_json: '取得済みの検索結果または抽出本文。取得 claim 中は null。'
+      fetched_at: '外部 provider から取得した時刻。取得 claim 中は null。'
+      expires_at: 'cache entry の有効期限。取得 claim 中は null。'
+      lease_token: '取得 claim の所有者を識別する token。結果保存後は null。'
+      lease_expires_at: '取得 claim の期限。結果保存後は null。'
   - table: group_axis
     tableComment: '銘柄グループを分類する軸を定義する。'
     columnComments:

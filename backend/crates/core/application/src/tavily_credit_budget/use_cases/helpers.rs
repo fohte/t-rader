@@ -7,6 +7,7 @@ use super::super::types::CachedTavilyOutcome;
 use super::super::{
     ReservationClaim, TavilyCreditBudgetConfig, TavilyCreditBudgetDenial,
     TavilyCreditBudgetOperation, TavilyCreditBudgetReason, TavilyCreditBudgetScope,
+    TavilyRetrieved,
 };
 use super::TavilyCreditBudgetUseCasesError;
 use crate::web_search::WebSearchResult;
@@ -22,9 +23,17 @@ pub(super) fn replay_claim(
             Err(TavilyCreditBudgetUseCasesError::Denied(denial))
         }
         (TavilyCreditBudgetOperation::Search, outcome @ CachedTavilyOutcome::SearchResults(_))
+        | (
+            TavilyCreditBudgetOperation::Search,
+            outcome @ CachedTavilyOutcome::SearchResultsWithFetchedAt { .. },
+        )
         | (TavilyCreditBudgetOperation::Extract, outcome @ CachedTavilyOutcome::ExtractedPage(_)) => {
             Ok(ReservationClaim::Replay(encode_outcome(outcome)?))
         }
+        (
+            TavilyCreditBudgetOperation::Extract,
+            outcome @ CachedTavilyOutcome::ExtractedPageWithFetchedAt { .. },
+        ) => Ok(ReservationClaim::Replay(encode_outcome(outcome)?)),
         (TavilyCreditBudgetOperation::Extract, CachedTavilyOutcome::ExtractionFailed(error)) => {
             Err(TavilyCreditBudgetUseCasesError::Provider(error))
         }
@@ -34,25 +43,49 @@ pub(super) fn replay_claim(
 
 pub(super) fn replay_search(
     outcome: Value,
-) -> Result<Vec<WebSearchResult>, TavilyCreditBudgetUseCasesError> {
+) -> Result<TavilyRetrieved<Vec<WebSearchResult>>, TavilyCreditBudgetUseCasesError> {
     match decode_outcome(outcome)? {
-        CachedTavilyOutcome::SearchResults(results) => Ok(results),
+        CachedTavilyOutcome::SearchResults(results) => Ok(TavilyRetrieved {
+            value: results,
+            fetched_at: None,
+        }),
+        CachedTavilyOutcome::SearchResultsWithFetchedAt {
+            results,
+            fetched_at,
+        } => Ok(TavilyRetrieved {
+            value: results,
+            fetched_at: Some(fetched_at),
+        }),
         CachedTavilyOutcome::Denied(denial) => Err(TavilyCreditBudgetUseCasesError::Denied(denial)),
         CachedTavilyOutcome::ExtractionFailed(error) => {
             Err(TavilyCreditBudgetUseCasesError::Provider(error))
         }
-        CachedTavilyOutcome::ExtractedPage(_) => Err(idempotency_conflict()),
+        CachedTavilyOutcome::ExtractedPage(_)
+        | CachedTavilyOutcome::ExtractedPageWithFetchedAt { .. } => Err(idempotency_conflict()),
     }
 }
 
-pub(super) fn replay_extract(outcome: Value) -> Result<String, TavilyCreditBudgetUseCasesError> {
+pub(super) fn replay_extract(
+    outcome: Value,
+) -> Result<TavilyRetrieved<String>, TavilyCreditBudgetUseCasesError> {
     match decode_outcome(outcome)? {
-        CachedTavilyOutcome::ExtractedPage(content) => Ok(content),
+        CachedTavilyOutcome::ExtractedPage(content) => Ok(TavilyRetrieved {
+            value: content,
+            fetched_at: None,
+        }),
+        CachedTavilyOutcome::ExtractedPageWithFetchedAt {
+            content,
+            fetched_at,
+        } => Ok(TavilyRetrieved {
+            value: content,
+            fetched_at: Some(fetched_at),
+        }),
         CachedTavilyOutcome::Denied(denial) => Err(TavilyCreditBudgetUseCasesError::Denied(denial)),
         CachedTavilyOutcome::ExtractionFailed(error) => {
             Err(TavilyCreditBudgetUseCasesError::Provider(error))
         }
-        CachedTavilyOutcome::SearchResults(_) => Err(idempotency_conflict()),
+        CachedTavilyOutcome::SearchResults(_)
+        | CachedTavilyOutcome::SearchResultsWithFetchedAt { .. } => Err(idempotency_conflict()),
     }
 }
 
@@ -137,6 +170,14 @@ pub(super) fn configuration_unavailable() -> TavilyCreditBudgetUseCasesError {
     denied(
         TavilyCreditBudgetReason::ConfigurationUnavailable,
         TavilyCreditBudgetScope::Account,
+        None,
+    )
+}
+
+pub(super) fn provider_configuration_unavailable() -> TavilyCreditBudgetUseCasesError {
+    denied(
+        TavilyCreditBudgetReason::ConfigurationUnavailable,
+        TavilyCreditBudgetScope::Provider,
         None,
     )
 }

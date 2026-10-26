@@ -133,12 +133,15 @@ async fn main() -> Result<(), StartupError> {
                 "TAVILY_CREDIT_ACCOUNT_ID and TAVILY_PAYGO_DISABLED=true are required".to_owned(),
             )
         })?;
-        let provider =
-            TavilyClient::from_env().map(|client| Arc::new(client) as SharedWebSearchClient);
+        let tavily_client = TavilyClient::from_env();
+        let credential_generation = tavily_client
+            .as_ref()
+            .map(TavilyClient::credential_generation);
+        let provider = tavily_client.map(|client| Arc::new(client) as SharedWebSearchClient);
         let use_cases =
             backend::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
         use_cases
-            .tavily_credit_budget(provider, Some(config))
+            .tavily_credit_budget(provider, Some(config), credential_generation)
             .bootstrap()
             .await
             .map_err(|error| {
@@ -473,16 +476,23 @@ async fn main() -> Result<(), StartupError> {
 
         let llm_gateway_client =
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
+        let tavily_client = TavilyClient::from_env();
+        let credential_generation = tavily_client
+            .as_ref()
+            .map(TavilyClient::credential_generation);
         let web_search_client =
-            TavilyClient::from_env().map(|client| Arc::new(client) as SharedWebSearchClient);
+            tavily_client.map(|client| Arc::new(client) as SharedWebSearchClient);
         let tavily_credit_budget_config = tavily_credit_budget_config_from_env();
         if tavily_credit_budget_config.is_none() {
             tracing::warn!(
                 "TAVILY_CREDIT_ACCOUNT_ID または TAVILY_PAYGO_DISABLED が未確認または不正なため、Tavily 呼出を fail closed にします"
             );
         }
-        let tavily_credit_budget =
-            use_cases.tavily_credit_budget(web_search_client, tavily_credit_budget_config);
+        let tavily_credit_budget = use_cases.tavily_credit_budget(
+            web_search_client,
+            tavily_credit_budget_config,
+            credential_generation,
+        );
         let agent_webhook_state =
             build_agent_webhook_state(strategy_task_reconcile, agent_webhook_token);
         let external_webhook_state =

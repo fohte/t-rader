@@ -29,18 +29,6 @@ impl TavilyCreditBudgetUseCases {
         request_fingerprint: &str,
         operation: TavilyCreditBudgetOperation,
     ) -> Result<ReservationClaim, TavilyCreditBudgetUseCasesError> {
-        if call_id.trim().is_empty()
-            || call_id.len() > 255
-            || request_fingerprint.trim().is_empty()
-            || request_fingerprint.len() != 64
-        {
-            return Err(denied(
-                TavilyCreditBudgetReason::IdempotencyConflict,
-                TavilyCreditBudgetScope::Account,
-                None,
-            ));
-        }
-
         if let Some(claim) = self
             .existing_claim(call_id, request_fingerprint, operation)
             .await?
@@ -117,12 +105,24 @@ impl TavilyCreditBudgetUseCases {
             .await
     }
 
-    async fn existing_claim(
+    pub(super) async fn existing_claim(
         &self,
         call_id: &str,
         request_fingerprint: &str,
         operation: TavilyCreditBudgetOperation,
     ) -> Result<Option<ReservationClaim>, TavilyCreditBudgetUseCasesError> {
+        if call_id.trim().is_empty()
+            || call_id.len() > 255
+            || request_fingerprint.trim().is_empty()
+            || request_fingerprint.len() != 64
+        {
+            return Err(denied(
+                TavilyCreditBudgetReason::IdempotencyConflict,
+                TavilyCreditBudgetScope::Account,
+                None,
+            ));
+        }
+
         let transaction = self
             .unit_of_work
             .begin()
