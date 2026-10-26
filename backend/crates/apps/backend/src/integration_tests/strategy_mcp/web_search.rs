@@ -3,19 +3,22 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderValue};
 use core_application::web_search::{
-    SharedWebSearchClient, WebSearchClient, WebSearchError, WebSearchResult, WebSearchTimeRange,
-    WebSearchTopic,
+    SharedWebSearchClient, WebPageExtractionResponse, WebSearchAccountUsage, WebSearchClient,
+    WebSearchError, WebSearchResponse, WebSearchResult, WebSearchTimeRange, WebSearchTopic,
 };
+use rust_decimal::Decimal;
 use serde_json::json;
 use uuid::Uuid;
 
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::SEARCH_WEB_MAX_CALLS_PER_TASK;
 use super::dto::SearchWebParams;
+use super::test_credit_budget::expected_denial;
 use super::tests_common::{
     TestExecutionContext, build_server, create_task_with_subagent_limits, insert_strategy,
     insert_subagent_headers,
 };
+use core_application::tavily_credit_budget::{TavilyCreditBudgetReason, TavilyCreditBudgetScope};
 
 #[derive(Clone)]
 struct FakeWebSearchClient {
@@ -38,7 +41,7 @@ impl WebSearchClient for FakeWebSearchClient {
         query: &str,
         topic: Option<WebSearchTopic>,
         time_range: Option<WebSearchTimeRange>,
-    ) -> Result<Vec<WebSearchResult>, WebSearchError> {
+    ) -> Result<WebSearchResponse, WebSearchError> {
         self.calls.lock().expect("record calls").push(SearchCall {
             query: query.to_owned(),
             topic,
@@ -50,17 +53,36 @@ impl WebSearchClient for FakeWebSearchClient {
                 message: "upstream error".into(),
             });
         }
-        Ok(self.results.clone())
+        Ok(WebSearchResponse {
+            results: self.results.clone(),
+            credits_used: Some(Decimal::ONE),
+        })
     }
 
-    async fn extract_page(&self, _url: &str) -> Result<String, WebSearchError> {
+    async fn extract_page(&self, url: &str) -> Result<WebPageExtractionResponse, WebSearchError> {
         if self.fails {
-            return Err(WebSearchError::ExtractionFailed {
-                url: "https://example.invalid/article".into(),
-                message: "page is unavailable".into(),
+            return Ok(WebPageExtractionResponse {
+                raw_content: None,
+                failure: Some(core_application::web_search::WebPageExtractionFailure {
+                    url: url.to_owned(),
+                    message: "page is unavailable".into(),
+                }),
+                credits_used: Some(Decimal::ZERO),
             });
         }
-        Ok("# Example page".into())
+        Ok(WebPageExtractionResponse {
+            raw_content: Some("# Example page".into()),
+            failure: None,
+            credits_used: Some(Decimal::ONE),
+        })
+    }
+
+    async fn account_usage(&self) -> Result<WebSearchAccountUsage, WebSearchError> {
+        Ok(WebSearchAccountUsage {
+            current_plan: "Researcher".into(),
+            plan_credits_used: Decimal::ZERO,
+            paygo_credits_used: Decimal::ZERO,
+        })
     }
 }
 
@@ -97,16 +119,20 @@ fn example_result() -> WebSearchResult {
 }
 
 #[backend_test_macros::database_test]
-async fn search_web_requires_tavily_api_key(db: gateway_postgres::DatabaseHandle) {
+async fn search_web_stops_when_credit_budget_is_missing(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
     let server = build_server(db);
     let err = server
         .search_web(strategy_id, None, params("example query"))
         .await
-        .expect_err("expected internal error");
+        .expect_err("expected structured budget denial");
     assert_eq!(
         err,
-        rmcp::ErrorData::internal_error("TAVILY_API_KEY is not configured", None),
+        expected_denial(
+            TavilyCreditBudgetReason::ConfigurationUnavailable,
+            TavilyCreditBudgetScope::Account,
+            None,
+        ),
     );
 }
 
@@ -227,9 +253,10 @@ async fn search_web_keeps_call_count_when_request_fails(db: gateway_postgres::Da
         (errors, calls.lock().expect("record calls").len()),
         (
             (0..SEARCH_WEB_MAX_CALLS_PER_TASK)
-                .map(|_| rmcp::ErrorData::internal_error(
-                    "web search failed: web search API error (status 500): upstream error",
-                    None,
+                .map(|_| expected_denial(
+                    TavilyCreditBudgetReason::ProviderRejected,
+                    TavilyCreditBudgetScope::Provider,
+                    Some(500),
                 ))
                 .chain((0..SEARCH_WEB_MAX_CALLS_PER_TASK).map(|_| {
                     rmcp::ErrorData::invalid_params(
@@ -271,9 +298,10 @@ async fn search_web_keeps_subagent_call_count_when_request_fails(
     assert_eq!(
         (first_call, retry, calls.lock().expect("record calls").len()),
         (
-            Err(rmcp::ErrorData::internal_error(
-                "web search failed: web search API error (status 500): upstream error",
-                None,
+            Err(expected_denial(
+                TavilyCreditBudgetReason::ProviderRejected,
+                TavilyCreditBudgetScope::Provider,
+                Some(500),
             )),
             Err(rmcp::ErrorData::invalid_params(
                 "execution budget limit was exceeded for researcher:search_web",

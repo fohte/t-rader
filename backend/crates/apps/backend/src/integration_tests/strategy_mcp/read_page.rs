@@ -6,17 +6,19 @@ use core_application::llm_client::{
     ChatMessage, ContentPart, LlmClient, LlmClientError, LlmModel, SharedLlmClient,
 };
 use core_application::web_search::{
-    SharedWebSearchClient, WebSearchClient, WebSearchError, WebSearchResult, WebSearchTimeRange,
-    WebSearchTopic,
+    SharedWebSearchClient, WebPageExtractionResponse, WebSearchAccountUsage, WebSearchClient,
+    WebSearchError, WebSearchResponse, WebSearchTimeRange, WebSearchTopic,
 };
 use indoc::formatdoc;
 use rmcp::ErrorData as McpError;
 use rstest::rstest;
+use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto::{ReadPageParams, ReadPageResult};
+use super::test_credit_budget::expected_denial;
 use super::tests_common::{
     TestExecutionContext, create_task_with_subagent_limits, insert_strategy,
     insert_subagent_headers, mock_db_with_strategy,
@@ -104,22 +106,41 @@ impl WebSearchClient for FakeWebSearchClient {
         _query: &str,
         _topic: Option<WebSearchTopic>,
         _time_range: Option<WebSearchTimeRange>,
-    ) -> Result<Vec<WebSearchResult>, WebSearchError> {
-        Ok(Vec::new())
+    ) -> Result<WebSearchResponse, WebSearchError> {
+        Ok(WebSearchResponse {
+            results: Vec::new(),
+            credits_used: Some(Decimal::ONE),
+        })
     }
 
-    async fn extract_page(&self, url: &str) -> Result<String, WebSearchError> {
+    async fn extract_page(&self, url: &str) -> Result<WebPageExtractionResponse, WebSearchError> {
         self.extracted_urls
             .lock()
             .expect("record extracted URL")
             .push(url.to_string());
         if self.fail_extraction {
-            return Err(WebSearchError::ExtractionFailed {
-                url: url.to_string(),
-                message: "page is unavailable".into(),
+            return Ok(WebPageExtractionResponse {
+                raw_content: None,
+                failure: Some(core_application::web_search::WebPageExtractionFailure {
+                    url: url.to_string(),
+                    message: "page is unavailable".into(),
+                }),
+                credits_used: Some(Decimal::ZERO),
             });
         }
-        Ok(self.page_content.clone())
+        Ok(WebPageExtractionResponse {
+            raw_content: Some(self.page_content.clone()),
+            failure: None,
+            credits_used: Some(Decimal::ONE),
+        })
+    }
+
+    async fn account_usage(&self) -> Result<WebSearchAccountUsage, WebSearchError> {
+        Ok(WebSearchAccountUsage {
+            current_plan: "Researcher".into(),
+            plan_credits_used: Decimal::ZERO,
+            paygo_credits_used: Decimal::ZERO,
+        })
     }
 }
 
@@ -163,12 +184,14 @@ fn server(
 ) -> StrategyServer {
     let db = db.into();
     let use_cases = build_use_cases_without_agent_task_client(db.clone());
+    let tavily_credit_budget =
+        super::test_credit_budget::test_tavily_credit_budget(web_search_client);
     StrategyServer::new(crate::mcp::strategy_server_dependencies(
         &use_cases,
         None,
         None,
         llm_client,
-        web_search_client,
+        Some(tavily_credit_budget),
     ))
 }
 
@@ -404,7 +427,8 @@ async fn read_page_rejects_invalid_params(
 #[tokio::test]
 async fn read_page_requires_tavily_client() {
     let strategy_id = Uuid::new_v4();
-    let server = server(mock_db_with_strategy(strategy_id), None, None);
+    let (llm_client, _) = llm_client();
+    let server = server(mock_db_with_strategy(strategy_id), Some(llm_client), None);
 
     assert_eq!(
         call_tool_output_with_headers::<_, Value>(
@@ -414,8 +438,9 @@ async fn read_page_requires_tavily_client() {
             headers(strategy_id, None),
         )
         .await,
-        Err(McpError::internal_error(
-            "TAVILY_API_KEY is not configured",
+        Err(expected_denial(
+            core_application::tavily_credit_budget::TavilyCreditBudgetReason::ConfigurationUnavailable,
+            core_application::tavily_credit_budget::TavilyCreditBudgetScope::Provider,
             None,
         )),
     );
@@ -519,7 +544,7 @@ async fn read_page_keeps_call_count_after_extraction_failure(db: gateway_postgre
         (0..READ_PAGE_TEST_CALL_LIMIT)
             .map(|_| {
                 Err(McpError::internal_error(
-                    "page extraction failed: failed to extract page https://example.invalid/article: page is unavailable",
+                    "Tavily request failed: failed to extract page https://example.invalid/article: page is unavailable",
                     None,
                 ))
             })

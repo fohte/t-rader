@@ -66,6 +66,7 @@ pub mod strategy_scope;
 pub mod strategy_task;
 pub mod strategy_task_step_evidence;
 pub mod subagent_definition;
+pub mod tavily_credit_budget;
 pub mod trade;
 pub mod trigger;
 pub mod unit_of_work;

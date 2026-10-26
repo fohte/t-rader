@@ -74,6 +74,8 @@
 | [public.task_execution_payload_chunk](public.task_execution_payload_chunk.md)                   | 6       | payload の順序付き JSON chunk を追記専用で保持する。                                                                                               | BASE TABLE        |
 | [public.task_execution_state](public.task_execution_state.md)                                   | 8       | 戦略 task の固定期限と累計実行量を保持する。                                                                                                       | BASE TABLE        |
 | [public.execution_reservation](public.execution_reservation.md)                                 | 12      | task の実行量予約と送信状態を記録する。                                                                                                            | BASE TABLE        |
+| [public.tavily_credit_budget_state](public.tavily_credit_budget_state.md)                       | 14      | Tavily account 単位の UTC 日次・月次 credit 上限と照合状態を保持する。                                                                             | BASE TABLE        |
+| [public.tavily_credit_reservation](public.tavily_credit_reservation.md)                         | 12      | Tavily provider へ送る検索・抽出の account credit 予約、精算、再送結果を保持する。                                                                 | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -952,6 +954,36 @@ erDiagram
   varchar_64_ request_fingerprint
   text state
   jsonb response_json
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.tavily_credit_budget_state" {
+  smallint singleton_key
+  varchar_255_ account_id
+  numeric_12_6_ daily_limit
+  numeric_12_6_ monthly_limit
+  date day_start
+  numeric_12_6_ daily_used
+  numeric_12_6_ daily_carry
+  numeric_12_6_ day_provider_usage
+  timestamp_with_time_zone daily_blocked_until
+  date month_start
+  numeric_12_6_ monthly_used
+  numeric_12_6_ monthly_carry
+  numeric_12_6_ provider_usage
+  timestamp_with_time_zone updated_at
+}
+"public.tavily_credit_reservation" {
+  uuid reservation_id
+  varchar_255_ call_id
+  varchar_64_ request_fingerprint
+  varchar_16_ operation
+  varchar_24_ state
+  numeric_12_6_ reserved_credits
+  numeric_12_6_ settled_credits
+  date day_start
+  date month_start
+  jsonb outcome_json
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }
