@@ -83,22 +83,7 @@ impl From<CalendarEventReadItem> for CalendarEventResponse {
 
 impl From<CalendarEvent> for CalendarEventResponse {
     fn from(event: CalendarEvent) -> Self {
-        let fiscal_period_type = fiscal_period_type(&event);
-        Self::Event(Box::new(CalendarEventResponseEvent {
-            source: event.source,
-            external_id: event.external_id,
-            category: event.category.as_str().to_owned(),
-            country: event.country,
-            title: event.title,
-            stock_id: event.stock_id,
-            fiscal_period: event.fiscal_period,
-            fiscal_period_type,
-            event_date: event.event_date,
-            event_at: event.event_at,
-            time_of_day: event.time_of_day.map(|value| value.as_str().to_owned()),
-            references: Vec::new(),
-            has_matching_earnings_summary: false,
-        }))
+        Self::from(CalendarEventReadModel::from(event))
     }
 }
 
