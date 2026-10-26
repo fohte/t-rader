@@ -6603,7 +6603,15 @@
             "description": "対象期区分。期末と同時に指定する",
             "required": false,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "description": "銘柄の決算短信検索に指定できる対象期区分",
+              "enum": [
+                "FY",
+                "1Q",
+                "2Q",
+                "3Q",
+                "4Q"
+              ]
             }
           }
         ],
@@ -6617,6 +6625,16 @@
                   "items": {
                     "$ref": "#/components/schemas/StockFinancialSummaryResponse"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "検索条件が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }

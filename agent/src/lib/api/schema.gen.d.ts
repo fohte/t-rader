@@ -8328,7 +8328,7 @@ export interface operations {
         /** @description 対象期末。期区分と同時に指定する */
         current_period_end?: string
         /** @description 対象期区分。期末と同時に指定する */
-        current_period_type?: string
+        current_period_type?: 'FY' | '1Q' | '2Q' | '3Q' | '4Q'
       }
       header?: never
       path: {
@@ -8345,6 +8345,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['StockFinancialSummaryResponse'][]
+        }
+      }
+      /** @description 検索条件が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       500: {
