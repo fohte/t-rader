@@ -75,6 +75,11 @@ const fiscalYearDocument = makeReference(
   'https://example.invalid/sample-fiscal-year-document',
   'fiscal_year',
 )
+const yearDocument = makeReference(
+  'individual_document',
+  'https://example.invalid/sample-year-document',
+  'year',
+)
 const monthRangeDocument = makeReference(
   'individual_document',
   'https://example.invalid/sample-month-range-document',
@@ -141,6 +146,18 @@ const referenceViews = {
       publicationEvidence: '架空の公表記録',
     },
   ],
+  year: [
+    {
+      key: 'individual_document:sample_source:sample-reference',
+      title: '架空の発表資料',
+      source: 'sample_source',
+      checkedAt: '2099-01-06T00:00:00Z',
+      targetPeriodEnd: '2098-12-31',
+      targetPeriodType: '年次',
+      href: 'https://example.invalid/sample-year-document',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
   monthRange: [
     {
       key: 'individual_document:sample_source:sample-reference',
@@ -197,6 +214,13 @@ describe('buildCalendarDays indicator references', () => {
       references: [fiscalYearDocument],
       label: '個別資料あり',
       expectedReferences: referenceViews.fiscalYear,
+    },
+    {
+      name: 'calendar year period',
+      country: 'JP' as const,
+      references: [yearDocument],
+      label: '個別資料あり',
+      expectedReferences: referenceViews.year,
     },
     {
       name: 'multiple-month period',

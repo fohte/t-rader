@@ -279,6 +279,7 @@ const INDICATOR_PERIOD_TYPE_LABELS: Readonly<Record<string, string>> = {
   half_year: '半期',
   fiscal_year: '年度',
   month_range: '複数月',
+  year: '年次',
 }
 
 function formatIndicatorPeriodType(value: string): string | undefined {

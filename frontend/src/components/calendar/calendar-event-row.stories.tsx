@@ -96,6 +96,22 @@ const indicatorHalfYearStatus: CalendarIndicatorStatus = {
   ],
 }
 
+const indicatorYearStatus: CalendarIndicatorStatus = {
+  label: '個別資料あり',
+  references: [
+    {
+      key: 'individual_document:sample_source:sample-year-release',
+      title: '架空の年次指標資料',
+      source: 'sample_source',
+      checkedAt: '2030-01-01T00:00:00Z',
+      targetPeriodEnd: '2029-12-31',
+      targetPeriodType: '年次',
+      href: 'https://example.invalid/sample-year-release',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
+}
+
 const indicatorUnknownPeriodTypeStatus: CalendarIndicatorStatus = {
   label: '個別資料あり',
   references: [
@@ -361,6 +377,21 @@ export const IndicatorHalfYearDocumentMobile: Story = {
   },
 }
 
+export const IndicatorYearDocumentMobile: Story = {
+  name: '390px 幅で年次の対象期間と個別資料へのリンクを表示します。',
+  ...mobileCalendarViewport,
+  args: {
+    time: '08:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空経済指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorYearStatus,
+  },
+}
+
 export const IndicatorOfficialListingMobile: Story = {
   name: '390px 幅で個別資料未確認の公式一覧を表示します。',
   ...mobileCalendarViewport,
@@ -431,6 +462,20 @@ export const IndicatorHalfYearDocumentDesktop: Story = {
     emphasized: false,
     target: false,
     indicatorStatus: indicatorHalfYearStatus,
+  },
+}
+
+export const IndicatorYearDocumentDesktop: Story = {
+  name: 'デスクトップ幅で年次の対象期間と個別資料へのリンクを表示します。',
+  args: {
+    time: '08:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空経済指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorYearStatus,
   },
 }
 
