@@ -47,6 +47,7 @@ use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 use tokio::sync::watch;
+use tracing_subscriber::util::SubscriberInitExt;
 
 mod logging;
 mod runtime;
@@ -54,7 +55,7 @@ mod signals;
 mod startup;
 mod twse;
 
-use logging::default_log_filter;
+use logging::{build_subscriber, default_log_filter};
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
@@ -86,12 +87,9 @@ async fn main() -> Result<(), StartupError> {
         return Ok(());
     }
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| default_log_filter()),
-        )
-        .init();
+    let log_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| default_log_filter());
+    build_subscriber(log_filter, std::io::stdout).init();
 
     let jquants_config = if cli.migrate_only || cli.backfill_twse_indices {
         None
