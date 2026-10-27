@@ -2440,6 +2440,47 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[tokio::test]
+    async fn gated_write_rejects_when_body_and_graph_warnings_need_distinct_dispositions(
+        mut graph_with_warning_labels: serde_json::Value,
+    ) {
+        graph_with_warning_labels[0]["edges"][0]["label"] = serde_json::Value::Null;
+        let body = "close 45,678円";
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let mut command = write_body_command(body);
+        command.graphs_json = Some(graph_with_warning_labels);
+        let result = use_cases
+            .write_with_warning_dispositions(
+                command,
+                vec![NoteBodyWarningDisposition {
+                    id: "price:45%2C678%E5%86%86:1".into(),
+                    reason: "架空の理由".into(),
+                }],
+            )
+            .await;
+        let unresolved_warning_ids = result.err().and_then(|error| match error {
+            NoteUseCaseError::BodyLintRejected { warnings, .. } => Some(
+                warnings
+                    .into_iter()
+                    .map(|warning| warning.id)
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        });
+        let inserted_note_count = repository.inserted_note_ids.lock().await.len();
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (
+                unresolved_warning_ids,
+                inserted_note_count,
+                inserted_version_count,
+            ),
+            (Some(vec!["price:45%2C678%E5%86%86:2".into()]), 0, 0,),
+        );
+    }
+
     #[tokio::test]
     async fn gated_write_accepts_prior_ids_when_earlier_identical_warnings_are_removed() {
         let (use_cases, repository) = make_note_use_cases(source_version());

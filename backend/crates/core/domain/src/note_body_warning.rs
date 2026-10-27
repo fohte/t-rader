@@ -69,16 +69,6 @@ pub fn scan_note_warning_findings_with_ids(
     findings
 }
 
-pub fn scan_graph_warnings_with_ids(
-    graphs: &[GraphDef],
-    preceding_warnings: &[NoteBodyWarning],
-) -> Vec<NoteBodyWarning> {
-    scan_graph_warning_findings_with_ids(graphs, preceding_warnings)
-        .into_iter()
-        .map(|finding| finding.warning)
-        .collect()
-}
-
 pub fn scan_graph_warning_findings_with_ids(
     graphs: &[GraphDef],
     preceding_warnings: &[NoteBodyWarning],
@@ -178,7 +168,10 @@ mod tests {
 
     use crate::note_graph::{GraphDef, GraphEdge, GraphNode, Layout};
 
-    use super::{NoteBodyWarning, scan_graph_warnings_with_ids, scan_note_warnings_with_ids};
+    use super::{
+        NoteBodyWarning, NoteBodyWarningFinding, scan_graph_warning_findings_with_ids,
+        scan_note_warnings_with_ids,
+    };
 
     fn price_warning(value: &str) -> String {
         format!(
@@ -406,48 +399,33 @@ mod tests {
         let preceding_warnings = scan_note_warnings_with_ids("close 45,678円", &[]);
 
         assert_eq!(
-            (
-                scan_note_warnings_with_ids("close 45,678円", &graphs),
-                scan_graph_warnings_with_ids(&graphs, &preceding_warnings),
-            ),
-            (
-                vec![
-                    NoteBodyWarning {
-                        id: "price:45%2C678%E5%86%86:1".into(),
-                        message: price_warning("45,678円"),
-                    },
-                    NoteBodyWarning {
+            scan_graph_warning_findings_with_ids(&graphs, &preceding_warnings),
+            vec![
+                NoteBodyWarningFinding {
+                    warning: NoteBodyWarning {
                         id: "price:45%2C678%E5%86%86:2".into(),
                         message: format!(
                             "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
                             price_warning("45,678円"),
                         ),
                     },
-                    NoteBodyWarning {
+                    value: "45,678円".into(),
+                    path: Some("graphs[0].nodes[0].label".into()),
+                    range: 0..9,
+                },
+                NoteBodyWarningFinding {
+                    warning: NoteBodyWarning {
                         id: "relative:-3.5%25:1".into(),
                         message: format!(
                             "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}",
                             relative_warning("-3.5%"),
                         ),
                     },
-                ],
-                vec![
-                    NoteBodyWarning {
-                        id: "price:45%2C678%E5%86%86:2".into(),
-                        message: format!(
-                            "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
-                            price_warning("45,678円"),
-                        ),
-                    },
-                    NoteBodyWarning {
-                        id: "relative:-3.5%25:1".into(),
-                        message: format!(
-                            "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}",
-                            relative_warning("-3.5%"),
-                        ),
-                    },
-                ],
-            ),
+                    value: "-3.5%".into(),
+                    path: Some("graphs[0].edges[0].label".into()),
+                    range: 0..5,
+                },
+            ],
         );
     }
 }
