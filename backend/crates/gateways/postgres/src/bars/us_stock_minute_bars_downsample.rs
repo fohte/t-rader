@@ -54,14 +54,29 @@ pub(super) async fn find_earliest_minute_bar_before(
     db: &impl ConnectionTrait,
     cutoff: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>, sea_orm::DbErr> {
+    let instrument_ids = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id AS instrument_id FROM instruments WHERE id LIKE 'US:%'",
+            [],
+        ))
+        .await?
+        .iter()
+        .map(|row| InstrumentIdRow::from_query_result(row, "").map(|row| row.instrument_id))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if instrument_ids.is_empty() {
+        return Ok(None);
+    }
+
     // MIN/MAX 専用の順序探索を避け、chunk ごとの部分集約を全体でまとめる。
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT MIN(timestamp) AS timestamp FROM bars \
-             WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' AND timestamp < $1 \
+             WHERE instrument_id = ANY($1::text[]) AND timeframe = '1m' AND timestamp < $2 \
              GROUP BY timeframe",
-            [cutoff.fixed_offset().into()],
+            [instrument_ids.into(), cutoff.fixed_offset().into()],
         ))
         .await?;
 
