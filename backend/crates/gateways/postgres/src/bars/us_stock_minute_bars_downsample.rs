@@ -55,6 +55,7 @@ pub(super) async fn find_earliest_minute_bar_before(
     cutoff: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>, sea_orm::DbErr> {
     // MIN/MAX 専用の順序探索を避け、chunk ごとの部分集約を全体でまとめる。
+    // 非 C 照合順序では LIKE が圧縮 chunk の索引条件にならないため、instruments の ID を等価条件に使う。
     // 同じ statement snapshot を使い、対象銘柄がない場合は bars の subquery を実行しない。
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
