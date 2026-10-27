@@ -119,6 +119,7 @@ fn expected_version(
         "body_md": "body",
         "frontmatter_json": { "tags": [tag] },
         "resolved_price_references_json": {},
+        "warning_dispositions": [],
         "graphs_json": [],
         "status": status,
         "is_current": is_current,
