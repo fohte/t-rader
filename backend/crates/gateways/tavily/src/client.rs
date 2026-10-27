@@ -583,13 +583,13 @@ mod tests {
         json!({
             "key": { "usage": 900.5 },
             "account": {
-                "current_plan": "Researcher",
+                "current_plan": "Example Plan",
                 "plan_usage": 12.375,
                 "paygo_usage": 0.125
             }
         }),
         WebSearchAccountUsage {
-            current_plan: "Researcher".into(),
+            current_plan: "Example Plan".into(),
             plan_credits_used: Decimal::new(12_375, 3),
             paygo_credits_used: Decimal::new(125, 3),
         },
@@ -598,13 +598,13 @@ mod tests {
         json!({
             "key": { "usage": 700 },
             "account": {
-                "current_plan": "Researcher",
+                "current_plan": "Example Plan",
                 "plan_usage": 24,
                 "paygo_usage": 0
             }
         }),
         WebSearchAccountUsage {
-            current_plan: "Researcher".into(),
+            current_plan: "Example Plan".into(),
             plan_credits_used: Decimal::new(24, 0),
             paygo_credits_used: Decimal::ZERO,
         },
@@ -624,15 +624,15 @@ mod tests {
     #[rstest]
     #[case::missing_account(json!({ "key": { "usage": 7 } }))]
     #[case::legacy_top_level_shape(json!({
-        "current_plan": "Researcher",
+        "current_plan": "Example Plan",
         "plan_usage": { "credits_used": 7 },
         "paygo_usage": { "credits_used": 0 }
     }))]
     #[case::missing_plan_usage(json!({
-        "account": { "current_plan": "Researcher", "paygo_usage": 0 }
+        "account": { "current_plan": "Example Plan", "paygo_usage": 0 }
     }))]
     #[case::missing_paygo_usage(json!({
-        "account": { "current_plan": "Researcher", "plan_usage": 7 }
+        "account": { "current_plan": "Example Plan", "plan_usage": 7 }
     }))]
     #[case::missing_current_plan(json!({
         "account": { "plan_usage": 7, "paygo_usage": 0 }
@@ -642,11 +642,11 @@ mod tests {
         "account": { "current_plan": 7, "plan_usage": 7, "paygo_usage": 0 }
     }))]
     #[case::invalid_plan_usage_type(json!({
-        "account": { "current_plan": "Researcher", "plan_usage": {}, "paygo_usage": 0 }
+        "account": { "current_plan": "Example Plan", "plan_usage": {}, "paygo_usage": 0 }
     }))]
     #[case::invalid_paygo_usage_type(json!({
         "account": {
-            "current_plan": "Researcher",
+            "current_plan": "Example Plan",
             "plan_usage": 7,
             "paygo_usage": "not-a-number"
         }
