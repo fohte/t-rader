@@ -75,23 +75,23 @@ jq -n \
   --arg actual_typed_bind_set_sha256 "$(jq -r '.comparison.group_movers.typed_shifted_bind_set_sha256 // "unavailable"' "$INPUT_MANIFEST_FILE")" \
   --argjson expected_bind_count "$EXPECTED_GROUP_BIND_COUNT" \
   --argjson actual_bind_count "$(jq -r '.comparison.group_movers.bind_count // 0' "$INPUT_MANIFEST_FILE")" \
-  '((.manifest_matches == true) and (.binds_match == true)) as $matched |
+  '(($manifest_matches == true) and ($binds_match == true)) as $matched |
    {
      status: (if $matched then "passed" else "failed" end),
-     full_input_equivalence_matches: .full_input_matches,
-     group_sql_matches: (.expected_sql_sha256 == .actual_sql_sha256),
-     parameter_types_match: (.expected_parameter_types_sha256 == .actual_parameter_types_sha256 and .expected_parameter_types_set_sha256 == .actual_parameter_types_set_sha256),
-     all_six_typed_binds_match: (.expected_bind_count == .actual_bind_count and .expected_typed_bind_set_sha256 == .actual_typed_bind_set_sha256 and .binds_match == true),
-     bind_count: .actual_bind_count,
+     full_input_equivalence_matches: $full_input_matches,
+     group_sql_matches: ($expected_sql_sha256 == $actual_sql_sha256),
+     parameter_types_match: ($expected_parameter_types_sha256 == $actual_parameter_types_sha256 and $expected_parameter_types_set_sha256 == $actual_parameter_types_set_sha256),
+     all_six_typed_binds_match: ($expected_bind_count == $actual_bind_count and $expected_typed_bind_set_sha256 == $actual_typed_bind_set_sha256 and $binds_match == true),
+     bind_count: $actual_bind_count,
      target_date: "2026-10-22",
-     expected_sql_sha256: .expected_sql_sha256,
-     actual_sql_sha256: .actual_sql_sha256,
-     expected_parameter_types_sha256: .expected_parameter_types_sha256,
-     actual_parameter_types_sha256: .actual_parameter_types_sha256,
-     expected_parameter_types_set_sha256: .expected_parameter_types_set_sha256,
-     actual_parameter_types_set_sha256: .actual_parameter_types_set_sha256,
-     expected_typed_bind_set_sha256: .expected_typed_bind_set_sha256,
-     actual_typed_bind_set_sha256: .actual_typed_bind_set_sha256
+     expected_sql_sha256: $expected_sql_sha256,
+     actual_sql_sha256: $actual_sql_sha256,
+     expected_parameter_types_sha256: $expected_parameter_types_sha256,
+     actual_parameter_types_sha256: $actual_parameter_types_sha256,
+     expected_parameter_types_set_sha256: $expected_parameter_types_set_sha256,
+     actual_parameter_types_set_sha256: $actual_parameter_types_set_sha256,
+     expected_typed_bind_set_sha256: $expected_typed_bind_set_sha256,
+     actual_typed_bind_set_sha256: $actual_typed_bind_set_sha256
    }' > "$gate_file"
 
 if [[ "$manifest_matches" != true || "$binds_match" != true ]]; then
