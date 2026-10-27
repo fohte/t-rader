@@ -241,6 +241,15 @@ mod tests {
             Ok(references.len())
         }
 
+        async fn replace_macro_references_for_events(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _event_keys: Vec<(String, String)>,
+            references: Vec<CalendarEventReference>,
+        ) -> Result<usize, CalendarEventRepositoryError> {
+            Ok(references.len())
+        }
+
         async fn delete_missing_future_events(
             &self,
             _transaction: &UnitOfWorkTransaction,

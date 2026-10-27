@@ -306,6 +306,17 @@ mod tests {
             Ok(count)
         }
 
+        async fn replace_macro_references_for_events(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _event_keys: Vec<(String, String)>,
+            references: Vec<CalendarEventReference>,
+        ) -> Result<usize, CalendarEventRepositoryError> {
+            let count = references.len();
+            self.upserted.lock().await.extend(references);
+            Ok(count)
+        }
+
         async fn delete_missing_future_events(
             &self,
             _transaction: &UnitOfWorkTransaction,

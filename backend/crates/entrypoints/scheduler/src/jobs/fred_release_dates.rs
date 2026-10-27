@@ -1,4 +1,5 @@
 use chrono::Utc;
+use chrono_tz::Asia::Tokyo;
 use core_application::calendar::use_cases::CalendarEventIngestStats;
 use core_application::{
     calendar::{source::CalendarEventSource, use_cases::CalendarEventUseCases},
@@ -23,8 +24,12 @@ impl super::SchedulerJob for FredReleaseDatesIngest {
                         state.dependencies.fred_calendar_event_source,
                         "FRED release dates source",
                     )?;
-                    ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref())
-                        .await
+                    ingest_calendar_events(
+                        &state.dependencies.calendar_events,
+                        source.as_ref(),
+                        state.dependencies.macro_references.as_ref(),
+                    )
+                    .await
                 },
             )
             .await
@@ -35,9 +40,11 @@ impl super::SchedulerJob for FredReleaseDatesIngest {
 async fn ingest_calendar_events(
     use_cases: &CalendarEventUseCases,
     source: &dyn CalendarEventSource,
+    macro_references: Option<&core_application::macro_reference::MacroReferenceUseCases>,
 ) -> Result<CalendarEventIngestStats, String> {
+    let today = Utc::now().with_timezone(&Tokyo).date_naive();
     let stats = use_cases
-        .run_ingest_cycle(source, Utc::now().date_naive())
+        .run_ingest_cycle(source, today)
         .await
         .map_err(|error| error.to_string())?;
     tracing::debug!(
@@ -45,5 +52,18 @@ async fn ingest_calendar_events(
         deleted = stats.deleted,
         "FRED release dates ingest cycle completed"
     );
+    if let Some(macro_references) = macro_references {
+        let references = macro_references
+            .fetch_pending(today, "fred")
+            .await
+            .map_err(|error| error.to_string())?;
+        tracing::debug!(
+            events_checked = references.events_checked,
+            references_upserted = references.references_upserted,
+            external_failures = references.external_failures,
+            budget_exhausted = references.budget_exhausted,
+            "FRED macro references checked"
+        );
+    }
     Ok(stats)
 }

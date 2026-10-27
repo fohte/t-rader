@@ -8,6 +8,7 @@ pub mod annotation;
 pub mod bars;
 pub mod bars_timestamp_coverage;
 pub mod calendar_event;
+pub mod calendar_event_macro_reference_check;
 pub mod calendar_event_reference;
 pub mod calendar_event_sec_filing_check;
 pub mod change_history;

@@ -345,6 +345,40 @@ pub(super) async fn upsert_references(
     Ok(count)
 }
 
+pub(super) async fn replace_macro_references_for_events(
+    transaction: &UnitOfWorkTransaction,
+    event_keys: Vec<(String, String)>,
+    references: Vec<CalendarEventReference>,
+) -> Result<usize, CalendarEventRepositoryError> {
+    let database_transaction = transaction_ref(transaction)?;
+    if !event_keys.is_empty() {
+        let event_keys = serde_json::json!(
+            event_keys
+                .iter()
+                .map(|(event_source, event_external_id)| serde_json::json!({
+                    "event_source": event_source,
+                    "event_external_id": event_external_id,
+                }))
+                .collect::<Vec<_>>()
+        );
+        let statement = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM calendar_event_reference r \
+             USING calendar_event e \
+             JOIN jsonb_to_recordset($1::jsonb) AS target(event_source text, event_external_id text) \
+               ON e.source = target.event_source AND e.external_id = target.event_external_id \
+             WHERE r.calendar_event_id = e.id AND e.category = 'indicator' \
+               AND r.kind IN ('individual_document', 'official_listing')",
+            [event_keys.into()],
+        );
+        database_transaction
+            .execute_raw(statement)
+            .await
+            .map_err(repository_error)?;
+    }
+    upsert_references(transaction, references).await
+}
+
 fn event_key_filter<'a>(keys: impl Iterator<Item = (&'a str, &'a str)>) -> (String, Vec<Value>) {
     let mut conditions = Vec::new();
     let mut values = Vec::new();

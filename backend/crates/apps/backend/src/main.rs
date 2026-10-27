@@ -30,7 +30,6 @@ use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::SchedulerDependencies;
 use futures_util::future::BoxFuture;
 use gateway_alpha_vantage::AlphaVantageClient;
-use gateway_e_stat::EStatCalendarEventSource;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -62,8 +61,8 @@ use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
     cron_trigger_timer_enabled_from_env, eoddata_kospi_source_from_env,
-    initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
-    sec_client,
+    initialize_macro_reference_pipeline, initialize_news_and_central_bank_sources,
+    jquants_config_from_env, required_redis_url, sec_client,
 };
 
 const TAVILY_CREDIT_BUDGET_BOOTSTRAP_JOB: &str = "tavily_credit_budget_bootstrap";
@@ -294,13 +293,8 @@ async fn main() -> Result<(), StartupError> {
 
     let eoddata_kospi_source = eoddata_kospi_source_from_env()?;
 
-    let e_stat_calendar_source: SharedCalendarEventSource =
-        Arc::new(EStatCalendarEventSource::new().map_err(|error| {
-            StartupError::Config(format!(
-                "failed to initialize e-Stat calendar source: {error}"
-            ))
-        })?);
-    tracing::info!("e-Stat calendar source initialized");
+    let (e_stat_calendar_source, macro_references) =
+        initialize_macro_reference_pipeline(&redis_url, &use_cases)?;
 
     let NewsAndCentralBankSources {
         news_content_fetcher,
@@ -399,6 +393,7 @@ async fn main() -> Result<(), StartupError> {
         us_stock_master: use_cases.us_stock_master(),
         us_stock_master_source,
         sec_filing_references: use_cases.sec_filing_references(),
+        macro_references: Some(macro_references),
         sec_filing_source,
         us_stock_bar_source,
         shareholding_structures: use_cases.shareholding_structures(),

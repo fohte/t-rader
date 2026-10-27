@@ -30,6 +30,8 @@ pub mod ingest_status;
 pub mod json_schema;
 pub mod kata_exec;
 pub mod llm_client;
+pub mod macro_reference;
+pub mod macro_reference_source;
 pub mod margin;
 pub mod margin_source;
 pub mod markdown_lint;

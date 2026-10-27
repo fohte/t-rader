@@ -35,6 +35,24 @@ export type CalendarEarningsStatus = {
   references: CalendarEarningsReferenceView[]
 }
 
+export type CalendarIndicatorReferenceView = {
+  key: string
+  title: string
+  source: string
+  checkedAt: string
+  targetPeriodStart?: string
+  targetPeriodEnd?: string
+  targetPeriodType?: string
+  href?: string
+  publicationEvidence?: string
+  publicationEvidenceHref?: string
+}
+
+export type CalendarIndicatorStatus = {
+  label: string
+  references: CalendarIndicatorReferenceView[]
+}
+
 export type OtherEarningsSelection = {
   country: string
   eventDate: string
@@ -58,6 +76,7 @@ type CalendarRowView = {
   title: string
   stockId?: string
   earningsStatus?: CalendarEarningsStatus
+  indicatorStatus?: CalendarIndicatorStatus
   emphasized: boolean
   target: boolean
   muted: boolean
@@ -196,6 +215,77 @@ function buildEarningsStatus(
   }
 }
 
+function buildIndicatorStatus(
+  event: Event,
+  today: string,
+): CalendarIndicatorStatus {
+  const references = event.references
+  const individualDocuments = references.filter(
+    (reference) =>
+      reference.kind === 'individual_document' && reference.url != null,
+  )
+  const listings = references.filter(
+    (reference) =>
+      reference.kind === 'official_listing' && reference.url != null,
+  )
+  const selectedReferences =
+    individualDocuments.length > 0 ? individualDocuments : listings
+
+  return {
+    label:
+      individualDocuments.length > 0
+        ? '個別資料あり'
+        : event.event_date >= today
+          ? '発表予定'
+          : listings.length > 0
+            ? '公式一覧 / 個別資料未確認'
+            : '遷移先未確認 / 非リンク',
+    references: selectedReferences.map(toIndicatorReferenceView),
+  }
+}
+
+function toIndicatorReferenceView(
+  reference: EventReference,
+): CalendarIndicatorReferenceView {
+  const targetPeriodType =
+    reference.target_period_type == null
+      ? undefined
+      : formatIndicatorPeriodType(reference.target_period_type)
+  return {
+    key: `${reference.kind}:${reference.source}:${reference.external_id}`,
+    title: reference.title,
+    source: reference.source,
+    checkedAt: reference.checked_at,
+    ...(reference.target_period_start == null
+      ? {}
+      : { targetPeriodStart: reference.target_period_start }),
+    ...(reference.target_period_end == null
+      ? {}
+      : { targetPeriodEnd: reference.target_period_end }),
+    ...(targetPeriodType == null ? {} : { targetPeriodType }),
+    ...(reference.url == null ? {} : { href: reference.url }),
+    ...(reference.publication_evidence == null
+      ? {}
+      : { publicationEvidence: reference.publication_evidence }),
+    ...(reference.publication_evidence_url == null
+      ? {}
+      : { publicationEvidenceHref: reference.publication_evidence_url }),
+  }
+}
+
+const INDICATOR_PERIOD_TYPE_LABELS: Readonly<Record<string, string>> = {
+  month: '月次',
+  quarter: '四半期',
+  half_year: '半期',
+  fiscal_year: '年度',
+  month_range: '複数月',
+  year: '年次',
+}
+
+function formatIndicatorPeriodType(value: string): string | undefined {
+  return INDICATOR_PERIOD_TYPE_LABELS[value]
+}
+
 function toFinancialPeriodType(
   value: string | null | undefined,
 ): FinancialPeriodType | undefined {
@@ -268,6 +358,9 @@ function buildEventRow(
       stockId: isEarningsStock ? stockId : undefined,
       ...(isEarningsStock
         ? { earningsStatus: buildEarningsStatus(event, today) }
+        : {}),
+      ...(event.category === 'indicator'
+        ? { indicatorStatus: buildIndicatorStatus(event, today) }
         : {}),
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',

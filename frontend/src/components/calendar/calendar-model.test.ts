@@ -536,6 +536,10 @@ describe('buildCalendarDays', () => {
             category: '指標',
             title: '架空物価指標',
             stockId: undefined,
+            indicatorStatus: {
+              label: '遷移先未確認 / 非リンク',
+              references: [],
+            },
             emphasized: true,
             target: false,
             muted: false,
