@@ -21,6 +21,7 @@ use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::strategy_task::StrategyTaskReconcileLockUseCases;
+use core_application::tavily_credit_budget::TavilyCreditBudgetConfig;
 use core_application::valuation_source::SharedValuationSource;
 use core_application::web_search::SharedWebSearchClient;
 use entrypoint_frontend_api::FrontendApiState;
@@ -46,6 +47,7 @@ use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 use tokio::sync::watch;
+use tracing_subscriber::util::SubscriberInitExt;
 
 mod logging;
 mod runtime;
@@ -53,7 +55,7 @@ mod signals;
 mod startup;
 mod twse;
 
-use logging::default_log_filter;
+use logging::{build_subscriber, default_log_filter};
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
@@ -62,10 +64,13 @@ use startup::{
     us_stock_master_source,
 };
 
+const TAVILY_CREDIT_BUDGET_BOOTSTRAP_JOB: &str = "tavily_credit_budget_bootstrap";
+
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {
     let cli = Cli::parse();
     if let Some(job_name) = cli.run_job.as_deref()
+        && job_name != TAVILY_CREDIT_BUDGET_BOOTSTRAP_JOB
         && !entrypoint_scheduler::is_supported_job(job_name)
     {
         return Err(StartupError::Config(format!("unknown job: {job_name}")));
@@ -82,12 +87,9 @@ async fn main() -> Result<(), StartupError> {
         return Ok(());
     }
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| default_log_filter()),
-        )
-        .init();
+    let log_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| default_log_filter());
+    build_subscriber(log_filter, std::io::stdout).init();
 
     let jquants_config = if cli.migrate_only || cli.backfill_twse_indices {
         None
@@ -120,6 +122,29 @@ async fn main() -> Result<(), StartupError> {
     // --migrate-only: マイグレーションのみ実行して終了する
     if cli.migrate_only {
         tracing::info!("migration completed, exiting (--migrate-only)");
+        return Ok(());
+    }
+
+    if cli.run_job.as_deref() == Some(TAVILY_CREDIT_BUDGET_BOOTSTRAP_JOB) {
+        let config = tavily_credit_budget_config_from_env().ok_or_else(|| {
+            StartupError::Config(
+                "TAVILY_CREDIT_ACCOUNT_ID and TAVILY_PAYGO_DISABLED=true are required".to_owned(),
+            )
+        })?;
+        let tavily_client = TavilyClient::from_env();
+        let credential_generation = tavily_client
+            .as_ref()
+            .map(TavilyClient::credential_generation);
+        let provider = tavily_client.map(|client| Arc::new(client) as SharedWebSearchClient);
+        let use_cases =
+            backend::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+        use_cases
+            .tavily_credit_budget(provider, Some(config), credential_generation)
+            .bootstrap()
+            .await
+            .map_err(|error| {
+                StartupError::Runtime(format!("Tavily credit budget bootstrap failed: {error}"))
+            })?;
         return Ok(());
     }
 
@@ -449,8 +474,23 @@ async fn main() -> Result<(), StartupError> {
 
         let llm_gateway_client =
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
+        let tavily_client = TavilyClient::from_env();
+        let credential_generation = tavily_client
+            .as_ref()
+            .map(TavilyClient::credential_generation);
         let web_search_client =
-            TavilyClient::from_env().map(|client| Arc::new(client) as SharedWebSearchClient);
+            tavily_client.map(|client| Arc::new(client) as SharedWebSearchClient);
+        let tavily_credit_budget_config = tavily_credit_budget_config_from_env();
+        if tavily_credit_budget_config.is_none() {
+            tracing::warn!(
+                "TAVILY_CREDIT_ACCOUNT_ID または TAVILY_PAYGO_DISABLED が未確認または不正なため、Tavily 呼出を fail closed にします"
+            );
+        }
+        let tavily_credit_budget = use_cases.tavily_credit_budget(
+            web_search_client,
+            tavily_credit_budget_config,
+            credential_generation,
+        );
         let agent_webhook_state =
             build_agent_webhook_state(strategy_task_reconcile, agent_webhook_token);
         let external_webhook_state =
@@ -467,7 +507,7 @@ async fn main() -> Result<(), StartupError> {
             external_webhook_state,
             use_cases,
             daily_bar_source,
-            web_search_client,
+            Some(tavily_credit_budget),
             app_db,
         ))
     } else {
@@ -527,9 +567,50 @@ async fn main() -> Result<(), StartupError> {
     runtime::supervise(run_futures, shutdown_tx).await
 }
 
+fn tavily_credit_budget_config_from_env() -> Option<TavilyCreditBudgetConfig> {
+    let account_id = std::env::var("TAVILY_CREDIT_ACCOUNT_ID").ok();
+    let paygo_disabled = std::env::var("TAVILY_PAYGO_DISABLED").ok();
+    tavily_credit_budget_config(account_id.as_deref(), paygo_disabled.as_deref())
+}
+
+fn tavily_credit_budget_config(
+    account_id: Option<&str>,
+    paygo_disabled: Option<&str>,
+) -> Option<TavilyCreditBudgetConfig> {
+    let paygo_disabled_confirmed = paygo_disabled == Some("true");
+    account_id
+        .filter(|value| !value.trim().is_empty())
+        .and_then(|account_id| {
+            TavilyCreditBudgetConfig::free_tier(account_id.to_owned(), paygo_disabled_confirmed)
+        })
+}
+
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
+    use super::tavily_credit_budget_config;
     use super::us_stock_master_source;
+
+    #[rstest]
+    #[case::missing(None, false)]
+    #[case::false_value(Some("false"), false)]
+    #[case::case_mismatch(Some("TRUE"), false)]
+    #[case::confirmed(Some("true"), true)]
+    fn tavily_credit_budget_requires_explicit_paygo_confirmation(
+        #[case] paygo_disabled: Option<&str>,
+        #[case] expected_enabled: bool,
+    ) {
+        assert_eq!(
+            tavily_credit_budget_config(Some("example-account"), paygo_disabled).is_some(),
+            expected_enabled,
+        );
+    }
+
+    #[test]
+    fn tavily_credit_budget_requires_an_account_id() {
+        assert_eq!(tavily_credit_budget_config(None, Some("true")), None,);
+    }
 
     #[test]
     fn api_only_mode_does_not_validate_the_sec_user_agent() {

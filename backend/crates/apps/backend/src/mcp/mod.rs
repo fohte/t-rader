@@ -15,7 +15,7 @@ use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
-use core_application::web_search::SharedWebSearchClient;
+use core_application::tavily_credit_budget::SharedTavilyCreditBudgetUseCases;
 pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
@@ -30,7 +30,7 @@ pub fn router(
     daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
     litellm_client: Option<SharedLlmClient>,
-    web_search_client: Option<SharedWebSearchClient>,
+    tavily_credit_budget: Option<SharedTavilyCreditBudgetUseCases>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let mgmt_dependencies = mgmt_dependencies(&use_cases, agent_client);
@@ -46,7 +46,7 @@ pub fn router(
                 daily_bar_source.clone(),
                 kata_executor.clone(),
                 litellm_client.clone(),
-                web_search_client.clone(),
+                tavily_credit_budget.clone(),
             )))
         },
         NeverSessionManager::default().into(),
@@ -86,7 +86,7 @@ pub(crate) fn strategy_server_dependencies(
     daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
     llm_client: Option<SharedLlmClient>,
-    web_search_client: Option<SharedWebSearchClient>,
+    tavily_credit_budget: Option<SharedTavilyCreditBudgetUseCases>,
 ) -> StrategyServerDependencies {
     StrategyServerDependencies {
         account_risk_policies: use_cases.account_risk_policies(),
@@ -132,7 +132,7 @@ pub(crate) fn strategy_server_dependencies(
         strategy_task_step_evidence: use_cases.strategy_task_step_evidence(),
         trades: use_cases.trades(),
         valuations: use_cases.valuations(),
-        web_search_client,
+        tavily_credit_budget,
         widgets: use_cases.widgets(),
     }
 }

@@ -44,6 +44,7 @@ const unreadVersion: NoteVersion = {
   body_md: '架空の更新本文です。',
   frontmatter_json: {},
   resolved_price_references_json: {},
+  warning_dispositions: [],
   graphs_json: [],
   status: 'unread',
   created_by_kind: 'llm',

@@ -10,11 +10,13 @@ pub mod rules;
 mod runner;
 mod types;
 
-pub use decision::{Disposition, DispositionEvaluation, evaluate_dispositions};
+pub use decision::{
+    AcceptedDisposition, Disposition, DispositionEvaluation, evaluate_dispositions,
+};
 pub use document::{ParsedMarkdown, ParsedMarkdownError, TextRun, TextRunKind, ValidatedTokenSpan};
 pub use fix::{FixError, apply_safe_edits};
-pub(crate) use id::lint_id;
 pub use id::warning_id_group;
+pub(crate) use id::{lint_id, percent_encode};
 pub use runner::{LintError, lint, requirements};
 pub use types::{
     LintDiagnostic, LintReport, MarkdownLintContext, ResolvedReferenceNames, RuleDefinition,

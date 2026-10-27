@@ -39,6 +39,7 @@ mod short_sale_report;
 mod stateless_transport;
 mod stock_group_tests;
 mod strategy_earnings_target_tests;
+mod test_credit_budget;
 mod test_server;
 mod tests_common;
 mod tool_router;

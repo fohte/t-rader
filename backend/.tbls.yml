@@ -122,6 +122,45 @@ comments:
       amount: '予約した量。'
       state: '予約、消費、または未送信確認済みの解放状態。'
       response_json: '完了した tool 呼び出しを再送へ返す保存済み応答。'
+  - table: tavily_credit_budget_state
+    tableComment: 'Tavily account 単位の UTC 日次・月次 credit 上限と照合状態を保持する。'
+    columnComments:
+      singleton_key: 'account 全体で 1 行だけ保持するための固定キー。'
+      account_id: 'key rotation 後も同じ利用枠を共有する安定した account alias。'
+      daily_limit: 'UTC 日次の予約上限。'
+      monthly_limit: 'provider 月次 usage を含む予約上限。'
+      day_start: '日次利用量を集計する UTC 日付。'
+      daily_used: '日次の確認済み利用量と未確定予約を含む安全側の利用量。'
+      daily_carry: '前の日次期間から引き継いだ未確定 credit と未照合 provider usage。'
+      day_provider_usage: '日次境界で照合した provider 月次利用量。'
+      daily_blocked_until: '移行時に日次利用量を復元できない期間の停止期限。'
+      month_start: '月次利用量を集計する UTC 月初日。'
+      monthly_used: '月次の確認済み利用量、provider usage、および未確定予約を含む安全側の利用量。'
+      monthly_carry: '前の月次期間から引き継いだ未確定 credit。'
+      provider_usage: '最後に確認した account 全体の provider usage。'
+  - table: tavily_credit_reservation
+    tableComment: 'Tavily provider へ送る検索・抽出の account credit 予約、精算、再送結果を保持する。'
+    columnComments:
+      reservation_id: 'credit 予約を識別する ID。'
+      call_id: '再送を同じ予約または保存済み結果に対応させる呼び出し識別子。'
+      request_fingerprint: 'call_id に結び付けた要求内容の digest。'
+      operation: 'credit を予約した provider 操作。'
+      state: '未送信予約、送信中、確定、拒否、または結果不明の状態。'
+      reserved_credits: '送信前に確保した安全側の credit 数。'
+      settled_credits: 'provider 応答の usage で確定した credit 数。'
+      day_start: '予約時に適用した UTC 日次期間。'
+      month_start: '予約時に適用した UTC 月次期間。'
+      outcome_json: '同一 call_id の再送へ返す保存済み結果または構造化停止理由。'
+  - table: tavily_retrieval_cache
+    tableComment: '認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。'
+    columnComments:
+      cache_key: '要求・認可範囲・credential 世代から生成した固定長 digest。元の要求値は保存しない。'
+      kind: 'cache した取得操作の種類。'
+      payload_json: '取得済みの検索結果または抽出本文。取得 claim 中は null。'
+      fetched_at: '外部 provider から取得した時刻。取得 claim 中は null。'
+      expires_at: 'cache entry の有効期限。取得 claim 中は null。'
+      lease_token: '取得 claim の所有者を識別する token。結果保存後は null。'
+      lease_expires_at: '取得 claim の期限。結果保存後は null。'
   - table: group_axis
     tableComment: '銘柄グループを分類する軸を定義する。'
     columnComments:
@@ -172,6 +211,7 @@ comments:
       frontmatter_json: 'ノートに付随する構造化メタデータ。'
       graphs_json: 'ノートに付随するグラフ定義の配列。'
       resolved_price_references_json: '本文中の価格参照リンクと実行時に解決した値の対応。'
+      warning_dispositions_json: '理由付きで無視した警告の ID・値・位置・理由をバージョンごとに保持する JSON 配列。'
       status: 'このバージョンのレビュー状態。'
       is_current: 'ノートの現行バージョンかどうか。'
       change_reason: 'バージョン更新の理由。'

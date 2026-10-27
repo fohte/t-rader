@@ -301,7 +301,7 @@ fn reservation_availability_response(
     })))
 }
 
-fn request_fingerprint(value: &serde_json::Value) -> Result<String, McpError> {
+pub(super) fn request_fingerprint(value: &serde_json::Value) -> Result<String, McpError> {
     let serialized = serde_json::to_vec(value)
         .map_err(|error| internal_error(format!("failed to encode budgeted request: {error}")))?;
     let digest = Sha256::digest(serialized);

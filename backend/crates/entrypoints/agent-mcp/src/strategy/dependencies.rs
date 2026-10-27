@@ -36,9 +36,9 @@ use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
 use core_application::subagent_definition::SubagentDefinitionUseCases;
+use core_application::tavily_credit_budget::SharedTavilyCreditBudgetUseCases;
 use core_application::trade::TradeUseCases;
 use core_application::valuation::ValuationUseCases;
-use core_application::web_search::SharedWebSearchClient;
 use core_application::widget::WidgetUseCases;
 
 #[derive(Clone)]
@@ -86,6 +86,6 @@ pub struct StrategyServerDependencies {
     pub strategy_task_step_evidence: StrategyTaskStepEvidenceUseCases,
     pub trades: TradeUseCases,
     pub valuations: ValuationUseCases,
-    pub web_search_client: Option<SharedWebSearchClient>,
+    pub tavily_credit_budget: Option<SharedTavilyCreditBudgetUseCases>,
     pub widgets: WidgetUseCases,
 }

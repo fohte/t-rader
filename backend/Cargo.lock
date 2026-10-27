@@ -2157,6 +2157,7 @@ dependencies = [
  "core-application",
  "reqwest",
  "rstest",
+ "rust_decimal",
  "serde",
  "serde_json",
  "tokio",

@@ -61,6 +61,7 @@ const allNoteOverview: NoteOverview = {
     body_md: allNote.body_md,
     frontmatter_json: allNote.frontmatter_json,
     resolved_price_references_json: allNote.resolved_price_references_json,
+    warning_dispositions: [],
     graphs_json: allNote.graphs_json,
     status: allNote.status,
     created_by_kind: allNote.created_by_kind,

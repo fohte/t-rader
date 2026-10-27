@@ -50,7 +50,8 @@ use super::ref_terms::{
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::youtube::TOOL_NAME as QUERY_YOUTUBE_TOOL_NAME;
 use super::{
-    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
+    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, execution_task_id_from_ctx,
+    internal_error, tool_model_from_ctx,
 };
 
 #[tool_router(router = base_tool_router, vis = "pub(super)")]
@@ -269,7 +270,14 @@ impl StrategyServer {
     ) -> Result<Json<ReadPageResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let model = tool_model_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
-        self.read_page_inner(scope, model, params).await.map(Json)
+        let arguments = serde_json::to_value(&params).map_err(|error| {
+            internal_error(format!("failed to encode read_page request: {error}"))
+        })?;
+        let (call_id, fingerprint) =
+            tavily_call_identity(&ctx, scope.id(), READ_PAGE_TOOL_NAME, arguments)?;
+        self.read_page_inner(scope, model, params, call_id, fingerprint)
+            .await
+            .map(Json)
     }
 
     /// Tavily で web 検索し、記事の出典とスニペットを返す
@@ -284,7 +292,14 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.search_web_inner(scope, params).await.map(Json)
+        let arguments = serde_json::to_value(&params).map_err(|error| {
+            internal_error(format!("failed to encode search_web request: {error}"))
+        })?;
+        let (call_id, fingerprint) =
+            tavily_call_identity(&ctx, scope.id(), "search_web", arguments)?;
+        self.search_web_inner(params, call_id, fingerprint, scope.id().to_string())
+            .await
+            .map(Json)
     }
 
     /// 口座全体 (全戦略横断) の保有銘柄と実現損益、および接続元戦略のスライスを時価で返す
@@ -483,6 +498,31 @@ impl StrategyServer {
     ) -> Result<Json<ReadMarginResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         self.read_margin_inner(scope, params).await.map(Json)
+    }
+}
+
+fn tavily_call_identity(
+    context: &RequestContext<RoleServer>,
+    strategy_id: uuid::Uuid,
+    tool_name: &str,
+    arguments: serde_json::Value,
+) -> Result<(String, String), McpError> {
+    let call_id = tavily_call_id(strategy_id, execution_id_from_ctx(context), &context.id);
+    let fingerprint = super::execution_budget_router::request_fingerprint(&serde_json::json!({
+        "name": tool_name,
+        "arguments": arguments,
+    }))?;
+    Ok((call_id, fingerprint))
+}
+
+fn tavily_call_id(
+    strategy_id: uuid::Uuid,
+    execution_id: Option<String>,
+    request_id: &impl std::fmt::Display,
+) -> String {
+    match execution_id {
+        Some(execution_id) => format!("{execution_id}:{request_id}"),
+        None => format!("direct:{strategy_id}:{}", uuid::Uuid::new_v4()),
     }
 }
 

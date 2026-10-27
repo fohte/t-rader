@@ -53,8 +53,11 @@ use core_application::kata_exec::{KataExecError, SharedKataExecutor};
 use core_application::llm_client::LlmClientError as LiteLlmError;
 use core_application::persistence::PersistenceError;
 use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
-use core_application::web_search::SharedWebSearchClient;
+use core_application::tavily_credit_budget::{
+    SharedTavilyCreditBudgetUseCases, TavilyCreditBudgetDenial, TavilyCreditBudgetUseCasesError,
+};
 use rmcp::ErrorData as McpError;
+use rmcp::model::ErrorCode;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
@@ -167,11 +170,11 @@ impl StrategyServer {
         self
     }
 
-    pub fn with_web_search_client(
+    pub fn with_tavily_credit_budget(
         mut self,
-        web_search_client: Option<SharedWebSearchClient>,
+        tavily_credit_budget: Option<SharedTavilyCreditBudgetUseCases>,
     ) -> Self {
-        self.dependencies.web_search_client = web_search_client;
+        self.dependencies.tavily_credit_budget = tavily_credit_budget;
         self
     }
 
@@ -331,9 +334,38 @@ fn execution_id_from_headers(headers: &axum::http::HeaderMap) -> Option<String> 
     }
 }
 
-fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
+pub(super) fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     let parts = ctx.extensions.get::<axum::http::request::Parts>()?;
     execution_id_from_headers(&parts.headers)
+}
+
+pub(super) fn tavily_credit_budget_error_to_mcp(
+    error: TavilyCreditBudgetUseCasesError,
+) -> McpError {
+    match error {
+        TavilyCreditBudgetUseCasesError::Denied(denial) => {
+            tavily_credit_budget_denial_to_mcp(denial)
+        }
+        TavilyCreditBudgetUseCasesError::Provider(error) => {
+            internal_error(format!("Tavily request failed: {error}"))
+        }
+        TavilyCreditBudgetUseCasesError::RetrievalCache => {
+            internal_error("Tavily retrieval cache is unavailable")
+        }
+    }
+}
+
+pub(super) fn tavily_credit_budget_denial_to_mcp(denial: TavilyCreditBudgetDenial) -> McpError {
+    McpError::new(
+        ErrorCode(-32050),
+        denial.instruction(),
+        Some(serde_json::json!({
+            "reason": denial.reason.as_str(),
+            "scope": denial.scope.as_str(),
+            "next_reset": denial.next_reset,
+            "provider_status": denial.provider_status,
+        })),
+    )
 }
 
 fn strategy_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Option<Uuid>, McpError> {
