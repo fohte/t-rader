@@ -18,6 +18,9 @@ function toReviewItem(
     noteKind: overview.representative.kind ?? null,
     createdByKind: version.created_by_kind,
     unreadVersionCount: overview.unread_version_count,
+    ...(version.warning_dispositions.length > 0
+      ? { warningDispositions: version.warning_dispositions }
+      : {}),
   }
 }
 

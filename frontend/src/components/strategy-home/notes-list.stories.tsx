@@ -255,6 +255,48 @@ const selectedItem: ReviewQueueItem = {
   unreadVersionCount: 2,
 }
 
+const warningDispositions = [
+  {
+    warning_id: 'price:42%25:1',
+    value: '42%',
+    location: { kind: 'body' as const, start: 13, end: 16 },
+    reason: '架空の値の例外として示したため',
+  },
+]
+
+const selectedWarningItem: ReviewQueueItem = {
+  ...selectedItem,
+  id: 'fake-version-warning',
+  versionNo: 5,
+  warningDispositions,
+}
+
+const pendingWarningNote = makeOverview(
+  {
+    id: 'fake-note-warning',
+    version_id: 'fake-version-warning-current',
+    version_no: 3,
+    title: '理由付き警告がある架空ノート',
+  },
+  {
+    current: makeVersion({
+      id: 'fake-version-warning-current',
+      note_id: 'fake-note-warning',
+      version_no: 3,
+    }),
+    latestUnread: makeVersion({
+      id: 'fake-version-warning-pending',
+      note_id: 'fake-note-warning',
+      version_no: 4,
+      is_current: false,
+      status: 'unread',
+      created_by_kind: 'llm',
+      warning_dispositions: warningDispositions,
+    }),
+    unreadVersionCount: 1,
+  },
+)
+
 const laterSelectedItem: ReviewQueueItem = {
   kind: 'note',
   id: 'fake-version-d',
@@ -291,9 +333,12 @@ const meta = {
     noteKindCatalogState: 'loaded' as const,
     selectedItemIds: [],
     selectedItems: [],
+    confirmedWarningDispositionVersionIds: [],
     isApproving: false,
     hasApprovalError: false,
     onToggleItem: () => {},
+    onConfirmWarningDisposition: () => {},
+    onApproveWarningVersion: () => {},
     onApproveSelected: () => {},
   },
   decorators: [withRouter],
@@ -322,6 +367,30 @@ export const SelectedForApproval: Story = {
     overviews: allNotes,
     selectedItemIds: ['note:fake-note-b'],
     selectedItems: [selectedItem],
+  },
+}
+
+export const SelectedWarningNeedsConfirmation: Story = {
+  name: 'shows the warning reason and requires individual approval.',
+  args: {
+    overviews: allNotes,
+    selectedItemIds: ['note:fake-note-b'],
+    selectedItems: [selectedWarningItem],
+  },
+}
+
+export const UnselectedWarning: Story = {
+  name: 'marks a pending row with warning dispositions before selection.',
+  args: { overviews: [pendingWarningNote], view: 'pending' },
+}
+
+export const SelectedWarningConfirmed: Story = {
+  name: 'allows individual approval after the warning reason is confirmed.',
+  args: {
+    overviews: allNotes,
+    selectedItemIds: ['note:fake-note-b'],
+    selectedItems: [selectedWarningItem],
+    confirmedWarningDispositionVersionIds: ['fake-version-warning'],
   },
 }
 

@@ -2,6 +2,7 @@ import { Button } from '@fohte/ui/button'
 import { Chip } from '@fohte/ui/chip'
 import { Textarea } from '@fohte/ui/textarea'
 
+import { WarningDispositionReview } from '#components/note-detail/warning-disposition-review'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NoteVersion } from '#lib/api/note-version-types'
 import { cn } from '#lib/utils'
@@ -19,7 +20,9 @@ interface NoteVersionReviewViewProps {
   isRejecting: boolean
   isMakingCurrent: boolean
   hasError: boolean
+  warningDispositionsConfirmed: boolean
   onReasonChange: (reason: string) => void
+  onWarningDispositionsConfirmedChange: (confirmed: boolean) => void
   onApprove: () => void
   onReject: () => void
   onMakeCurrent: () => void
@@ -36,7 +39,9 @@ export function NoteVersionReviewView({
   isRejecting,
   isMakingCurrent,
   hasError,
+  warningDispositionsConfirmed,
   onReasonChange,
+  onWarningDispositionsConfirmedChange,
   onApprove,
   onReject,
   onMakeCurrent,
@@ -44,6 +49,7 @@ export function NoteVersionReviewView({
   const pending = isApproving || isRejecting || isMakingCurrent
   const needsReason = lineCommentCount === 0
   const canReject = !needsReason || reason.trim() !== ''
+  const needsWarningConfirmation = version.warning_dispositions.length > 0
   const isReviewed =
     recentlyReviewedStatus != null ||
     version.status === 'approved' ||
@@ -80,6 +86,18 @@ export function NoteVersionReviewView({
               : '却下しました'}
           </p>
         )}
+        <WarningDispositionReview
+          versionNo={version.version_no}
+          warningDispositions={version.warning_dispositions}
+          confirmation={
+            !isReviewed && needsWarningConfirmation
+              ? {
+                  checked: warningDispositionsConfirmed,
+                  onChange: onWarningDispositionsConfirmedChange,
+                }
+              : undefined
+          }
+        />
         {!isReviewed && (
           <>
             <label className="block space-y-1 text-2xs text-muted-foreground-strong">
@@ -116,7 +134,11 @@ export function NoteVersionReviewView({
               <Button
                 type="button"
                 size="lg"
-                disabled={pending || isCommentsPending}
+                disabled={
+                  pending ||
+                  isCommentsPending ||
+                  (needsWarningConfirmation && !warningDispositionsConfirmed)
+                }
                 onClick={onApprove}
                 className="flex-1"
               >

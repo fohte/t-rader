@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { AnnotationsList } from '#components/annotations/annotations-list'
 import { ReviewLink } from '#components/note-detail/review-link'
@@ -154,6 +154,13 @@ function NotesPage() {
     'post',
     '/api/annotations/{id}/approve',
   )
+  const [
+    confirmedWarningDispositionVersionIds,
+    setConfirmedWarningDispositionVersionIds,
+  ] = useState<string[]>([])
+  const confirmedWarningVersionIds = new Set(
+    confirmedWarningDispositionVersionIds,
+  )
   const tagSet = new Set(
     [...(allTagOverviews ?? []), ...(pendingTagOverviews ?? [])].flatMap(
       (overview) => overview.representative.tags,
@@ -195,9 +202,21 @@ function NotesPage() {
     approveVersion.mutate(
       {
         params: { path: { id: item.noteId, n: item.versionNo } },
-        body: {},
+        body:
+          (item.warningDispositions?.length ?? 0) > 0 &&
+          confirmedWarningVersionIds.has(item.id)
+            ? { warning_dispositions_confirmed: true }
+            : {},
       },
-      callbacks,
+      {
+        onSuccess: () => {
+          setConfirmedWarningDispositionVersionIds((confirmed) =>
+            confirmed.filter((versionId) => versionId !== item.id),
+          )
+          callbacks.onSuccess()
+        },
+        onError: callbacks.onError,
+      },
     )
   }
 
@@ -211,7 +230,56 @@ function NotesPage() {
   const clearSelection = approval.actions.clearSelection
   useEffect(() => {
     clearSelection()
+    setConfirmedWarningDispositionVersionIds([])
   }, [activeTab, clearSelection, kind, tag, view])
+
+  function onToggleReviewItem(itemKey: string, checked: boolean): void {
+    if (!checked) {
+      const selectedItem = approval.selectedItems.find(
+        (item) => getSelectionKey(item) === itemKey,
+      )
+      if (selectedItem?.kind === 'note') {
+        setConfirmedWarningDispositionVersionIds((confirmed) =>
+          confirmed.filter((versionId) => versionId !== selectedItem.id),
+        )
+      }
+    }
+    approval.actions.toggleItem(itemKey, checked)
+  }
+
+  function confirmWarningDisposition(
+    versionId: string,
+    confirmed: boolean,
+  ): void {
+    setConfirmedWarningDispositionVersionIds((current) =>
+      confirmed
+        ? [...new Set([...current, versionId])]
+        : current.filter((id) => id !== versionId),
+    )
+  }
+
+  function approveSelected(): void {
+    const hasWarningDispositions = approval.selectedItems.some(
+      (item) =>
+        item.kind === 'note' && (item.warningDispositions?.length ?? 0) > 0,
+    )
+    if (hasWarningDispositions) return
+    approval.actions.approveSelected()
+  }
+
+  function approveWarningVersion(itemKey: string): void {
+    const item = approval.selectedItems.find(
+      (candidate) => getSelectionKey(candidate) === itemKey,
+    )
+    if (
+      item?.kind !== 'note' ||
+      (item.warningDispositions?.length ?? 0) === 0 ||
+      !confirmedWarningVersionIds.has(item.id)
+    ) {
+      return
+    }
+    approval.actions.approveOne(itemKey)
+  }
 
   return (
     <div className="space-y-4 font-sans text-foreground">
@@ -295,10 +363,15 @@ function NotesPage() {
             }
             selectedItemIds={approval.state.selectedItemIds}
             selectedItems={approval.selectedItems}
+            confirmedWarningDispositionVersionIds={
+              confirmedWarningDispositionVersionIds
+            }
             isApproving={approval.state.isApproving}
             hasApprovalError={approval.state.hasApprovalError}
-            onToggleItem={approval.actions.toggleItem}
-            onApproveSelected={approval.actions.approveSelected}
+            onToggleItem={onToggleReviewItem}
+            onConfirmWarningDisposition={confirmWarningDisposition}
+            onApproveWarningVersion={approveWarningVersion}
+            onApproveSelected={approveSelected}
           />
         ) : (
           <AnnotationsList

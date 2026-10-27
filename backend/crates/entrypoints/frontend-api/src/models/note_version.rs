@@ -1,5 +1,5 @@
 use chrono::{DateTime, FixedOffset};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -10,6 +10,16 @@ use core_application::note::{
 };
 
 use crate::services::graph::GraphDef;
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ApproveNoteVersionRequest {
+    /// 理由付きで無視した警告の値・位置・理由を確認したことを示す。
+    #[serde(default)]
+    pub warning_dispositions_confirmed: Option<bool>,
+    /// 任意のラベル。
+    pub label: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[schema(as = NoteVersion)]

@@ -82,6 +82,15 @@ export function useReviewApproval({
     approveInOrder(items, 0)
   }
 
+  function approveOne(itemKey: string): void {
+    if (isApproving) return
+    const item = selectedItemsByKey.get(itemKey)
+    if (item == null) return
+    setHasApprovalError(false)
+    setIsApproving(true)
+    approveInOrder([item], 0)
+  }
+
   function toggleItem(itemKey: string, checked: boolean): void {
     if (preserveSelectedItems && checked) {
       const item = data?.items.find(
@@ -146,6 +155,7 @@ export function useReviewApproval({
     }),
     actions: {
       approveSelected,
+      approveOne,
       toggleItem,
       toggleVisibleItems,
       clearSelection,

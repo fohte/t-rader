@@ -59,6 +59,9 @@ impl NoteUseCases {
         } else {
             false
         };
+        let warning_dispositions_require_approval = content.created_by_kind
+            != HUMAN_CREATED_BY_KIND
+            && !content.warning_dispositions.is_empty();
         let max_version_no = latest.as_ref().map_or(0, |version| version.version_no);
         if requires_approval
             && max_version_no > 0
@@ -79,7 +82,9 @@ impl NoteUseCases {
         let graphs_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.graphs_json != content.graphs_json);
-        if requires_approval && (body_changed || graphs_changed) {
+        if (requires_approval || warning_dispositions_require_approval)
+            && (body_changed || graphs_changed)
+        {
             let _ = collect_note_references(
                 &content.body_md,
                 &content.graphs_json,
@@ -106,7 +111,7 @@ impl NoteUseCases {
                 (None, None) => Value::Object(Map::new()),
             };
 
-        let becomes_current = !requires_approval;
+        let becomes_current = !requires_approval && !warning_dispositions_require_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             APPROVED_NOTE_STATUS
         } else {

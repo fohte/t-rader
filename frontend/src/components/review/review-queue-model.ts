@@ -14,6 +14,7 @@ export type ReviewQueueItem =
       noteKind: string | null
       createdByKind: string
       unreadVersionCount: number
+      warningDispositions?: components['schemas']['WarningDispositionResponse'][]
     }
   | {
       kind: 'annotation'
@@ -98,6 +99,9 @@ function buildReviewQueueData({
         noteKind: latest.kind ?? null,
         createdByKind: latest.created_by_kind,
         unreadVersionCount: versions.length,
+        ...(latest.warning_dispositions.length > 0
+          ? { warningDispositions: latest.warning_dispositions }
+          : {}),
       }
     },
   )
