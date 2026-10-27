@@ -417,29 +417,25 @@ fn prepare_failure_detail(sql_sha256: &str, sqlstate: Option<&str>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::prepare_failure_detail;
 
-    #[test]
-    fn prepare_failure_detail_keeps_only_phase_and_sqlstate() {
+    #[rstest]
+    #[case::valid_sqlstate(Some("42P01"), "42P01")]
+    #[case::invalid_sqlstate(Some("private error text"), "unavailable")]
+    #[case::missing_sqlstate(None, "unavailable")]
+    fn prepare_failure_detail_keeps_only_phase_and_sqlstate(
+        #[case] sqlstate: Option<&str>,
+        #[case] expected_sqlstate: &str,
+    ) {
         let sql_sha256 = "a".repeat(64);
 
         assert_eq!(
-            [
-                prepare_failure_detail(&sql_sha256, Some("42P01")),
-                prepare_failure_detail(&sql_sha256, Some("private error text")),
-                prepare_failure_detail(&sql_sha256, None),
-            ],
-            [
-                format!(
-                    "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate=42P01"
-                ),
-                format!(
-                    "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate=unavailable"
-                ),
-                format!(
-                    "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate=unavailable"
-                ),
-            ],
+            prepare_failure_detail(&sql_sha256, sqlstate),
+            format!(
+                "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate={expected_sqlstate}"
+            ),
         );
     }
 }

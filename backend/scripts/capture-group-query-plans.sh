@@ -27,6 +27,7 @@ plans_recorded=false
 binds_recorded=0
 mkdir -p "$CAPTURE_OUTPUT_DIR"/{environment,profile,input,replay,sql,binds,plans}
 
+# EXIT trap 経由でのみ呼び出すため、ShellCheck は直接呼び出しとして検出しない。
 # shellcheck disable=SC2329
 cleanup() {
   local command_status=$?
@@ -40,8 +41,12 @@ cleanup() {
     command_status=$overall_status
   fi
   local result_status='failed'
-  if ((command_status == 0)) && [[ "$plans_recorded" == true ]]; then
-    result_status='observed'
+  if ((command_status == 0 && binds_recorded == EXPECTED_GROUP_BIND_COUNT)); then
+    if [[ "$plans_recorded" == true ]]; then
+      result_status='observed'
+    else
+      result_status='timeout_only'
+    fi
   fi
   jq -n \
     --arg status "$result_status" \
@@ -295,8 +300,13 @@ docker exec "$DB_CONTAINER" psql -X -qAt -U "$DB_USER" -d "$DB_NAME" \
   2> "$CAPTURE_OUTPUT_DIR/environment/capture-statement-timeout.stderr"
 
 run_observation() {
+  local bind_id=$1
+  local observation=$3
   if ! backend/scripts/capture-group-query-plan-observation.sh "$@"; then
     overall_status=1
+  fi
+  if [[ -s "$CAPTURE_OUTPUT_DIR/plans/$bind_id/$observation/plan.json" ]]; then
+    plans_recorded=true
   fi
 }
 
@@ -307,7 +317,7 @@ while IFS= read -r bind_json; do
   bind_plan_dir="$CAPTURE_OUTPUT_DIR/plans/$bind_id"
   bind_file="$CAPTURE_OUTPUT_DIR/binds/$bind_id-input.json"
   component_result_files=()
-  mkdir -p "$bind_plan_dir"
+  mkdir -p "$bind_plan_dir/components"
   printf '%s\n' "$bind_json" > "$bind_file"
 
   run_observation "$bind_id" "$bind_file" 'full.explain' \
@@ -356,7 +366,6 @@ if ((bind_index != EXPECTED_GROUP_BIND_COUNT)); then
   overall_status=1
 else
   binds_recorded=$bind_index
-  plans_recorded=true
 fi
 
 exit "$overall_status"

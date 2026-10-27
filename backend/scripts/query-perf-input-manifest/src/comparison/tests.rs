@@ -3,6 +3,7 @@ use crate::{
     model::{ComparisonReport, Manifest, Provenance, SqlDifference},
     runner::{ExclusionFingerprint, GroupMoversFingerprint, InputComparison, SqlFingerprint},
 };
+use rstest::rstest;
 
 #[test]
 fn identical_manifests_match() {
@@ -130,6 +131,46 @@ fn matching_group_movers_remains_visible_when_an_unrelated_sql_differs() {
         parameter_types_match: false,
         shifted_bind_values_match: false,
     }];
+
+    assert_eq!(compare_manifests(&baseline, &actual), expected);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ComparisonMismatch {
+    TargetDate,
+    GroupMovers,
+}
+
+#[rstest]
+#[case::target_date(ComparisonMismatch::TargetDate)]
+#[case::group_movers(ComparisonMismatch::GroupMovers)]
+fn target_date_and_group_movers_mismatches_fail_comparison(#[case] mismatch: ComparisonMismatch) {
+    let mut group_sql = sql_fingerprint('d', 'e', 'f');
+    group_sql.bind_count = 6;
+    let mut baseline = manifest(
+        vec![group_sql],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    baseline.comparison.group_movers = Some(group_movers_fingerprint());
+    let mut actual = baseline.clone();
+
+    let mut expected = expected_report();
+    expected.matches = false;
+    match mismatch {
+        ComparisonMismatch::TargetDate => {
+            actual.comparison.target_date = "2099-01-02".to_string();
+            expected.target_date_matches = false;
+        }
+        ComparisonMismatch::GroupMovers => {
+            let mut changed_group = group_movers_fingerprint();
+            changed_group.typed_shifted_bind_set_sha256 = digest('g');
+            actual.comparison.group_movers = Some(changed_group);
+            expected.group_movers_match = false;
+        }
+    }
 
     assert_eq!(compare_manifests(&baseline, &actual), expected);
 }

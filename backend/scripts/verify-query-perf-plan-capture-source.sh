@@ -28,7 +28,6 @@ while IFS= read -r path; do
     .github/workflows/query-perf-plan-capture-39714934810.yml | \
       backend/scripts/capture-group-query-plan-observation.sh | \
       backend/scripts/capture-group-query-plans.sh | \
-      backend/scripts/capture-query-perf-plan.sh | \
       backend/scripts/query-perf-plan-capture-tune-postgres.sh | \
       backend/scripts/query-perf-plan-capture-copy-query-log.sh | \
       backend/scripts/query-perf-plan-capture-compare-input.sh | \

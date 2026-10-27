@@ -28,6 +28,7 @@ cat > "$CAPTURE_OUTPUT_DIR/README.md" << 'EOF'
 - The full 350-statement replay was not repeated. `replay/status.json` records this separately from EXPLAIN observations.
 - Plans run only when the exact group SQL fingerprint, parameter type fingerprints, target date, and all six shifted binds match the reviewed reference.
 - Each full-query observation and component observation uses its own read-only transaction with `statement_timeout = '5s'`.
+- A `timeout_only` result records completed observations where no plan was returned; it does not mean the replay succeeded.
 - Component SQL keeps the application CTE chain and ends with `SELECT * FROM <component>`.
 - `EXPLAIN (FORMAT JSON)` runs before `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`. Component plans are collected for a bind only when its full query times out.
 EOF
