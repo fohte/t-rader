@@ -163,6 +163,15 @@ describe('buildCalendarDays', () => {
       expectedStatus: '個別資料未確認',
     },
     {
+      name: 'individual document for a future event',
+      kind: 'individual_document',
+      targetPeriodEnd: '2099-06-30',
+      targetPeriodType: '2Q',
+      eventDate: '2099-01-08',
+      expectedDateLabel: '1/8 (木)',
+      expectedStatus: '資料あり / 実績未取得',
+    },
+    {
       name: 'official listing without a document',
       kind: 'official_listing',
       targetPeriodEnd: '2099-06-30',
@@ -176,6 +185,8 @@ describe('buildCalendarDays', () => {
       targetPeriodEnd,
       targetPeriodType,
       eventPeriodType = '2Q',
+      eventDate = '2099-01-06',
+      expectedDateLabel = '1/6 (火)',
       expectedStatus,
     }) => {
       const reference: EventReference = {
@@ -203,7 +214,7 @@ describe('buildCalendarDays', () => {
         stock_id: '0000',
         fiscal_period: '2099-06-30',
         fiscal_period_type: eventPeriodType,
-        event_date: '2099-01-06',
+        event_date: eventDate,
         event_at: null,
         time_of_day: 'post_market',
         references: [reference],
@@ -223,8 +234,8 @@ describe('buildCalendarDays', () => {
 
       expect(buildCalendarDays([event], 'all', undefined, TODAY)).toEqual([
         {
-          date: '2099-01-06',
-          label: '1/6 (火)',
+          date: eventDate,
+          label: expectedDateLabel,
           rows: [
             {
               key: '0000:2Q:2099-06-30',

@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   getCalendarWeekRange,
   getTokyoDate,
+  millisecondsUntilTokyoMidnight,
   shiftCalendarWeek,
   validateCalendarSearch,
 } from '#components/calendar/calendar-date'
@@ -22,9 +23,24 @@ export const Route = createFileRoute('/calendar')({
 function CalendarRoute() {
   const { country, strategy, week } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const today = getTokyoDate()
+  const [today, setToday] = useState(() => getTokyoDate())
   const [expandedOtherEarnings, setExpandedOtherEarnings] =
     useState<OtherEarningsSelection>()
+  useEffect(() => {
+    const refreshToday = () => {
+      if (document.visibilityState === 'visible') setToday(getTokyoDate())
+    }
+    const timeoutId = window.setTimeout(
+      refreshToday,
+      millisecondsUntilTokyoMidnight(),
+    )
+    document.addEventListener('visibilitychange', refreshToday)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      document.removeEventListener('visibilitychange', refreshToday)
+    }
+  }, [today])
   const weekRange = useMemo(
     () => getCalendarWeekRange(week ?? today),
     [today, week],

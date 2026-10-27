@@ -104,6 +104,10 @@ mod tests {
 
     use super::CalendarEventReferenceUseCases;
 
+    fn period_end() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2099, 6, 30).unwrap_or(NaiveDate::MIN)
+    }
+
     struct FakeCalendarEventRepository;
 
     #[async_trait]
@@ -177,7 +181,7 @@ mod tests {
             title: "架空の資料".into(),
             url: Some("https://example.invalid/document".into()),
             target_period_start: None,
-            target_period_end: Some(NaiveDate::MIN),
+            target_period_end: Some(period_end()),
             target_period_type: Some("2Q".into()),
             publication_evidence: Some("sample-release-record".into()),
             publication_evidence_url: None,
@@ -219,7 +223,7 @@ mod tests {
 
     #[rstest]
     #[case::missing_period_end(None, Some("2Q"))]
-    #[case::missing_period_type(Some(NaiveDate::MIN), None)]
+    #[case::missing_period_type(Some(period_end()), None)]
     #[tokio::test]
     async fn individual_document_requires_target_period_before_transaction(
         individual_document_reference: CalendarEventReference,
