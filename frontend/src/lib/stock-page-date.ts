@@ -7,7 +7,7 @@ type Bar = components['schemas']['Bar']
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 const DATE_RANGE_RADIUS_DAYS = 182
 
-export type StockPageTab = 'annotations' | 'notes' | 'trades' | 'financials'
+type StockPageTab = 'annotations' | 'notes' | 'trades' | 'financials'
 export type FinancialPeriodType = 'FY' | '1Q' | '2Q' | '3Q' | '4Q'
 
 export type StockPageSearch = {
