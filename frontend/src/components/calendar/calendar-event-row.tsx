@@ -130,7 +130,12 @@ function IndicatorReference({
       {(reference.targetPeriodEnd != null ||
         reference.targetPeriodType != null) && (
         <span className="text-2xs text-muted-foreground">
-          対象期間: {targetPeriod} {reference.targetPeriodType ?? ''}
+          対象期間: {targetPeriod}
+          {reference.targetPeriodType != null && (
+            <span className="ml-1 inline-block whitespace-nowrap">
+              {reference.targetPeriodType}
+            </span>
+          )}
         </span>
       )}
       <span className="text-2xs text-muted-foreground">

@@ -247,6 +247,10 @@ function buildIndicatorStatus(
 function toIndicatorReferenceView(
   reference: EventReference,
 ): CalendarIndicatorReferenceView {
+  const targetPeriodType =
+    reference.target_period_type == null
+      ? undefined
+      : formatIndicatorPeriodType(reference.target_period_type)
   return {
     key: `${reference.kind}:${reference.source}:${reference.external_id}`,
     title: reference.title,
@@ -258,13 +262,7 @@ function toIndicatorReferenceView(
     ...(reference.target_period_end == null
       ? {}
       : { targetPeriodEnd: reference.target_period_end }),
-    ...(reference.target_period_type == null
-      ? {}
-      : {
-          targetPeriodType: formatIndicatorPeriodType(
-            reference.target_period_type,
-          ),
-        }),
+    ...(targetPeriodType == null ? {} : { targetPeriodType }),
     ...(reference.url == null ? {} : { href: reference.url }),
     ...(reference.publication_evidence == null
       ? {}
@@ -275,8 +273,16 @@ function toIndicatorReferenceView(
   }
 }
 
-function formatIndicatorPeriodType(value: string): string {
-  return value === 'half_year' ? '半期' : value
+const INDICATOR_PERIOD_TYPE_LABELS: Readonly<Record<string, string>> = {
+  month: '月次',
+  quarter: '四半期',
+  half_year: '半期',
+  fiscal_year: '年度',
+  month_range: '複数月',
+}
+
+function formatIndicatorPeriodType(value: string): string | undefined {
+  return INDICATOR_PERIOD_TYPE_LABELS[value]
 }
 
 function toFinancialPeriodType(

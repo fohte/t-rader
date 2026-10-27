@@ -71,7 +71,7 @@ const indicatorDocumentStatus: CalendarIndicatorStatus = {
       source: 'sample_source',
       checkedAt: '2030-01-01T00:00:00Z',
       targetPeriodEnd: '2029-12-31',
-      targetPeriodType: 'month',
+      targetPeriodType: '月次',
       href: 'https://example.invalid/sample-release',
       publicationEvidence: '架空の公表記録',
       publicationEvidenceHref: 'https://example.invalid/sample-evidence',
@@ -92,6 +92,23 @@ const indicatorHalfYearStatus: CalendarIndicatorStatus = {
       targetPeriodType: '半期',
       href: 'https://example.invalid/sample-half-year-release',
       publicationEvidence: '架空の公表記録',
+    },
+  ],
+}
+
+const indicatorUnknownPeriodTypeStatus: CalendarIndicatorStatus = {
+  label: '個別資料あり',
+  references: [
+    {
+      key: 'individual_document:sample_source:sample-unknown-period-release',
+      title: '架空の経済指標発表',
+      source: 'sample_source',
+      checkedAt: '2030-01-01T00:00:00Z',
+      targetPeriodEnd: '2029-12-31',
+      href: 'https://example.invalid/sample-unknown-period-release',
+      publicationEvidence: '架空の公表記録',
+      publicationEvidenceHref:
+        'https://example.invalid/sample-unknown-period-evidence',
     },
   ],
 }
@@ -414,6 +431,35 @@ export const IndicatorHalfYearDocumentDesktop: Story = {
     emphasized: false,
     target: false,
     indicatorStatus: indicatorHalfYearStatus,
+  },
+}
+
+export const IndicatorUnknownPeriodTypeMobile: Story = {
+  name: '390px 幅で未知の期間種別を表示せず対象日のみを示します。',
+  ...mobileCalendarViewport,
+  args: {
+    time: '08:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空経済指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorUnknownPeriodTypeStatus,
+  },
+}
+
+export const IndicatorUnknownPeriodTypeDesktop: Story = {
+  name: 'デスクトップ幅で未知の期間種別を表示せず対象日のみを示します。',
+  args: {
+    time: '08:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空経済指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorUnknownPeriodTypeStatus,
   },
 }
 

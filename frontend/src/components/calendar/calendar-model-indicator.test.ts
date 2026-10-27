@@ -36,6 +36,9 @@ function makeIndicator(
 function makeReference(
   kind: EventReference['kind'],
   url: string | null,
+  targetPeriodType: string | null = kind === 'individual_document'
+    ? 'month'
+    : null,
 ): EventReference {
   return {
     kind,
@@ -45,7 +48,7 @@ function makeReference(
     url,
     target_period_start: null,
     target_period_end: kind === 'individual_document' ? '2098-12-31' : null,
-    target_period_type: kind === 'individual_document' ? 'month' : null,
+    target_period_type: targetPeriodType,
     publication_evidence:
       kind === 'individual_document' ? '架空の公表記録' : null,
     publication_evidence_url: null,
@@ -62,6 +65,26 @@ const officialListing = makeReference(
   'https://example.invalid/sample-listing',
 )
 const documentWithoutUrl = makeReference('individual_document', null)
+const quarterDocument = makeReference(
+  'individual_document',
+  'https://example.invalid/sample-quarter-document',
+  'quarter',
+)
+const fiscalYearDocument = makeReference(
+  'individual_document',
+  'https://example.invalid/sample-fiscal-year-document',
+  'fiscal_year',
+)
+const monthRangeDocument = makeReference(
+  'individual_document',
+  'https://example.invalid/sample-month-range-document',
+  'month_range',
+)
+const unknownPeriodDocument = makeReference(
+  'individual_document',
+  'https://example.invalid/sample-unknown-period-document',
+  'unknown_period',
+)
 const halfYearDocument = {
   ...individualDocument,
   target_period_start: '2098-07-01',
@@ -76,7 +99,7 @@ const referenceViews = {
       source: 'sample_source',
       checkedAt: '2099-01-06T00:00:00Z',
       targetPeriodEnd: '2098-12-31',
-      targetPeriodType: 'month',
+      targetPeriodType: '月次',
       href: 'https://example.invalid/sample-document',
       publicationEvidence: '架空の公表記録',
     },
@@ -94,6 +117,53 @@ const referenceViews = {
       publicationEvidence: '架空の公表記録',
     },
   ],
+  quarter: [
+    {
+      key: 'individual_document:sample_source:sample-reference',
+      title: '架空の発表資料',
+      source: 'sample_source',
+      checkedAt: '2099-01-06T00:00:00Z',
+      targetPeriodEnd: '2098-12-31',
+      targetPeriodType: '四半期',
+      href: 'https://example.invalid/sample-quarter-document',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
+  fiscalYear: [
+    {
+      key: 'individual_document:sample_source:sample-reference',
+      title: '架空の発表資料',
+      source: 'sample_source',
+      checkedAt: '2099-01-06T00:00:00Z',
+      targetPeriodEnd: '2098-12-31',
+      targetPeriodType: '年度',
+      href: 'https://example.invalid/sample-fiscal-year-document',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
+  monthRange: [
+    {
+      key: 'individual_document:sample_source:sample-reference',
+      title: '架空の発表資料',
+      source: 'sample_source',
+      checkedAt: '2099-01-06T00:00:00Z',
+      targetPeriodEnd: '2098-12-31',
+      targetPeriodType: '複数月',
+      href: 'https://example.invalid/sample-month-range-document',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
+  unknownPeriod: [
+    {
+      key: 'individual_document:sample_source:sample-reference',
+      title: '架空の発表資料',
+      source: 'sample_source',
+      checkedAt: '2099-01-06T00:00:00Z',
+      targetPeriodEnd: '2098-12-31',
+      href: 'https://example.invalid/sample-unknown-period-document',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
   listing: [
     {
       key: 'official_listing:sample_source:sample-reference',
@@ -108,11 +178,39 @@ const referenceViews = {
 describe('buildCalendarDays indicator references', () => {
   it.each([
     {
-      name: 'individual document',
+      name: 'monthly individual document',
       country: 'JP' as const,
       references: [individualDocument],
       label: '個別資料あり',
       expectedReferences: referenceViews.individual,
+    },
+    {
+      name: 'quarterly period',
+      country: 'JP' as const,
+      references: [quarterDocument],
+      label: '個別資料あり',
+      expectedReferences: referenceViews.quarter,
+    },
+    {
+      name: 'fiscal year period',
+      country: 'JP' as const,
+      references: [fiscalYearDocument],
+      label: '個別資料あり',
+      expectedReferences: referenceViews.fiscalYear,
+    },
+    {
+      name: 'multiple-month period',
+      country: 'JP' as const,
+      references: [monthRangeDocument],
+      label: '個別資料あり',
+      expectedReferences: referenceViews.monthRange,
+    },
+    {
+      name: 'unknown period type',
+      country: 'JP' as const,
+      references: [unknownPeriodDocument],
+      label: '個別資料あり',
+      expectedReferences: referenceViews.unknownPeriod,
     },
     {
       name: 'half-year document period',
