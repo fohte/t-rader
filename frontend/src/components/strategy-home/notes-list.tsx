@@ -3,6 +3,7 @@ import { Checkbox } from '@fohte/ui/checkbox'
 import { Chip } from '@fohte/ui/chip'
 import { Link } from '@tanstack/react-router'
 
+import { WarningDispositionReview } from '#components/note-detail/warning-disposition-review'
 import { NoteKindLabel } from '#components/notes/note-kind-label'
 import {
   type ReviewQueueItem,
@@ -32,9 +33,12 @@ export interface NotesListProps {
   noteKindCatalogState: NoteKindCatalogState
   selectedItemIds: string[]
   selectedItems: ReviewQueueItem[]
+  confirmedWarningDispositionVersionIds: string[]
   isApproving: boolean
   hasApprovalError: boolean
   onToggleItem: (itemKey: string, checked: boolean) => void
+  onConfirmWarningDisposition: (versionId: string, confirmed: boolean) => void
+  onApproveWarningVersion: (itemKey: string) => void
   onApproveSelected: () => void
 }
 
@@ -63,9 +67,12 @@ export function NotesList({
   noteKindCatalogState,
   selectedItemIds,
   selectedItems,
+  confirmedWarningDispositionVersionIds,
   isApproving,
   hasApprovalError,
   onToggleItem,
+  onConfirmWarningDisposition,
+  onApproveWarningVersion,
   onApproveSelected,
 }: NotesListProps) {
   const navigationItems = notesOverviewModel.createNavigationItems(
@@ -73,6 +80,13 @@ export function NotesList({
     view,
   )
   const selectedCount = selectedItemIds.length
+  const confirmedWarningVersionIds = new Set(
+    confirmedWarningDispositionVersionIds,
+  )
+  const hasWarningDispositions = selectedItems.some(
+    (item) =>
+      item.kind === 'note' && (item.warningDispositions?.length ?? 0) > 0,
+  )
   const selectedByNoteId = new Map(
     selectedItems.flatMap((item) =>
       item.kind === 'note' ? [[item.noteId, item] as const] : [],
@@ -97,7 +111,7 @@ export function NotesList({
           <Button
             type="button"
             size="sm"
-            disabled={isApproving}
+            disabled={isApproving || hasWarningDispositions}
             onClick={onApproveSelected}
             className="ml-auto hidden sm:inline-flex"
           >
@@ -113,6 +127,11 @@ export function NotesList({
           className="border-b border-border px-3.5 py-2 text-sm text-status-rejected"
         >
           承認に失敗しました。失敗したノートと後続の選択は残っています。
+        </p>
+      )}
+      {selectedCount > 0 && hasWarningDispositions && (
+        <p className="border-b border-border px-3.5 py-2 text-xs text-muted-foreground">
+          理由付きの警告があるバージョンは一括承認できません。確認後、個別に承認してください。
         </p>
       )}
       {state === 'loading' ? (
@@ -275,6 +294,47 @@ export function NotesList({
                         です。
                       </p>
                     )}
+                    {selectedItem?.kind === 'note' &&
+                      selectedItem.warningDispositions != null &&
+                      selectedItem.warningDispositions.length > 0 && (
+                        <WarningDispositionReview
+                          versionNo={selectedItem.versionNo}
+                          warningDispositions={selectedItem.warningDispositions}
+                          confirmation={{
+                            checked: confirmedWarningVersionIds.has(
+                              selectedItem.id,
+                            ),
+                            onChange: (confirmed) => {
+                              onConfirmWarningDisposition(
+                                selectedItem.id,
+                                confirmed,
+                              )
+                            },
+                          }}
+                        />
+                      )}
+                    {selectedItem?.kind === 'note' &&
+                      (selectedItem.warningDispositions?.length ?? 0) > 0 && (
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={
+                              isApproving ||
+                              !confirmedWarningVersionIds.has(selectedItem.id)
+                            }
+                            onClick={() => {
+                              onApproveWarningVersion(
+                                notesOverviewModel.selectionKey(
+                                  selectedItem.noteId,
+                                ),
+                              )
+                            }}
+                          >
+                            このバージョンを個別に承認
+                          </Button>
+                        </div>
+                      )}
                   </div>
                 </div>
               </li>
@@ -287,7 +347,7 @@ export function NotesList({
           <Button
             type="button"
             size="lg"
-            disabled={isApproving}
+            disabled={isApproving || hasWarningDispositions}
             onClick={onApproveSelected}
             className="w-full"
           >

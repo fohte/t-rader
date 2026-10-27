@@ -4766,7 +4766,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ChangeStatusRequest"
+                "$ref": "#/components/schemas/ApproveNoteVersionRequest"
               }
             }
           },
@@ -4784,7 +4784,7 @@
             }
           },
           "400": {
-            "description": "リクエストパラメータが不正",
+            "description": "リクエストパラメータが不正、または警告の確認が必要",
             "content": {
               "application/json": {
                 "schema": {
@@ -10150,6 +10150,26 @@
             "format": "date-time"
           }
         }
+      },
+      "ApproveNoteVersionRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "任意のラベル。"
+          },
+          "warning_dispositions_confirmed": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "理由付きで無視した警告の値・位置・理由を確認したことを示す。"
+          }
+        },
+        "additionalProperties": false
       },
       "Bar": {
         "type": "object",

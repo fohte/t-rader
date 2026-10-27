@@ -716,6 +716,84 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn warning_dispositions_require_explicit_confirmation_to_approve(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let (note_id, initial_version_id) =
+            create_note_with_approved_initial_version(&server, &db, "confirmation").await;
+        let warning_version_id = insert_test_version(&db, note_id, 2, "unread", false).await;
+        let warning_dispositions = json!([{
+            "warning_id": "price:42%25:1",
+            "value": "42%",
+            "location": { "kind": "body", "start": 0, "end": 3 },
+            "reason": "架空の値の例外を確認するため",
+        }]);
+        note_version::ActiveModel {
+            id: Set(warning_version_id),
+            body_md: Set("42% body".to_string()),
+            warning_dispositions_json: Set(warning_dispositions.clone()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set test warning dispositions");
+
+        let unconfirmed = server
+            .post(&format!("/api/notes/{note_id}/versions/2/approve"))
+            .json(&json!({}))
+            .await;
+        let states_after_unconfirmed = note_version_states(&db, note_id).await;
+        let confirmed = server
+            .post(&format!("/api/notes/{note_id}/versions/2/approve"))
+            .json(&json!({ "warning_dispositions_confirmed": true }))
+            .await;
+
+        assert_eq!(
+            (
+                unconfirmed.status_code(),
+                states_after_unconfirmed,
+                confirmed.status_code(),
+                normalize_note_version(confirmed.json()),
+                note_version_states(&db, note_id).await,
+                status_change_diff(&db, note_id).await,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                vec![(1, "approved".into(), true), (2, "unread".into(), false),],
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "note_id": "<note_id>",
+                    "version_no": 2,
+                    "title": "version 2",
+                    "body_md": "42% body",
+                    "frontmatter_json": {},
+                    "resolved_price_references_json": {},
+                    "warning_dispositions": warning_dispositions,
+                    "graphs_json": [],
+                    "status": "approved",
+                    "is_current": true,
+                    "change_reason": null,
+                    "created_by_kind": "llm",
+                    "execution_id": null,
+                    "created_at": "<created_at>",
+                    "reviewed_at": "<reviewed_at>",
+                }),
+                vec![(1, "approved".into(), false), (2, "approved".into(), true),],
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": warning_version_id,
+                    "previous_current_version_id": initial_version_id,
+                    "superseded_version_ids": [],
+                    "label": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn approving_an_older_version_preserves_a_newer_current_version(
         db: gateway_postgres::DatabaseHandle,
     ) {

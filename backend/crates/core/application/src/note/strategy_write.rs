@@ -2434,9 +2434,56 @@ mod tests {
         assert_eq!(
             (
                 result.snapshot.version.warning_dispositions,
+                result.snapshot.version.status,
+                result.snapshot.version.is_current,
                 inserted_version.warning_dispositions,
+                inserted_version.status,
+                inserted_version.is_current,
             ),
-            (expected.clone(), expected),
+            (
+                expected.clone(),
+                "unread".into(),
+                false,
+                expected,
+                "unread".into(),
+                false,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn gated_write_does_not_inherit_warning_dispositions_from_previous_version() {
+        let mut previous_version = source_version();
+        previous_version.warning_dispositions = vec![NoteWarningDispositionRecord {
+            warning_id: "price:42%25:1".into(),
+            value: "42%".into(),
+            location: NoteWarningDispositionLocation::Body { start: 0, end: 3 },
+            reason: "架空の値の例外".into(),
+        }];
+        let (use_cases, repository) = make_note_use_cases(previous_version);
+
+        let result = use_cases
+            .write_with_warning_dispositions(write_body_command("Updated without warnings"), vec![])
+            .await
+            .expect("the updated body has no warnings");
+        let inserted_version = repository
+            .inserted_versions
+            .lock()
+            .await
+            .first()
+            .cloned()
+            .expect("the update saves a new version");
+
+        assert_eq!(
+            (
+                result.snapshot.version.warning_dispositions,
+                result.snapshot.version.status,
+                result.snapshot.version.is_current,
+                inserted_version.warning_dispositions,
+                inserted_version.status,
+                inserted_version.is_current,
+            ),
+            (vec![], "unread".into(), true, vec![], "unread".into(), true),
         );
     }
 

@@ -15,6 +15,7 @@ impl NoteUseCases {
         &self,
         note_id: Uuid,
         version_no: i32,
+        warning_dispositions_confirmed: bool,
         label: Option<String>,
     ) -> Result<crate::note::types::NoteVersion, NoteUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
@@ -26,6 +27,7 @@ impl NoteUseCases {
                 &transaction,
                 version,
                 Actor::Human,
+                warning_dispositions_confirmed,
                 label,
                 Utc::now().fixed_offset(),
             )
@@ -46,10 +48,14 @@ impl NoteUseCases {
             .await?;
         let reviewed_at = Utc::now().fixed_offset();
         for version in versions {
+            if !version.warning_dispositions.is_empty() {
+                continue;
+            }
             self.approve_pending_version_in_transaction(
                 transaction,
                 version,
                 actor,
+                false,
                 None,
                 reviewed_at,
             )
@@ -63,11 +69,17 @@ impl NoteUseCases {
         transaction: &UnitOfWorkTransaction,
         version: crate::note::types::NoteVersion,
         actor: Actor,
+        warning_dispositions_confirmed: bool,
         label: Option<String>,
         reviewed_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> Result<crate::note::types::NoteVersion, NoteUseCaseError> {
         let note_id = version.note_id;
         self.ensure_pending_version(&version)?;
+        if !version.warning_dispositions.is_empty() && !warning_dispositions_confirmed {
+            return Err(NoteUseCaseError::Validation(
+                "warning_dispositions confirmation is required".into(),
+            ));
+        }
         let superseded_version_ids = self
             .repository
             .supersede_pending_versions_before(transaction, note_id, version.version_no)

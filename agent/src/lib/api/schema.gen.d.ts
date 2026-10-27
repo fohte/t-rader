@@ -1804,6 +1804,12 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    ApproveNoteVersionRequest: {
+      /** @description 任意のラベル。 */
+      label?: string | null
+      /** @description 理由付きで無視した警告の値・位置・理由を確認したことを示す。 */
+      warning_dispositions_confirmed?: boolean | null
+    }
     Bar: {
       /** Format: double */
       close: number
@@ -7040,7 +7046,7 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json': components['schemas']['ChangeStatusRequest']
+        'application/json': components['schemas']['ApproveNoteVersionRequest']
       }
     }
     responses: {
@@ -7052,7 +7058,7 @@ export interface operations {
           'application/json': components['schemas']['NoteVersion']
         }
       }
-      /** @description リクエストパラメータが不正 */
+      /** @description リクエストパラメータが不正、または警告の確認が必要 */
       400: {
         headers: {
           [name: string]: unknown

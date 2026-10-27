@@ -12,8 +12,9 @@ const apiMock = vi.hoisted(() => {
     string,
     { onSuccess?: () => void; onError?: (error: unknown) => void } | undefined
   > = {}
+  const requests: Record<string, unknown[]> = {}
 
-  return { callbacks }
+  return { callbacks, requests }
 })
 
 vi.mock('#lib/api/client', () => ({
@@ -26,13 +27,14 @@ vi.mock('#lib/api/client', () => ({
       isPending: false,
       isError: false,
       mutate: (
-        _options: unknown,
+        options: unknown,
         callbacks?: {
           onSuccess?: () => void
           onError?: (error: unknown) => void
         },
       ) => {
         apiMock.callbacks[path] = callbacks
+        apiMock.requests[path] = [...(apiMock.requests[path] ?? []), options]
       },
     }),
     queryOptions: (method: string, path: string, options?: unknown) => ({
@@ -60,6 +62,19 @@ const version: NoteVersion = {
   reviewed_at: null,
 }
 
+const warningVersion: NoteVersion = {
+  ...version,
+  body_md: '架空の値 42% を確認します。',
+  warning_dispositions: [
+    {
+      warning_id: 'price:42%25:1',
+      value: '42%',
+      location: { kind: 'body', start: 13, end: 16 },
+      reason: '架空の値の例外として示したため',
+    },
+  ],
+}
+
 function getQueryInvalidationOutput(
   noteVersionsInvalidated: (boolean | undefined)[],
   overviewInvalidated: boolean | undefined,
@@ -70,16 +85,20 @@ function getQueryInvalidationOutput(
 afterEach(() => {
   cleanup()
   apiMock.callbacks = {}
+  apiMock.requests = {}
 })
 
-function renderPanel(onReviewed: (status: NoteVersionReviewResult) => void) {
+function renderPanel(
+  onReviewed: (status: NoteVersionReviewResult) => void,
+  reviewVersion: NoteVersion = version,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
 
   render(
     <QueryClientProvider client={queryClient}>
-      <NoteVersionReviewPanel version={version} onReviewed={onReviewed} />
+      <NoteVersionReviewPanel version={reviewVersion} onReviewed={onReviewed} />
     </QueryClientProvider>,
   )
 
@@ -115,6 +134,89 @@ describe('NoteVersionReviewPanel', () => {
     await user.click(screen.getByRole('button', { name: '✓ 承認' }))
 
     expect(onReviewed.mock.calls).toEqual([])
+  })
+
+  it('requires confirmation and sends it with the warning version approval', async () => {
+    const user = userEvent.setup()
+    const onReviewed = vi.fn<(status: NoteVersionReviewResult) => void>()
+    renderPanel(onReviewed, warningVersion)
+    const approve = screen.getByRole('button', { name: '✓ 承認' })
+    const confirmation = screen.getByRole('checkbox', {
+      name: '理由と対象箇所を確認し、数値の例外として承認します',
+    })
+
+    expect(
+      Array.of(
+        approve.matches(':disabled'),
+        screen.getByText(
+          (_, element) =>
+            element?.tagName === 'P' && element.textContent === '対象: 42%',
+        ).textContent,
+        screen.getByText('本文 byte 13–16').textContent,
+        screen.getByText('理由: 架空の値の例外として示したため').textContent,
+        confirmation.getAttribute('aria-checked'),
+      ),
+    ).toEqual([
+      true,
+      '対象: 42%',
+      '本文 byte 13–16',
+      '理由: 架空の値の例外として示したため',
+      'false',
+    ])
+
+    await user.click(confirmation)
+    await user.click(approve)
+
+    expect(apiMock.requests['/api/notes/{id}/versions/{n}/approve']).toEqual([
+      {
+        params: {
+          path: { id: warningVersion.note_id, n: warningVersion.version_no },
+        },
+        body: { warning_dispositions_confirmed: true },
+      },
+    ])
+  })
+
+  it('does not carry a warning confirmation to another version', async () => {
+    const user = userEvent.setup()
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <NoteVersionReviewPanel
+          version={warningVersion}
+          onReviewed={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: '理由と対象箇所を確認し、数値の例外として承認します',
+      }),
+    )
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <NoteVersionReviewPanel
+          version={{ ...warningVersion, id: 'fake-version-b', version_no: 3 }}
+          onReviewed={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(
+      Array.of(
+        screen
+          .getByRole('checkbox', {
+            name: '理由と対象箇所を確認し、数値の例外として承認します',
+          })
+          .getAttribute('aria-checked'),
+        screen.getByRole('button', { name: '✓ 承認' }).matches(':disabled'),
+      ),
+    ).toEqual(['false', true])
   })
 
   it('invalidates note queries for every version of the reviewed note', async () => {

@@ -51,6 +51,21 @@ const unreadVersion: NoteVersion = {
   created_at: '2026-01-02T00:00:00Z',
 }
 
+const warningUnreadVersion: NoteVersion = {
+  ...unreadVersion,
+  id: 'fake-version-warning',
+  version_no: 4,
+  body_md: '架空の値 42% を確認します。',
+  warning_dispositions: [
+    {
+      warning_id: 'price:42%25:1',
+      value: '42%',
+      location: { kind: 'body', start: 13, end: 16 },
+      reason: '架空の値の例外として示したため',
+    },
+  ],
+}
+
 const overview: NoteOverview = {
   representative,
   current: {
@@ -64,6 +79,12 @@ const overview: NoteOverview = {
   },
   latest_unread: unreadVersion,
   unread_version_count: 1,
+}
+
+const warningOverview: NoteOverview = {
+  ...overview,
+  latest_unread: warningUnreadVersion,
+  unread_version_count: 2,
 }
 
 const pendingOnlyOverview: NoteOverview = {
@@ -298,6 +319,83 @@ describe('/notes overview route', () => {
     expect(getTagCandidatesErrorOutput(alert)).toEqual({
       role: 'alert',
       text: '一部のタグ候補を読み込めませんでした。',
+    })
+  }, 30_000)
+
+  it('requires reviewing warning details and individually confirms a warning version', async () => {
+    const user = userEvent.setup()
+    const approvalRequests: { method: string; body: unknown }[] = []
+    stubFetch(async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init)
+      const url = new URL(request.url)
+
+      if (url.pathname === '/api/notes/overview') {
+        return Response.json([warningOverview])
+      }
+      if (url.pathname === '/api/note-kinds') return Response.json([])
+      if (url.pathname === '/api/annotations') return Response.json([])
+      if (url.pathname.endsWith('/approve')) {
+        approvalRequests.push({
+          method: request.method,
+          body: await request.clone().json(),
+        })
+        return Response.json({
+          ...warningUnreadVersion,
+          status: 'approved',
+          is_current: true,
+        })
+      }
+      return Response.json([])
+    })
+
+    const { routeTree } = await import('#routeTree.gen')
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({
+        initialEntries: ['/notes?view=pending'],
+      }),
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(<RouterProvider router={router} />, {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    })
+
+    await screen.findByRole('link', { name: '架空の確認ノート' })
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: '架空の確認ノート の最新未読バージョンを選択',
+      }),
+    )
+    const bulkApprovalButtons = screen.getAllByRole('button', {
+      name: '選択した 1 件を承認',
+    })
+    for (const bulkApprovalButton of bulkApprovalButtons) {
+      await user.click(bulkApprovalButton)
+    }
+    const confirmation = screen.getByRole('checkbox', {
+      name: '理由と対象箇所を確認し、数値の例外として承認します',
+    })
+    await user.click(confirmation)
+    for (const bulkApprovalButton of screen.getAllByRole('button', {
+      name: '選択した 1 件を承認',
+    })) {
+      await user.click(bulkApprovalButton)
+    }
+    await user.click(
+      screen.getByRole('button', { name: 'このバージョンを個別に承認' }),
+    )
+
+    await waitFor(() => {
+      expect(approvalRequests).toEqual([
+        { method: 'POST', body: { warning_dispositions_confirmed: true } },
+      ])
     })
   }, 30_000)
 })

@@ -182,4 +182,103 @@ mod tests {
             ),
         );
     }
+
+    #[backend_test_macros::database_test]
+    async fn disabling_note_kind_approval_leaves_warning_dispositions_pending(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db.clone()).await;
+        let kind_key = "sample-kind";
+        note_kind::ActiveModel {
+            key: Set(kind_key.to_string()),
+            display_name: Set("Sample Kind".to_string()),
+            requires_approval: Set(true),
+            description: Set(None),
+            sort_order: Set(0),
+        }
+        .insert(&db)
+        .await
+        .expect("insert note kind");
+        let note_id = insert_test_note_with_execution_id(
+            &db,
+            "Sample title",
+            "Sample body",
+            "sample-execution-id",
+        )
+        .await;
+        note::ActiveModel {
+            id: Unchanged(note_id),
+            kind: Set(Some(kind_key.to_string())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set note kind");
+        let initial_version = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .one(&db)
+            .await
+            .expect("find initial version")
+            .expect("initial version exists");
+        note_version::ActiveModel {
+            id: Unchanged(initial_version.id),
+            status: Set("approved".to_string()),
+            is_current: Set(true),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set initial version state");
+        let warning_version_id = insert_test_version(&db, note_id, 2, "unread").await;
+        note_version::ActiveModel {
+            id: Unchanged(warning_version_id),
+            body_md: Set("42% body".to_string()),
+            warning_dispositions_json: Set(json!([{
+                "warning_id": "price:42%25:1",
+                "value": "42%",
+                "location": { "kind": "body", "start": 0, "end": 3 },
+                "reason": "架空の値の例外を確認するため",
+            }])),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set test warning dispositions");
+
+        let response = server
+            .patch(&format!("/api/note-kinds/{kind_key}"))
+            .json(&json!({ "requires_approval": false }))
+            .await;
+        let states = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .order_by_asc(note_version::Column::VersionNo)
+            .all(&db)
+            .await
+            .expect("list note versions")
+            .into_iter()
+            .map(|version| (version.version_no, version.status, version.is_current))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (
+                response.status_code(),
+                response.json::<serde_json::Value>(),
+                states,
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "key": kind_key,
+                    "display_name": "Sample Kind",
+                    "requires_approval": false,
+                    "description": null,
+                    "sort_order": 0,
+                }),
+                vec![
+                    (1, "approved".to_string(), true),
+                    (2, "unread".to_string(), false),
+                ],
+            ),
+        );
+    }
 }

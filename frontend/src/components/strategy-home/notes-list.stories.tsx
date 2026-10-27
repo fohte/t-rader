@@ -255,6 +255,20 @@ const selectedItem: ReviewQueueItem = {
   unreadVersionCount: 2,
 }
 
+const selectedWarningItem: ReviewQueueItem = {
+  ...selectedItem,
+  id: 'fake-version-warning',
+  versionNo: 5,
+  warningDispositions: [
+    {
+      warning_id: 'price:42%25:1',
+      value: '42%',
+      location: { kind: 'body', start: 13, end: 16 },
+      reason: '架空の値の例外として示したため',
+    },
+  ],
+}
+
 const laterSelectedItem: ReviewQueueItem = {
   kind: 'note',
   id: 'fake-version-d',
@@ -291,9 +305,12 @@ const meta = {
     noteKindCatalogState: 'loaded' as const,
     selectedItemIds: [],
     selectedItems: [],
+    confirmedWarningDispositionVersionIds: [],
     isApproving: false,
     hasApprovalError: false,
     onToggleItem: () => {},
+    onConfirmWarningDisposition: () => {},
+    onApproveWarningVersion: () => {},
     onApproveSelected: () => {},
   },
   decorators: [withRouter],
@@ -322,6 +339,25 @@ export const SelectedForApproval: Story = {
     overviews: allNotes,
     selectedItemIds: ['note:fake-note-b'],
     selectedItems: [selectedItem],
+  },
+}
+
+export const SelectedWarningNeedsConfirmation: Story = {
+  name: 'shows the warning reason and requires individual approval.',
+  args: {
+    overviews: allNotes,
+    selectedItemIds: ['note:fake-note-b'],
+    selectedItems: [selectedWarningItem],
+  },
+}
+
+export const SelectedWarningConfirmed: Story = {
+  name: 'allows individual approval after the warning reason is confirmed.',
+  args: {
+    overviews: allNotes,
+    selectedItemIds: ['note:fake-note-b'],
+    selectedItems: [selectedWarningItem],
+    confirmedWarningDispositionVersionIds: ['fake-version-warning'],
   },
 }
 

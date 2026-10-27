@@ -68,7 +68,9 @@ pub use ingest_status::IngestStatusResponse;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use note_kind::NoteKindResponse;
 pub use note_overview::NoteOverviewResponse;
-pub use note_version::{NoteVersionResponse, PendingNoteVersionResponse};
+pub use note_version::{
+    ApproveNoteVersionRequest, NoteVersionResponse, PendingNoteVersionResponse,
+};
 pub use paper_account::{
     CreatePaperAccountRequest, PaperAccountPortfolioResponse, PaperAccountResponse,
     PaperAccountStatsResponse,

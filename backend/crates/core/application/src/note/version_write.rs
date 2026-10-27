@@ -106,7 +106,10 @@ impl NoteUseCases {
                 (None, None) => Value::Object(Map::new()),
             };
 
-        let becomes_current = !requires_approval;
+        let warning_dispositions_require_approval = content.created_by_kind
+            != HUMAN_CREATED_BY_KIND
+            && !content.warning_dispositions.is_empty();
+        let becomes_current = !requires_approval && !warning_dispositions_require_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             APPROVED_NOTE_STATUS
         } else {

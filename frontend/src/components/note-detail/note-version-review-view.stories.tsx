@@ -34,7 +34,9 @@ const args: ComponentProps<typeof NoteVersionReviewView> = {
   isRejecting: false,
   isMakingCurrent: false,
   hasError: false,
+  warningDispositionsConfirmed: false,
   onReasonChange: () => {},
+  onWarningDispositionsConfirmedChange: () => {},
   onApprove: () => {},
   onReject: () => {},
   onMakeCurrent: () => {},
@@ -59,6 +61,24 @@ type Story = StoryObj<typeof meta>
 
 export const ReasonRequiredWithoutComments: Story = {
   name: 'shows the rejection reason marked as required when there are no line comments.',
+}
+
+export const WarningDispositionNeedsConfirmation: Story = {
+  name: 'shows ignored warning reasons and disables approval until they are confirmed.',
+  args: {
+    version: {
+      ...pendingVersion,
+      body_md: '架空の値 42% を確認します。',
+      warning_dispositions: [
+        {
+          warning_id: 'price:42%25:1',
+          value: '42%',
+          location: { kind: 'body', start: 13, end: 16 },
+          reason: '架空の計算例として記載したため',
+        },
+      ],
+    },
+  },
 }
 
 export const MobileDecisionActions: Story = {
