@@ -326,7 +326,7 @@ async fn find_matching_earnings_events(
     for target in targets {
         let first_param = values.len() + 1;
         target_values.push(format!(
-            "(${first_param}, ${}, ${}, ${}, ${})",
+            "(${first_param}, ${}, ${}, ${}::date, ${})",
             first_param + 1,
             first_param + 2,
             first_param + 3,
