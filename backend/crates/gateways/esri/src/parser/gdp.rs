@@ -51,7 +51,10 @@ pub(crate) fn parse_gdp_archive(
                 return None;
             }
             resolve_document_url(&base, link.value().attr("href")?)
-        })?;
+        });
+        let Some(document_url) = document_url else {
+            continue;
+        };
 
         references.push(MacroOfficialReference {
             target: target.clone(),
@@ -170,6 +173,27 @@ mod tests {
                 },
             ]),
         );
+    }
+
+    #[test]
+    fn gdp_archive_ignores_documents_outside_official_origin() {
+        let archive = indoc! {
+            r#"
+            <table><tbody>
+              <tr><td>2099年4月8日</td><td>2099年1-3月期2次推計値</td><td><a href="https://attacker.invalid/result/sample.pdf">結果の概要</a></td></tr>
+            </tbody></table>
+            "#
+        };
+        let target = target("sample-stat-code", "209904080850");
+
+        let actual = parse_gdp_archive(
+            archive,
+            "https://example.invalid/gdp/2099.html",
+            &target,
+            "sample-stat-code",
+        );
+
+        assert_eq!(actual, Some(Vec::new()));
     }
 
     #[test]

@@ -31,7 +31,7 @@ pub(super) fn parse_bea_rows(html: &str, base_url: &str) -> Option<Vec<OfficialR
                     .value()
                     .attr("datetime")?;
                 let published_at = DateTime::parse_from_rfc3339(datetime).ok()?;
-                let url = base.join(href).ok()?.to_string();
+                let url = resolve_official_url(&base, href)?;
                 Some(OfficialReleaseRow {
                     published_at,
                     title: link.text().collect::<String>().trim().to_owned(),
@@ -40,6 +40,16 @@ pub(super) fn parse_bea_rows(html: &str, base_url: &str) -> Option<Vec<OfficialR
             })
             .collect(),
     )
+}
+
+fn resolve_official_url(base: &Url, href: &str) -> Option<String> {
+    let url = base.join(href).ok()?;
+    (base.scheme() == "https"
+        && url.scheme() == "https"
+        && url.origin() == base.origin()
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then(|| url.to_string())
 }
 
 pub(super) fn bea_document(
@@ -324,6 +334,21 @@ mod tests {
                 },
             ],
         );
+    }
+
+    #[test]
+    fn bea_archive_ignores_document_links_outside_official_origin() {
+        let archive = indoc! {
+            r#"
+            <table><tbody>
+              <tr class="release-row"><td><a href="https://attacker.invalid/release/sample.pdf">Synthetic release</a></td><td><time datetime="2099-04-08T08:30:00-04:00">Published</time></td></tr>
+            </tbody></table>
+            "#
+        };
+        let actual =
+            parse_bea_rows(archive, "https://example.invalid/news/archive").map(|rows| rows.len());
+
+        assert_eq!(actual, Some(0));
     }
 
     #[test]

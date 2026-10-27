@@ -58,6 +58,22 @@ mod tests {
     }
 
     #[test]
+    fn archive_ignores_release_pages_outside_official_origin() {
+        let archive = indoc! {
+            r#"
+            <table class="press-table"><tbody>
+              <tr><td><a href="https://attacker.invalid/result/sample_209910sj.html">結果の概要</a></td></tr>
+            </tbody></table>
+            "#
+        };
+
+        let actual = parse_iip_archive(archive, "https://example.invalid/industrial/archive.html")
+            .map(|pages| pages.len());
+
+        assert_eq!(actual, Some(0));
+    }
+
+    #[test]
     fn release_page_requires_exact_publication_date_and_explicit_period() {
         let page = indoc! {
             r#"

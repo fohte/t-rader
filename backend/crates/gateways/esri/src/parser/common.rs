@@ -32,10 +32,13 @@ pub(super) fn element_text(element: &ElementRef<'_>) -> String {
 
 pub(super) fn resolve_document_url(base: &Url, href: &str) -> Option<String> {
     let url = base.join(href).ok()?;
-    if url.origin() == base.origin() && url.path() == base.path() {
-        return None;
-    }
-    matches!(url.scheme(), "http" | "https").then(|| url.to_string())
+    (base.scheme() == "https"
+        && url.scheme() == "https"
+        && url.origin() == base.origin()
+        && url.path() != base.path()
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then(|| url.to_string())
 }
 
 pub(super) fn parse_japanese_date(value: &str) -> Option<NaiveDate> {

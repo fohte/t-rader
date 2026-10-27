@@ -35,7 +35,7 @@ pub(super) fn parse_customs_rows(html: &str, base_url: &str) -> Option<Vec<Japan
                 .filter_map(|link| {
                     let href = link.value().attr("href")?;
                     let is_document = href.to_ascii_lowercase().ends_with(".pdf");
-                    is_document.then(|| base.join(href).ok().map(|url| url.to_string()))?
+                    is_document.then(|| resolve_official_url(&base, href))?
                 })
                 .collect::<Vec<_>>();
             Some(JapaneseReleaseRow {
@@ -49,6 +49,16 @@ pub(super) fn parse_customs_rows(html: &str, base_url: &str) -> Option<Vec<Japan
         })
         .collect::<Vec<_>>();
     (!rows.is_empty()).then_some(rows)
+}
+
+fn resolve_official_url(base: &Url, href: &str) -> Option<String> {
+    let url = base.join(href).ok()?;
+    (base.scheme() == "https"
+        && url.scheme() == "https"
+        && url.origin() == base.origin()
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then(|| url.to_string())
 }
 
 pub(super) fn customs_document(
@@ -216,5 +226,20 @@ mod tests {
                 "half_year".to_owned(),
             )),
         );
+    }
+
+    #[test]
+    fn customs_archive_does_not_treat_external_pdf_as_a_document() {
+        let html = indoc! {
+            r#"
+            <table><tbody>
+              <tr><td>2099年4月</td><td>2099年5月8日</td><td><a href="https://attacker.invalid/archive/sample.pdf">資料</a></td></tr>
+            </tbody></table>
+            "#
+        };
+        let actual = parse_customs_rows(html, "https://example.invalid/archive")
+            .map(|rows| rows.into_iter().map(|row| row.url).collect::<Vec<_>>());
+
+        assert_eq!(actual, Some(vec![None]));
     }
 }

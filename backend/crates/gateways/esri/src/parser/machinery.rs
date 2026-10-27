@@ -9,8 +9,8 @@ use scraper::{Html, Selector};
 use std::collections::HashSet;
 
 use super::common::{
-    element_text, last_day_of_month, leading_number, parse_japanese_date, target_publication_date,
-    to_gregorian_year, trailing_number,
+    element_text, last_day_of_month, leading_number, parse_japanese_date, resolve_document_url,
+    target_publication_date, to_gregorian_year, trailing_number,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +42,7 @@ pub(crate) fn parse_machinery_index(
                 }
                 let (year, month) = parse_year_month(&title)?;
                 let period_start = NaiveDate::from_ymd_opt(year, month, 1)?;
-                let url = base.join(href).ok()?.to_string();
+                let url = resolve_document_url(&base, href)?;
                 seen.insert(url.clone()).then_some(MachineryReleasePage {
                     title,
                     url,
@@ -170,6 +170,22 @@ mod tests {
                 },
             ]),
         );
+    }
+
+    #[test]
+    fn machinery_index_ignores_release_pages_outside_official_origin() {
+        let index = indoc! {
+            r#"
+            <main>
+              <a href="https://attacker.invalid/releases/sample-juchu.html">令和81年10月実績</a>
+            </main>
+            "#
+        };
+
+        let actual = parse_machinery_index(index, "https://example.invalid/machinery/index.html")
+            .map(|pages| pages.len());
+
+        assert_eq!(actual, Some(0));
     }
 
     #[test]

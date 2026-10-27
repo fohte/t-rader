@@ -59,7 +59,7 @@ pub(crate) fn parse_iip_archive(html: &str, archive_url: &str) -> Option<Vec<Iip
                     .parse::<i32>()
                     .ok()?;
                 let period_start = NaiveDate::from_ymd_opt(year, month, 1)?;
-                let url = base.join(href).ok()?.to_string();
+                let url = resolve_official_url(&base, href)?;
                 if !seen.insert(url.clone()) {
                     return None;
                 }
@@ -71,6 +71,16 @@ pub(crate) fn parse_iip_archive(html: &str, archive_url: &str) -> Option<Vec<Iip
             })
             .collect(),
     )
+}
+
+fn resolve_official_url(base: &Url, href: &str) -> Option<String> {
+    let url = base.join(href).ok()?;
+    (base.scheme() == "https"
+        && url.scheme() == "https"
+        && url.origin() == base.origin()
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then(|| url.to_string())
 }
 
 pub(crate) fn parse_iip_release_page(
