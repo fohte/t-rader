@@ -147,6 +147,27 @@ export const DocumentAvailableWithoutSummary: Story = {
   },
 }
 
+export const FutureEarningsWithUnmatchedDocument: Story = {
+  name: '未来の決算で期が一致しない資料も発表予定とともに表示します。',
+  args: {
+    earningsStatus: {
+      label: '発表予定',
+      references: [
+        {
+          key: 'individual_document:sample_source:sample-document',
+          title: '架空の別期決算資料',
+          source: 'sample_source',
+          checkedAt: '2030-01-01T00:00:00Z',
+          targetPeriodEnd: '2030-06-29',
+          targetPeriodType: '2Q',
+          href: 'https://example.invalid/sample-document',
+          publicationEvidence: 'sample-release-record',
+        },
+      ],
+    },
+  },
+}
+
 export const OfficialListingNeedsDocumentCheck: Story = {
   name: '公式一覧だけがあり個別資料を未確認の状態を表示します。',
   args: {

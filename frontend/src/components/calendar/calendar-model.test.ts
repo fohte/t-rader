@@ -149,6 +149,15 @@ describe('buildCalendarDays', () => {
       expectedStatus: '個別資料未確認',
     },
     {
+      name: 'future event with an individual document for another period',
+      kind: 'individual_document',
+      targetPeriodEnd: '2099-06-29',
+      targetPeriodType: '2Q',
+      eventDate: '2099-01-08',
+      expectedDateLabel: '1/8 (木)',
+      expectedStatus: '発表予定',
+    },
+    {
       name: 'individual document without a target period end',
       kind: 'individual_document',
       targetPeriodEnd: null,
@@ -177,6 +186,15 @@ describe('buildCalendarDays', () => {
       targetPeriodEnd: '2099-06-30',
       targetPeriodType: '2Q',
       expectedStatus: '個別資料未確認',
+    },
+    {
+      name: 'future event with an official listing only',
+      kind: 'official_listing',
+      targetPeriodEnd: '2099-06-30',
+      targetPeriodType: '2Q',
+      eventDate: '2099-01-08',
+      expectedDateLabel: '1/8 (木)',
+      expectedStatus: '発表予定',
     },
   ] as const)(
     'labels $name from exact period evidence and the event date',

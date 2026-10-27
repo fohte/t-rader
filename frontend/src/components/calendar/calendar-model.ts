@@ -159,10 +159,10 @@ function buildEarningsStatus(
     ? '実績あり'
     : hasMatchingIndividualDocument
       ? '資料あり / 実績未取得'
-      : hasOfficialListing || individualDocuments.length > 0
-        ? '個別資料未確認'
-        : event.event_date >= today
-          ? '発表予定'
+      : event.event_date >= today
+        ? '発表予定'
+        : hasOfficialListing || individualDocuments.length > 0
+          ? '個別資料未確認'
           : '実績・資料未取得 / 公表未確認'
   const periodType = toFinancialPeriodType(event.fiscal_period_type)
   const internalTarget =
