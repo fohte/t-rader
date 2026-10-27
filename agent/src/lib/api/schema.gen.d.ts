@@ -2456,6 +2456,7 @@ export interface components {
       title: string
       /** Format: int32 */
       version_no: number
+      warning_dispositions: components['schemas']['WarningDispositionResponse'][]
     }
     PaperAccount: {
       benchmark_stock_id?: string | null
@@ -3311,6 +3312,26 @@ export interface components {
       schedule?: string | null
     }
     Value: unknown
+    WarningDispositionLocationResponse:
+      | {
+          end: number
+          /** @enum {string} */
+          kind: 'body'
+          start: number
+        }
+      | {
+          end: number
+          /** @enum {string} */
+          kind: 'graph'
+          path: string
+          start: number
+        }
+    WarningDispositionResponse: {
+      location: components['schemas']['WarningDispositionLocationResponse']
+      reason: string
+      value: string
+      warning_id: string
+    }
     /** @enum {string} */
     WidgetAggregationRequest: 'mkt_cap_weighted' | 'mean' | 'sum' | 'count'
     /** @enum {string} */

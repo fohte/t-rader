@@ -83,6 +83,7 @@ async fn seed_note(
                 frontmatter_json: Set(frontmatter_json),
                 graphs_json: Set(json!([])),
                 resolved_price_references_json: Set(json!({})),
+                warning_dispositions_json: NotSet,
                 status: Set(seed.status.into()),
                 is_current: Set(seed.is_current),
                 change_reason: Set(None),

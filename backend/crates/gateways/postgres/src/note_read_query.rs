@@ -53,7 +53,7 @@ impl PostgresNoteReadQuery {
                 })?;
                 Ok(NoteSnapshot {
                     note: to_note(row),
-                    version: to_version(version),
+                    version: to_version(version)?,
                     created_by_kind,
                 })
             })
@@ -123,7 +123,7 @@ impl NoteReadQuery for PostgresNoteReadQuery {
                 }
             }
         };
-        Ok(version.map(to_version))
+        version.map(to_version).transpose()
     }
 
     async fn find_initial_created_by_kind(
@@ -139,13 +139,13 @@ impl NoteReadQuery for PostgresNoteReadQuery {
         &self,
         note_id: Uuid,
     ) -> Result<Vec<NoteVersion>, NoteReadQueryError> {
-        note_version::Entity::find()
+        let rows = note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(note_id))
             .order_by_asc(note_version::Column::VersionNo)
             .all(&self.db)
             .await
-            .map(|rows| rows.into_iter().map(to_version).collect())
-            .map_err(query_error)
+            .map_err(query_error)?;
+        rows.into_iter().map(to_version).collect()
     }
 
     async fn find_note_version_by_number(
@@ -153,13 +153,13 @@ impl NoteReadQuery for PostgresNoteReadQuery {
         note_id: Uuid,
         version_no: i32,
     ) -> Result<Option<NoteVersion>, NoteReadQueryError> {
-        note_version::Entity::find()
+        let row = note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(note_id))
             .filter(note_version::Column::VersionNo.eq(version_no))
             .one(&self.db)
             .await
-            .map(|row| row.map(to_version))
-            .map_err(query_error)
+            .map_err(query_error)?;
+        row.map(to_version).transpose()
     }
 
     async fn list_pending_note_versions(
@@ -294,8 +294,8 @@ fn to_note(model: note::Model) -> Note {
     }
 }
 
-fn to_version(model: note_version::Model) -> NoteVersion {
-    NoteVersion {
+fn to_version(model: note_version::Model) -> Result<NoteVersion, NoteReadQueryError> {
+    Ok(NoteVersion {
         id: model.id,
         note_id: model.note_id,
         version_no: model.version_no,
@@ -304,6 +304,8 @@ fn to_version(model: note_version::Model) -> NoteVersion {
         frontmatter_json: model.frontmatter_json,
         graphs_json: model.graphs_json,
         resolved_price_references_json: model.resolved_price_references_json,
+        warning_dispositions: serde_json::from_value(model.warning_dispositions_json)
+            .map_err(|error| NoteReadQueryError::InvalidData(error.to_string()))?,
         status: model.status,
         is_current: model.is_current,
         change_reason: model.change_reason,
@@ -311,7 +313,7 @@ fn to_version(model: note_version::Model) -> NoteVersion {
         execution_id: model.execution_id,
         created_at: model.created_at,
         reviewed_at: model.reviewed_at,
-    }
+    })
 }
 
 fn query_error(error: sea_orm::DbErr) -> NoteReadQueryError {

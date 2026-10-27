@@ -656,6 +656,7 @@ mod tests {
             frontmatter_json: Set(json!({})),
             graphs_json: Set(json!([])),
             resolved_price_references_json: Set(json!({})),
+            warning_dispositions_json: NotSet,
             status: Set("unread".to_string()),
             is_current: Set(true),
             change_reason: Set(Some("updated".to_string())),

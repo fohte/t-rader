@@ -261,6 +261,7 @@ mod tests {
             frontmatter_json: Set(json!({})),
             graphs_json: Set(json!([])),
             resolved_price_references_json: Set(json!({})),
+            warning_dispositions_json: NotSet,
             status: Set(status.into()),
             is_current: Set(is_current),
             change_reason: Set(None),

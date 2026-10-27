@@ -198,6 +198,14 @@ impl NoteUseCases {
                 INITIAL_NOTE_STATUS
             }
         });
+        let accepted_dispositions = if command.created_by_kind == "human" {
+            Vec::new()
+        } else {
+            lint_outcome
+                .as_ref()
+                .map(|outcome| outcome.accepted_dispositions.clone())
+                .unwrap_or_default()
+        };
         let mut version = self
             .append_version(
                 &transaction,
@@ -207,6 +215,7 @@ impl NoteUseCases {
                     body_md: command.body_md.unwrap_or_default(),
                     frontmatter_json,
                     graphs_json,
+                    warning_dispositions: accepted_dispositions,
                     created_by_kind: command.created_by_kind.clone(),
                     execution_id: command.execution_id,
                     change_reason: command.change_reason,
@@ -361,6 +370,14 @@ impl NoteUseCases {
             return result;
         }
 
+        let accepted_dispositions = if command.created_by_kind == "human" {
+            Vec::new()
+        } else {
+            lint_outcome
+                .as_ref()
+                .map(|outcome| outcome.accepted_dispositions.clone())
+                .unwrap_or_default()
+        };
         let version = self
             .append_version(
                 transaction,
@@ -370,6 +387,7 @@ impl NoteUseCases {
                     body_md,
                     frontmatter_json,
                     graphs_json,
+                    warning_dispositions: accepted_dispositions,
                     created_by_kind: command.created_by_kind,
                     execution_id: command.execution_id,
                     change_reason: command.change_reason,
@@ -445,7 +463,8 @@ mod tests {
     use crate::note::repository::{NoteRepository, NoteRepositoryError};
     use crate::note::types::{
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
-        NoteVersionUpdate, UpdateNoteCommand,
+        NoteVersionUpdate, NoteWarningDispositionLocation, NoteWarningDispositionRecord,
+        UpdateNoteCommand,
     };
     use crate::refs::{RefUseCases, test_support::FakeRefRepository};
     use crate::unit_of_work::FakeUnitOfWork;
@@ -613,6 +632,7 @@ mod tests {
                 frontmatter_json: version.frontmatter_json,
                 graphs_json: version.graphs_json,
                 resolved_price_references_json: version.resolved_price_references_json,
+                warning_dispositions: version.warning_dispositions,
                 status: version.status,
                 is_current: version.is_current,
                 change_reason: version.change_reason,
@@ -720,6 +740,7 @@ mod tests {
             frontmatter_json: json!({}),
             graphs_json: json!([]),
             resolved_price_references_json: json!({}),
+            warning_dispositions: Vec::new(),
             status: "approved".into(),
             is_current: true,
             change_reason: None,
@@ -936,6 +957,7 @@ mod tests {
                     frontmatter_json: json!({}),
                     graphs_json: json!([]),
                     resolved_price_references_json,
+                    warning_dispositions: Vec::new(),
                     status: INITIAL_NOTE_STATUS.into(),
                     is_current: true,
                     change_reason: None,
@@ -1004,6 +1026,7 @@ mod tests {
                             frontmatter_json: json!({}),
                             graphs_json: json!([]),
                             resolved_price_references_json: json!({}),
+                            warning_dispositions: Vec::new(),
                             status: INITIAL_NOTE_STATUS.into(),
                             is_current: true,
                             change_reason: None,
@@ -1621,6 +1644,7 @@ mod tests {
                 resolved_price_references_json: json!({
                     "[[price:fictional-code@2030-01-02:close]]": { "value": 12 },
                 }),
+                warning_dispositions: Vec::new(),
                 status: "approved".into(),
                 is_current: true,
                 change_reason: None,
@@ -1682,6 +1706,7 @@ mod tests {
                 resolved_price_references_json: json!({
                     "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
                 }),
+                warning_dispositions: Vec::new(),
                 status: "approved".into(),
                 is_current: true,
                 change_reason: None,
@@ -1745,6 +1770,7 @@ mod tests {
                 frontmatter_json: json!({}),
                 graphs_json: json!([]),
                 resolved_price_references_json: previous_resolutions,
+                warning_dispositions: Vec::new(),
                 status: "approved".into(),
                 is_current: true,
                 change_reason: None,
@@ -1815,6 +1841,7 @@ mod tests {
                 resolved_price_references_json: json!({
                     "[[price:fictional-code@2030-01-03:close]]": { "value": 20 },
                 }),
+                warning_dispositions: Vec::new(),
                 status: INITIAL_NOTE_STATUS.into(),
                 is_current: false,
                 change_reason: Some("Update title".into()),
@@ -1914,6 +1941,7 @@ mod tests {
                         "[[change:indicator:demo-indicator@2030-01-01..2030-01-02]]": { "value": 25 },
                         "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
                     }),
+                    warning_dispositions: Vec::new(),
                     status: "approved".into(),
                     is_current: true,
                     change_reason: None,
@@ -1981,6 +2009,7 @@ mod tests {
                             "value": 25,
                         },
                     }),
+                    warning_dispositions: Vec::new(),
                     status: "approved".into(),
                     is_current: true,
                     change_reason: None,
@@ -2045,6 +2074,7 @@ mod tests {
                 resolved_price_references_json: json!({
                     "[[price:fictional-code@2030-01-03:close]]": { "value": 12 },
                 }),
+                warning_dispositions: Vec::new(),
                 status: "approved".into(),
                 is_current: true,
                 change_reason: None,
@@ -2324,27 +2354,83 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn gated_write_accepts_a_reason_for_each_warning() {
+    async fn gated_write_persists_warning_dispositions_for_body_and_graph(
+        graph_with_warning_labels: serde_json::Value,
+    ) {
         let body = "close 45,678円 and -3.5%";
+        let graphs: Vec<core_domain::note_graph::GraphDef> =
+            serde_json::from_value(graph_with_warning_labels.clone())
+                .expect("fixture graphs are valid");
+        let warnings = scan_note_warnings_with_ids(body, &graphs);
         let (use_cases, repository) = make_note_use_cases(source_version());
         let mut multiline_reason = String::from("分析上の仮定として記載");
         multiline_reason.push('\r');
         multiline_reason.push('\n');
         multiline_reason.push_str("補足理由");
-        let warning_dispositions = scan_body_warnings(body)
+        let warning_dispositions = warnings
             .into_iter()
             .map(|warning| NoteBodyWarningDisposition {
                 id: warning.id,
                 reason: multiline_reason.clone(),
             })
             .collect();
+        let mut command = write_body_command(body);
+        command.graphs_json = Some(graph_with_warning_labels);
         let result = use_cases
-            .write_with_warning_dispositions(write_body_command(body), warning_dispositions)
+            .write_with_warning_dispositions(command, warning_dispositions)
             .await;
-        let inserted_version_count = repository.inserted_versions.lock().await.len();
+        let result = result.expect("all warning dispositions are accepted");
+        let inserted_version = repository
+            .inserted_versions
+            .lock()
+            .await
+            .first()
+            .cloned()
+            .expect("the write saves a version");
+        let expected = vec![
+            NoteWarningDispositionRecord {
+                warning_id: "price:45%2C678%E5%86%86:1".into(),
+                value: "45,678円".into(),
+                location: NoteWarningDispositionLocation::Body { start: 6, end: 15 },
+                reason: multiline_reason.clone(),
+            },
+            NoteWarningDispositionRecord {
+                warning_id: "relative:-3.5%25:1".into(),
+                value: "-3.5%".into(),
+                location: NoteWarningDispositionLocation::Body { start: 20, end: 25 },
+                reason: multiline_reason.clone(),
+            },
+            NoteWarningDispositionRecord {
+                warning_id: "price:45%2C678%E5%86%86:2".into(),
+                value: "45,678円".into(),
+                location: NoteWarningDispositionLocation::Graph {
+                    path: "graphs[0].nodes[0].label".into(),
+                    start: 0,
+                    end: 9,
+                },
+                reason: multiline_reason.clone(),
+            },
+            NoteWarningDispositionRecord {
+                warning_id: "relative:-3.5%25:2".into(),
+                value: "-3.5%".into(),
+                location: NoteWarningDispositionLocation::Graph {
+                    path: "graphs[0].edges[0].label".into(),
+                    start: 0,
+                    end: 5,
+                },
+                reason: multiline_reason,
+            },
+        ];
 
-        assert_eq!((result.is_ok(), inserted_version_count), (true, 1));
+        assert_eq!(
+            (
+                result.snapshot.version.warning_dispositions,
+                inserted_version.warning_dispositions,
+            ),
+            (expected.clone(), expected),
+        );
     }
 
     #[tokio::test]
@@ -2599,6 +2685,7 @@ mod tests {
                         "edges": [],
                     }]),
                     resolved_price_references_json: json!({}),
+                    warning_dispositions: Vec::new(),
                     status: INITIAL_NOTE_STATUS.into(),
                     is_current: false,
                     change_reason: Some("Update graph reference".into()),
@@ -2621,6 +2708,7 @@ mod tests {
                         "edges": [],
                     }]),
                     resolved_price_references_json: json!({}),
+                    warning_dispositions: Vec::new(),
                     status: INITIAL_NOTE_STATUS.into(),
                     is_current: false,
                     change_reason: Some("Update graph reference".into()),

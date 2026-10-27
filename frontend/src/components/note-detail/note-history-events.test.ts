@@ -19,6 +19,7 @@ function makeVersion(
     body_md: '架空の本文です。',
     frontmatter_json: {},
     resolved_price_references_json: {},
+    warning_dispositions: [],
     graphs_json: [],
     status: 'approved',
     is_current: versionNo === 2,

@@ -12,6 +12,7 @@ const pendingVersion: NoteVersion = {
   body_md: '変更された本文です。',
   frontmatter_json: {},
   resolved_price_references_json: {},
+  warning_dispositions: [],
   graphs_json: [],
   status: 'unread',
   is_current: false,

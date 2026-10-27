@@ -211,6 +211,7 @@ comments:
       frontmatter_json: 'ノートに付随する構造化メタデータ。'
       graphs_json: 'ノートに付随するグラフ定義の配列。'
       resolved_price_references_json: '本文中の価格参照リンクと実行時に解決した値の対応。'
+      warning_dispositions_json: '理由付きで無視した警告の ID・値・位置・理由をバージョンごとに保持する JSON 配列。'
       status: 'このバージョンのレビュー状態。'
       is_current: 'ノートの現行バージョンかどうか。'
       change_reason: 'バージョン更新の理由。'

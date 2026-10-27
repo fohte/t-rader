@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use serde::Serialize;
 
-use crate::markdown_lint::lint_id;
 use crate::markdown_lint::market_numeric::{MarketNumericFinding, scan_market_numeric_source};
 pub use crate::markdown_lint::warning_id_group;
+use crate::markdown_lint::{lint_id, percent_encode};
 use crate::note_graph::GraphDef;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -13,18 +14,38 @@ pub struct NoteBodyWarning {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteBodyWarningFinding {
+    pub warning: NoteBodyWarning,
+    pub value: String,
+    pub path: Option<String>,
+    pub range: Range<usize>,
+}
+
 pub fn scan_note_warnings_with_ids(body: &str, graphs: &[GraphDef]) -> Vec<NoteBodyWarning> {
+    scan_note_warning_findings_with_ids(body, graphs)
+        .into_iter()
+        .map(|finding| finding.warning)
+        .collect()
+}
+
+pub fn scan_note_warning_findings_with_ids(
+    body: &str,
+    graphs: &[GraphDef],
+) -> Vec<NoteBodyWarningFinding> {
     let mut occurrences = HashMap::<(String, String), usize>::new();
-    let mut warnings = scan_text_with_ids(body, None, &mut occurrences);
+    let mut findings = scan_text_with_ids(body, None, None, &mut occurrences);
     for (graph_index, graph) in graphs.iter().enumerate() {
         for (node_index, node) in graph.nodes.iter().enumerate() {
-            let location = format!(
+            let message_location = format!(
                 "graphs[{graph_index}] (id={:?}).nodes[{node_index}] (id={:?}).label",
                 graph.id, node.id
             );
-            warnings.extend(scan_text_with_ids(
+            let path = format!("graphs[{graph_index}].nodes[{node_index}].label");
+            findings.extend(scan_text_with_ids(
                 &node.label,
-                Some(&location),
+                Some(path),
+                Some(&message_location),
                 &mut occurrences,
             ));
         }
@@ -32,20 +53,36 @@ pub fn scan_note_warnings_with_ids(body: &str, graphs: &[GraphDef]) -> Vec<NoteB
             let Some(label) = edge.label.as_deref() else {
                 continue;
             };
-            let location = format!(
+            let message_location = format!(
                 "graphs[{graph_index}] (id={:?}).edges[{edge_index}] ({:?} -> {:?}).label",
                 graph.id, edge.source, edge.target
             );
-            warnings.extend(scan_text_with_ids(label, Some(&location), &mut occurrences));
+            let path = format!("graphs[{graph_index}].edges[{edge_index}].label");
+            findings.extend(scan_text_with_ids(
+                label,
+                Some(path),
+                Some(&message_location),
+                &mut occurrences,
+            ));
         }
     }
-    warnings
+    findings
 }
 
 pub fn scan_graph_warnings_with_ids(
     graphs: &[GraphDef],
     preceding_warnings: &[NoteBodyWarning],
 ) -> Vec<NoteBodyWarning> {
+    scan_graph_warning_findings_with_ids(graphs, preceding_warnings)
+        .into_iter()
+        .map(|finding| finding.warning)
+        .collect()
+}
+
+pub fn scan_graph_warning_findings_with_ids(
+    graphs: &[GraphDef],
+    preceding_warnings: &[NoteBodyWarning],
+) -> Vec<NoteBodyWarningFinding> {
     let mut occurrences = HashMap::<(String, String), usize>::new();
     for warning in preceding_warnings {
         let Some(group_id) = warning_id_group(&warning.id) else {
@@ -64,16 +101,18 @@ pub fn scan_graph_warnings_with_ids(
             .and_modify(|current| *current = (*current).max(count))
             .or_insert(count);
     }
-    let mut warnings = Vec::new();
+    let mut findings = Vec::new();
     for (graph_index, graph) in graphs.iter().enumerate() {
         for (node_index, node) in graph.nodes.iter().enumerate() {
-            let location = format!(
+            let message_location = format!(
                 "graphs[{graph_index}] (id={:?}).nodes[{node_index}] (id={:?}).label",
                 graph.id, node.id
             );
-            warnings.extend(scan_text_with_ids(
+            let path = format!("graphs[{graph_index}].nodes[{node_index}].label");
+            findings.extend(scan_text_with_ids(
                 &node.label,
-                Some(&location),
+                Some(path),
+                Some(&message_location),
                 &mut occurrences,
             ));
         }
@@ -81,14 +120,20 @@ pub fn scan_graph_warnings_with_ids(
             let Some(label) = edge.label.as_deref() else {
                 continue;
             };
-            let location = format!(
+            let message_location = format!(
                 "graphs[{graph_index}] (id={:?}).edges[{edge_index}] ({:?} -> {:?}).label",
                 graph.id, edge.source, edge.target
             );
-            warnings.extend(scan_text_with_ids(label, Some(&location), &mut occurrences));
+            let path = format!("graphs[{graph_index}].edges[{edge_index}].label");
+            findings.extend(scan_text_with_ids(
+                label,
+                Some(path),
+                Some(&message_location),
+                &mut occurrences,
+            ));
         }
     }
-    warnings
+    findings
 }
 
 fn split_warning_group(group_id: &str) -> Option<(&str, &str)> {
@@ -98,21 +143,30 @@ fn split_warning_group(group_id: &str) -> Option<(&str, &str)> {
 
 fn scan_text_with_ids(
     text: &str,
-    location: Option<&str>,
+    path: Option<String>,
+    message_location: Option<&str>,
     occurrences: &mut HashMap<(String, String), usize>,
-) -> Vec<NoteBodyWarning> {
+) -> Vec<NoteBodyWarningFinding> {
     scan_market_numeric_source(text)
         .into_iter()
         .map(|finding: MarketNumericFinding| {
             let occurrence = occurrences
-                .entry((finding.kind.rule_id().to_string(), finding.key.clone()))
+                .entry((
+                    finding.kind.rule_id().to_string(),
+                    percent_encode(&finding.key),
+                ))
                 .and_modify(|count| *count += 1)
                 .or_insert(1);
             let id = lint_id(finding.kind.rule_id(), &finding.key, *occurrence);
-            let message = location
+            let message = message_location
                 .map(|location| format!("{location}: {}", finding.message))
                 .unwrap_or(finding.message);
-            NoteBodyWarning { id, message }
+            NoteBodyWarningFinding {
+                warning: NoteBodyWarning { id, message },
+                value: finding.key,
+                path: path.clone(),
+                range: finding.range,
+            }
         })
         .collect()
 }
@@ -124,7 +178,7 @@ mod tests {
 
     use crate::note_graph::{GraphDef, GraphEdge, GraphNode, Layout};
 
-    use super::{NoteBodyWarning, scan_note_warnings_with_ids};
+    use super::{NoteBodyWarning, scan_graph_warnings_with_ids, scan_note_warnings_with_ids};
 
     fn price_warning(value: &str) -> String {
         format!(
@@ -348,28 +402,52 @@ mod tests {
             }],
         };
 
+        let graphs = vec![graph];
+        let preceding_warnings = scan_note_warnings_with_ids("close 45,678円", &[]);
+
         assert_eq!(
-            scan_note_warnings_with_ids("close 45,678円", &[graph]),
-            vec![
-                NoteBodyWarning {
-                    id: "price:45%2C678%E5%86%86:1".into(),
-                    message: price_warning("45,678円"),
-                },
-                NoteBodyWarning {
-                    id: "price:45%2C678%E5%86%86:2".into(),
-                    message: format!(
-                        "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
-                        price_warning("45,678円"),
-                    ),
-                },
-                NoteBodyWarning {
-                    id: "relative:-3.5%25:1".into(),
-                    message: format!(
-                        "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}",
-                        relative_warning("-3.5%"),
-                    ),
-                },
-            ],
+            (
+                scan_note_warnings_with_ids("close 45,678円", &graphs),
+                scan_graph_warnings_with_ids(&graphs, &preceding_warnings),
+            ),
+            (
+                vec![
+                    NoteBodyWarning {
+                        id: "price:45%2C678%E5%86%86:1".into(),
+                        message: price_warning("45,678円"),
+                    },
+                    NoteBodyWarning {
+                        id: "price:45%2C678%E5%86%86:2".into(),
+                        message: format!(
+                            "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
+                            price_warning("45,678円"),
+                        ),
+                    },
+                    NoteBodyWarning {
+                        id: "relative:-3.5%25:1".into(),
+                        message: format!(
+                            "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}",
+                            relative_warning("-3.5%"),
+                        ),
+                    },
+                ],
+                vec![
+                    NoteBodyWarning {
+                        id: "price:45%2C678%E5%86%86:2".into(),
+                        message: format!(
+                            "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
+                            price_warning("45,678円"),
+                        ),
+                    },
+                    NoteBodyWarning {
+                        id: "relative:-3.5%25:1".into(),
+                        message: format!(
+                            "graphs[0] (id=\"fictional-chart\").edges[0] (\"entry\" -> \"exit\").label: {}",
+                            relative_warning("-3.5%"),
+                        ),
+                    },
+                ],
+            ),
         );
     }
 }

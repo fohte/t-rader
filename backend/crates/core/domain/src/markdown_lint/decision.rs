@@ -13,6 +13,13 @@ pub struct Disposition<'a> {
 pub struct DispositionEvaluation {
     pub unresolved_diagnostics: Vec<LintDiagnostic>,
     pub unresolved_warning_ids: Vec<String>,
+    pub accepted_dispositions: Vec<AcceptedDisposition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceptedDisposition {
+    pub warning_id: String,
+    pub reason: String,
 }
 
 pub fn evaluate_dispositions(
@@ -35,6 +42,7 @@ pub fn evaluate_dispositions(
     }
 
     let mut disposition_ids = HashMap::<String, HashSet<String>>::new();
+    let mut disposition_reasons = HashMap::<String, Vec<(String, String)>>::new();
     for disposition in dispositions {
         if disposition.reason.trim().is_empty() {
             continue;
@@ -42,27 +50,64 @@ pub fn evaluate_dispositions(
         if let Some(group_id) = warning_id_group(disposition.id)
             && warning_counts.contains_key(group_id)
         {
-            disposition_ids
-                .entry(group_id.to_string())
+            let group_id = group_id.to_string();
+            if disposition_ids
+                .entry(group_id.clone())
                 .or_default()
-                .insert(disposition.id.to_string());
+                .insert(disposition.id.to_string())
+            {
+                disposition_reasons
+                    .entry(group_id)
+                    .or_default()
+                    .push((disposition.id.to_string(), disposition.reason.to_string()));
+            }
         }
     }
 
-    let is_disposed = |id: &str| {
+    let mut assigned_disposition_ids = HashMap::<String, HashSet<String>>::new();
+    let mut accepted_dispositions = Vec::new();
+    let mut unresolved_warning_ids = Vec::new();
+    for id in &warning_ids {
         let Some(group_id) = warning_id_group(id) else {
-            return false;
+            unresolved_warning_ids.push((*id).to_string());
+            continue;
         };
         let Some(group_dispositions) = disposition_ids.get(group_id) else {
-            return false;
+            unresolved_warning_ids.push((*id).to_string());
+            continue;
         };
-        group_dispositions.contains(id) || group_dispositions.len() >= warning_counts[group_id]
-    };
-    let unresolved_warning_ids = warning_ids
-        .iter()
-        .filter(|id| !is_disposed(id))
-        .map(|id| (*id).to_string())
-        .collect::<Vec<_>>();
+        let Some(group_reasons) = disposition_reasons.get(group_id) else {
+            unresolved_warning_ids.push((*id).to_string());
+            continue;
+        };
+        let disposition = group_reasons
+            .iter()
+            .find(|(disposition_id, _)| disposition_id == id)
+            .or_else(|| {
+                if group_dispositions.len() < warning_counts[group_id] {
+                    return None;
+                }
+                let assigned = assigned_disposition_ids
+                    .entry(group_id.to_string())
+                    .or_default();
+                group_reasons
+                    .iter()
+                    .find(|(disposition_id, _)| !assigned.contains(disposition_id))
+                    .or_else(|| group_reasons.first())
+            });
+        let Some((disposition_id, reason)) = disposition else {
+            unresolved_warning_ids.push((*id).to_string());
+            continue;
+        };
+        assigned_disposition_ids
+            .entry(group_id.to_string())
+            .or_default()
+            .insert(disposition_id.clone());
+        accepted_dispositions.push(AcceptedDisposition {
+            warning_id: (*id).to_string(),
+            reason: reason.clone(),
+        });
+    }
     let unresolved_warning_id_set = unresolved_warning_ids
         .iter()
         .map(String::as_str)
@@ -80,6 +125,7 @@ pub fn evaluate_dispositions(
     DispositionEvaluation {
         unresolved_diagnostics,
         unresolved_warning_ids,
+        accepted_dispositions,
     }
 }
 
@@ -89,7 +135,7 @@ mod tests {
 
     use rstest::rstest;
 
-    use super::{Disposition, DispositionEvaluation, evaluate_dispositions};
+    use super::{AcceptedDisposition, Disposition, DispositionEvaluation, evaluate_dispositions};
     use crate::markdown_lint::{LintDiagnostic, LintReport, Severity};
 
     fn diagnostic(rule_id: &'static str, id: &str, severity: Severity) -> LintDiagnostic {
@@ -142,6 +188,14 @@ mod tests {
                     Vec::new()
                 },
                 unresolved_warning_ids: Vec::new(),
+                accepted_dispositions: if error {
+                    Vec::new()
+                } else {
+                    vec![AcceptedDisposition {
+                        warning_id: "price:sample-key:1".into(),
+                        reason: "documented".into(),
+                    }]
+                },
             },
         );
     }
@@ -161,21 +215,35 @@ mod tests {
                 &[
                     Disposition {
                         id: "price:sample-key:4",
-                        reason: "documented",
+                        reason: "first note",
                     },
                     Disposition {
                         id: "price:sample-key:5",
-                        reason: "documented",
+                        reason: "second note",
                     },
                     Disposition {
                         id: "price:sample-key:6",
-                        reason: "documented",
+                        reason: "third note",
                     },
                 ],
             ),
             DispositionEvaluation {
                 unresolved_diagnostics: Vec::new(),
                 unresolved_warning_ids: Vec::new(),
+                accepted_dispositions: vec![
+                    AcceptedDisposition {
+                        warning_id: "price:sample-key:1".into(),
+                        reason: "first note".into(),
+                    },
+                    AcceptedDisposition {
+                        warning_id: "price:sample-key:2".into(),
+                        reason: "second note".into(),
+                    },
+                    AcceptedDisposition {
+                        warning_id: "price:sample-key:3".into(),
+                        reason: "third note".into(),
+                    },
+                ],
             },
         );
     }

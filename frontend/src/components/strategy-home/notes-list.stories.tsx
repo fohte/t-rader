@@ -53,6 +53,7 @@ function makeVersion(overrides: Partial<NoteVersion> = {}): NoteVersion {
     created_by_kind: 'human',
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
+    warning_dispositions: overrides.warning_dispositions ?? [],
   }
 }
 
