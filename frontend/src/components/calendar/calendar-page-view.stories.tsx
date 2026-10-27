@@ -130,6 +130,20 @@ const otherEarningsEvents: CalendarEvent[] = [
   },
 ]
 
+const usSecFilingReference = {
+  kind: 'individual_document',
+  source: 'sec',
+  external_id: '0900000001-99-000001',
+  title: 'SEC Form 10-Q',
+  url: 'https://example.invalid/Archives/edgar/data/900000001/090000000199000001/report.htm',
+  target_period_start: null,
+  target_period_end: '2099-01-05',
+  target_period_type: '10-Q',
+  publication_evidence: 'SEC submissions record',
+  publication_evidence_url: null,
+  checked_at: '2030-01-01T00:00:00Z',
+} satisfies components['schemas']['CalendarEventReferenceResponse']
+
 function createCalendarRouter(component: () => React.ReactNode) {
   return createStoryRouter(component, {
     paths: ['/calendar', '/stocks/$stockId'],
@@ -249,6 +263,58 @@ export const OtherEarningsExpanded: Story = {
     },
     expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
     otherEarningsEvents,
+  },
+}
+
+export const UsOtherEarningsExpandedWithSecFiling: Story = {
+  name: '米国決算の通常行と展開行に同じ SEC 資料と状態を表示します。',
+  args: {
+    countryFilter: 'US',
+    calendar: {
+      from: weekRange.from,
+      to: weekRange.to,
+      events: [
+        {
+          ...EVENT_REFERENCE_DEFAULTS,
+          kind: 'event',
+          source: 'alpha_vantage',
+          external_id: 'US:QZ7:2099-01-05',
+          category: 'earnings',
+          country: 'US',
+          title: '架空電子',
+          stock_id: 'US:QZ7',
+          fiscal_period: '2099-01-05',
+          event_date: '2099-01-06',
+          event_at: null,
+          time_of_day: 'post_market',
+          references: [usSecFilingReference],
+        },
+        {
+          kind: 'other_earnings_summary',
+          country: 'US',
+          event_date: '2099-01-06',
+          count: 1,
+        },
+      ],
+    },
+    expandedOtherEarnings: { country: 'US', eventDate: '2099-01-06' },
+    otherEarningsEvents: [
+      {
+        ...EVENT_REFERENCE_DEFAULTS,
+        kind: 'event',
+        source: 'alpha_vantage',
+        external_id: 'US:QZ8:2099-01-05',
+        category: 'earnings',
+        country: 'US',
+        title: '架空計測',
+        stock_id: 'US:QZ8',
+        fiscal_period: '2099-01-05',
+        event_date: '2099-01-06',
+        event_at: null,
+        time_of_day: 'post_market',
+        references: [usSecFilingReference],
+      },
+    ],
   },
 }
 

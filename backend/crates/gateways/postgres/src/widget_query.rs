@@ -514,6 +514,7 @@ mod tests {
             name: Set(name.to_string()),
             market: Set(Some("OTHER".to_string())),
             product_category: Set(None),
+            cik: Default::default(),
             created_at: Default::default(),
             updated_at: Default::default(),
         }
@@ -1049,6 +1050,7 @@ mod tests {
             name: Set(format!("Demo Stock {id}")),
             market: Set(Some("OTHER".to_string())),
             product_category: Set(None),
+            cik: Default::default(),
             created_at: Default::default(),
             updated_at: Default::default(),
         }))

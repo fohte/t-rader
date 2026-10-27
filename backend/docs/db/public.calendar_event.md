@@ -6,21 +6,21 @@
 
 ## Columns
 
-| Name          | Type                     | Default           | Nullable | Children                                                              | Parents | Comment                                                        |
-| ------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------- | ------- | -------------------------------------------------------------- |
-| id            | uuid                     | gen_random_uuid() | false    | [public.calendar_event_reference](public.calendar_event_reference.md) |         |                                                                |
-| source        | text                     |                   | false    |                                                                       |         | 予定を取得した取得元の識別子。                                 |
-| external_id   | text                     |                   | false    |                                                                       |         | 取得元内でイベントを識別するキー。                             |
-| category      | text                     |                   | false    |                                                                       |         | イベントの分類。indicator、central_bank、earnings のいずれか。 |
-| country       | text                     |                   | false    |                                                                       |         | 指標・中銀イベントの対象地域、または決算の上場市場。           |
-| title         | text                     |                   | false    |                                                                       |         | イベント名、または決算会社名。                                 |
-| stock_id      | text                     |                   | true     |                                                                       |         | 決算対象の銘柄 ID。決算以外では null。                         |
-| fiscal_period | text                     |                   | true     |                                                                       |         | 決算の四半期末日 (YYYY-MM-DD)。決算以外では null。             |
-| event_date    | date                     |                   | false    |                                                                       |         | イベントが予定されている JST の日付。                          |
-| event_at      | timestamp with time zone |                   | true     |                                                                       |         | 時刻が分かる場合のイベント日時。                               |
-| time_of_day   | text                     |                   | true     |                                                                       |         | 時刻の代わりに寄り前または引け後が分かる場合の区分。           |
-| created_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                       |         |                                                                |
-| updated_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                       |         |                                                                |
+| Name          | Type                     | Default           | Nullable | Children                                                                                                                                                  | Parents | Comment                                                        |
+| ------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------- |
+| id            | uuid                     | gen_random_uuid() | false    | [public.calendar_event_reference](public.calendar_event_reference.md) [public.calendar_event_sec_filing_check](public.calendar_event_sec_filing_check.md) |         |                                                                |
+| source        | text                     |                   | false    |                                                                                                                                                           |         | 予定を取得した取得元の識別子。                                 |
+| external_id   | text                     |                   | false    |                                                                                                                                                           |         | 取得元内でイベントを識別するキー。                             |
+| category      | text                     |                   | false    |                                                                                                                                                           |         | イベントの分類。indicator、central_bank、earnings のいずれか。 |
+| country       | text                     |                   | false    |                                                                                                                                                           |         | 指標・中銀イベントの対象地域、または決算の上場市場。           |
+| title         | text                     |                   | false    |                                                                                                                                                           |         | イベント名、または決算会社名。                                 |
+| stock_id      | text                     |                   | true     |                                                                                                                                                           |         | 決算対象の銘柄 ID。決算以外では null。                         |
+| fiscal_period | text                     |                   | true     |                                                                                                                                                           |         | 決算の四半期末日 (YYYY-MM-DD)。決算以外では null。             |
+| event_date    | date                     |                   | false    |                                                                                                                                                           |         | イベントが予定されている JST の日付。                          |
+| event_at      | timestamp with time zone |                   | true     |                                                                                                                                                           |         | 時刻が分かる場合のイベント日時。                               |
+| time_of_day   | text                     |                   | true     |                                                                                                                                                           |         | 時刻の代わりに寄り前または引け後が分かる場合の区分。           |
+| created_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                           |         |                                                                |
+| updated_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                           |         |                                                                |
 
 ## Constraints
 
@@ -55,6 +55,7 @@
 erDiagram
 
 "public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
+"public.calendar_event_sec_filing_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 
 "public.calendar_event" {
   uuid id
@@ -87,6 +88,10 @@ erDiagram
   timestamp_with_time_zone checked_at
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.calendar_event_sec_filing_check" {
+  uuid calendar_event_id FK
+  timestamp_with_time_zone checked_at
 }
 ```
 

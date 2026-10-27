@@ -15,6 +15,7 @@ async fn insert_stock(db: &gateway_postgres::DatabaseHandle, stock_id: &str) {
         name: Set("Sample stock".into()),
         market: Set(None),
         product_category: Set(None),
+        cik: Default::default(),
         created_at: NotSet,
         updated_at: NotSet,
     }

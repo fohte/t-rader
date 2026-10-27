@@ -110,6 +110,7 @@ mod tests {
             created_at: NotSet,
             updated_at: NotSet,
             product_category: Set(None),
+            cik: Default::default(),
         }
         .insert(db)
         .await

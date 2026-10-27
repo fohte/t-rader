@@ -7,7 +7,7 @@
 | [public.instruments](public.instruments.md)                                                     | 4       | 価格データの取得対象となる金融商品を管理する。                                                                                                     | BASE TABLE        |
 | [public.bars](public.bars.md)                                                                   | 9       | 銘柄ごとの 1 分足、1 時間足、日足の価格と出来高を保持する。                                                                                        | BASE TABLE        |
 | [public.strategy](public.strategy.md)                                                           | 6       | 投資判断と関連データを分けて管理する永続的な戦略ワークスペース。                                                                                   | BASE TABLE        |
-| [public.stock](public.stock.md)                                                                 | 6       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。                                             | BASE TABLE        |
+| [public.stock](public.stock.md)                                                                 | 7       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。                                             | BASE TABLE        |
 | [public.indicator](public.indicator.md)                                                         | 3       | マクロ指標などの参照先を定義する。                                                                                                                 | BASE TABLE        |
 | [public.note](public.note.md)                                                                   | 7       | ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。                                                                         | BASE TABLE        |
 | [public.note_ref](public.note_ref.md)                                                           | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                                                                                       | BASE TABLE        |
@@ -78,6 +78,7 @@
 | [public.tavily_credit_budget_state](public.tavily_credit_budget_state.md)                       | 14      | Tavily account 単位の UTC 日次・月次 credit 上限と照合状態を保持する。                                                                             | BASE TABLE        |
 | [public.tavily_credit_reservation](public.tavily_credit_reservation.md)                         | 12      | Tavily provider へ送る検索・抽出の account credit 予約、精算、再送結果を保持する。                                                                 | BASE TABLE        |
 | [public.tavily_retrieval_cache](public.tavily_retrieval_cache.md)                               | 7       | 認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。                                                    | BASE TABLE        |
+| [public.calendar_event_sec_filing_check](public.calendar_event_sec_filing_check.md)             | 2       | SEC の資料を照合した最終日時をカレンダーイベントごとに保持する。                                                                                   | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -256,6 +257,7 @@ erDiagram
 "public.task_execution_state" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE"
 "public.execution_reservation" }o--|| "public.task_execution_state" : "FOREIGN KEY (task_id) REFERENCES task_execution_state(task_id) ON DELETE CASCADE"
 "public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
+"public.calendar_event_sec_filing_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -289,6 +291,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   varchar product_category
+  varchar cik
 }
 "public.indicator" {
   varchar id
@@ -1016,6 +1019,10 @@ erDiagram
   timestamp_with_time_zone expires_at
   uuid lease_token
   timestamp_with_time_zone lease_expires_at
+}
+"public.calendar_event_sec_filing_check" {
+  uuid calendar_event_id FK
+  timestamp_with_time_zone checked_at
 }
 ```
 

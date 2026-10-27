@@ -88,6 +88,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   varchar product_category
+  varchar cik
 }
 "public.note_version" {
   uuid id

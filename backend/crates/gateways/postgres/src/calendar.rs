@@ -1,8 +1,9 @@
 use async_trait::async_trait;
-use chrono::{NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use core_application::calendar::repository::{
     CalendarEventRepository, CalendarEventRepositoryError,
 };
+use core_application::sec_filing_reference::{SecFilingReferenceTarget, SecFilingTargetRepository};
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::calendar_event::{
     CalendarEvent, CalendarEventCategory, CalendarEventReadModel, CalendarEventReference,
@@ -168,6 +169,24 @@ impl CalendarEventRepository for PostgresCalendarEventRepository {
             .map_err(repository_error)?
             .map(to_domain)
             .transpose()
+    }
+}
+
+#[async_trait]
+impl SecFilingTargetRepository for PostgresCalendarEventRepository {
+    async fn list_pending_sec_filing_targets(
+        &self,
+        today: NaiveDate,
+    ) -> Result<Vec<SecFilingReferenceTarget>, CalendarEventRepositoryError> {
+        references::list_pending_sec_filing_targets(self, today).await
+    }
+
+    async fn mark_sec_filing_targets_checked(
+        &self,
+        targets: &[SecFilingReferenceTarget],
+        checked_at: DateTime<Utc>,
+    ) -> Result<(), CalendarEventRepositoryError> {
+        references::mark_sec_filing_targets_checked(self, targets, checked_at).await
     }
 }
 

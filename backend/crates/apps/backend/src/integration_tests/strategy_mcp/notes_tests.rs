@@ -99,6 +99,7 @@ mod tests {
             name: Set("架空工業".into()),
             market: Set(None),
             product_category: Set(None),
+            cik: Default::default(),
             created_at: NotSet,
             updated_at: NotSet,
         }

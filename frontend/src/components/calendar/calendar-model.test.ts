@@ -279,6 +279,120 @@ describe('buildCalendarDays', () => {
 
   it.each([
     {
+      name: 'a 10-Q with the exact report date',
+      referenceKind: 'individual_document',
+      targetPeriodEnd: '2099-06-30',
+      targetPeriodType: '10-Q',
+      expectedStatus: '資料あり / 実績未取得',
+    },
+    {
+      name: 'a 10-K with the exact report date',
+      referenceKind: 'individual_document',
+      targetPeriodEnd: '2099-06-30',
+      targetPeriodType: '10-K',
+      expectedStatus: '資料あり / 実績未取得',
+    },
+    {
+      name: 'a document with a report date one day away',
+      referenceKind: 'individual_document',
+      targetPeriodEnd: '2099-06-29',
+      targetPeriodType: '10-Q',
+      expectedStatus: '個別資料未確認',
+    },
+    {
+      name: 'a form outside the supported periodic reports',
+      referenceKind: 'individual_document',
+      targetPeriodEnd: '2099-06-30',
+      targetPeriodType: '8-K',
+      expectedStatus: '個別資料未確認',
+    },
+    {
+      name: 'a financial summary for the same date',
+      referenceKind: 'earnings_summary',
+      targetPeriodEnd: '2099-06-30',
+      targetPeriodType: '10-Q',
+      expectedStatus: '実績・資料未取得 / 公表未確認',
+    },
+  ] as const)(
+    'matches US earnings by the exact SEC report date for $name',
+    ({ referenceKind, targetPeriodEnd, targetPeriodType, expectedStatus }) => {
+      const event: EarningsEvent = {
+        ...EMPTY_EARNINGS_DATA,
+        kind: 'event',
+        source: 'alpha_vantage',
+        external_id: 'US:QZ-A:2099-06-30',
+        category: 'earnings',
+        country: 'US',
+        title: '架空電子',
+        stock_id: 'US:QZ-A',
+        fiscal_period: '2099-06-30',
+        event_date: '2099-07-01',
+        event_at: null,
+        time_of_day: 'post_market',
+        references: [
+          {
+            kind: referenceKind,
+            source: 'sec',
+            external_id: '0900000001-99-000001',
+            title: 'SEC Form 10-Q',
+            url: 'https://example.invalid/report.htm',
+            target_period_start: null,
+            target_period_end: targetPeriodEnd,
+            target_period_type: targetPeriodType,
+            publication_evidence:
+              referenceKind === 'individual_document'
+                ? 'SEC submissions record'
+                : null,
+            publication_evidence_url: null,
+            checked_at: '2030-01-01T00:00:00Z',
+          },
+        ],
+      }
+
+      expect(
+        buildCalendarDays([event], 'all', undefined, '2099-07-02'),
+      ).toEqual([
+        {
+          date: '2099-07-01',
+          label: '7/1 (水)',
+          rows: [
+            {
+              key: 'US:QZ-A:2099-06-30',
+              time: '引け後',
+              country: 'US',
+              category: '決算',
+              title: '架空電子',
+              stockId: 'US:QZ-A',
+              earningsStatus: {
+                label: expectedStatus,
+                references: [
+                  {
+                    key: `${referenceKind}:sec:0900000001-99-000001`,
+                    title: 'SEC Form 10-Q',
+                    source: 'sec',
+                    checkedAt: '2030-01-01T00:00:00Z',
+                    targetPeriodEnd,
+                    targetPeriodType,
+                    href: 'https://example.invalid/report.htm',
+                    ...(referenceKind === 'individual_document'
+                      ? { publicationEvidence: 'SEC submissions record' }
+                      : {}),
+                  },
+                ],
+              },
+              emphasized: false,
+              target: false,
+              muted: false,
+              otherEarnings: undefined,
+            },
+          ],
+        },
+      ])
+    },
+  )
+
+  it.each([
+    {
       name: 'on today',
       eventDate: '2099-01-07',
       expectedDateLabel: '1/7 (水)',

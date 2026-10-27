@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
 use core_application::calendar::{
-    read_use_cases::CalendarEventReadUseCases,
-    references::CalendarEventReferenceUseCases,
-    target_source::CalendarEventTargetSourceAdapter, use_cases::CalendarEventUseCases,
+    read_use_cases::CalendarEventReadUseCases, references::CalendarEventReferenceUseCases,
+    repository::SharedCalendarEventRepository, target_source::CalendarEventTargetSourceAdapter,
+    use_cases::CalendarEventUseCases,
+};
+use core_application::sec_filing_reference::{
+    SecFilingReferenceUseCases, SecFilingTargetRepository,
 };
 use gateway_postgres::{PostgresCalendarEventRepository, PostgresUnitOfWork};
 
@@ -31,6 +34,19 @@ impl UseCases {
         CalendarEventReferenceUseCases::new(
             Arc::new(PostgresCalendarEventRepository::new(self.db.clone())),
             Arc::new(PostgresUnitOfWork::new(self.db.clone())),
+        )
+    }
+
+    pub fn sec_filing_references(&self) -> SecFilingReferenceUseCases {
+        let repository = Arc::new(PostgresCalendarEventRepository::new(self.db.clone()));
+        let target_repository: Arc<dyn SecFilingTargetRepository> = repository.clone();
+        let calendar_repository: SharedCalendarEventRepository = repository;
+        SecFilingReferenceUseCases::new(
+            target_repository,
+            CalendarEventReferenceUseCases::new(
+                calendar_repository,
+                Arc::new(PostgresUnitOfWork::new(self.db.clone())),
+            ),
         )
     }
 }

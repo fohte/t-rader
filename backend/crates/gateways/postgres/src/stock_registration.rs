@@ -37,6 +37,7 @@ impl StockRegistrationRepository for PostgresStockRegistrationRepository {
             created_at: NotSet,
             updated_at: NotSet,
             product_category: Set(None),
+            cik: NotSet,
         })
         .exec_without_returning(transaction)
         .await
