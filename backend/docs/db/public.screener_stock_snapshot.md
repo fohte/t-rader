@@ -118,7 +118,7 @@ CREATE MATERIALIZED VIEW screener_stock_snapshot AS (
 | Name                                                        | Columns | Comment                                                                                                | Type       |
 | ----------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------ | ---------- |
 | [public.valuation](public.valuation.md)                     | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                                             | BASE TABLE |
-| [public.stock](public.stock.md)                             | 6       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。 | BASE TABLE |
+| [public.stock](public.stock.md)                             | 7       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。 | BASE TABLE |
 | [public.bars](public.bars.md)                               | 9       | 銘柄ごとの 1 分足、1 時間足、日足の価格と出来高を保持する。                                            | BASE TABLE |
 | [latest_daily_timestamp](latest_daily_timestamp.md)         | 0       |                                                                                                        |            |
 | [latest_data](latest_data.md)                               | 0       |                                                                                                        |            |
