@@ -2,7 +2,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 
 import { CalendarEventRow } from '#components/calendar/calendar-event-row'
-import type { CalendarEarningsStatus } from '#components/calendar/calendar-model'
+import type {
+  CalendarEarningsStatus,
+  CalendarIndicatorStatus,
+} from '#components/calendar/calendar-model'
 import { createStoryRouter } from '#storybook/story-router'
 
 function createCalendarRouter(component: () => React.ReactNode) {
@@ -59,6 +62,74 @@ const resultReference: CalendarEarningsStatus['references'][number] = {
   publicationEvidenceHref: 'https://example.invalid/sample-evidence',
 }
 
+const indicatorDocumentStatus: CalendarIndicatorStatus = {
+  label: '個別資料あり',
+  references: [
+    {
+      key: 'individual_document:sample_source:sample-release',
+      title: '架空の経済指標発表',
+      source: 'sample_source',
+      checkedAt: '2030-01-01T00:00:00Z',
+      targetPeriodEnd: '2029-12-31',
+      targetPeriodType: 'month',
+      href: 'https://example.invalid/sample-release',
+      publicationEvidence: '架空の公表記録',
+      publicationEvidenceHref: 'https://example.invalid/sample-evidence',
+    },
+  ],
+}
+
+const indicatorHalfYearStatus: CalendarIndicatorStatus = {
+  label: '個別資料あり',
+  references: [
+    {
+      key: 'individual_document:sample_source:sample-half-year-release',
+      title: '架空の半期指標資料',
+      source: 'sample_source',
+      checkedAt: '2030-01-01T00:00:00Z',
+      targetPeriodStart: '2029-01-01',
+      targetPeriodEnd: '2029-06-30',
+      targetPeriodType: '半期',
+      href: 'https://example.invalid/sample-half-year-release',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
+}
+
+const indicatorListingStatus: CalendarIndicatorStatus = {
+  label: '公式一覧 / 個別資料未確認',
+  references: [
+    {
+      key: 'official_listing:sample_source:sample-listing',
+      title: '架空の公式発表一覧',
+      source: 'sample_source',
+      checkedAt: '2030-01-01T00:00:00Z',
+      href: 'https://example.invalid/sample-listing',
+    },
+  ],
+}
+
+const indicatorDestinationUnconfirmedStatus: CalendarIndicatorStatus = {
+  label: '遷移先未確認 / 非リンク',
+  references: [],
+}
+
+const mobileCalendarViewport = {
+  globals: { viewport: { value: 'mobileCalendarIndicator' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileCalendarIndicator: {
+          name: 'Calendar indicator mobile',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: { viewport: { width: 390, height: 700 } },
+  },
+}
+
 export const DomesticTargetEarnings: Story = {
   name: '追跡対象の国内決算をチャートへのリンクで表示します。',
 }
@@ -84,6 +155,7 @@ export const EmphasizedEvent: Story = {
     stockId: undefined,
     emphasized: true,
     target: false,
+    indicatorStatus: indicatorDestinationUnconfirmedStatus,
   },
 }
 
@@ -229,5 +301,121 @@ export const PublicationUnconfirmed: Story = {
       label: '実績・資料未取得 / 公表未確認',
       references: [],
     },
+  },
+}
+
+export const IndicatorDocumentAvailableMobile: Story = {
+  name: '390px 幅で個別資料へのリンクを表示します。',
+  ...mobileCalendarViewport,
+  args: {
+    time: '08:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空経済指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorDocumentStatus,
+  },
+}
+
+export const IndicatorHalfYearDocumentMobile: Story = {
+  name: '390px 幅で半期の対象期間と個別資料へのリンクを表示します。',
+  ...mobileCalendarViewport,
+  args: {
+    time: '08:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空経済指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorHalfYearStatus,
+  },
+}
+
+export const IndicatorOfficialListingMobile: Story = {
+  name: '390px 幅で個別資料未確認の公式一覧を表示します。',
+  ...mobileCalendarViewport,
+  args: {
+    time: '21:30',
+    country: 'US',
+    category: '指標',
+    title: '架空雇用指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorListingStatus,
+  },
+}
+
+export const IndicatorDestinationUnconfirmedMobile: Story = {
+  name: '390px 幅で遷移先が未確認の指標を非リンクで表示します。',
+  ...mobileCalendarViewport,
+  args: {
+    time: '09:00',
+    country: 'JP',
+    category: '指標',
+    title: '架空生産指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorDestinationUnconfirmedStatus,
+  },
+}
+
+export const IndicatorDocumentAvailableDesktop: Story = {
+  name: 'デスクトップ幅で個別資料へのリンクを表示します。',
+  args: {
+    time: '08:30',
+    country: 'US',
+    category: '指標',
+    title: '架空物価指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorDocumentStatus,
+  },
+}
+
+export const IndicatorHalfYearDocumentDesktop: Story = {
+  name: 'デスクトップ幅で半期の対象期間と個別資料へのリンクを表示します。',
+  args: {
+    time: '08:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空経済指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorHalfYearStatus,
+  },
+}
+
+export const IndicatorOfficialListingDesktop: Story = {
+  name: 'デスクトップ幅で個別資料未確認の公式一覧を表示します。',
+  args: {
+    time: '13:30',
+    country: 'JP',
+    category: '指標',
+    title: '架空受注指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorListingStatus,
+  },
+}
+
+export const IndicatorDestinationUnconfirmedDesktop: Story = {
+  name: 'デスクトップ幅で遷移先が未確認の指標を非リンクで表示します。',
+  args: {
+    time: '10:00',
+    country: 'US',
+    category: '指標',
+    title: '架空小売指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorDestinationUnconfirmedStatus,
   },
 }

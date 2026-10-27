@@ -1,5 +1,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
+use core_application::calendar::macro_reference_targets::{
+    MacroReferenceTarget, MacroReferenceTargetRepository, MacroReferenceTargetSelector,
+};
 use core_application::calendar::repository::{
     CalendarEventRepository, CalendarEventRepositoryError,
 };
@@ -19,6 +22,7 @@ use crate::transaction::transaction_ref as postgres_transaction_ref;
 
 const MAX_UPSERT_ROWS_PER_STATEMENT: usize = 1_000;
 
+mod macro_references;
 mod references;
 
 #[derive(Clone)]
@@ -187,6 +191,25 @@ impl SecFilingTargetRepository for PostgresCalendarEventRepository {
         checked_at: DateTime<Utc>,
     ) -> Result<(), CalendarEventRepositoryError> {
         references::mark_sec_filing_targets_checked(self, targets, checked_at).await
+    }
+}
+
+#[async_trait]
+impl MacroReferenceTargetRepository for PostgresCalendarEventRepository {
+    async fn list_pending_macro_reference_targets(
+        &self,
+        today: NaiveDate,
+        selector: &MacroReferenceTargetSelector,
+    ) -> Result<Vec<MacroReferenceTarget>, CalendarEventRepositoryError> {
+        macro_references::list_macro_reference_targets(self, today, selector).await
+    }
+
+    async fn mark_macro_reference_targets_checked(
+        &self,
+        targets: &[MacroReferenceTarget],
+        checked_at: DateTime<Utc>,
+    ) -> Result<(), CalendarEventRepositoryError> {
+        macro_references::mark_macro_reference_targets_checked(self, targets, checked_at).await
     }
 }
 

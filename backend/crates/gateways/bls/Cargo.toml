@@ -1,0 +1,24 @@
+[package]
+name = "gateway-bls"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+core-application = { workspace = true }
+core-domain = { workspace = true }
+encoding_rs = { workspace = true }
+rate-limit = { workspace = true }
+reqwest = { workspace = true, features = ["rustls"] }
+scraper = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+indoc = { workspace = true }
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

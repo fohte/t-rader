@@ -6,6 +6,7 @@ pub use super::annotation::Entity as Annotation;
 pub use super::bars::Entity as Bars;
 pub use super::bars_timestamp_coverage::Entity as BarsTimestampCoverage;
 pub use super::calendar_event::Entity as CalendarEvent;
+pub use super::calendar_event_macro_reference_check::Entity as CalendarEventMacroReferenceCheck;
 pub use super::calendar_event_reference::Entity as CalendarEventReference;
 pub use super::calendar_event_sec_filing_check::Entity as CalendarEventSecFilingCheck;
 pub use super::change_history::Entity as ChangeHistory;

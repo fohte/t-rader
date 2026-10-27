@@ -6,6 +6,8 @@ import clsx from 'clsx'
 import type {
   CalendarEarningsReferenceView,
   CalendarEarningsStatus,
+  CalendarIndicatorReferenceView,
+  CalendarIndicatorStatus,
 } from '#components/calendar/calendar-model'
 
 const checkedAtFormatter = new Intl.DateTimeFormat('ja-JP', {
@@ -99,6 +101,74 @@ function EarningsStatus({ status }: { status: CalendarEarningsStatus }) {
   )
 }
 
+function IndicatorReference({
+  reference,
+}: {
+  reference: CalendarIndicatorReferenceView
+}) {
+  const targetPeriod =
+    reference.targetPeriodStart == null
+      ? (reference.targetPeriodEnd ?? '期末未確認')
+      : `${reference.targetPeriodStart}〜${reference.targetPeriodEnd ?? '期末未確認'}`
+
+  return (
+    <div className="flex min-w-0 flex-col border-t border-border/60 py-1 first:border-t-0">
+      {reference.href == null ? (
+        <span className="inline-flex min-h-11 min-w-0 items-center break-words text-muted-foreground">
+          {reference.title}
+        </span>
+      ) : (
+        <a
+          href={reference.href}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex min-h-11 min-w-0 items-center break-words text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
+        >
+          {reference.title} →
+        </a>
+      )}
+      {(reference.targetPeriodEnd != null ||
+        reference.targetPeriodType != null) && (
+        <span className="text-2xs text-muted-foreground">
+          対象期間: {targetPeriod} {reference.targetPeriodType ?? ''}
+        </span>
+      )}
+      <span className="text-2xs text-muted-foreground">
+        取得元: {reference.source} / 確認日時:{' '}
+        {formatCheckedAt(reference.checkedAt)}
+      </span>
+      {reference.publicationEvidence != null && (
+        <div className="flex min-h-11 min-w-0 items-center gap-1 text-2xs text-muted-foreground">
+          <span>公表根拠:</span>
+          {reference.publicationEvidenceHref == null ? (
+            <span className="break-words">{reference.publicationEvidence}</span>
+          ) : (
+            <a
+              href={reference.publicationEvidenceHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 items-center break-words underline decoration-border underline-offset-4 hover:decoration-foreground"
+            >
+              {reference.publicationEvidence}
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function IndicatorStatus({ status }: { status: CalendarIndicatorStatus }) {
+  return (
+    <div className="mt-1 min-w-0 border-l-2 border-border pl-2 text-2xs">
+      <p className="min-h-6 text-muted-foreground">{status.label}</p>
+      {status.references.map((reference) => (
+        <IndicatorReference key={reference.key} reference={reference} />
+      ))}
+    </div>
+  )
+}
+
 export function CalendarEventRow({
   time,
   country,
@@ -106,6 +176,7 @@ export function CalendarEventRow({
   title,
   stockId,
   earningsStatus,
+  indicatorStatus,
   emphasized,
   target,
   muted,
@@ -117,6 +188,7 @@ export function CalendarEventRow({
   title: string
   stockId?: string
   earningsStatus?: CalendarEarningsStatus
+  indicatorStatus?: CalendarIndicatorStatus
   emphasized: boolean
   target: boolean
   muted: boolean
@@ -183,6 +255,9 @@ export function CalendarEventRow({
           </span>
         )}
         {earningsStatus != null && <EarningsStatus status={earningsStatus} />}
+        {indicatorStatus != null && (
+          <IndicatorStatus status={indicatorStatus} />
+        )}
       </div>
     </div>
   )

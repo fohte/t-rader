@@ -1,4 +1,5 @@
 use chrono::Utc;
+use chrono_tz::Asia::Tokyo;
 use core_application::calendar::error::CalendarEventUseCaseError;
 use core_application::calendar::source::CalendarEventSource;
 use core_application::calendar::use_cases::{CalendarEventIngestStats, CalendarEventUseCases};
@@ -21,8 +22,12 @@ impl super::SchedulerJob for EStatCalendarIngest {
                         state.dependencies.e_stat_calendar_source,
                         "e-Stat calendar source",
                     )?;
-                    ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref())
-                        .await
+                    ingest_calendar_events(
+                        &state.dependencies.calendar_events,
+                        source.as_ref(),
+                        state.dependencies.macro_references.as_ref(),
+                    )
+                    .await
                 },
             )
             .await
@@ -33,9 +38,11 @@ impl super::SchedulerJob for EStatCalendarIngest {
 async fn ingest_calendar_events(
     use_cases: &CalendarEventUseCases,
     source: &dyn CalendarEventSource,
+    macro_references: Option<&core_application::macro_reference::MacroReferenceUseCases>,
 ) -> Result<CalendarEventIngestStats, String> {
+    let today = Utc::now().with_timezone(&Tokyo).date_naive();
     let stats = use_cases
-        .run_ingest_cycle(source, Utc::now().date_naive())
+        .run_ingest_cycle(source, today)
         .await
         .map_err(|error: CalendarEventUseCaseError| error.to_string())?;
     tracing::debug!(
@@ -43,5 +50,18 @@ async fn ingest_calendar_events(
         deleted = stats.deleted,
         "e-Stat calendar ingest cycle completed"
     );
+    if let Some(macro_references) = macro_references {
+        let references = macro_references
+            .fetch_pending(today, "e_stat")
+            .await
+            .map_err(|error| error.to_string())?;
+        tracing::debug!(
+            events_checked = references.events_checked,
+            references_upserted = references.references_upserted,
+            external_failures = references.external_failures,
+            budget_exhausted = references.budget_exhausted,
+            "e-Stat macro references checked"
+        );
+    }
     Ok(stats)
 }

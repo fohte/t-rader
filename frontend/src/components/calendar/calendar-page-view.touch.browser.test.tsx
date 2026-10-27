@@ -32,6 +32,17 @@ const EVENT_REFERENCE_DEFAULTS = {
   Extract<CalendarEvent, { kind: 'event' }>,
   'fiscal_period_type' | 'has_matching_earnings_summary' | 'references'
 >
+
+interface CdpTargetInfo {
+  targetInfo: { targetId: string; type: string; url: string }
+}
+
+declare module 'vitest/browser' {
+  interface CDPSession {
+    on(event: string, listener: (target: CdpTargetInfo) => void): void
+    off(event: string, listener: (target: CdpTargetInfo) => void): void
+  }
+}
 type Scenario = {
   country: 'JP' | 'US'
   source: 'jquants' | 'alpha_vantage'
@@ -194,6 +205,45 @@ function readInteractionOutput(router: ReturnType<typeof createStoryRouter>) {
   }
 }
 
+async function expectNewTab(
+  session: ReturnType<typeof cdp>,
+  targetUrl: string,
+  activateLink: () => Promise<void>,
+) {
+  await session.send('Target.setDiscoverTargets', { discover: true })
+
+  let targetId: string | undefined
+  let resolveOpenedTarget:
+    ((targetInfo: CdpTargetInfo['targetInfo']) => void) | undefined
+  const openedTarget = new Promise<CdpTargetInfo['targetInfo']>((resolve) => {
+    resolveOpenedTarget = resolve
+  })
+  const onTarget = ({ targetInfo }: CdpTargetInfo) => {
+    if (targetInfo.type !== 'page' || targetInfo.url !== targetUrl) return
+    targetId = targetInfo.targetId
+    resolveOpenedTarget?.(targetInfo)
+  }
+  session.on('Target.targetCreated', onTarget)
+  session.on('Target.targetInfoChanged', onTarget)
+
+  try {
+    await activateLink()
+    const target = await openedTarget
+    targetId = target.targetId
+    expect(target.url).toEqual(targetUrl)
+  } finally {
+    session.off('Target.targetCreated', onTarget)
+    session.off('Target.targetInfoChanged', onTarget)
+    const cleanupCommands = [
+      session.send('Target.setDiscoverTargets', { discover: false }),
+    ]
+    if (targetId != null) {
+      cleanupCommands.push(session.send('Target.closeTarget', { targetId }))
+    }
+    await Promise.all(cleanupCommands)
+  }
+}
+
 type InteractionOutput = ReturnType<typeof readInteractionOutput>
 
 afterEach(cleanup)
@@ -319,4 +369,77 @@ describe('CalendarPageView on mobile', () => {
       expect(interaction).toEqual(expectedInteraction)
     },
   )
+})
+
+describe('CalendarPageView indicator references on mobile', () => {
+  it('opens an individual publication in a new tab when tapped', async () => {
+    const targetUrl = new URL(
+      '/__link-fixture__/calendar-indicator-release',
+      window.location.origin,
+    ).href
+    const event: CalendarEvent = {
+      ...EVENT_REFERENCE_DEFAULTS,
+      kind: 'event',
+      source: 'e_stat',
+      external_id: 'sample-indicator-event',
+      category: 'indicator',
+      country: 'JP',
+      title: '架空経済指標',
+      stock_id: null,
+      fiscal_period: null,
+      event_date: EVENT_DATE,
+      event_at: null,
+      time_of_day: null,
+      references: [
+        {
+          kind: 'individual_document',
+          source: 'sample_source',
+          external_id: 'sample-indicator-release',
+          title: '架空の公式発表',
+          url: targetUrl,
+          target_period_start: null,
+          target_period_end: '2098-12-31',
+          target_period_type: 'month',
+          publication_evidence: '架空の公表記録',
+          publication_evidence_url: null,
+          checked_at: '2099-01-06T00:00:00Z',
+        },
+      ],
+    }
+    const router = createStoryRouter(
+      () => (
+        <CalendarPageView
+          calendar={{ ...WEEK_RANGE, events: [event] }}
+          today="2099-01-07"
+          weekRange={WEEK_RANGE}
+          strategies={[]}
+          selectedStrategyId={undefined}
+          countryFilter="all"
+          isPending={false}
+          errorMessage={undefined}
+          strategyErrorMessage={undefined}
+          expandedOtherEarnings={undefined}
+          otherEarningsEvents={undefined}
+          isOtherEarningsPending={false}
+          otherEarningsErrorMessage={undefined}
+          onPreviousWeek={() => {}}
+          onNextWeek={() => {}}
+          onStrategyChange={() => {}}
+          onCountryChange={() => {}}
+          onOtherEarningsToggle={() => {}}
+        />
+      ),
+      { paths: ['/calendar'], initialPath: '/calendar' },
+    )
+    const session = cdp()
+
+    await withMobileViewport(session, async () => {
+      render(<RouterProvider router={router} />)
+      await screen.findByRole('link', { name: '架空の公式発表 →' })
+
+      await expectNewTab(session, targetUrl, () =>
+        tapLinkOnTouch('架空の公式発表 →'),
+      )
+    })
+  })
 })

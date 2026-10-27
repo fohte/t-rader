@@ -8,8 +8,11 @@ async-trait = { workspace = true }
 chrono = { workspace = true, features = ["alloc"] }
 core-application = { workspace = true }
 core-domain = { workspace = true }
+encoding_rs = { workspace = true }
+rate-limit = { workspace = true }
 reqwest = { workspace = true, features = ["rustls"] }
 scraper = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 indoc = { workspace = true }

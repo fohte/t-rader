@@ -242,6 +242,7 @@ export function CalendarPageView({
                         title={row.title}
                         stockId={row.stockId}
                         earningsStatus={row.earningsStatus}
+                        indicatorStatus={row.indicatorStatus}
                         emphasized={row.emphasized}
                         target={row.target}
                         muted={row.muted}

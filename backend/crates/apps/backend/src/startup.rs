@@ -7,9 +7,11 @@ use gateway_sec::SecClient;
 use sea_orm::DbErr;
 
 mod eoddata_source;
+mod macro_reference_sources;
 mod news_and_central_bank_sources;
 
 pub(super) use eoddata_source::eoddata_kospi_source_from_env;
+pub(super) use macro_reference_sources::initialize_macro_reference_pipeline;
 pub(super) use news_and_central_bank_sources::{
     NewsAndCentralBankSources, initialize_news_and_central_bank_sources,
 };

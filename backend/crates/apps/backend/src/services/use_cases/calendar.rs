@@ -8,6 +8,11 @@ use core_application::calendar::{
 use core_application::sec_filing_reference::{
     SecFilingReferenceUseCases, SecFilingTargetRepository,
 };
+use core_application::{
+    macro_reference::MacroReferenceUseCases,
+    macro_reference_source::SharedMacroReferenceSource,
+    calendar::macro_reference_targets::MacroReferenceTargetRepository,
+};
 use gateway_postgres::{PostgresCalendarEventRepository, PostgresUnitOfWork};
 
 use super::UseCases;
@@ -47,6 +52,23 @@ impl UseCases {
                 calendar_repository,
                 Arc::new(PostgresUnitOfWork::new(self.db.clone())),
             ),
+        )
+    }
+
+    pub fn macro_references(
+        &self,
+        sources: Vec<SharedMacroReferenceSource>,
+    ) -> MacroReferenceUseCases {
+        let repository = Arc::new(PostgresCalendarEventRepository::new(self.db.clone()));
+        let target_repository: Arc<dyn MacroReferenceTargetRepository> = repository.clone();
+        let calendar_repository: SharedCalendarEventRepository = repository;
+        MacroReferenceUseCases::new(
+            target_repository,
+            CalendarEventReferenceUseCases::new(
+                calendar_repository,
+                Arc::new(PostgresUnitOfWork::new(self.db.clone())),
+            ),
+            sources,
         )
     }
 }

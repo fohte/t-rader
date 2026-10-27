@@ -79,6 +79,7 @@
 | [public.tavily_credit_reservation](public.tavily_credit_reservation.md)                         | 12      | Tavily provider へ送る検索・抽出の account credit 予約、精算、再送結果を保持する。                                                                 | BASE TABLE        |
 | [public.tavily_retrieval_cache](public.tavily_retrieval_cache.md)                               | 7       | 認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。                                                    | BASE TABLE        |
 | [public.calendar_event_sec_filing_check](public.calendar_event_sec_filing_check.md)             | 2       | SEC の資料を照合した最終日時をカレンダーイベントごとに保持する。                                                                                   | BASE TABLE        |
+| [public.calendar_event_macro_reference_check](public.calendar_event_macro_reference_check.md)   | 2       | 経済指標の公式発表記録を照合した最終日時をカレンダーイベントごとに保持する。                                                                       | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -258,6 +259,7 @@ erDiagram
 "public.execution_reservation" }o--|| "public.task_execution_state" : "FOREIGN KEY (task_id) REFERENCES task_execution_state(task_id) ON DELETE CASCADE"
 "public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 "public.calendar_event_sec_filing_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
+"public.calendar_event_macro_reference_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -1021,6 +1023,10 @@ erDiagram
   timestamp_with_time_zone lease_expires_at
 }
 "public.calendar_event_sec_filing_check" {
+  uuid calendar_event_id FK
+  timestamp_with_time_zone checked_at
+}
+"public.calendar_event_macro_reference_check" {
   uuid calendar_event_id FK
   timestamp_with_time_zone checked_at
 }
