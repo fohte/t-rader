@@ -1,6 +1,8 @@
 use chrono::{Duration, NaiveDate};
 use core_domain::business_day::latest_business_day;
-use core_domain::financial_summary::FinancialSummary;
+use core_domain::financial_summary::{
+    FinancialSummary, FinancialSummaryPeriodType, is_actual_financial_summary_for_period,
+};
 use serde::Serialize;
 use tracing::{debug, warn};
 
@@ -99,6 +101,29 @@ impl FinancialSummaryUseCases {
             .map_err(Into::into)
     }
 
+    pub async fn list_for_period(
+        &self,
+        symbol: &str,
+        period_end: NaiveDate,
+        period_type: FinancialSummaryPeriodType,
+    ) -> Result<Vec<FinancialSummary>, FinancialSummaryUseCaseError> {
+        Ok(self
+            .repository
+            .find_for_period(symbol, period_end, period_type)
+            .await?
+            .into_iter()
+            .filter(|summary| {
+                is_actual_financial_summary_for_period(
+                    summary.document_type.as_deref(),
+                    summary.current_period_type.as_deref(),
+                    summary.current_period_end,
+                    period_type,
+                    period_end,
+                )
+            })
+            .collect())
+    }
+
     async fn upsert_day(
         &self,
         summaries: Vec<FinancialSummary>,
@@ -140,7 +165,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::NaiveDate;
-    use core_domain::financial_summary::FinancialSummary;
+    use core_domain::financial_summary::{FinancialSummary, FinancialSummaryPeriodType};
     use rstest::{fixture, rstest};
     use tokio::sync::Mutex;
 
@@ -159,6 +184,7 @@ mod tests {
         latest: Option<NaiveDate>,
         upserts: Mutex<Vec<(uuid::Uuid, Vec<FinancialSummary>)>>,
         queries: Mutex<Vec<(String, u64)>>,
+        period_queries: Mutex<Vec<(String, NaiveDate, FinancialSummaryPeriodType)>>,
     }
 
     #[async_trait]
@@ -189,6 +215,19 @@ mod tests {
             limit: u64,
         ) -> Result<Vec<FinancialSummary>, FinancialSummaryRepositoryError> {
             self.queries.lock().await.push((symbol.to_owned(), limit));
+            Ok(Vec::new())
+        }
+
+        async fn find_for_period(
+            &self,
+            symbol: &str,
+            period_end: NaiveDate,
+            period_type: FinancialSummaryPeriodType,
+        ) -> Result<Vec<FinancialSummary>, FinancialSummaryRepositoryError> {
+            self.period_queries
+                .lock()
+                .await
+                .push((symbol.to_owned(), period_end, period_type));
             Ok(Vec::new())
         }
     }

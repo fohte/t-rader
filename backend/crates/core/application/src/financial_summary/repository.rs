@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_domain::financial_summary::FinancialSummary;
+use core_domain::financial_summary::{FinancialSummary, FinancialSummaryPeriodType};
 use thiserror::Error;
 
 use crate::persistence::PersistenceError;
@@ -30,6 +30,13 @@ pub trait FinancialSummaryRepository: Send + Sync {
         &self,
         symbol: &str,
         limit: u64,
+    ) -> Result<Vec<FinancialSummary>, FinancialSummaryRepositoryError>;
+
+    async fn find_for_period(
+        &self,
+        symbol: &str,
+        period_end: NaiveDate,
+        period_type: FinancialSummaryPeriodType,
     ) -> Result<Vec<FinancialSummary>, FinancialSummaryRepositoryError>;
 }
 

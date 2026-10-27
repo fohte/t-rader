@@ -4,7 +4,9 @@ use core_application::calendar::repository::{
     CalendarEventRepository, CalendarEventRepositoryError,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
-use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
+use core_domain::calendar_event::{
+    CalendarEvent, CalendarEventCategory, CalendarEventReadModel, CalendarEventReference,
+};
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, EntityTrait, Iterable, QueryFilter, QueryOrder};
@@ -15,6 +17,8 @@ use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
 const MAX_UPSERT_ROWS_PER_STATEMENT: usize = 1_000;
+
+mod references;
 
 #[derive(Clone)]
 pub struct PostgresCalendarEventRepository {
@@ -49,6 +53,21 @@ impl CalendarEventRepository for PostgresCalendarEventRepository {
             .into_iter()
             .map(to_domain)
             .collect()
+    }
+
+    async fn enrich_events(
+        &self,
+        events: Vec<CalendarEvent>,
+    ) -> Result<Vec<CalendarEventReadModel>, CalendarEventRepositoryError> {
+        references::enrich_events(self, events).await
+    }
+
+    async fn list_references_for_event(
+        &self,
+        event_source: &str,
+        event_external_id: &str,
+    ) -> Result<Vec<CalendarEventReference>, CalendarEventRepositoryError> {
+        references::list_references_for_event(self, event_source, event_external_id).await
     }
 
     async fn upsert(
@@ -93,6 +112,14 @@ impl CalendarEventRepository for PostgresCalendarEventRepository {
         }
 
         Ok(count)
+    }
+
+    async fn upsert_references(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        references: Vec<CalendarEventReference>,
+    ) -> Result<usize, CalendarEventRepositoryError> {
+        references::upsert_references(transaction, references).await
     }
 
     async fn delete_missing_future_events(
@@ -228,16 +255,18 @@ mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
     use core_application::{
         calendar::repository::CalendarEventRepository, daily_bar_source::DateRange,
-        unit_of_work::UnitOfWork,
+        financial_summary::FinancialSummaryRepository, unit_of_work::UnitOfWork,
     };
     use core_domain::calendar_event::{
-        CalendarEvent, CalendarEventCategory, CalendarEventTimeOfDay,
+        CalendarEvent, CalendarEventCategory, CalendarEventReadModel, CalendarEventReference,
+        CalendarEventReferenceKind, CalendarEventTimeOfDay,
     };
+    use core_domain::financial_summary::FinancialSummary;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
     use super::PostgresCalendarEventRepository;
     use crate::entities::calendar_event;
-    use crate::{DatabaseHandle, PostgresUnitOfWork};
+    use crate::{DatabaseHandle, PostgresFinancialSummaryRepository, PostgresUnitOfWork};
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
@@ -255,6 +284,71 @@ mod tests {
             event_date,
             event_at: None,
             time_of_day: None,
+        }
+    }
+
+    fn jp_event(stock_id: &str, period_type: &str, period_end: NaiveDate) -> CalendarEvent {
+        let period_end_text = period_end.format("%Y-%m-%d").to_string();
+        CalendarEvent {
+            source: "jquants".into(),
+            external_id: format!("{stock_id}0:{period_type}:{period_end_text}"),
+            category: CalendarEventCategory::Earnings,
+            country: "JP".into(),
+            title: "架空銘柄".into(),
+            stock_id: Some(format!("{stock_id}0")),
+            fiscal_period: Some(period_end_text),
+            event_date: date(2042, 8, 1),
+            event_at: None,
+            time_of_day: None,
+        }
+    }
+
+    fn period_summary(
+        code: &str,
+        disclosure_no: &str,
+        report_group_key: &str,
+        document_type: &str,
+        current_period_type: &str,
+        current_period_end: NaiveDate,
+    ) -> FinancialSummary {
+        FinancialSummary {
+            code: code.into(),
+            disclosure_no: disclosure_no.into(),
+            disclosure_date: date(2042, 8, 1),
+            report_group_key: report_group_key.into(),
+            document_type: Some(document_type.into()),
+            current_period_type: Some(current_period_type.into()),
+            current_period_start: None,
+            current_period_end: Some(current_period_end),
+            current_fiscal_year_start: None,
+            current_fiscal_year_end: None,
+            sales: Some(100.0),
+            operating_profit: None,
+            ordinary_profit: None,
+            net_profit: None,
+            eps: None,
+            bps: None,
+            total_assets: None,
+            equity: None,
+            equity_to_asset_ratio: None,
+            roe: None,
+            cash_flow_operating: None,
+            cash_flow_investing: None,
+            cash_flow_financing: None,
+            cash_and_equivalents: None,
+            dividend_annual: None,
+            dividend_annual_forecast: None,
+            dividend_annual_forecast_next: None,
+            forecast_sales: None,
+            forecast_operating_profit: None,
+            forecast_ordinary_profit: None,
+            forecast_net_profit: None,
+            forecast_eps: None,
+            next_forecast_sales: None,
+            next_forecast_operating_profit: None,
+            next_forecast_ordinary_profit: None,
+            next_forecast_net_profit: None,
+            next_forecast_eps: None,
         }
     }
 
@@ -522,5 +616,158 @@ mod tests {
             .expect("list inserted events");
 
         assert_eq!((upserted, rows.len()), (6_001, 6_001));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn enrich_events_returns_references_and_only_exact_actual_summaries(db: DatabaseHandle) {
+        let repository = PostgresCalendarEventRepository::new(db.clone());
+        let financial_summary_repository = PostgresFinancialSummaryRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let period_end = date(2042, 6, 30);
+        let matching_event = jp_event("FAKE", "2Q", period_end);
+        let forecast_only_event = jp_event("FICT", "2Q", period_end);
+        let prefix_collision_event = jp_event("DUPL", "2Q", period_end);
+        let mut unsupported_source_event = matching_event.clone();
+        unsupported_source_event.source = "sample_source".into();
+        let references = vec![
+            CalendarEventReference {
+                event_source: matching_event.source.clone(),
+                event_external_id: matching_event.external_id.clone(),
+                kind: CalendarEventReferenceKind::IndividualDocument,
+                source: "sample_source".into(),
+                external_id: "sample-document".into(),
+                title: "架空の決算資料".into(),
+                url: Some("https://example.invalid/sample-document".into()),
+                target_period_start: None,
+                target_period_end: Some(period_end),
+                target_period_type: Some("2Q".into()),
+                publication_evidence: Some("sample-release-record".into()),
+                publication_evidence_url: Some("https://example.invalid/sample-evidence".into()),
+                checked_at: DateTime::<Utc>::from_timestamp(1_700_000_000, 0)
+                    .expect("valid timestamp"),
+            },
+            CalendarEventReference {
+                event_source: matching_event.source.clone(),
+                event_external_id: matching_event.external_id.clone(),
+                kind: CalendarEventReferenceKind::OfficialListing,
+                source: "sample_source".into(),
+                external_id: "sample-listing".into(),
+                title: "架空の公式一覧".into(),
+                url: None,
+                target_period_start: None,
+                target_period_end: Some(period_end),
+                target_period_type: Some("2Q".into()),
+                publication_evidence: None,
+                publication_evidence_url: None,
+                checked_at: DateTime::<Utc>::from_timestamp(1_700_000_100, 0)
+                    .expect("valid timestamp"),
+            },
+        ];
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        repository
+            .upsert(
+                &transaction,
+                vec![
+                    matching_event.clone(),
+                    forecast_only_event.clone(),
+                    prefix_collision_event.clone(),
+                    unsupported_source_event.clone(),
+                ],
+            )
+            .await
+            .expect("upsert events");
+        repository
+            .upsert_references(&transaction, references.clone())
+            .await
+            .expect("upsert references");
+        financial_summary_repository
+            .upsert(
+                &transaction,
+                vec![
+                    period_summary(
+                        "FAKE0",
+                        "1001",
+                        "sample-actual-group",
+                        "2QFinancialStatements_Sample",
+                        "2Q",
+                        period_end,
+                    ),
+                    period_summary(
+                        "FICT0",
+                        "1002",
+                        "sample-forecast-group",
+                        "EarnForecastRevision",
+                        "2Q",
+                        period_end,
+                    ),
+                    period_summary(
+                        "DUPL1",
+                        "1003",
+                        "sample-prefix-collision",
+                        "2QFinancialStatements_Sample",
+                        "2Q",
+                        period_end,
+                    ),
+                ],
+            )
+            .await
+            .expect("upsert financial summaries");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit transaction");
+
+        let actual = repository
+            .enrich_events(
+                repository
+                    .list_events(&DateRange {
+                        from: date(2042, 8, 1),
+                        to: date(2042, 8, 1),
+                    })
+                    .await
+                    .expect("list events"),
+            )
+            .await
+            .expect("enrich events");
+        let expected = vec![
+            CalendarEventReadModel {
+                event: CalendarEvent {
+                    stock_id: Some("DUPL".into()),
+                    ..prefix_collision_event
+                },
+                references: Vec::new(),
+                has_matching_earnings_summary: false,
+            },
+            CalendarEventReadModel {
+                event: CalendarEvent {
+                    stock_id: Some("FAKE".into()),
+                    ..matching_event.clone()
+                },
+                references: references.clone(),
+                has_matching_earnings_summary: true,
+            },
+            CalendarEventReadModel {
+                event: CalendarEvent {
+                    stock_id: Some("FICT".into()),
+                    ..forecast_only_event
+                },
+                references: Vec::new(),
+                has_matching_earnings_summary: false,
+            },
+            CalendarEventReadModel {
+                event: CalendarEvent {
+                    stock_id: Some("FAKE".into()),
+                    ..unsupported_source_event
+                },
+                references: Vec::new(),
+                has_matching_earnings_summary: false,
+            },
+        ];
+        let listed_references = repository
+            .list_references_for_event(&matching_event.source, &matching_event.external_id)
+            .await
+            .expect("list event references");
+
+        assert_eq!((actual, listed_references), (expected, references));
     }
 }

@@ -24,6 +24,14 @@ const {
 } = touchBrowserTestHelpers
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
+const EVENT_REFERENCE_DEFAULTS = {
+  fiscal_period_type: null,
+  has_matching_earnings_summary: false,
+  references: [],
+} satisfies Pick<
+  Extract<CalendarEvent, { kind: 'event' }>,
+  'fiscal_period_type' | 'has_matching_earnings_summary' | 'references'
+>
 type Scenario = {
   country: 'JP' | 'US'
   source: 'jquants' | 'alpha_vantage'
@@ -34,6 +42,11 @@ type Scenario = {
   expectedPathname: string
   expectedLinkName: string
   expectedDetailsText: string
+  expectedResultHref?: string
+  expectedResultSearch?: Record<string, unknown>
+  hasMatchingSummary?: boolean
+  fiscalPeriodType?: string
+  fiscalPeriodEnd?: string
 }
 
 const EVENT_DATE = '2099-01-06'
@@ -49,7 +62,17 @@ const SCENARIOS: Scenario[] = [
     expectedPathname: '/stocks/0001',
     expectedLinkName: '架空高機能素材複合加工研究製造会社 (0001)',
     expectedDetailsText:
-      '引け後JP決算架空高機能素材複合加工研究製造会社 (0001)',
+      '引け後JP決算架空高機能素材複合加工研究製造会社 (0001)実績あり該当期の実績を見る →',
+    expectedResultHref:
+      '/stocks/0001?stockTab=financials&periodEnd=2099-06-30&periodType=2Q',
+    expectedResultSearch: {
+      stockTab: 'financials',
+      periodEnd: '2099-06-30',
+      periodType: '2Q',
+    },
+    hasMatchingSummary: true,
+    fiscalPeriodType: '2Q',
+    fiscalPeriodEnd: '2099-06-30',
   },
   {
     country: 'US',
@@ -60,20 +83,27 @@ const SCENARIOS: Scenario[] = [
     expectedHref: '/stocks/US%3AFICT1',
     expectedPathname: '/stocks/US:FICT1',
     expectedLinkName: '架空地域情報通信設備総合開発研究製造会社',
-    expectedDetailsText: '寄り前US決算架空地域情報通信設備総合開発研究製造会社',
+    expectedDetailsText:
+      '寄り前US決算架空地域情報通信設備総合開発研究製造会社実績・資料未取得 / 公表未確認',
   },
 ]
 
 function createEarning(scenario: Scenario): CalendarEvent {
   return {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     source: scenario.source,
-    external_id: `sample-expanded-${scenario.country.toLowerCase()}-earnings`,
+    external_id:
+      scenario.country === 'JP'
+        ? `${scenario.stockId}:2Q:${scenario.fiscalPeriodEnd ?? '2099-06-30'}`
+        : `sample-expanded-${scenario.country.toLowerCase()}-earnings`,
     category: 'earnings',
     country: scenario.country,
     title: scenario.title,
     stock_id: scenario.stockId,
-    fiscal_period: '2099-01-01',
+    fiscal_period: scenario.fiscalPeriodEnd ?? '2099-01-01',
+    fiscal_period_type: scenario.fiscalPeriodType ?? null,
+    has_matching_earnings_summary: scenario.hasMatchingSummary ?? false,
     event_date: EVENT_DATE,
     event_at: null,
     time_of_day: scenario.timeOfDay,
@@ -97,6 +127,7 @@ function CalendarRoute({ scenario }: { scenario: Scenario }) {
   return (
     <CalendarPageView
       calendar={{ ...WEEK_RANGE, events: [createSummary(scenario)] }}
+      today="2099-01-07"
       weekRange={WEEK_RANGE}
       strategies={[]}
       selectedStrategyId={undefined}
@@ -159,6 +190,7 @@ function readInteractionOutput(router: ReturnType<typeof createStoryRouter>) {
       href: link.getAttribute('href'),
     })),
     stockPage: screen.queryByTestId('stock-page')?.textContent ?? null,
+    search: router.state.location.search,
   }
 }
 
@@ -195,6 +227,20 @@ describe('CalendarPageView on mobile', () => {
         await screen.findByRole('button', { name: '他 1 社' })
         outputs.push(readInteractionOutput(router))
 
+        if (scenario.expectedResultHref != null) {
+          await tapTouchTarget(toggle.selector)
+          outputs.push(readInteractionOutput(router))
+
+          await tapLinkOnTouch('該当期の実績を見る →')
+          await screen.findByTestId('stock-page')
+          outputs.push(readInteractionOutput(router))
+
+          router.history.back()
+          await screen.findByRole('heading', { name: 'WEEKLY EVENTS' })
+          await screen.findByRole('button', { name: '他 1 社' })
+          outputs.push(readInteractionOutput(router))
+        }
+
         return outputs
       })
 
@@ -206,6 +252,7 @@ describe('CalendarPageView on mobile', () => {
         detailsText: null,
         links: [],
         stockPage: null,
+        search: {},
       }
       const expanded: InteractionOutput = {
         viewport: EXPECTED_MOBILE_VIEWPORT,
@@ -218,11 +265,20 @@ describe('CalendarPageView on mobile', () => {
             name: scenario.expectedLinkName,
             href: scenario.expectedHref,
           },
+          ...(scenario.expectedResultHref == null
+            ? []
+            : [
+                {
+                  name: '該当期の実績を見る →',
+                  href: scenario.expectedResultHref,
+                },
+              ]),
         ],
         stockPage: null,
+        search: {},
       }
 
-      expect(interaction).toEqual([
+      const expectedInteraction: InteractionOutput[] = [
         collapsed,
         expanded,
         collapsed,
@@ -235,9 +291,32 @@ describe('CalendarPageView on mobile', () => {
           detailsText: null,
           links: [],
           stockPage: '銘柄ページ',
+          search: {},
         },
         collapsed,
-      ])
+      ]
+
+      if (
+        scenario.expectedResultHref != null &&
+        scenario.expectedResultSearch != null
+      ) {
+        expectedInteraction.push(
+          expanded,
+          {
+            viewport: EXPECTED_MOBILE_VIEWPORT,
+            pathname: scenario.expectedPathname,
+            expanded: null,
+            detailsId: null,
+            detailsText: null,
+            links: [],
+            stockPage: '銘柄ページ',
+            search: scenario.expectedResultSearch,
+          },
+          collapsed,
+        )
+      }
+
+      expect(interaction).toEqual(expectedInteraction)
     },
   )
 })

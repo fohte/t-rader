@@ -5,7 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate, Utc};
-use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
+use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory, CalendarEventReadModel};
 
 use crate::{
     calendar::repository::{CalendarEventRepositoryError, SharedCalendarEventRepository},
@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CalendarEventReadItem {
-    Event(CalendarEvent),
+    Event(CalendarEventReadModel),
     OtherEarningsSummary {
         country: String,
         event_date: NaiveDate,
@@ -55,6 +55,8 @@ pub enum CalendarEventReadUseCaseError {
     InvalidDateRange,
     #[error("calendar event summary index is invalid")]
     SummaryInvariant,
+    #[error("calendar event enrichment result is invalid")]
+    EnrichmentInvariant,
 }
 
 #[derive(Clone)]
@@ -89,11 +91,24 @@ impl CalendarEventReadUseCases {
         let tracked_stock_ids = self.tracked_stock_ids(strategy_scope).await?;
 
         let events = self.repository.list_events(&date_range).await?;
+        let events_to_enrich = events
+            .iter()
+            .filter(|event| !is_other_earnings(event, &tracked_stock_ids))
+            .cloned()
+            .collect();
+        let mut read_models = self
+            .repository
+            .enrich_events(events_to_enrich)
+            .await?
+            .into_iter();
         let mut items = Vec::with_capacity(events.len());
         let mut summary_indices = HashMap::new();
         for event in events {
             if !is_other_earnings(&event, &tracked_stock_ids) {
-                items.push(CalendarEventReadItem::Event(event));
+                let read_model = read_models
+                    .next()
+                    .ok_or(CalendarEventReadUseCaseError::EnrichmentInvariant)?;
+                items.push(CalendarEventReadItem::Event(read_model));
                 continue;
             }
 
@@ -112,6 +127,9 @@ impl CalendarEventReadUseCases {
                 });
             }
         }
+        if read_models.next().is_some() {
+            return Err(CalendarEventReadUseCaseError::EnrichmentInvariant);
+        }
 
         Ok(CalendarEventReadResult {
             date_range,
@@ -124,14 +142,14 @@ impl CalendarEventReadUseCases {
         event_date: NaiveDate,
         country: &str,
         strategy_scope: Option<StrategyScope>,
-    ) -> Result<Vec<CalendarEvent>, CalendarEventReadUseCaseError> {
+    ) -> Result<Vec<CalendarEventReadModel>, CalendarEventReadUseCaseError> {
         let tracked_stock_ids = self.tracked_stock_ids(strategy_scope).await?;
         let date_range = DateRange {
             from: event_date,
             to: event_date,
         };
 
-        Ok(self
+        let events_to_enrich = self
             .repository
             .list_events(&date_range)
             .await?
@@ -139,7 +157,9 @@ impl CalendarEventReadUseCases {
             .filter(|event| {
                 event.country == country && is_other_earnings(event, &tracked_stock_ids)
             })
-            .collect())
+            .collect();
+
+        Ok(self.repository.enrich_events(events_to_enrich).await?)
     }
 
     pub async fn find_next_earnings_for_stock(
@@ -196,7 +216,8 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, Utc};
     use core_domain::calendar_event::{
-        CalendarEvent, CalendarEventCategory, CalendarEventTimeOfDay,
+        CalendarEvent, CalendarEventCategory, CalendarEventReadModel, CalendarEventReference,
+        CalendarEventTimeOfDay,
     };
     use uuid::Uuid;
 
@@ -220,6 +241,7 @@ mod tests {
     #[derive(Default)]
     struct FakeCalendarEventRepository {
         events: Vec<CalendarEvent>,
+        enriched_event_ids: Mutex<Vec<String>>,
     }
 
     #[async_trait]
@@ -236,6 +258,28 @@ mod tests {
                 })
                 .cloned()
                 .collect())
+        }
+
+        async fn enrich_events(
+            &self,
+            events: Vec<CalendarEvent>,
+        ) -> Result<Vec<CalendarEventReadModel>, CalendarEventRepositoryError> {
+            *self
+                .enriched_event_ids
+                .lock()
+                .expect("enriched event IDs lock") = events
+                .iter()
+                .map(|event| event.external_id.clone())
+                .collect();
+            Ok(events.into_iter().map(Into::into).collect())
+        }
+
+        async fn list_references_for_event(
+            &self,
+            _event_source: &str,
+            _event_external_id: &str,
+        ) -> Result<Vec<CalendarEventReference>, CalendarEventRepositoryError> {
+            Ok(Vec::new())
         }
 
         async fn find_next_earnings_for_stock(
@@ -267,6 +311,14 @@ mod tests {
             &self,
             _transaction: &UnitOfWorkTransaction,
             _events: Vec<CalendarEvent>,
+        ) -> Result<usize, CalendarEventRepositoryError> {
+            Ok(0)
+        }
+
+        async fn upsert_references(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _references: Vec<CalendarEventReference>,
         ) -> Result<usize, CalendarEventRepositoryError> {
             Ok(0)
         }
@@ -355,7 +407,10 @@ mod tests {
             calls: Mutex::new(0),
         });
         let use_cases = CalendarEventReadUseCases::new(
-            Arc::new(FakeCalendarEventRepository { events }) as SharedCalendarEventRepository,
+            Arc::new(FakeCalendarEventRepository {
+                events,
+                ..Default::default()
+            }) as SharedCalendarEventRepository,
             targets.clone() as SharedCalendarEventTargetSource,
         );
         (use_cases, targets)
@@ -449,30 +504,39 @@ mod tests {
             CalendarEventReadResult {
                 date_range,
                 events: vec![
-                    CalendarEventReadItem::Event(event(
-                        "indicator",
-                        CalendarEventCategory::Indicator,
-                        "JP",
-                        "サンプル指標",
-                        None,
-                        date(2031, 2, 11),
-                    )),
-                    CalendarEventReadItem::Event(event(
-                        "tracked-direct",
-                        CalendarEventCategory::Earnings,
-                        "JP",
-                        "サンプル銘柄 A",
-                        Some("0001"),
-                        date(2031, 2, 11),
-                    )),
-                    CalendarEventReadItem::Event(event(
-                        "tracked-group",
-                        CalendarEventCategory::Earnings,
-                        "US",
-                        "サンプル銘柄 B",
-                        Some("US:SAMPLE-B"),
-                        date(2031, 2, 11),
-                    )),
+                    CalendarEventReadItem::Event(
+                        event(
+                            "indicator",
+                            CalendarEventCategory::Indicator,
+                            "JP",
+                            "サンプル指標",
+                            None,
+                            date(2031, 2, 11),
+                        )
+                        .into()
+                    ),
+                    CalendarEventReadItem::Event(
+                        event(
+                            "tracked-direct",
+                            CalendarEventCategory::Earnings,
+                            "JP",
+                            "サンプル銘柄 A",
+                            Some("0001"),
+                            date(2031, 2, 11),
+                        )
+                        .into()
+                    ),
+                    CalendarEventReadItem::Event(
+                        event(
+                            "tracked-group",
+                            CalendarEventCategory::Earnings,
+                            "US",
+                            "サンプル銘柄 B",
+                            Some("US:SAMPLE-B"),
+                            date(2031, 2, 11),
+                        )
+                        .into()
+                    ),
                     CalendarEventReadItem::OtherEarningsSummary {
                         country: "JP".into(),
                         event_date: date(2031, 2, 11),
@@ -483,14 +547,17 @@ mod tests {
                         event_date: date(2031, 2, 11),
                         count: 1,
                     },
-                    CalendarEventReadItem::Event(event(
-                        "central-bank",
-                        CalendarEventCategory::CentralBank,
-                        "EU",
-                        "サンプル中銀イベント",
-                        None,
-                        date(2031, 2, 12),
-                    )),
+                    CalendarEventReadItem::Event(
+                        event(
+                            "central-bank",
+                            CalendarEventCategory::CentralBank,
+                            "EU",
+                            "サンプル中銀イベント",
+                            None,
+                            date(2031, 2, 12),
+                        )
+                        .into()
+                    ),
                 ],
             }
         );
@@ -596,14 +663,107 @@ mod tests {
 
         assert_eq!(
             result,
-            vec![event(
-                "other-jp",
-                CalendarEventCategory::Earnings,
-                "JP",
-                "サンプル銘柄 B",
-                Some("0002"),
-                target_date,
-            )]
+            vec![
+                event(
+                    "other-jp",
+                    CalendarEventCategory::Earnings,
+                    "JP",
+                    "サンプル銘柄 B",
+                    Some("0002"),
+                    target_date,
+                )
+                .into()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn read_use_cases_enrich_only_events_that_are_returned_or_expanded() {
+        let target_date = date(2031, 2, 11);
+        let repository = Arc::new(FakeCalendarEventRepository {
+            events: vec![
+                event(
+                    "visible-indicator",
+                    CalendarEventCategory::Indicator,
+                    "JP",
+                    "サンプル指標",
+                    None,
+                    target_date,
+                ),
+                event(
+                    "tracked-stock",
+                    CalendarEventCategory::Earnings,
+                    "JP",
+                    "サンプル銘柄 A",
+                    Some("0001"),
+                    target_date,
+                ),
+                event(
+                    "other-jp-stock",
+                    CalendarEventCategory::Earnings,
+                    "JP",
+                    "サンプル銘柄 B",
+                    Some("0002"),
+                    target_date,
+                ),
+                event(
+                    "other-us-stock",
+                    CalendarEventCategory::Earnings,
+                    "US",
+                    "サンプル銘柄 C",
+                    Some("US:SAMPLE-C"),
+                    target_date,
+                ),
+                event(
+                    "other-jp-stock-different-date",
+                    CalendarEventCategory::Earnings,
+                    "JP",
+                    "別日の銘柄",
+                    Some("0003"),
+                    date(2031, 2, 12),
+                ),
+            ],
+            ..Default::default()
+        });
+        let target_source = Arc::new(FakeTargetSource {
+            stock_ids: vec!["0001".into()],
+            calls: Mutex::new(0),
+        });
+        let use_cases = CalendarEventReadUseCases::new(
+            repository.clone() as SharedCalendarEventRepository,
+            target_source as SharedCalendarEventTargetSource,
+        );
+
+        use_cases
+            .list_events(
+                Some(target_date),
+                Some(target_date),
+                Some(strategy_scope().await),
+            )
+            .await
+            .expect("list calendar events");
+        let list_events_enriched = repository
+            .enriched_event_ids
+            .lock()
+            .expect("enriched event IDs lock")
+            .clone();
+
+        use_cases
+            .list_other_earnings(target_date, "JP", Some(strategy_scope().await))
+            .await
+            .expect("list other earnings");
+        let list_other_earnings_enriched = repository
+            .enriched_event_ids
+            .lock()
+            .expect("enriched event IDs lock")
+            .clone();
+
+        assert_eq!(
+            (list_events_enriched, list_other_earnings_enriched),
+            (
+                vec!["visible-indicator".to_owned(), "tracked-stock".to_owned()],
+                vec!["other-jp-stock".to_owned()],
+            ),
         );
     }
 
@@ -646,7 +806,8 @@ mod tests {
                         "サンプル銘柄 A",
                         Some("0001"),
                         target_date,
-                    ),
+                    )
+                    .into(),
                     event(
                         "second",
                         CalendarEventCategory::Earnings,
@@ -654,7 +815,8 @@ mod tests {
                         "サンプル銘柄 B",
                         Some("0002"),
                         target_date,
-                    ),
+                    )
+                    .into(),
                 ],
                 0,
             )

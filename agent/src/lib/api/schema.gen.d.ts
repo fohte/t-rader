@@ -1820,23 +1820,30 @@ export interface components {
       /** Format: int64 */
       volume: number
     }
+    /** @enum {string} */
+    CalendarEventReferenceKindResponse:
+      'earnings_summary' | 'individual_document' | 'official_listing'
+    CalendarEventReferenceResponse: {
+      /** Format: date-time */
+      checked_at: string
+      external_id: string
+      kind: components['schemas']['CalendarEventReferenceKindResponse']
+      publication_evidence?: string | null
+      publication_evidence_url?: string | null
+      source: string
+      /** Format: date */
+      target_period_end?: string | null
+      /** Format: date */
+      target_period_start?: string | null
+      target_period_type?: string | null
+      title: string
+      url?: string | null
+    }
     CalendarEventResponse:
-      | {
-          category: string
-          country: string
-          /** Format: date-time */
-          event_at?: string | null
-          /** Format: date */
-          event_date: string
-          external_id: string
-          fiscal_period?: string | null
+      | (components['schemas']['CalendarEventResponseEvent'] & {
           /** @enum {string} */
           kind: 'event'
-          source: string
-          stock_id?: string | null
-          time_of_day?: string | null
-          title: string
-        }
+        })
       | {
           count: number
           country: string
@@ -1845,6 +1852,23 @@ export interface components {
           /** @enum {string} */
           kind: 'other_earnings_summary'
         }
+    CalendarEventResponseEvent: {
+      category: string
+      country: string
+      /** Format: date-time */
+      event_at?: string | null
+      /** Format: date */
+      event_date: string
+      external_id: string
+      fiscal_period?: string | null
+      fiscal_period_type?: string | null
+      has_matching_earnings_summary: boolean
+      references: components['schemas']['CalendarEventReferenceResponse'][]
+      source: string
+      stock_id?: string | null
+      time_of_day?: string | null
+      title: string
+    }
     CalendarEventsResponse: {
       events: components['schemas']['CalendarEventResponse'][]
       /** Format: date */
@@ -8321,7 +8345,12 @@ export interface operations {
   }
   list_stock_financial_summaries: {
     parameters: {
-      query?: never
+      query?: {
+        /** @description 対象期末。期区分と同時に指定する */
+        current_period_end?: string
+        /** @description 対象期区分。期末と同時に指定する */
+        current_period_type?: 'FY' | '1Q' | '2Q' | '3Q' | '4Q'
+      }
       header?: never
       path: {
         /** @description 銘柄 ID */
@@ -8337,6 +8366,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['StockFinancialSummaryResponse'][]
+        }
+      }
+      /** @description 検索条件が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       500: {

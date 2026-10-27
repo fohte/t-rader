@@ -1,5 +1,6 @@
 import { StockPageGroups } from '#components/stock-page/stock-page-groups'
 import type { components } from '#lib/api/schema.gen'
+import type { FinancialPeriodType } from '#lib/stock-page-date'
 import {
   formatDecimal,
   formatYenInHundredMillions,
@@ -32,7 +33,7 @@ function formatDisclosureDate(date: string): string {
 
 function formatPeriod(summary: FinancialSummary): string {
   const periodEnd =
-    summary.current_fiscal_year_end ?? summary.current_period_end
+    summary.current_period_end ?? summary.current_fiscal_year_end
   const yearMonth =
     periodEnd == null
       ? null
@@ -48,8 +49,10 @@ function formatPeriod(summary: FinancialSummary): string {
 
 function FinancialSummaryTable({
   summaries,
+  isPeriodView,
 }: {
   summaries: FinancialSummary[]
+  isPeriodView: boolean
 }) {
   const orderedSummaries = sortFinancialSummariesNewestFirst(summaries)
 
@@ -57,7 +60,9 @@ function FinancialSummaryTable({
     <div className="overflow-x-auto">
       <table className="min-w-max w-full font-mono text-xs">
         <caption className="sr-only">
-          決算短信の要約。開示日の新しい順。
+          {isPeriodView
+            ? '対象期に一致する財務実績。開示日と書類種別を表示。'
+            : '決算短信の要約。開示日の新しい順。'}
         </caption>
         <thead>
           <tr className="border-b border-border text-2xs text-muted-foreground">
@@ -78,6 +83,9 @@ function FinancialSummaryTable({
               <td className="px-3.5 py-2.5">
                 <p className="tabular-nums text-foreground">
                   {formatPeriod(summary)}
+                </p>
+                <p className="break-all text-2xs text-muted-foreground">
+                  {summary.document_type ?? '書類種別未取得'}
                 </p>
                 <time
                   dateTime={summary.disclosure_date}
@@ -106,11 +114,13 @@ function FinancialSummaryTable({
 export function StockPageFinancials({
   summaries,
   summariesState,
+  selectedPeriod,
   groups,
   groupsState,
 }: {
   summaries: FinancialSummary[]
   summariesState: StockPageListState
+  selectedPeriod?: { end: string; type: FinancialPeriodType }
   groups: GroupMembership[]
   groupsState: StockPageListState
 }) {
@@ -121,6 +131,16 @@ export function StockPageFinancials({
         state={groupsState}
         className="sm:hidden"
       />
+      {selectedPeriod != null && (
+        <div className="space-y-1 px-3.5 pt-3 font-mono text-xs">
+          <h2 className="text-foreground">
+            対象期: {selectedPeriod.end} {PERIOD_LABELS[selectedPeriod.type]}
+          </h2>
+          <p className="text-2xs text-muted-foreground">
+            表示値は対象期間の累計です。開示日と書類種別は取得済みの候補を示します。
+          </p>
+        </div>
+      )}
       {summariesState === 'loading' ? (
         <p className="px-3.5 py-4 font-mono text-xs text-muted-foreground">
           決算短信の要約を読み込み中
@@ -131,14 +151,21 @@ export function StockPageFinancials({
         </p>
       ) : summaries.length === 0 ? (
         <p className="px-3.5 py-4 font-mono text-xs text-muted-foreground">
-          決算短信の要約はありません
+          {selectedPeriod == null
+            ? '決算短信の要約はありません'
+            : '対象期に一致する実績データは未取得です。公表状況は未確認です。'}
         </p>
       ) : (
         <>
-          <FinancialSummaryTable summaries={summaries} />
-          <p className="px-3.5 pb-3 font-mono text-2xs text-muted-foreground">
-            決算短信の要約を開示日の新しい順に表示しています。
-          </p>
+          <FinancialSummaryTable
+            summaries={summaries}
+            isPeriodView={selectedPeriod != null}
+          />
+          {selectedPeriod == null && (
+            <p className="px-3.5 pb-3 font-mono text-2xs text-muted-foreground">
+              決算短信の要約を開示日の新しい順に表示しています。
+            </p>
+          )}
         </>
       )}
     </div>

@@ -11,10 +11,19 @@ import { createStoryRouter } from '#storybook/story-router'
 type CalendarPageViewProps = ComponentProps<typeof CalendarPageView>
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Strategy = components['schemas']['Strategy']
+const EVENT_REFERENCE_DEFAULTS = {
+  fiscal_period_type: null,
+  has_matching_earnings_summary: false,
+  references: [],
+} satisfies Pick<
+  Extract<CalendarEvent, { kind: 'event' }>,
+  'fiscal_period_type' | 'has_matching_earnings_summary' | 'references'
+>
 
 afterEach(cleanup)
 
 const WEEK_RANGE = { from: '2099-01-05', to: '2099-01-11' }
+const TODAY = '2099-01-07'
 const NOOP = (): void => {}
 const STRATEGY: Strategy = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -30,6 +39,7 @@ function makeProps(
 ): CalendarPageViewProps {
   return {
     calendar: { ...WEEK_RANGE, events: [] },
+    today: TODAY,
     weekRange: WEEK_RANGE,
     strategies: [],
     selectedStrategyId: undefined,
@@ -179,6 +189,7 @@ describe('CalendarPageView', () => {
 
   it('links domestic earnings to the stock chart', async () => {
     const earning: CalendarEvent = {
+      ...EVENT_REFERENCE_DEFAULTS,
       kind: 'event',
       source: 'jquants',
       external_id: 'sample-stock-earnings',
@@ -205,6 +216,7 @@ describe('CalendarPageView', () => {
 
   it('links overseas earnings to the stock chart', async () => {
     const earning: CalendarEvent = {
+      ...EVENT_REFERENCE_DEFAULTS,
       kind: 'event',
       source: 'alpha_vantage',
       external_id: 'sample-overseas-earnings',
@@ -284,7 +296,8 @@ describe('CalendarPageView', () => {
       expectedHref: '/stocks/0000',
       timeOfDay: 'post_market',
       expectedLinkName: '架空工業 (0000)',
-      expectedDetailsText: '引け後JP決算架空工業 (0000)',
+      expectedDetailsText:
+        '引け後JP決算架空工業 (0000)実績・資料未取得 / 公表未確認',
     },
     {
       country: 'US',
@@ -294,7 +307,7 @@ describe('CalendarPageView', () => {
       expectedHref: '/stocks/US%3AFICT1',
       timeOfDay: 'pre_market',
       expectedLinkName: '架空電子',
-      expectedDetailsText: '寄り前US決算架空電子',
+      expectedDetailsText: '寄り前US決算架空電子実績・資料未取得 / 公表未確認',
     },
   ] as const)(
     'links expanded $country earnings to their stock pages',
@@ -316,6 +329,7 @@ describe('CalendarPageView', () => {
         count: 1,
       }
       const earning: CalendarEvent = {
+        ...EVENT_REFERENCE_DEFAULTS,
         kind: 'event',
         source,
         external_id: `sample-other-${country.toLowerCase()}-earnings`,

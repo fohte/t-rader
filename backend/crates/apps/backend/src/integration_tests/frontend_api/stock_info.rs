@@ -237,10 +237,120 @@ async fn financial_summaries_endpoint_returns_complete_rows_in_newest_first_orde
         (
             axum::http::StatusCode::OK,
             json!([
-                financial_summary_json("002", date(2098, 4, 1), "demo-quarter", 200.0, 20.0),
-                financial_summary_json("001", date(2098, 1, 1), "demo-annual", 100.0, 10.0),
+                financial_summary_json("002", date(2098, 4, 1), "demo-quarter", 200.0, Some(20.0)),
+                financial_summary_json("001", date(2098, 1, 1), "demo-annual", 100.0, Some(10.0)),
             ]),
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn financial_summaries_endpoint_returns_every_actual_candidate_for_the_exact_period(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let period_end = date(2098, 6, 30);
+    let disclosure_date = date(2098, 8, 1);
+    for (disclosure_no, group, doc_type, period_type, end, code, sales) in [
+        (
+            "101",
+            "sample-actual-group",
+            "2QFinancialStatements_SampleA",
+            "2Q",
+            period_end,
+            "FAKE0",
+            100.0,
+        ),
+        (
+            "102",
+            "sample-actual-group",
+            "2QFinancialStatements_SampleB",
+            "2Q",
+            period_end,
+            "FAKE0",
+            200.0,
+        ),
+        (
+            "103",
+            "sample-forecast-group",
+            "EarnForecastRevision",
+            "2Q",
+            period_end,
+            "FAKE0",
+            300.0,
+        ),
+        (
+            "104",
+            "sample-other-quarter",
+            "1QFinancialStatements_SampleC",
+            "1Q",
+            period_end,
+            "FAKE0",
+            400.0,
+        ),
+        (
+            "105",
+            "sample-other-period",
+            "2QFinancialStatements_SampleD",
+            "2Q",
+            date(2098, 6, 29),
+            "FAKE0",
+            500.0,
+        ),
+        (
+            "106",
+            "sample-other-stock",
+            "2QFinancialStatements_SampleE",
+            "2Q",
+            period_end,
+            "OTHR0",
+            600.0,
+        ),
+        (
+            "107",
+            "sample-prefix-collision",
+            "2QFinancialStatements_SampleF",
+            "2Q",
+            period_end,
+            "FAKE1",
+            700.0,
+        ),
+    ] {
+        insert_period_financial_summary(
+            &db,
+            code,
+            disclosure_no,
+            disclosure_date,
+            group,
+            doc_type,
+            period_type,
+            end,
+            sales,
+        )
+        .await;
+    }
+
+    let server = create_test_server(db).await;
+    let response = server
+        .get(&format!(
+            "/api/stocks/FAKE/financial-summaries?current_period_end={period_end}&current_period_type=2Q"
+        ))
+        .await;
+    let mut first =
+        financial_summary_json("101", disclosure_date, "sample-actual-group", 100.0, None);
+    first["code"] = json!("FAKE0");
+    first["document_type"] = json!("2QFinancialStatements_SampleA");
+    first["current_period_type"] = json!("2Q");
+    first["current_period_end"] = json!(period_end.to_string());
+    let mut second =
+        financial_summary_json("102", disclosure_date, "sample-actual-group", 200.0, None);
+    second["code"] = json!("FAKE0");
+    second["document_type"] = json!("2QFinancialStatements_SampleB");
+    second["current_period_type"] = json!("2Q");
+    second["current_period_end"] = json!(period_end.to_string());
+
+    assert_eq!(
+        (response.status_code(), response.json::<Value>()),
+        (axum::http::StatusCode::OK, json!([first, second]),),
     );
 }
 
@@ -266,12 +376,43 @@ async fn insert_financial_summary(
     .expect("insert financial summary");
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "各期属性を独立して指定する統合テスト fixture を構築するため"
+)]
+async fn insert_period_financial_summary(
+    db: &gateway_postgres::DatabaseHandle,
+    code: &str,
+    disclosure_no: &str,
+    disclosure_date: NaiveDate,
+    report_group_key: &str,
+    document_type: &str,
+    current_period_type: &str,
+    current_period_end: NaiveDate,
+    sales: f64,
+) {
+    financial_summary::ActiveModel {
+        code: Set(code.into()),
+        disclosure_no: Set(disclosure_no.into()),
+        disclosure_date: Set(disclosure_date),
+        report_group_key: Set(report_group_key.into()),
+        document_type: Set(Some(document_type.into())),
+        current_period_type: Set(Some(current_period_type.into())),
+        current_period_end: Set(Some(current_period_end)),
+        sales: Set(Some(sales)),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .expect("insert period financial summary");
+}
+
 fn financial_summary_json(
     disclosure_no: &str,
     disclosure_date: NaiveDate,
     report_group_key: &str,
     sales: f64,
-    eps: f64,
+    eps: Option<f64>,
 ) -> Value {
     json!({
         "code": "DEMO",

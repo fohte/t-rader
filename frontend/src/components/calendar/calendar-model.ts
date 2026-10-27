@@ -3,6 +3,7 @@ import {
   formatCalendarDayLabel,
 } from '#components/calendar/calendar-date'
 import type { components } from '#lib/api/schema.gen'
+import type { FinancialPeriodType } from '#lib/stock-page-date'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Event = Extract<CalendarEvent, { kind: 'event' }>
@@ -10,6 +11,29 @@ type OtherEarningsSummary = Extract<
   CalendarEvent,
   { kind: 'other_earnings_summary' }
 >
+type EventReference = components['schemas']['CalendarEventReferenceResponse']
+
+export type CalendarEarningsReferenceView = {
+  key: string
+  title: string
+  source: string
+  checkedAt: string
+  targetPeriodEnd?: string
+  targetPeriodType?: string
+  href?: string
+  publicationEvidence?: string
+  publicationEvidenceHref?: string
+}
+
+export type CalendarEarningsStatus = {
+  label: string
+  internalTarget?: {
+    stockId: string
+    periodEnd: string
+    periodType: FinancialPeriodType
+  }
+  references: CalendarEarningsReferenceView[]
+}
 
 export type OtherEarningsSelection = {
   country: string
@@ -33,6 +57,7 @@ type CalendarRowView = {
   category: string
   title: string
   stockId?: string
+  earningsStatus?: CalendarEarningsStatus
   emphasized: boolean
   target: boolean
   muted: boolean
@@ -100,6 +125,102 @@ function getEventTime(event: Event): { label: string; sortOrder: number } {
   return { label: '', sortOrder: 2880 }
 }
 
+function matchesEventPeriod(reference: EventReference, event: Event): boolean {
+  return (
+    event.fiscal_period != null &&
+    event.fiscal_period_type != null &&
+    reference.target_period_end === event.fiscal_period &&
+    reference.target_period_type === event.fiscal_period_type
+  )
+}
+
+function buildEarningsStatus(
+  event: Event,
+  today: string,
+): CalendarEarningsStatus {
+  const references = event.references
+  const matchingSummaryReference = references.some(
+    (reference) =>
+      reference.kind === 'earnings_summary' &&
+      matchesEventPeriod(reference, event),
+  )
+  const hasSummary =
+    event.has_matching_earnings_summary || matchingSummaryReference
+  const individualDocuments = references.filter(
+    (reference) => reference.kind === 'individual_document',
+  )
+  const hasMatchingIndividualDocument = individualDocuments.some((reference) =>
+    matchesEventPeriod(reference, event),
+  )
+  const hasOfficialListing = references.some(
+    (reference) => reference.kind === 'official_listing',
+  )
+  const label = hasSummary
+    ? '実績あり'
+    : hasMatchingIndividualDocument
+      ? '資料あり / 実績未取得'
+      : event.event_date >= today
+        ? '発表予定'
+        : hasOfficialListing || individualDocuments.length > 0
+          ? '個別資料未確認'
+          : '実績・資料未取得 / 公表未確認'
+  const periodType = toFinancialPeriodType(event.fiscal_period_type)
+  const internalTarget =
+    event.has_matching_earnings_summary &&
+    event.country === 'JP' &&
+    event.stock_id != null &&
+    event.fiscal_period != null &&
+    periodType != null
+      ? {
+          stockId: event.stock_id,
+          periodEnd: event.fiscal_period,
+          periodType,
+        }
+      : undefined
+
+  return {
+    label,
+    ...(internalTarget == null ? {} : { internalTarget }),
+    references: references.map(toEarningsReferenceView),
+  }
+}
+
+function toFinancialPeriodType(
+  value: string | null | undefined,
+): FinancialPeriodType | undefined {
+  return value === 'FY' ||
+    value === '1Q' ||
+    value === '2Q' ||
+    value === '3Q' ||
+    value === '4Q'
+    ? value
+    : undefined
+}
+
+function toEarningsReferenceView(
+  reference: EventReference,
+): CalendarEarningsReferenceView {
+  return {
+    key: `${reference.kind}:${reference.source}:${reference.external_id}`,
+    title: reference.title,
+    source: reference.source,
+    checkedAt: reference.checked_at,
+    ...(reference.target_period_end == null
+      ? {}
+      : { targetPeriodEnd: reference.target_period_end }),
+    ...(reference.target_period_type == null
+      ? {}
+      : { targetPeriodType: reference.target_period_type }),
+    ...(reference.url == null ? {} : { href: reference.url }),
+    ...(reference.publication_evidence == null
+      ? {}
+      : { publicationEvidence: reference.publication_evidence }),
+    ...(reference.publication_evidence_url == null
+      ? {}
+      : { publicationEvidenceHref: reference.publication_evidence_url }),
+  }
+}
+
 function isEmphasized(event: Event): boolean {
   if (event.category === 'central_bank') return true
   if (
@@ -116,6 +237,7 @@ function isEmphasized(event: Event): boolean {
 function buildEventRow(
   event: Event,
   selectedStrategyId: string | undefined,
+  today: string,
 ): { row: CalendarRowView; sortOrder: number } {
   const time = getEventTime(event)
   const stockId = event.stock_id ?? undefined
@@ -133,6 +255,9 @@ function buildEventRow(
       category: formatCalendarCategory(event.category),
       title,
       stockId: isEarningsStock ? stockId : undefined,
+      ...(isEarningsStock
+        ? { earningsStatus: buildEarningsStatus(event, today) }
+        : {}),
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',
       muted: false,
@@ -166,6 +291,7 @@ export function buildCalendarDays(
   events: CalendarEvent[],
   countryFilter: CalendarCountryFilter,
   selectedStrategyId: string | undefined,
+  today: string,
 ): CalendarDayView[] {
   const dayRows = new Map<
     string,
@@ -177,7 +303,7 @@ export function buildCalendarDays(
 
     const built =
       event.kind === 'event'
-        ? buildEventRow(event, selectedStrategyId)
+        ? buildEventRow(event, selectedStrategyId, today)
         : buildOtherEarningsRow(event)
     const rows = dayRows.get(event.event_date) ?? []
     rows.push({ ...built, insertionOrder })

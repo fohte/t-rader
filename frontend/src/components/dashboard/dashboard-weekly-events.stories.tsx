@@ -8,6 +8,14 @@ import { createStoryRouter } from '#storybook/story-router'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Stock = components['schemas']['Stock']
+const EVENT_REFERENCE_DEFAULTS = {
+  fiscal_period_type: null,
+  has_matching_earnings_summary: false,
+  references: [],
+} satisfies Pick<
+  Extract<CalendarEvent, { kind: 'event' }>,
+  'fiscal_period_type' | 'has_matching_earnings_summary' | 'references'
+>
 
 const stocks: Stock[] = [
   {
@@ -21,6 +29,7 @@ const stocks: Stock[] = [
 ]
 const events: CalendarEvent[] = [
   {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     event_date: '2026-10-14',
     event_at: null,

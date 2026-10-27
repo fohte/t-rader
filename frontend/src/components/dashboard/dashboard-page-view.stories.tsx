@@ -116,6 +116,9 @@ const args: DashboardPageViewProps = {
   events: [
     {
       kind: 'event',
+      fiscal_period_type: null,
+      has_matching_earnings_summary: false,
+      references: [],
       event_date: '2026-10-14',
       event_at: null,
       time_of_day: '引け後',

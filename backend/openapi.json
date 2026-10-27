@@ -6586,6 +6586,33 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "current_period_end",
+            "in": "query",
+            "description": "対象期末。期区分と同時に指定する",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "current_period_type",
+            "in": "query",
+            "description": "対象期区分。期末と同時に指定する",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "銘柄の決算短信検索に指定できる対象期区分",
+              "enum": [
+                "FY",
+                "1Q",
+                "2Q",
+                "3Q",
+                "4Q"
+              ]
+            }
           }
         ],
         "responses": {
@@ -6598,6 +6625,16 @@
                   "items": {
                     "$ref": "#/components/schemas/StockFinancialSummaryResponse"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "検索条件が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -10196,71 +10233,102 @@
           }
         }
       },
+      "CalendarEventReferenceKindResponse": {
+        "type": "string",
+        "enum": [
+          "earnings_summary",
+          "individual_document",
+          "official_listing"
+        ]
+      },
+      "CalendarEventReferenceResponse": {
+        "type": "object",
+        "required": [
+          "kind",
+          "source",
+          "external_id",
+          "title",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CalendarEventReferenceKindResponse"
+          },
+          "publication_evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publication_evidence_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "target_period_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "target_period_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "target_period_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CalendarEventResponse": {
         "oneOf": [
           {
-            "type": "object",
-            "required": [
-              "source",
-              "external_id",
-              "category",
-              "country",
-              "title",
-              "event_date",
-              "kind"
-            ],
-            "properties": {
-              "category": {
-                "type": "string"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CalendarEventResponseEvent"
               },
-              "country": {
-                "type": "string"
-              },
-              "event_at": {
-                "type": [
-                  "string",
-                  "null"
+              {
+                "type": "object",
+                "required": [
+                  "kind"
                 ],
-                "format": "date-time"
-              },
-              "event_date": {
-                "type": "string",
-                "format": "date"
-              },
-              "external_id": {
-                "type": "string"
-              },
-              "fiscal_period": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "event"
-                ]
-              },
-              "source": {
-                "type": "string"
-              },
-              "stock_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "time_of_day": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "title": {
-                "type": "string"
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "event"
+                    ]
+                  }
+                }
               }
-            }
+            ]
           },
           {
             "type": "object",
@@ -10291,6 +10359,80 @@
             }
           }
         ]
+      },
+      "CalendarEventResponseEvent": {
+        "type": "object",
+        "required": [
+          "source",
+          "external_id",
+          "category",
+          "country",
+          "title",
+          "event_date",
+          "references",
+          "has_matching_earnings_summary"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "event_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "event_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "fiscal_period": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fiscal_period_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_matching_earnings_summary": {
+            "type": "boolean"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventReferenceResponse"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "stock_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time_of_day": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
       },
       "CalendarEventsResponse": {
         "type": "object",

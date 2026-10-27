@@ -8,6 +8,14 @@ import { createStoryRouter } from '#storybook/story-router'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Strategy = components['schemas']['Strategy']
+const EVENT_REFERENCE_DEFAULTS = {
+  fiscal_period_type: null,
+  has_matching_earnings_summary: false,
+  references: [],
+} satisfies Pick<
+  Extract<CalendarEvent, { kind: 'event' }>,
+  'fiscal_period_type' | 'has_matching_earnings_summary' | 'references'
+>
 
 const STRATEGY_ID = '00000000-0000-0000-0000-000000000001'
 const weekRange: CalendarWeekRange = {
@@ -28,6 +36,7 @@ const strategies: Strategy[] = [
 
 const events: CalendarEvent[] = [
   {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     source: 'boj',
     external_id: 'sample-central-bank-event',
@@ -41,6 +50,7 @@ const events: CalendarEvent[] = [
     time_of_day: null,
   },
   {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     source: 'fred',
     external_id: '10:2099-01-06',
@@ -54,6 +64,7 @@ const events: CalendarEvent[] = [
     time_of_day: null,
   },
   {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     source: 'alpha_vantage',
     external_id: 'sample-pre-market-earnings',
@@ -67,6 +78,7 @@ const events: CalendarEvent[] = [
     time_of_day: 'pre_market',
   },
   {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     source: 'jquants',
     external_id: 'sample-stock-earnings',
@@ -89,6 +101,7 @@ const events: CalendarEvent[] = [
 
 const otherEarningsEvents: CalendarEvent[] = [
   {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     source: 'jquants',
     external_id: 'sample-other-earnings-a',
@@ -102,6 +115,7 @@ const otherEarningsEvents: CalendarEvent[] = [
     time_of_day: 'pre_market',
   },
   {
+    ...EVENT_REFERENCE_DEFAULTS,
     kind: 'event',
     source: 'jquants',
     external_id: 'sample-other-earnings-b',
@@ -129,6 +143,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: {
     calendar: { from: weekRange.from, to: weekRange.to, events },
+    today: '2099-01-07',
     weekRange,
     strategies,
     selectedStrategyId: STRATEGY_ID,
@@ -170,6 +185,34 @@ export const Loading: Story = {
 export const Empty: Story = {
   name: '選択した週に予定がありません。',
   args: { calendar: { from: weekRange.from, to: weekRange.to, events: [] } },
+}
+
+export const UpcomingEarnings: Story = {
+  name: '未来の決算予定を発表予定として表示します。',
+  args: {
+    today: '2099-01-05',
+    calendar: {
+      from: weekRange.from,
+      to: weekRange.to,
+      events: [
+        {
+          ...EVENT_REFERENCE_DEFAULTS,
+          kind: 'event',
+          source: 'jquants',
+          external_id: 'sample-upcoming-earnings',
+          category: 'earnings',
+          country: 'JP',
+          title: '架空工業',
+          stock_id: '0000',
+          fiscal_period: '2099-06-30',
+          fiscal_period_type: '2Q',
+          event_date: '2099-01-06',
+          event_at: null,
+          time_of_day: 'post_market',
+        },
+      ],
+    },
+  },
 }
 
 export const Error: Story = {
@@ -217,6 +260,7 @@ export const MobileOverseasEarningsExpanded: Story = {
       to: weekRange.to,
       events: [
         {
+          ...EVENT_REFERENCE_DEFAULTS,
           kind: 'event',
           source: 'alpha_vantage',
           external_id: 'sample-mobile-overseas-earnings',
@@ -240,6 +284,7 @@ export const MobileOverseasEarningsExpanded: Story = {
     expandedOtherEarnings: { country: 'US', eventDate: '2099-01-06' },
     otherEarningsEvents: [
       {
+        ...EVENT_REFERENCE_DEFAULTS,
         kind: 'event',
         source: 'alpha_vantage',
         external_id: 'sample-mobile-other-earnings-a',
@@ -253,6 +298,7 @@ export const MobileOverseasEarningsExpanded: Story = {
         time_of_day: 'pre_market',
       },
       {
+        ...EVENT_REFERENCE_DEFAULTS,
         kind: 'event',
         source: 'alpha_vantage',
         external_id: 'sample-mobile-other-earnings-b',
@@ -264,6 +310,87 @@ export const MobileOverseasEarningsExpanded: Story = {
         event_date: '2099-01-06',
         event_at: null,
         time_of_day: 'post_market',
+      },
+    ],
+  },
+  globals: { viewport: { value: 'mobileCalendar' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileCalendar: {
+          name: 'Mobile calendar',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: { viewport: { width: 390, height: 700 } },
+  },
+}
+
+export const MobileDomesticResultsExpanded: Story = {
+  name: '390 px 幅で対象期実績と参照資料の導線を表示します。',
+  args: {
+    calendar: {
+      from: weekRange.from,
+      to: weekRange.to,
+      events: [
+        {
+          ...EVENT_REFERENCE_DEFAULTS,
+          kind: 'event',
+          source: 'jquants',
+          external_id: '0000:2Q:2099-06-30',
+          category: 'earnings',
+          country: 'JP',
+          title: '架空工業',
+          stock_id: '0000',
+          fiscal_period: '2099-06-30',
+          fiscal_period_type: '2Q',
+          event_date: '2099-01-06',
+          event_at: null,
+          time_of_day: 'post_market',
+          references: [
+            {
+              kind: 'earnings_summary',
+              source: 'sample_source',
+              external_id: 'sample-summary',
+              title: '架空の財務要約',
+              url: 'https://example.invalid/sample-summary',
+              target_period_start: null,
+              target_period_end: '2099-06-30',
+              target_period_type: '2Q',
+              publication_evidence: null,
+              publication_evidence_url: null,
+              checked_at: '2030-01-01T00:00:00Z',
+            },
+          ],
+          has_matching_earnings_summary: true,
+        },
+        {
+          kind: 'other_earnings_summary',
+          country: 'JP',
+          event_date: '2099-01-06',
+          count: 1,
+        },
+      ],
+    },
+    expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
+    otherEarningsEvents: [
+      {
+        ...EVENT_REFERENCE_DEFAULTS,
+        kind: 'event',
+        source: 'jquants',
+        external_id: '0001:2Q:2099-06-30',
+        category: 'earnings',
+        country: 'JP',
+        title: '架空素材',
+        stock_id: '0001',
+        fiscal_period: '2099-06-30',
+        fiscal_period_type: '2Q',
+        event_date: '2099-01-06',
+        event_at: null,
+        time_of_day: 'pre_market',
+        has_matching_earnings_summary: true,
       },
     ],
   },

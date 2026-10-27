@@ -74,6 +74,7 @@
 | [public.task_execution_payload_chunk](public.task_execution_payload_chunk.md)                   | 6       | payload の順序付き JSON chunk を追記専用で保持する。                                                                                               | BASE TABLE        |
 | [public.task_execution_state](public.task_execution_state.md)                                   | 8       | 戦略 task の固定期限と累計実行量を保持する。                                                                                                       | BASE TABLE        |
 | [public.execution_reservation](public.execution_reservation.md)                                 | 12      | task の実行量予約と送信状態を記録する。                                                                                                            | BASE TABLE        |
+| [public.calendar_event_reference](public.calendar_event_reference.md)                           | 15      | カレンダーイベントに対応する実績要約や公式資料への参照先と確認根拠を保持する。                                                                     | BASE TABLE        |
 | [public.tavily_credit_budget_state](public.tavily_credit_budget_state.md)                       | 14      | Tavily account 単位の UTC 日次・月次 credit 上限と照合状態を保持する。                                                                             | BASE TABLE        |
 | [public.tavily_credit_reservation](public.tavily_credit_reservation.md)                         | 12      | Tavily provider へ送る検索・抽出の account credit 予約、精算、再送結果を保持する。                                                                 | BASE TABLE        |
 | [public.tavily_retrieval_cache](public.tavily_retrieval_cache.md)                               | 7       | 認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。                                                    | BASE TABLE        |
@@ -254,6 +255,7 @@ erDiagram
 "public.task_execution_payload_chunk" }o--|| "public.task_execution_payload" : "FOREIGN KEY (payload_id) REFERENCES task_execution_payload(id) ON DELETE RESTRICT"
 "public.task_execution_state" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE"
 "public.execution_reservation" }o--|| "public.task_execution_state" : "FOREIGN KEY (task_id) REFERENCES task_execution_state(task_id) ON DELETE CASCADE"
+"public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -956,6 +958,23 @@ erDiagram
   varchar_64_ request_fingerprint
   text state
   jsonb response_json
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.calendar_event_reference" {
+  uuid id
+  uuid calendar_event_id FK
+  text kind
+  text source
+  text external_id
+  text title
+  text url
+  date target_period_start
+  date target_period_end
+  text target_period_type
+  text publication_evidence
+  text publication_evidence_url
+  timestamp_with_time_zone checked_at
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }
