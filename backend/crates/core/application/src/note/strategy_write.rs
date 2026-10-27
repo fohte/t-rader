@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use core_domain::note_price_reference::NotePriceReferencePolicy;
 
-use super::markdown_lint_gate::apply_lint_outcome;
+use super::markdown_lint_gate::{CheckedLintOutcome, apply_lint_outcome};
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{
     NewNote, NoteBodyWarningDisposition, NoteSnapshot, NoteVersion, NoteVersionUpdate,
-    NoteWriteCommand, NoteWriteResult,
+    NoteWarningDispositionRecord, NoteWriteCommand, NoteWriteResult,
 };
 use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
@@ -18,6 +18,19 @@ use crate::unit_of_work::UnitOfWorkTransaction;
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
+
+fn version_warning_dispositions(
+    created_by_kind: &str,
+    lint_outcome: Option<&CheckedLintOutcome>,
+) -> Vec<NoteWarningDispositionRecord> {
+    if created_by_kind == "human" {
+        Vec::new()
+    } else {
+        lint_outcome
+            .map(|outcome| outcome.accepted_dispositions.clone())
+            .unwrap_or_default()
+    }
+}
 
 impl NoteUseCases {
     pub async fn write(
@@ -198,14 +211,8 @@ impl NoteUseCases {
                 INITIAL_NOTE_STATUS
             }
         });
-        let accepted_dispositions = if command.created_by_kind == "human" {
-            Vec::new()
-        } else {
-            lint_outcome
-                .as_ref()
-                .map(|outcome| outcome.accepted_dispositions.clone())
-                .unwrap_or_default()
-        };
+        let warning_dispositions =
+            version_warning_dispositions(&command.created_by_kind, lint_outcome.as_ref());
         let mut version = self
             .append_version(
                 &transaction,
@@ -215,7 +222,7 @@ impl NoteUseCases {
                     body_md: command.body_md.unwrap_or_default(),
                     frontmatter_json,
                     graphs_json,
-                    warning_dispositions: accepted_dispositions,
+                    warning_dispositions,
                     created_by_kind: command.created_by_kind.clone(),
                     execution_id: command.execution_id,
                     change_reason: command.change_reason,
@@ -370,14 +377,8 @@ impl NoteUseCases {
             return result;
         }
 
-        let accepted_dispositions = if command.created_by_kind == "human" {
-            Vec::new()
-        } else {
-            lint_outcome
-                .as_ref()
-                .map(|outcome| outcome.accepted_dispositions.clone())
-                .unwrap_or_default()
-        };
+        let warning_dispositions =
+            version_warning_dispositions(&command.created_by_kind, lint_outcome.as_ref());
         let version = self
             .append_version(
                 transaction,
@@ -387,7 +388,7 @@ impl NoteUseCases {
                     body_md,
                     frontmatter_json,
                     graphs_json,
-                    warning_dispositions: accepted_dispositions,
+                    warning_dispositions,
                     created_by_kind: command.created_by_kind,
                     execution_id: command.execution_id,
                     change_reason: command.change_reason,

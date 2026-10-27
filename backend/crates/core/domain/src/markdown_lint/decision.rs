@@ -35,14 +35,21 @@ pub fn evaluate_dispositions(
         .chain(additional_warning_ids.iter().map(String::as_str))
         .collect::<Vec<_>>();
     let mut warning_counts = HashMap::<String, usize>::new();
+    let mut warning_ids_by_group = HashMap::<String, HashSet<String>>::new();
     for id in &warning_ids {
         if let Some(group_id) = warning_id_group(id) {
-            *warning_counts.entry(group_id.to_string()).or_default() += 1;
+            let group_id = group_id.to_string();
+            *warning_counts.entry(group_id.clone()).or_default() += 1;
+            warning_ids_by_group
+                .entry(group_id)
+                .or_default()
+                .insert((*id).to_string());
         }
     }
 
     let mut disposition_ids = HashMap::<String, HashSet<String>>::new();
-    let mut disposition_reasons = HashMap::<String, Vec<(String, String)>>::new();
+    let mut exact_reasons = HashMap::<String, HashMap<String, String>>::new();
+    let mut fallback_reasons = HashMap::<String, Vec<String>>::new();
     for disposition in dispositions {
         if disposition.reason.trim().is_empty() {
             continue;
@@ -56,15 +63,25 @@ pub fn evaluate_dispositions(
                 .or_default()
                 .insert(disposition.id.to_string())
             {
-                disposition_reasons
-                    .entry(group_id)
-                    .or_default()
-                    .push((disposition.id.to_string(), disposition.reason.to_string()));
+                if warning_ids_by_group
+                    .get(&group_id)
+                    .is_some_and(|ids| ids.contains(disposition.id))
+                {
+                    exact_reasons
+                        .entry(group_id)
+                        .or_default()
+                        .insert(disposition.id.to_string(), disposition.reason.to_string());
+                } else {
+                    fallback_reasons
+                        .entry(group_id)
+                        .or_default()
+                        .push(disposition.reason.to_string());
+                }
             }
         }
     }
 
-    let mut assigned_disposition_ids = HashMap::<String, HashSet<String>>::new();
+    let mut fallback_indexes = HashMap::<String, usize>::new();
     let mut accepted_dispositions = Vec::new();
     let mut unresolved_warning_ids = Vec::new();
     for id in &warning_ids {
@@ -76,33 +93,26 @@ pub fn evaluate_dispositions(
             unresolved_warning_ids.push((*id).to_string());
             continue;
         };
-        let Some(group_reasons) = disposition_reasons.get(group_id) else {
-            unresolved_warning_ids.push((*id).to_string());
-            continue;
-        };
-        let disposition = group_reasons
-            .iter()
-            .find(|(disposition_id, _)| disposition_id == id)
-            .or_else(|| {
-                if group_dispositions.len() < warning_counts[group_id] {
-                    return None;
+        let exact_reason = exact_reasons
+            .get(group_id)
+            .and_then(|reasons| reasons.get(*id));
+        let fallback_reason =
+            if exact_reason.is_none() && group_dispositions.len() >= warning_counts[group_id] {
+                let fallback_index = fallback_indexes.entry(group_id.to_string()).or_default();
+                let reason = fallback_reasons
+                    .get(group_id)
+                    .and_then(|reasons| reasons.get(*fallback_index));
+                if reason.is_some() {
+                    *fallback_index += 1;
                 }
-                let assigned = assigned_disposition_ids
-                    .entry(group_id.to_string())
-                    .or_default();
-                group_reasons
-                    .iter()
-                    .find(|(disposition_id, _)| !assigned.contains(disposition_id))
-                    .or_else(|| group_reasons.first())
-            });
-        let Some((disposition_id, reason)) = disposition else {
+                reason
+            } else {
+                None
+            };
+        let Some(reason) = exact_reason.or(fallback_reason) else {
             unresolved_warning_ids.push((*id).to_string());
             continue;
         };
-        assigned_disposition_ids
-            .entry(group_id.to_string())
-            .or_default()
-            .insert(disposition_id.clone());
         accepted_dispositions.push(AcceptedDisposition {
             warning_id: (*id).to_string(),
             reason: reason.clone(),
@@ -242,6 +252,47 @@ mod tests {
                     AcceptedDisposition {
                         warning_id: "price:sample-key:3".into(),
                         reason: "third note".into(),
+                    },
+                ],
+            },
+        );
+    }
+
+    #[test]
+    fn reserves_exact_reason_before_assigning_fallback_reasons() {
+        let report = LintReport {
+            diagnostics: vec![
+                diagnostic("price", "price:sample-key:1", Severity::Warning),
+                diagnostic("price", "price:sample-key:2", Severity::Warning),
+            ],
+        };
+
+        assert_eq!(
+            evaluate_dispositions(
+                &report,
+                &[],
+                &[
+                    Disposition {
+                        id: "price:sample-key:2",
+                        reason: "exact reason",
+                    },
+                    Disposition {
+                        id: "price:sample-key:3",
+                        reason: "fallback reason",
+                    },
+                ],
+            ),
+            DispositionEvaluation {
+                unresolved_diagnostics: Vec::new(),
+                unresolved_warning_ids: Vec::new(),
+                accepted_dispositions: vec![
+                    AcceptedDisposition {
+                        warning_id: "price:sample-key:1".into(),
+                        reason: "fallback reason".into(),
+                    },
+                    AcceptedDisposition {
+                        warning_id: "price:sample-key:2".into(),
+                        reason: "exact reason".into(),
                     },
                 ],
             },
