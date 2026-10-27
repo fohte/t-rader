@@ -3,9 +3,9 @@ use std::ops::Range;
 
 use serde::Serialize;
 
-use crate::markdown_lint::lint_id;
 use crate::markdown_lint::market_numeric::{MarketNumericFinding, scan_market_numeric_source};
 pub use crate::markdown_lint::warning_id_group;
+use crate::markdown_lint::{lint_id, percent_encode};
 use crate::note_graph::GraphDef;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -151,7 +151,10 @@ fn scan_text_with_ids(
         .into_iter()
         .map(|finding: MarketNumericFinding| {
             let occurrence = occurrences
-                .entry((finding.kind.rule_id().to_string(), finding.key.clone()))
+                .entry((
+                    finding.kind.rule_id().to_string(),
+                    percent_encode(&finding.key),
+                ))
                 .and_modify(|count| *count += 1)
                 .or_insert(1);
             let id = lint_id(finding.kind.rule_id(), &finding.key, *occurrence);
@@ -363,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn scans_graph_label_warnings_with_locations() {
+    fn scans_graph_label_warnings_with_locations_and_shared_occurrence_ids() {
         let graph = GraphDef {
             id: "fictional-chart".into(),
             layout: Layout::Flow,
@@ -430,7 +433,7 @@ mod tests {
                 ],
                 vec![
                     NoteBodyWarning {
-                        id: "price:45%2C678%E5%86%86:1".into(),
+                        id: "price:45%2C678%E5%86%86:2".into(),
                         message: format!(
                             "graphs[0] (id=\"fictional-chart\").nodes[0] (id=\"entry\").label: {}",
                             price_warning("45,678円"),

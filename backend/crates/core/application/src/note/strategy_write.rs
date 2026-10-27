@@ -2366,15 +2366,21 @@ mod tests {
                 .expect("fixture graphs are valid");
         let warnings = scan_note_warnings_with_ids(body, &graphs);
         let (use_cases, repository) = make_note_use_cases(source_version());
-        let mut multiline_reason = String::from("分析上の仮定として記載");
-        multiline_reason.push('\r');
-        multiline_reason.push('\n');
-        multiline_reason.push_str("補足理由");
+        let reasons = (0..warnings.len())
+            .map(|index| {
+                let mut reason = format!("架空理由 {index}");
+                reason.push('\r');
+                reason.push('\n');
+                reason.push_str("補足理由");
+                reason
+            })
+            .collect::<Vec<_>>();
         let warning_dispositions = warnings
             .into_iter()
-            .map(|warning| NoteBodyWarningDisposition {
+            .zip(&reasons)
+            .map(|(warning, reason)| NoteBodyWarningDisposition {
                 id: warning.id,
-                reason: multiline_reason.clone(),
+                reason: reason.clone(),
             })
             .collect();
         let mut command = write_body_command(body);
@@ -2395,33 +2401,33 @@ mod tests {
                 warning_id: "price:45%2C678%E5%86%86:1".into(),
                 value: "45,678円".into(),
                 location: NoteWarningDispositionLocation::Body { start: 6, end: 15 },
-                reason: multiline_reason.clone(),
+                reason: reasons[0].clone(),
             },
             NoteWarningDispositionRecord {
                 warning_id: "relative:-3.5%25:1".into(),
                 value: "-3.5%".into(),
                 location: NoteWarningDispositionLocation::Body { start: 20, end: 25 },
-                reason: multiline_reason.clone(),
+                reason: reasons[1].clone(),
             },
             NoteWarningDispositionRecord {
-                warning_id: "price:45%2C678%E5%86%86:1".into(),
+                warning_id: "price:45%2C678%E5%86%86:2".into(),
                 value: "45,678円".into(),
                 location: NoteWarningDispositionLocation::Graph {
                     path: "graphs[0].nodes[0].label".into(),
                     start: 0,
                     end: 9,
                 },
-                reason: multiline_reason.clone(),
+                reason: reasons[2].clone(),
             },
             NoteWarningDispositionRecord {
-                warning_id: "relative:-3.5%25:1".into(),
+                warning_id: "relative:-3.5%25:2".into(),
                 value: "-3.5%".into(),
                 location: NoteWarningDispositionLocation::Graph {
                     path: "graphs[0].edges[0].label".into(),
                     start: 0,
                     end: 5,
                 },
-                reason: multiline_reason,
+                reason: reasons[3].clone(),
             },
         ];
 
