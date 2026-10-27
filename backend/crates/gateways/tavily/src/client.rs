@@ -226,9 +226,9 @@ impl WebSearchClient for TavilyClient {
             .await
             .map_err(|error| WebSearchError::Usage(error.to_string()))?;
         Ok(WebSearchAccountUsage {
-            current_plan: body.current_plan,
-            plan_credits_used: body.plan_usage.credits_used,
-            paygo_credits_used: body.paygo_usage.credits_used,
+            current_plan: body.account.current_plan,
+            plan_credits_used: body.account.plan_usage,
+            paygo_credits_used: body.account.paygo_usage,
         })
     }
 }
@@ -299,14 +299,14 @@ struct Usage {
 
 #[derive(Deserialize)]
 struct AccountUsageResponse {
-    current_plan: String,
-    plan_usage: AccountUsageCredits,
-    paygo_usage: AccountUsageCredits,
+    account: AccountUsage,
 }
 
 #[derive(Deserialize)]
-struct AccountUsageCredits {
-    credits_used: Decimal,
+struct AccountUsage {
+    current_plan: String,
+    plan_usage: Decimal,
+    paygo_usage: Decimal,
 }
 
 #[derive(Deserialize)]
@@ -323,11 +323,32 @@ struct ExtractFailure {
 #[cfg(test)]
 mod tests {
     use reqwest::StatusCode;
+    use rstest::rstest;
     use serde_json::json;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+
+    async fn client_with_usage_response(body: serde_json::Value) -> (MockServer, TavilyClient) {
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/usage"))
+            .and(header("authorization", "Bearer fake-tavily-key"))
+            .respond_with(ResponseTemplate::new(StatusCode::OK).set_body_json(body))
+            .mount(&mock)
+            .await;
+
+        let client = TavilyClient::with_endpoints(
+            format!("{}/search", mock.uri()),
+            format!("{}/extract", mock.uri()),
+            format!("{}/usage", mock.uri()),
+            "fake-tavily-key",
+        )
+        .expect("build client");
+
+        (mock, client)
+    }
 
     #[test]
     fn from_env_returns_none_when_api_key_is_missing() {
@@ -551,35 +572,86 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn account_usage_reads_plan_and_paygo_credit_totals() {
-        let mock = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/usage"))
-            .and(header("authorization", "Bearer fake-tavily-key"))
-            .respond_with(ResponseTemplate::new(StatusCode::OK).set_body_json(json!({
+    #[rstest]
+    #[case::account_totals_ignore_key_usage(
+        json!({
+            "key": { "usage": 900.5 },
+            "account": {
                 "current_plan": "Researcher",
-                "plan_usage": { "credits_used": 12 },
-                "paygo_usage": { "credits_used": 0 }
-            })))
-            .mount(&mock)
-            .await;
+                "plan_usage": 12.375,
+                "paygo_usage": 0.125
+            }
+        }),
+        WebSearchAccountUsage {
+            current_plan: "Researcher".into(),
+            plan_credits_used: Decimal::new(12_375, 3),
+            paygo_credits_used: Decimal::new(125, 3),
+        },
+    )]
+    #[case::integer_credits_remain_exact(
+        json!({
+            "key": { "usage": 700 },
+            "account": {
+                "current_plan": "Researcher",
+                "plan_usage": 24,
+                "paygo_usage": 0
+            }
+        }),
+        WebSearchAccountUsage {
+            current_plan: "Researcher".into(),
+            plan_credits_used: Decimal::new(24, 0),
+            paygo_credits_used: Decimal::ZERO,
+        },
+    )]
+    #[tokio::test]
+    async fn account_usage_reads_account_totals(
+        #[case] body: serde_json::Value,
+        #[case] expected: WebSearchAccountUsage,
+    ) {
+        let (_mock, client) = client_with_usage_response(body).await;
 
-        let client = TavilyClient::with_endpoints(
-            format!("{}/search", mock.uri()),
-            format!("{}/extract", mock.uri()),
-            format!("{}/usage", mock.uri()),
-            "fake-tavily-key",
-        )
-        .expect("build client");
+        assert_eq!(client.account_usage().await, Ok(expected));
+    }
+
+    #[rstest]
+    #[case::missing_account(json!({ "key": { "usage": 7 } }))]
+    #[case::legacy_top_level_shape(json!({
+        "current_plan": "Researcher",
+        "plan_usage": { "credits_used": 7 },
+        "paygo_usage": { "credits_used": 0 }
+    }))]
+    #[case::missing_plan_usage(json!({
+        "account": { "current_plan": "Researcher", "paygo_usage": 0 }
+    }))]
+    #[case::missing_paygo_usage(json!({
+        "account": { "current_plan": "Researcher", "plan_usage": 7 }
+    }))]
+    #[case::missing_current_plan(json!({
+        "account": { "plan_usage": 7, "paygo_usage": 0 }
+    }))]
+    #[case::invalid_account_shape(json!({ "account": [] }))]
+    #[case::invalid_current_plan_type(json!({
+        "account": { "current_plan": 7, "plan_usage": 7, "paygo_usage": 0 }
+    }))]
+    #[case::invalid_plan_usage_type(json!({
+        "account": { "current_plan": "Researcher", "plan_usage": {}, "paygo_usage": 0 }
+    }))]
+    #[case::invalid_paygo_usage_type(json!({
+        "account": {
+            "current_plan": "Researcher",
+            "plan_usage": 7,
+            "paygo_usage": "not-a-number"
+        }
+    }))]
+    #[tokio::test]
+    async fn account_usage_rejects_missing_or_invalid_account_fields(
+        #[case] body: serde_json::Value,
+    ) {
+        let (_mock, client) = client_with_usage_response(body).await;
 
         assert_eq!(
-            client.account_usage().await,
-            Ok(WebSearchAccountUsage {
-                current_plan: "Researcher".into(),
-                plan_credits_used: Decimal::new(12, 0),
-                paygo_credits_used: Decimal::ZERO,
-            }),
+            client.account_usage().await.map_err(|_| "usage error"),
+            Err("usage error"),
         );
     }
 }
