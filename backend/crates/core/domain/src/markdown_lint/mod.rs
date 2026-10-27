@@ -15,8 +15,8 @@ pub use decision::{
 };
 pub use document::{ParsedMarkdown, ParsedMarkdownError, TextRun, TextRunKind, ValidatedTokenSpan};
 pub use fix::{FixError, apply_safe_edits};
+pub(crate) use id::lint_id;
 pub use id::warning_id_group;
-pub(crate) use id::{lint_id, percent_encode};
 pub use runner::{LintError, lint, requirements};
 pub use types::{
     LintDiagnostic, LintReport, MarkdownLintContext, ResolvedReferenceNames, RuleDefinition,

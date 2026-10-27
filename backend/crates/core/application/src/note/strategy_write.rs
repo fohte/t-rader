@@ -2404,7 +2404,7 @@ mod tests {
                 reason: multiline_reason.clone(),
             },
             NoteWarningDispositionRecord {
-                warning_id: "price:45%2C678%E5%86%86:2".into(),
+                warning_id: "price:45%2C678%E5%86%86:1".into(),
                 value: "45,678円".into(),
                 location: NoteWarningDispositionLocation::Graph {
                     path: "graphs[0].nodes[0].label".into(),
@@ -2414,7 +2414,7 @@ mod tests {
                 reason: multiline_reason.clone(),
             },
             NoteWarningDispositionRecord {
-                warning_id: "relative:-3.5%25:2".into(),
+                warning_id: "relative:-3.5%25:1".into(),
                 value: "-3.5%".into(),
                 location: NoteWarningDispositionLocation::Graph {
                     path: "graphs[0].edges[0].label".into(),

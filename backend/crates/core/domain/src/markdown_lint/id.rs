@@ -27,7 +27,7 @@ pub fn warning_id_group(id: &str) -> Option<&str> {
     Some(group_id)
 }
 
-pub(crate) fn percent_encode(value: &str) -> String {
+fn percent_encode(value: &str) -> String {
     let mut encoded = String::new();
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     for byte in value.bytes() {
