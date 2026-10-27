@@ -220,7 +220,7 @@ mod tests {
     use wiremock::matchers::{method, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{AlphaVantageClient, SOURCE, parse_earnings_calendar};
+    use super::{AlphaVantageClient, SOURCE};
 
     const FIXTURE: &str = include_str!("../tests/fixtures/earnings_calendar.csv");
 
@@ -275,27 +275,25 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parses_calendar_fixture_and_normalizes_post_market_dates() {
-        assert_eq!(
-            parse_earnings_calendar(FIXTURE, date(2026, 10, 4)),
-            Ok(expected_batch()),
-        );
-    }
-
-    #[tokio::test]
-    async fn fetches_and_parses_the_calendar_fixture() {
+    async fn client_with_calendar_body(body: &str) -> (MockServer, AlphaVantageClient) {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(query_param("function", "EARNINGS_CALENDAR"))
             .and(query_param("horizon", "3month"))
             .and(query_param("apikey", "test-key"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(FIXTURE))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
             .expect(1)
             .mount(&server)
             .await;
         let client =
             AlphaVantageClient::with_base_url("test-key".into(), &server.uri()).expect("client");
+
+        (server, client)
+    }
+
+    #[tokio::test]
+    async fn fetches_and_parses_the_calendar_fixture() {
+        let (_server, client) = client_with_calendar_body(FIXTURE).await;
 
         assert_eq!(
             client.fetch_calendar_events(date(2026, 10, 4)).await,
@@ -346,11 +344,17 @@ mod tests {
         "},
         "invalid Alpha Vantage reportDate value '2026/10/08': input contains invalid characters"
     )]
-    fn rejects_invalid_calendar_csv(#[case] body: &str, #[case] expected: &str) {
+    #[tokio::test]
+    async fn rejects_invalid_calendar_csv(#[case] body: &str, #[case] expected: &str) {
+        let (_server, client) = client_with_calendar_body(body).await;
+
         assert_eq!(
-            parse_earnings_calendar(body, date(2026, 10, 4)).map_err(|error| match error {
-                CalendarEventSourceError::Failed(message) => message,
-            }),
+            client
+                .fetch_calendar_events(date(2026, 10, 4))
+                .await
+                .map_err(|error| match error {
+                    CalendarEventSourceError::Failed(message) => message,
+                }),
             Err(expected.to_string()),
         );
     }
@@ -358,15 +362,17 @@ mod tests {
     #[rstest]
     #[case::empty_name("")]
     #[case::whitespace_only_name("  ")]
-    fn uses_symbol_as_title_when_name_is_blank(#[case] name: &str) {
+    #[tokio::test]
+    async fn uses_symbol_as_title_when_name_is_blank(#[case] name: &str) {
         let body = indoc! {"
             symbol,name,reportDate,fiscalDateEnding,timeOfTheDay
             FQZ,__NAME__,2026-10-08,2026-09-30,pre-market
         "}
         .replace("__NAME__", name);
+        let (_server, client) = client_with_calendar_body(&body).await;
 
         assert_eq!(
-            parse_earnings_calendar(&body, date(2026, 10, 4)),
+            client.fetch_calendar_events(date(2026, 10, 4)).await,
             Ok(CalendarEventBatch {
                 date_range: DateRange {
                     from: date(2026, 10, 4),
