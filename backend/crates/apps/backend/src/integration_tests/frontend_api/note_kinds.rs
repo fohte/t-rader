@@ -2,6 +2,7 @@
 mod tests {
     use super::super::assert_response_eq;
     use axum::http::StatusCode;
+    use rstest::{fixture, rstest};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -11,6 +12,69 @@ mod tests {
     use gateway_postgres::entities::{change_history, note, note_kind, note_version};
 
     use crate::testing::{create_test_server, insert_test_note_with_execution_id};
+
+    struct NoteKindTestContext {
+        db: gateway_postgres::DatabaseHandle,
+        server: axum_test::TestServer,
+        kind_key: String,
+        note_id: Uuid,
+        initial_version_id: Uuid,
+    }
+
+    #[fixture]
+    async fn note_kind_test_context() -> NoteKindTestContext {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
+        let server = create_test_server(db.clone()).await;
+        let kind_key = "sample-kind".to_string();
+        note_kind::ActiveModel {
+            key: Set(kind_key.clone()),
+            display_name: Set("Sample Kind".to_string()),
+            requires_approval: Set(true),
+            description: Set(None),
+            sort_order: Set(0),
+        }
+        .insert(&db)
+        .await
+        .expect("insert note kind");
+        let note_id = insert_test_note_with_execution_id(
+            &db,
+            "Sample title",
+            "Sample body",
+            "sample-execution-id",
+        )
+        .await;
+        note::ActiveModel {
+            id: Unchanged(note_id),
+            kind: Set(Some(kind_key.clone())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set note kind");
+        let initial_version = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .one(&db)
+            .await
+            .expect("find initial version")
+            .expect("initial version exists");
+        note_version::ActiveModel {
+            id: Unchanged(initial_version.id),
+            status: Set("approved".to_string()),
+            is_current: Set(true),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set initial version state");
+
+        NoteKindTestContext {
+            db,
+            server,
+            kind_key,
+            note_id,
+            initial_version_id: initial_version.id,
+        }
+    }
 
     async fn insert_test_version(
         db: &gateway_postgres::DatabaseHandle,
@@ -43,52 +107,18 @@ mod tests {
         id
     }
 
-    #[backend_test_macros::database_test]
+    #[rstest]
+    #[tokio::test]
     async fn disabling_note_kind_approval_supersedes_old_pending_versions_and_preserves_rejections(
-        db: gateway_postgres::DatabaseHandle,
+        #[future] note_kind_test_context: NoteKindTestContext,
     ) {
-        let server = create_test_server(db.clone()).await;
-        let kind_key = "sample-kind";
-        note_kind::ActiveModel {
-            key: Set(kind_key.to_string()),
-            display_name: Set("Sample Kind".to_string()),
-            requires_approval: Set(true),
-            description: Set(None),
-            sort_order: Set(0),
-        }
-        .insert(&db)
-        .await
-        .expect("insert note kind");
-        let note_id = insert_test_note_with_execution_id(
-            &db,
-            "Sample title",
-            "Sample body",
-            "sample-execution-id",
-        )
-        .await;
-        note::ActiveModel {
-            id: Unchanged(note_id),
-            kind: Set(Some(kind_key.to_string())),
-            ..Default::default()
-        }
-        .update(&db)
-        .await
-        .expect("set note kind");
-        let initial_version = note_version::Entity::find()
-            .filter(note_version::Column::NoteId.eq(note_id))
-            .one(&db)
-            .await
-            .expect("find pending version")
-            .expect("pending version exists");
-        note_version::ActiveModel {
-            id: Unchanged(initial_version.id),
-            status: Set("approved".to_string()),
-            is_current: Set(true),
-            ..Default::default()
-        }
-        .update(&db)
-        .await
-        .expect("set initial version state");
+        let NoteKindTestContext {
+            db,
+            server,
+            kind_key,
+            note_id,
+            initial_version_id,
+        } = note_kind_test_context.await;
         let older_pending_id = insert_test_version(&db, note_id, 2, "unread").await;
         insert_test_version(&db, note_id, 3, "rejected").await;
         let approved_version_id = insert_test_version(&db, note_id, 4, "unread").await;
@@ -162,7 +192,7 @@ mod tests {
                             "from": "unread",
                             "to": "approved",
                             "version_id": approved_version_id,
-                            "previous_current_version_id": initial_version.id,
+                            "previous_current_version_id": initial_version_id,
                             "superseded_version_ids": [older_pending_id],
                             "label": null,
                         }),
@@ -183,52 +213,18 @@ mod tests {
         );
     }
 
-    #[backend_test_macros::database_test]
+    #[rstest]
+    #[tokio::test]
     async fn disabling_note_kind_approval_leaves_warning_dispositions_pending(
-        db: gateway_postgres::DatabaseHandle,
+        #[future] note_kind_test_context: NoteKindTestContext,
     ) {
-        let server = create_test_server(db.clone()).await;
-        let kind_key = "sample-kind";
-        note_kind::ActiveModel {
-            key: Set(kind_key.to_string()),
-            display_name: Set("Sample Kind".to_string()),
-            requires_approval: Set(true),
-            description: Set(None),
-            sort_order: Set(0),
-        }
-        .insert(&db)
-        .await
-        .expect("insert note kind");
-        let note_id = insert_test_note_with_execution_id(
-            &db,
-            "Sample title",
-            "Sample body",
-            "sample-execution-id",
-        )
-        .await;
-        note::ActiveModel {
-            id: Unchanged(note_id),
-            kind: Set(Some(kind_key.to_string())),
-            ..Default::default()
-        }
-        .update(&db)
-        .await
-        .expect("set note kind");
-        let initial_version = note_version::Entity::find()
-            .filter(note_version::Column::NoteId.eq(note_id))
-            .one(&db)
-            .await
-            .expect("find initial version")
-            .expect("initial version exists");
-        note_version::ActiveModel {
-            id: Unchanged(initial_version.id),
-            status: Set("approved".to_string()),
-            is_current: Set(true),
-            ..Default::default()
-        }
-        .update(&db)
-        .await
-        .expect("set initial version state");
+        let NoteKindTestContext {
+            db,
+            server,
+            kind_key,
+            note_id,
+            ..
+        } = note_kind_test_context.await;
         let warning_version_id = insert_test_version(&db, note_id, 2, "unread").await;
         note_version::ActiveModel {
             id: Unchanged(warning_version_id),
