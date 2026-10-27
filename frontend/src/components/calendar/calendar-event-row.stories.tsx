@@ -147,6 +147,43 @@ export const DocumentAvailableWithoutSummary: Story = {
   },
 }
 
+export const UsSecFilingAvailable: Story = {
+  name: '米国決算の期末日が一致した 10-Q を資料リンクで表示します。',
+  args: {
+    country: 'US',
+    title: '架空電子',
+    stockId: 'US:FICT1',
+    earningsStatus: {
+      label: '資料あり / 実績未取得',
+      references: [
+        {
+          key: 'individual_document:sec:0900000001-99-000001',
+          title: 'SEC Form 10-Q',
+          source: 'sec',
+          checkedAt: '2030-01-01T00:00:00Z',
+          targetPeriodEnd: '2030-06-30',
+          targetPeriodType: '10-Q',
+          href: 'https://example.invalid/report.htm',
+          publicationEvidence: 'SEC submissions record',
+        },
+      ],
+    },
+  },
+}
+
+export const UsSecFilingUnconfirmed: Story = {
+  name: '米国決算の資料を未確認のまま表示します。',
+  args: {
+    country: 'US',
+    title: '架空計測',
+    stockId: 'US:FICT2',
+    earningsStatus: {
+      label: '実績・資料未取得 / 公表未確認',
+      references: [],
+    },
+  },
+}
+
 export const FutureEarningsWithUnmatchedDocument: Story = {
   name: '未来の決算で期が一致しない資料も発表予定とともに表示します。',
   args: {

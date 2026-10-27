@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_application::calendar::repository::CalendarEventRepositoryError;
+use core_application::sec_filing_reference::SecFilingReferenceTarget;
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::calendar_event::{
     CalendarEvent, CalendarEventCategory, CalendarEventReadModel, CalendarEventReference,
@@ -23,6 +24,7 @@ use super::{
 use crate::entities::{calendar_event, calendar_event_reference};
 
 const MAX_CONTEXT_ROWS_PER_QUERY: usize = 1_000;
+const MAX_PENDING_SEC_FILING_TARGETS: i64 = 500;
 
 #[derive(Debug, FromQueryResult)]
 struct CalendarEventReferenceRow {
@@ -68,6 +70,15 @@ struct FinancialSummaryMatchRow {
     document_type: Option<String>,
     current_period_type: Option<String>,
     current_period_end: Option<NaiveDate>,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct SecFilingTargetRow {
+    event_source: String,
+    event_external_id: String,
+    stock_id: String,
+    cik: String,
+    fiscal_period: String,
 }
 
 #[derive(Debug)]
@@ -172,6 +183,49 @@ pub(super) async fn list_references_for_event(
                 event_source.to_owned(),
                 event_external_id.to_owned(),
             )
+        })
+        .collect()
+}
+
+pub(super) async fn list_pending_sec_filing_targets(
+    repository: &PostgresCalendarEventRepository,
+    today: NaiveDate,
+) -> Result<Vec<SecFilingReferenceTarget>, CalendarEventRepositoryError> {
+    let rows = repository
+        .db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT e.source AS event_source, e.external_id AS event_external_id, \
+                    s.id AS stock_id, s.cik AS cik, e.fiscal_period AS fiscal_period \
+             FROM calendar_event e \
+             JOIN stock s ON s.id = e.stock_id \
+             WHERE e.source = 'alpha_vantage' AND e.country = 'US' \
+               AND e.category = 'earnings' \
+               AND e.event_date <= $1 AND e.fiscal_period IS NOT NULL \
+               AND e.stock_id LIKE 'US:%' \
+               AND s.cik ~ '^[0-9]{1,10}$' AND s.cik !~ '^0+$' \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM calendar_event_reference r \
+                   WHERE r.calendar_event_id = e.id \
+                     AND r.kind = 'individual_document' AND r.source = 'sec' \
+               ) \
+             ORDER BY e.event_date DESC, e.source, e.external_id \
+             LIMIT $2",
+            [today.into(), MAX_PENDING_SEC_FILING_TARGETS.into()],
+        ))
+        .await
+        .map_err(repository_error)?;
+
+    rows.iter()
+        .map(|row| {
+            let row = SecFilingTargetRow::from_query_result(row, "").map_err(repository_error)?;
+            Ok(SecFilingReferenceTarget {
+                event_source: row.event_source,
+                event_external_id: row.event_external_id,
+                stock_id: row.stock_id,
+                cik: row.cik,
+                fiscal_period: row.fiscal_period,
+            })
         })
         .collect()
 }

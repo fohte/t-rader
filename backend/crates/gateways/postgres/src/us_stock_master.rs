@@ -30,6 +30,7 @@ impl UsStockMasterRepository for PostgresUsStockMasterRepository {
                 id: Set(entry.id.as_str().to_owned()),
                 name: Set(entry.name.clone()),
                 market: Set(entry.exchange.clone()),
+                cik: Set(entry.cik.clone()),
                 product_category: Set(None),
                 created_at: Set(now),
                 updated_at: Set(now),
@@ -40,6 +41,7 @@ impl UsStockMasterRepository for PostgresUsStockMasterRepository {
                         .update_columns([
                             stock::Column::Name,
                             stock::Column::Market,
+                            stock::Column::Cik,
                             stock::Column::UpdatedAt,
                         ])
                         .to_owned(),

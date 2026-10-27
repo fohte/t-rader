@@ -737,6 +737,7 @@ comments:
       name: '銘柄名。'
       market: '日本株の市場区分名または外国株の取引所名。'
       product_category: '銘柄の商品区分コード。'
+      cik: 'SEC が割り当てた企業識別番号。'
   - table: valuation
     tableComment: '銘柄ごとの株価評価指標を日付別に保持する。'
     columnComments:

@@ -18,10 +18,12 @@ use core_application::llm_client::SharedLlmClient;
 use core_application::margin_source::SharedMarginSource;
 use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
+use core_application::sec_filing_source::SharedSecFilingSource;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::strategy_task::StrategyTaskReconcileLockUseCases;
 use core_application::tavily_credit_budget::TavilyCreditBudgetConfig;
+use core_application::us_stock_master_source::SharedUsStockMasterSource;
 use core_application::valuation_source::SharedValuationSource;
 use core_application::web_search::SharedWebSearchClient;
 use entrypoint_frontend_api::FrontendApiState;
@@ -61,7 +63,7 @@ use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
     cron_trigger_timer_enabled_from_env, eoddata_kospi_source_from_env,
     initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
-    us_stock_master_source,
+    sec_client,
 };
 
 const TAVILY_CREDIT_BUDGET_BOOTSTRAP_JOB: &str = "tavily_credit_budget_bootstrap";
@@ -330,7 +332,13 @@ async fn main() -> Result<(), StartupError> {
     } else {
         None
     };
-    let us_stock_master_source = us_stock_master_source(is_run_job, sec_user_agent)?;
+    let sec_client = sec_client(is_run_job, &redis_url, sec_user_agent)?;
+    let us_stock_master_source: Option<SharedUsStockMasterSource> = sec_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedUsStockMasterSource);
+    let sec_filing_source: Option<SharedSecFilingSource> = sec_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedSecFilingSource);
     let us_stock_bar_source = alpaca_us_stock_bar_source_from_env(is_run_job, &redis_url)?;
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
@@ -390,6 +398,8 @@ async fn main() -> Result<(), StartupError> {
         equity_master_source,
         us_stock_master: use_cases.us_stock_master(),
         us_stock_master_source,
+        sec_filing_references: use_cases.sec_filing_references(),
+        sec_filing_source,
         us_stock_bar_source,
         shareholding_structures: use_cases.shareholding_structures(),
         shareholding_structure_source,
@@ -589,8 +599,8 @@ fn tavily_credit_budget_config(
 mod tests {
     use rstest::rstest;
 
+    use super::sec_client;
     use super::tavily_credit_budget_config;
-    use super::us_stock_master_source;
 
     #[rstest]
     #[case::missing(None, false)]
@@ -614,9 +624,13 @@ mod tests {
 
     #[test]
     fn api_only_mode_does_not_validate_the_sec_user_agent() {
-        let result = us_stock_master_source(false, Some("invalid\nheader".to_owned()))
-            .map(|source| source.is_some())
-            .map_err(|error| error.to_string());
+        let result = sec_client(
+            false,
+            "invalid-redis-url",
+            Some("invalid\nheader".to_owned()),
+        )
+        .map(|source| source.is_some())
+        .map_err(|error| error.to_string());
 
         assert_eq!(result, Ok(false));
     }

@@ -49,6 +49,8 @@ pub mod refs;
 pub mod rss_feed;
 pub mod saved_screen;
 pub mod screener;
+pub mod sec_filing_reference;
+pub mod sec_filing_source;
 pub mod shareholding_structure;
 pub mod shareholding_structure_source;
 pub mod short_ratio;

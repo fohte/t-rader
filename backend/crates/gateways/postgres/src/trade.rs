@@ -164,6 +164,7 @@ impl TradeRepository for PostgresTradeRepository {
             product_category: Set(None),
             created_at: NotSet,
             updated_at: NotSet,
+            cik: NotSet,
         };
         // 並行 import が同じ銘柄を追加した場合は、一意制約違反を成功扱いにする。
         if let Err(error) = stock::Entity::insert(model).exec(transaction).await {

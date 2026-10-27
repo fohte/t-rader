@@ -27,6 +27,7 @@ fn stock_entry(code: &str, name: &str, exchange: &str) -> UsStockMasterEntry {
         id: ForeignStockId::new("US", code).expect("valid synthetic stock id"),
         name: name.to_owned(),
         exchange: Some(exchange.to_owned()),
+        cik: Some("900000001".to_owned()),
     }
 }
 
@@ -68,7 +69,7 @@ async fn upserts_registered_stocks_and_preserves_stocks_removed_from_the_list(
         .await
         .expect("stocks query succeeds")
         .into_iter()
-        .map(|item| (item.id, item.name, item.market))
+        .map(|item| (item.id, item.name, item.market, item.cik))
         .collect::<Vec<_>>();
     let instruments = instruments::Entity::find()
         .filter(instruments::Column::Id.is_in(ids))
@@ -90,16 +91,19 @@ async fn upserts_registered_stocks_and_preserves_stocks_removed_from_the_list(
                     "US:QZ7".to_owned(),
                     "同期後の名前".to_owned(),
                     Some("Updated Example Exchange".to_owned()),
+                    Some("900000001".to_owned()),
                 ),
                 (
                     "US:QZ8".to_owned(),
                     "一覧から消えた名前".to_owned(),
                     Some("Example Exchange".to_owned()),
+                    None,
                 ),
                 (
                     "US:QZ9".to_owned(),
                     "未登録の架空銘柄".to_owned(),
                     Some("Example Exchange".to_owned()),
+                    Some("900000001".to_owned()),
                 ),
             ],
             vec![

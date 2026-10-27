@@ -4,8 +4,18 @@ use core_application::calendar::{
     source::CalendarEventSource,
     use_cases::{CalendarEventIngestStats, CalendarEventUseCases},
 };
+use core_application::sec_filing_reference::{SecFilingReferenceStats, SecFilingReferenceUseCases};
+use core_application::sec_filing_source::SecFilingSource;
+use serde::Serialize;
+use std::sync::Arc;
 
-use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
+use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state, today_in_tokyo};
+
+#[derive(Serialize)]
+struct AlphaVantageCalendarIngestStats {
+    calendar_events: CalendarEventIngestStats,
+    sec_filing_references: Option<SecFilingReferenceStats>,
+}
 
 pub struct AlphaVantageCalendarIngest;
 
@@ -24,8 +34,17 @@ impl super::SchedulerJob for AlphaVantageCalendarIngest {
                         state.dependencies.alpha_vantage_calendar_source,
                         "Alpha Vantage calendar source",
                     )?;
-                    ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref())
-                        .await
+                    ingest_calendar_events(
+                        &state.dependencies.calendar_events,
+                        source.as_ref(),
+                        &state.dependencies.sec_filing_references,
+                        state
+                            .dependencies
+                            .sec_filing_source
+                            .as_ref()
+                            .map(Arc::as_ref),
+                    )
+                    .await
                 },
             )
             .await
@@ -36,15 +55,37 @@ impl super::SchedulerJob for AlphaVantageCalendarIngest {
 async fn ingest_calendar_events(
     use_cases: &CalendarEventUseCases,
     source: &dyn CalendarEventSource,
-) -> Result<CalendarEventIngestStats, String> {
-    let stats = use_cases
+    sec_filing_references: &SecFilingReferenceUseCases,
+    sec_filing_source: Option<&dyn SecFilingSource>,
+) -> Result<AlphaVantageCalendarIngestStats, String> {
+    let calendar_stats = use_cases
         .run_ingest_cycle(source, Utc::now().date_naive())
         .await
         .map_err(|error: CalendarEventUseCaseError| error.to_string())?;
     tracing::debug!(
-        upserted = stats.upserted,
-        deleted = stats.deleted,
+        upserted = calendar_stats.upserted,
+        deleted = calendar_stats.deleted,
         "Alpha Vantage calendar ingest cycle completed"
     );
-    Ok(stats)
+    let sec_stats = if let Some(source) = sec_filing_source {
+        let stats = sec_filing_references
+            .fetch_pending(source, today_in_tokyo(Utc::now()))
+            .await
+            .map_err(|error| error.to_string())?;
+        tracing::debug!(
+            events_checked = stats.events_checked,
+            companies_checked = stats.companies_checked,
+            external_failures = stats.external_failures,
+            references_upserted = stats.references_upserted,
+            budget_exhausted = stats.budget_exhausted,
+            "SEC filing reference fetch completed"
+        );
+        Some(stats)
+    } else {
+        None
+    };
+    Ok(AlphaVantageCalendarIngestStats {
+        calendar_events: calendar_stats,
+        sec_filing_references: sec_stats,
+    })
 }

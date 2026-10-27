@@ -360,6 +360,7 @@ pub async fn insert_test_stock(db: &impl ConnectionTrait, id: &str, name: &str) 
         name: Set(name.to_string()),
         market: Set(None),
         product_category: Set(None),
+        cik: Default::default(),
         created_at: NotSet,
         updated_at: NotSet,
     }

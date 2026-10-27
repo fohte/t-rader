@@ -34,6 +34,7 @@ impl EquityMasterRepository for PostgresEquityMasterRepository {
             name: Set(entry.name.clone()),
             market: Set(entry.market.clone()),
             product_category: Set(entry.product_category.clone()),
+            cik: NotSet,
             created_at: Set(now),
             updated_at: Set(now),
         });

@@ -126,10 +126,21 @@ function getEventTime(event: Event): { label: string; sortOrder: number } {
 }
 
 function matchesEventPeriod(reference: EventReference, event: Event): boolean {
+  if (
+    event.fiscal_period == null ||
+    reference.target_period_end !== event.fiscal_period
+  ) {
+    return false
+  }
+  if (event.country === 'US' && event.category === 'earnings') {
+    return (
+      reference.kind === 'individual_document' &&
+      (reference.target_period_type === '10-Q' ||
+        reference.target_period_type === '10-K')
+    )
+  }
   return (
-    event.fiscal_period != null &&
     event.fiscal_period_type != null &&
-    reference.target_period_end === event.fiscal_period &&
     reference.target_period_type === event.fiscal_period_type
   )
 }
