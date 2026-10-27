@@ -29,7 +29,7 @@ pub struct BlsMacroReferenceSource {
 
 impl BlsMacroReferenceSource {
     pub fn new(redis_url: &str) -> Result<Self, String> {
-        OfficialHttpClient::new(redis_url)
+        OfficialHttpClient::new(redis_url, "bls.gov")
             .map(|http| Self { http })
             .map_err(|error| error.to_string())
     }

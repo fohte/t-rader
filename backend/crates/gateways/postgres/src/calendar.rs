@@ -127,6 +127,15 @@ impl CalendarEventRepository for PostgresCalendarEventRepository {
         references::upsert_references(transaction, references).await
     }
 
+    async fn replace_macro_references_for_events(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        event_keys: Vec<(String, String)>,
+        references: Vec<CalendarEventReference>,
+    ) -> Result<usize, CalendarEventRepositoryError> {
+        references::replace_macro_references_for_events(transaction, event_keys, references).await
+    }
+
     async fn delete_missing_future_events(
         &self,
         transaction: &UnitOfWorkTransaction,

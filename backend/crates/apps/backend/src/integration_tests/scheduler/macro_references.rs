@@ -1,11 +1,18 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use chrono_tz::Asia::Tokyo;
 use core_application::calendar::macro_reference_targets::{
     MacroReferenceTarget, MacroReferenceTargetRepository, MacroReferenceTargetSelector,
 };
-use core_application::calendar::repository::CalendarEventRepository;
+use core_application::calendar::{
+    references::CalendarEventReferenceUseCases,
+    repository::{CalendarEventRepository, SharedCalendarEventRepository},
+};
 use core_application::unit_of_work::UnitOfWork;
-use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
+use core_domain::calendar_event::{
+    CalendarEvent, CalendarEventCategory, CalendarEventReference, CalendarEventReferenceKind,
+};
 use gateway_postgres::{
     PostgresCalendarEventRepository, PostgresUnitOfWork,
     entities::calendar_event_macro_reference_check,
@@ -174,5 +181,77 @@ async fn macro_reference_query_excludes_today_and_selects_previous_day_events(
             vec![expected_checked_at, expected_checked_at],
         ),
     );
+    Ok(())
+}
+
+#[backend_test_macros::database_test]
+async fn macro_reference_refresh_replaces_outdated_documents_with_the_listing(
+    db: gateway_postgres::DatabaseHandle,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let repository = Arc::new(PostgresCalendarEventRepository::new(db.clone()));
+    let unit_of_work = Arc::new(PostgresUnitOfWork::new(db));
+    let event = indicator_event(
+        "e_stat",
+        "sample-stat-code:209904080830",
+        "JP",
+        date(2099, 4, 8),
+        None,
+    );
+    let event_key = (event.source.clone(), event.external_id.clone());
+    let checked_at = DateTime::from_timestamp(1_735_689_600, 0)
+        .ok_or_else(|| std::io::Error::other("synthetic check timestamp is out of range"))?;
+    let previous_document = CalendarEventReference {
+        event_source: event.source.clone(),
+        event_external_id: event.external_id.clone(),
+        kind: CalendarEventReferenceKind::IndividualDocument,
+        source: "sample_source".to_owned(),
+        external_id: "sample-document".to_owned(),
+        title: "架空の個別資料".to_owned(),
+        url: Some("https://example.invalid/sample-document".to_owned()),
+        target_period_start: Some(date(2099, 1, 1)),
+        target_period_end: Some(date(2099, 1, 31)),
+        target_period_type: Some("month".to_owned()),
+        publication_evidence: Some("架空の公表記録".to_owned()),
+        publication_evidence_url: Some("https://example.invalid/sample-evidence".to_owned()),
+        checked_at,
+    };
+    let updated_listing = CalendarEventReference {
+        event_source: event.source.clone(),
+        event_external_id: event.external_id.clone(),
+        kind: CalendarEventReferenceKind::OfficialListing,
+        source: "sample_source".to_owned(),
+        external_id: "sample-official-listing".to_owned(),
+        title: "架空の公式一覧".to_owned(),
+        url: Some("https://example.invalid/sample-listing".to_owned()),
+        target_period_start: None,
+        target_period_end: None,
+        target_period_type: None,
+        publication_evidence: None,
+        publication_evidence_url: None,
+        checked_at,
+    };
+
+    let transaction = unit_of_work.begin().await?;
+    repository.upsert(&transaction, vec![event]).await?;
+    repository
+        .upsert_references(&transaction, vec![previous_document])
+        .await?;
+    unit_of_work.commit(transaction).await?;
+
+    let use_cases = CalendarEventReferenceUseCases::new(
+        repository.clone() as SharedCalendarEventRepository,
+        unit_of_work,
+    );
+    let actual = (
+        use_cases
+            .replace_macro_references_for_events(
+                vec![event_key.clone()],
+                vec![updated_listing.clone()],
+            )
+            .await?,
+        use_cases.list_for_event(&event_key.0, &event_key.1).await?,
+    );
+
+    assert_eq!(actual, (1, vec![updated_listing]));
     Ok(())
 }

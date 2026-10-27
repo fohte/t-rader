@@ -55,6 +55,42 @@ impl CalendarEventReferenceUseCases {
         self.unit_of_work.commit(transaction).await?;
         Ok(count)
     }
+
+    pub async fn replace_macro_references_for_events(
+        &self,
+        event_keys: Vec<(String, String)>,
+        references: Vec<CalendarEventReference>,
+    ) -> Result<usize, CalendarEventReferenceUseCaseError> {
+        if event_keys.is_empty() && references.is_empty() {
+            return Ok(0);
+        }
+        let event_keys = event_keys
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
+        if event_keys.is_empty()
+            || references.iter().any(|reference| {
+                !is_valid_reference(reference)
+                    || !event_keys.contains(&(
+                        reference.event_source.clone(),
+                        reference.event_external_id.clone(),
+                    ))
+            })
+        {
+            return Err(CalendarEventReferenceUseCaseError::InvalidReference);
+        }
+
+        let transaction = self.unit_of_work.begin().await?;
+        let count = self
+            .repository
+            .replace_macro_references_for_events(
+                &transaction,
+                event_keys.into_iter().collect(),
+                references,
+            )
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
+        Ok(count)
+    }
 }
 
 fn is_valid_reference(reference: &CalendarEventReference) -> bool {
@@ -153,6 +189,15 @@ mod tests {
         async fn upsert_references(
             &self,
             _transaction: &UnitOfWorkTransaction,
+            references: Vec<CalendarEventReference>,
+        ) -> Result<usize, CalendarEventRepositoryError> {
+            Ok(references.len())
+        }
+
+        async fn replace_macro_references_for_events(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _event_keys: Vec<(String, String)>,
             references: Vec<CalendarEventReference>,
         ) -> Result<usize, CalendarEventRepositoryError> {
             Ok(references.len())

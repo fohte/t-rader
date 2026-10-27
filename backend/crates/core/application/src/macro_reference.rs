@@ -77,6 +77,13 @@ impl MacroReferenceUseCases {
         for target_batch in targets.chunks(MAX_TARGETS_PER_FETCH) {
             let remaining = MAX_RUN_DURATION.saturating_sub(started_at.elapsed());
             if remaining.is_zero() {
+                tracing::warn!(
+                    event_source,
+                    target_count = target_batch.len(),
+                    elapsed_ms = started_at.elapsed().as_millis(),
+                    budget_ms = MAX_RUN_DURATION.as_millis(),
+                    "official macro reference lookup exceeded its time budget"
+                );
                 stats.budget_exhausted = true;
                 break;
             }
@@ -107,6 +114,13 @@ impl MacroReferenceUseCases {
             let fetched_by_source = match tokio::time::timeout(remaining, join_all(fetches)).await {
                 Ok(results) => results,
                 Err(_) => {
+                    tracing::warn!(
+                        event_source,
+                        target_count = target_batch.len(),
+                        elapsed_ms = started_at.elapsed().as_millis(),
+                        budget_ms = MAX_RUN_DURATION.as_millis(),
+                        "official macro reference lookup exceeded its time budget"
+                    );
                     stats.external_failures += target_batch.len();
                     stats.budget_exhausted = true;
                     break;
@@ -229,7 +243,19 @@ impl MacroReferenceUseCases {
                     checked_at,
                 })
                 .collect::<Vec<_>>();
-            stats.references_upserted += self.references.upsert(references).await?;
+            let event_keys = checked_targets
+                .iter()
+                .map(|target| {
+                    (
+                        target.event_source.clone(),
+                        target.event_external_id.clone(),
+                    )
+                })
+                .collect();
+            stats.references_upserted += self
+                .references
+                .replace_macro_references_for_events(event_keys, references)
+                .await?;
             self.targets
                 .mark_macro_reference_targets_checked(&checked_targets, checked_at)
                 .await?;
@@ -280,9 +306,14 @@ mod tests {
         async fn list_pending_macro_reference_targets(
             &self,
             _today: NaiveDate,
-            _selector: &MacroReferenceTargetSelector,
+            selector: &MacroReferenceTargetSelector,
         ) -> Result<Vec<MacroReferenceTarget>, CalendarEventRepositoryError> {
-            Ok(self.targets.clone())
+            Ok(self
+                .targets
+                .iter()
+                .filter(|target| target.event_source == selector.event_source)
+                .cloned()
+                .collect())
         }
 
         async fn mark_macro_reference_targets_checked(
@@ -345,6 +376,15 @@ mod tests {
             Ok(references.len())
         }
 
+        async fn replace_macro_references_for_events(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _event_keys: Vec<(String, String)>,
+            references: Vec<CalendarEventReference>,
+        ) -> Result<usize, CalendarEventRepositoryError> {
+            Ok(references.len())
+        }
+
         async fn delete_missing_future_events(
             &self,
             _transaction: &UnitOfWorkTransaction,
@@ -362,6 +402,7 @@ mod tests {
         failure_target: Option<String>,
         delay: Duration,
         supported_event_source: Option<String>,
+        supported_external_id_prefix: Option<String>,
     }
 
     #[async_trait]
@@ -370,6 +411,10 @@ mod tests {
             self.supported_event_source
                 .as_deref()
                 .is_none_or(|source| source == target.event_source)
+                && self
+                    .supported_external_id_prefix
+                    .as_deref()
+                    .is_none_or(|prefix| target.event_external_id.starts_with(prefix))
         }
 
         async fn fetch_references(
@@ -446,6 +491,7 @@ mod tests {
                 failure_target: None,
                 delay: Duration::ZERO,
                 supported_event_source: None,
+                supported_external_id_prefix: None,
             },
         );
 
@@ -474,23 +520,25 @@ mod tests {
     async fn each_target_uses_only_the_sources_that_support_it() {
         let first = target();
         let second = MacroReferenceTarget {
-            event_source: "sample_other_calendar".to_owned(),
-            event_external_id: "sample-other-event-2099-04-08".to_owned(),
+            event_source: "e_stat".to_owned(),
+            event_external_id: "sample-labor-event-2099-04-08".to_owned(),
             event_title: "架空の統計イベント".to_owned(),
             same_day_event_count: 1,
         };
         let sources: Vec<SharedMacroReferenceSource> = vec![
             Arc::new(FixedMacroSource {
                 failure: false,
-                failure_target: None,
+                failure_target: Some(second.event_external_id.clone()),
                 delay: Duration::ZERO,
                 supported_event_source: Some(first.event_source.clone()),
+                supported_external_id_prefix: Some("sample-event-".to_owned()),
             }),
             Arc::new(FixedMacroSource {
                 failure: false,
-                failure_target: None,
+                failure_target: Some(first.event_external_id.clone()),
                 delay: Duration::ZERO,
                 supported_event_source: Some(second.event_source.clone()),
+                supported_external_id_prefix: Some("sample-labor-event-".to_owned()),
             }),
         ];
         let (use_cases, repository) =
@@ -534,6 +582,7 @@ mod tests {
                 failure_target: None,
                 delay,
                 supported_event_source: None,
+                supported_external_id_prefix: None,
             },
         );
 
@@ -578,6 +627,7 @@ mod tests {
                 failure_target: Some(failure_target),
                 delay: Duration::ZERO,
                 supported_event_source: None,
+                supported_external_id_prefix: None,
             },
         );
 

@@ -96,7 +96,7 @@ mod tests {
     use chrono::NaiveDate;
     use core_domain::calendar_event::{
         CalendarEvent, CalendarEventCategory, CalendarEventReadModel, CalendarEventReference,
-        CalendarEventTimeOfDay,
+        CalendarEventReferenceKind, CalendarEventTimeOfDay,
     };
 
     #[derive(Default)]
@@ -284,6 +284,25 @@ mod tests {
                 .lock()
                 .expect("references lock")
                 .extend(references);
+            Ok(count)
+        }
+
+        async fn replace_macro_references_for_events(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            event_keys: Vec<(String, String)>,
+            references: Vec<CalendarEventReference>,
+        ) -> Result<usize, CalendarEventRepositoryError> {
+            let mut stored = self.references.lock().expect("references lock");
+            stored.retain(|reference| {
+                !event_keys.iter().any(|(source, external_id)| {
+                    reference.event_source == *source
+                        && reference.event_external_id == *external_id
+                        && reference.kind != CalendarEventReferenceKind::EarningsSummary
+                })
+            });
+            let count = references.len();
+            stored.extend(references);
             Ok(count)
         }
 

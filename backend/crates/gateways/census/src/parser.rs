@@ -43,11 +43,24 @@ pub(super) fn parse_archive_links(html: &str, base_url: &str) -> Option<Vec<Cens
                 Some(CensusArchiveLink {
                     title,
                     period_start,
-                    url: base.join(href).ok()?.to_string(),
+                    url: resolve_archive_url(&base, href)?,
                 })
             })
             .collect(),
     )
+}
+
+fn resolve_archive_url(base: &Url, href: &str) -> Option<String> {
+    let url = base.join(href).ok()?;
+    let host = url.host_str()?;
+    let base_host = base.host_str()?;
+    let is_census_host = host == "census.gov" || host.ends_with(".census.gov");
+    (url.scheme() == "https"
+        && url.port_or_known_default() == Some(443)
+        && url.username().is_empty()
+        && url.password().is_none()
+        && (host == base_host || is_census_host))
+        .then(|| url.to_string())
 }
 
 pub(super) fn parse_release_date_workbook(bytes: &[u8]) -> Option<Vec<NaiveDate>> {
@@ -396,6 +409,16 @@ mod tests {
         CensusArchiveLink, CensusPdfPublication, census_document, parse_archive_links,
         parse_pdf_text, parse_period_month, parse_release_date_rows, parse_release_date_workbook,
     };
+
+    #[test]
+    fn archive_parser_ignores_links_outside_the_source_domain() {
+        let html = r#"<a href="https://attacker.invalid/sample-report.pdf">Synthetic report</a>"#;
+
+        assert_eq!(
+            parse_archive_links(html, "https://example.invalid/archive"),
+            Some(Vec::new()),
+        );
+    }
 
     #[rstest]
     #[case::full_month("September 2099", Some("2099-09-01"))]

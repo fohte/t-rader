@@ -60,11 +60,21 @@ pub(super) fn parse_bls_archive_rows(
                 Some(BlsReleaseRow {
                     release_date,
                     title: link.text().collect::<String>().trim().to_owned(),
-                    url: base.join(href).ok()?.to_string(),
+                    url: resolve_official_url(&base, href)?,
                 })
             })
             .collect(),
     )
+}
+
+fn resolve_official_url(base: &Url, href: &str) -> Option<String> {
+    let url = base.join(href).ok()?;
+    (url.origin() == base.origin()
+        && url.scheme() == "https"
+        && url.port_or_known_default() == Some(443)
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then(|| url.to_string())
 }
 
 pub(super) fn parse_bls_publication(html: &str, release_id: &str) -> Option<BlsPublication> {
@@ -238,6 +248,15 @@ mod tests {
             event_title: "Synthetic release event".to_owned(),
             same_day_event_count: 1,
         }
+    }
+
+    #[test]
+    fn archive_parser_ignores_links_outside_the_source_origin() {
+        let html = r#"<a href="https://attacker.invalid/cpi_04082099.htm">Synthetic release</a>"#;
+        let actual = parse_bls_archive_rows(html, "https://example.invalid/archive", "10")
+            .map(|rows| rows.len());
+
+        assert_eq!(actual, Some(0));
     }
 
     #[rstest]

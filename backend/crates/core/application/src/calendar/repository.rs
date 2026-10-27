@@ -54,6 +54,13 @@ pub trait CalendarEventRepository: Send + Sync {
         references: Vec<CalendarEventReference>,
     ) -> Result<usize, CalendarEventRepositoryError>;
 
+    async fn replace_macro_references_for_events(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        event_keys: Vec<(String, String)>,
+        references: Vec<CalendarEventReference>,
+    ) -> Result<usize, CalendarEventRepositoryError>;
+
     async fn delete_missing_future_events(
         &self,
         transaction: &UnitOfWorkTransaction,
