@@ -2452,6 +2452,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gated_write_validates_references_before_saving_a_non_current_version() {
+        let body = indoc! {"
+            45,678円
+
+            [[graph:missing-chart]]
+        "};
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command(body),
+                vec![NoteBodyWarningDisposition {
+                    id: "price:45%2C678%E5%86%86:1".into(),
+                    reason: "架空の例外理由".into(),
+                }],
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        let inserted_versions = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (result, inserted_versions),
+            (
+                Err(indoc! {"
+                    ノートのトークンに問題があります:
+                    - 本文のトークン \"[[graph:missing-chart]]\": 対応する graphs[].id がありません
+                    許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。
+                "}
+                .trim_end()
+                .to_string()),
+                0,
+            ),
+        );
+    }
+
+    #[tokio::test]
     async fn gated_write_does_not_inherit_warning_dispositions_from_previous_version() {
         let mut previous_version = source_version();
         previous_version.warning_dispositions = vec![NoteWarningDispositionRecord {
