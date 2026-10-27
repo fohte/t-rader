@@ -10,31 +10,35 @@ use scraper::{Html, Selector};
 pub(super) struct OfficialReleaseRow {
     pub published_at: DateTime<FixedOffset>,
     pub title: String,
-    pub url: String,
+    pub url: Option<String>,
 }
 
 pub(super) fn parse_bea_rows(html: &str, base_url: &str) -> Option<Vec<OfficialReleaseRow>> {
     let document = Html::parse_document(html);
     let row_selector = Selector::parse("tr.release-row").ok()?;
-    let link_selector = Selector::parse("a[href]").ok()?;
     let time_selector = Selector::parse("time[datetime]").ok()?;
+    let link_selector = Selector::parse("a[href]").ok()?;
     let base = Url::parse(base_url).ok()?;
     Some(
         document
             .select(&row_selector)
             .filter_map(|row| {
-                let link = row.select(&link_selector).next()?;
-                let href = link.value().attr("href")?;
                 let datetime = row
                     .select(&time_selector)
                     .next()?
                     .value()
                     .attr("datetime")?;
                 let published_at = DateTime::parse_from_rfc3339(datetime).ok()?;
-                let url = resolve_official_url(&base, href)?;
+                let link = row.select(&link_selector).next();
+                let title = link
+                    .map(|link| link.text().collect::<String>().trim().to_owned())
+                    .unwrap_or_default();
+                let url = link
+                    .and_then(|link| link.value().attr("href"))
+                    .and_then(|href| resolve_official_url(&base, href));
                 Some(OfficialReleaseRow {
                     published_at,
-                    title: link.text().collect::<String>().trim().to_owned(),
+                    title,
                     url,
                 })
             })
@@ -62,6 +66,7 @@ pub(super) fn bea_document(
     if row.published_at.date_naive() != release_date {
         return None;
     }
+    let url = row.url.as_ref()?;
     let (period_start, period_end, period_type) = match release_id {
         "53" => parse_quarter(&row.title)?,
         "54" => parse_month(&row.title)?,
@@ -71,9 +76,9 @@ pub(super) fn bea_document(
         target: target.clone(),
         kind: CalendarEventReferenceKind::IndividualDocument,
         source: "bea".to_owned(),
-        external_id: row.url.clone(),
+        external_id: url.clone(),
         title: row.title.clone(),
-        url: Some(row.url.clone()),
+        url: Some(url.clone()),
         target_period_start: Some(period_start),
         target_period_end: Some(period_end),
         target_period_type: Some(period_type),
@@ -337,18 +342,36 @@ mod tests {
     }
 
     #[test]
-    fn bea_archive_ignores_document_links_outside_official_origin() {
+    fn bea_archive_keeps_rows_but_rejects_untrusted_document_urls() {
         let archive = indoc! {
             r#"
             <table><tbody>
               <tr class="release-row"><td><a href="https://attacker.invalid/release/sample.pdf">Synthetic release</a></td><td><time datetime="2099-04-08T08:30:00-04:00">Published</time></td></tr>
+              <tr class="release-row"><td><a href="https://attacker.invalid@example.invalid/release/sample.pdf">Synthetic release with credentials</a></td><td><time datetime="2099-04-08T08:30:00-04:00">Published</time></td></tr>
             </tbody></table>
             "#
         };
-        let actual =
-            parse_bea_rows(archive, "https://example.invalid/news/archive").map(|rows| rows.len());
+        let actual = parse_bea_rows(archive, "https://example.invalid/news/archive").map(|rows| {
+            rows.into_iter()
+                .map(|row| (row.published_at.to_rfc3339(), row.title, row.url))
+                .collect::<Vec<_>>()
+        });
 
-        assert_eq!(actual, Some(0));
+        assert_eq!(
+            actual,
+            Some(vec![
+                (
+                    "2099-04-08T08:30:00-04:00".to_owned(),
+                    "Synthetic release".to_owned(),
+                    None,
+                ),
+                (
+                    "2099-04-08T08:30:00-04:00".to_owned(),
+                    "Synthetic release with credentials".to_owned(),
+                    None,
+                ),
+            ]),
+        );
     }
 
     #[test]
@@ -365,7 +388,7 @@ mod tests {
             let row = OfficialReleaseRow {
                 published_at,
                 title: "Synthetic GDP release, 1st Quarter 2099".to_owned(),
-                url: "https://example.invalid/news/release-item".to_owned(),
+                url: Some("https://example.invalid/news/release-item".to_owned()),
             };
             bea_document(
                 &target,

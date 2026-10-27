@@ -35,16 +35,18 @@ pub(super) fn parse_customs_rows(html: &str, base_url: &str) -> Option<Vec<Japan
                 .filter_map(|link| {
                     let href = link.value().attr("href")?;
                     let is_document = href.to_ascii_lowercase().ends_with(".pdf");
-                    is_document.then(|| resolve_official_url(&base, href))?
+                    is_document.then(|| resolve_official_url(&base, href))
                 })
                 .collect::<Vec<_>>();
             Some(JapaneseReleaseRow {
                 publication_date,
                 period: parse_japanese_period(&period_text),
                 title: period_text,
-                url: (links.len() == 1)
-                    .then(|| links.into_iter().next())
-                    .flatten(),
+                url: if links.len() == 1 {
+                    links.into_iter().next().flatten()
+                } else {
+                    None
+                },
             })
         })
         .collect::<Vec<_>>();
@@ -234,12 +236,51 @@ mod tests {
             r#"
             <table><tbody>
               <tr><td>2099年4月</td><td>2099年5月8日</td><td><a href="https://attacker.invalid/archive/sample.pdf">資料</a></td></tr>
+              <tr><td>2099年5月</td><td>2099年5月8日</td><td><a href="https://attacker.invalid@example.invalid/archive/sample.pdf">資料</a></td></tr>
+              <tr><td>2099年6月</td><td>2099年5月8日</td><td><a href="/archive/allowed.pdf">資料</a><a href="https://attacker.invalid/archive/other.pdf">別資料</a></td></tr>
             </tbody></table>
             "#
         };
-        let actual = parse_customs_rows(html, "https://example.invalid/archive")
-            .map(|rows| rows.into_iter().map(|row| row.url).collect::<Vec<_>>());
+        let actual = parse_customs_rows(html, "https://example.invalid/archive").map(|rows| {
+            rows.into_iter()
+                .map(|row| (row.publication_date, row.period, row.title, row.url))
+                .collect::<Vec<_>>()
+        });
 
-        assert_eq!(actual, Some(vec![None]));
+        assert_eq!(
+            actual,
+            Some(vec![
+                (
+                    NaiveDate::from_ymd_opt(2099, 5, 8),
+                    Some((
+                        NaiveDate::from_ymd_opt(2099, 4, 1).unwrap_or(NaiveDate::MIN),
+                        NaiveDate::from_ymd_opt(2099, 4, 30).unwrap_or(NaiveDate::MIN),
+                        "month".to_owned(),
+                    )),
+                    "2099年4月".to_owned(),
+                    None,
+                ),
+                (
+                    NaiveDate::from_ymd_opt(2099, 5, 8),
+                    Some((
+                        NaiveDate::from_ymd_opt(2099, 5, 1).unwrap_or(NaiveDate::MIN),
+                        NaiveDate::from_ymd_opt(2099, 5, 31).unwrap_or(NaiveDate::MIN),
+                        "month".to_owned(),
+                    )),
+                    "2099年5月".to_owned(),
+                    None,
+                ),
+                (
+                    NaiveDate::from_ymd_opt(2099, 5, 8),
+                    Some((
+                        NaiveDate::from_ymd_opt(2099, 6, 1).unwrap_or(NaiveDate::MIN),
+                        NaiveDate::from_ymd_opt(2099, 6, 30).unwrap_or(NaiveDate::MIN),
+                        "month".to_owned(),
+                    )),
+                    "2099年6月".to_owned(),
+                    None,
+                ),
+            ]),
+        );
     }
 }

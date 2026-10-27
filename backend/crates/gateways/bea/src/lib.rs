@@ -134,7 +134,7 @@ fn result_for_matches(
     matching_row_count: usize,
     documents: Vec<MacroOfficialReference>,
 ) -> MacroReferenceFetchResult {
-    if !documents.is_empty() && documents.len() == matching_row_count {
+    if matching_row_count == 1 && documents.len() == 1 {
         MacroReferenceFetchResult::success(target.clone(), documents)
     } else {
         MacroReferenceFetchResult::success(
@@ -176,7 +176,7 @@ mod tests {
     use core_domain::calendar_event::CalendarEventReferenceKind;
     use rstest::rstest;
 
-    use super::{result_for_matches, supports_target};
+    use super::{listing_reference, result_for_matches, supports_target};
 
     fn target(event_source: &str, external_id: &str) -> MacroReferenceTarget {
         MacroReferenceTarget {
@@ -206,6 +206,7 @@ mod tests {
     #[rstest]
     #[case::past_scheduled_without_publication("53:2001-04-08", 0)]
     #[case::publication_record_without_document("53:2099-04-08", 1)]
+    #[case::multiple_publication_records("53:2099-04-08", 2)]
     fn missing_individual_publication_uses_the_official_archive(
         #[case] external_id: &str,
         #[case] matching_row_count: usize,
@@ -231,6 +232,33 @@ mod tests {
                     publication_evidence: None,
                     publication_evidence_url: None,
                 }],
+            ),
+        );
+    }
+
+    #[test]
+    fn multiple_official_publication_records_use_the_official_archive() {
+        let target = target("fred", "53:2099-04-08");
+        let archive_url = "https://example.invalid/news/archive";
+        let document = MacroOfficialReference {
+            target: target.clone(),
+            kind: CalendarEventReferenceKind::IndividualDocument,
+            source: "bea".to_owned(),
+            external_id: "https://example.invalid/news/sample.pdf".to_owned(),
+            title: "Synthetic GDP release".to_owned(),
+            url: Some("https://example.invalid/news/sample.pdf".to_owned()),
+            target_period_start: None,
+            target_period_end: None,
+            target_period_type: None,
+            publication_evidence: None,
+            publication_evidence_url: None,
+        };
+
+        assert_eq!(
+            result_for_matches(&target, "53", archive_url, 2, vec![document]),
+            MacroReferenceFetchResult::success(
+                target.clone(),
+                vec![listing_reference(&target, "53", archive_url)],
             ),
         );
     }

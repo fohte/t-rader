@@ -18,12 +18,17 @@ pub(crate) fn gdp_archive_url(year: i32) -> String {
     )
 }
 
+pub(crate) struct GdpArchiveParse {
+    pub matching_release_count: usize,
+    pub references: Vec<MacroOfficialReference>,
+}
+
 pub(crate) fn parse_gdp_archive(
     html: &str,
     archive_url: &str,
     target: &MacroReferenceTarget,
     expected_stat_code: &str,
-) -> Option<Vec<MacroOfficialReference>> {
+) -> Option<GdpArchiveParse> {
     let publication_date = target_publication_date(target, expected_stat_code)?;
     let document = Html::parse_document(html);
     let row_selector = Selector::parse("tr").ok()?;
@@ -31,6 +36,7 @@ pub(crate) fn parse_gdp_archive(
     let link_selector = Selector::parse("a[href]").ok()?;
     let base = Url::parse(archive_url).ok()?;
     let mut references = Vec::new();
+    let mut matching_release_count = 0;
 
     for row in document.select(&row_selector) {
         let cells = row.select(&cell_selector).collect::<Vec<_>>();
@@ -41,19 +47,29 @@ pub(crate) fn parse_gdp_archive(
         if row_date != publication_date {
             continue;
         }
+        matching_release_count += 1;
 
-        let period_cell = cells.get(1)?;
-        let period_text = element_text(period_cell);
-        let (period_start, period_end) = parse_gdp_quarter(&period_text)?;
-        let document_url = row.select(&link_selector).find_map(|link| {
-            let title = element_text(&link);
-            if !title.contains("結果の概要") {
-                return None;
-            }
-            resolve_document_url(&base, link.value().attr("href")?)
-        });
-        let Some(document_url) = document_url else {
+        let Some(period_cell) = cells.get(1) else {
             continue;
+        };
+        let period_text = element_text(period_cell);
+        let Some((period_start, period_end)) = parse_gdp_quarter(&period_text) else {
+            continue;
+        };
+        let document_candidates = row
+            .select(&link_selector)
+            .filter_map(|link| {
+                let title = element_text(&link);
+                title.contains("結果の概要").then(|| {
+                    link.value()
+                        .attr("href")
+                        .and_then(|href| resolve_document_url(&base, href))
+                })
+            })
+            .collect::<Vec<_>>();
+        let document_url = match document_candidates.as_slice() {
+            [Some(url)] => url.clone(),
+            _ => continue,
         };
 
         references.push(MacroOfficialReference {
@@ -73,7 +89,10 @@ pub(crate) fn parse_gdp_archive(
         });
     }
 
-    Some(references)
+    Some(GdpArchiveParse {
+        matching_release_count,
+        references,
+    })
 }
 
 fn parse_gdp_quarter(value: &str) -> Option<(NaiveDate, NaiveDate)> {
@@ -143,8 +162,8 @@ mod tests {
         let actual = parse_gdp_archive(archive, archive_url, &target, "sample-stat-code");
 
         assert_eq!(
-            actual,
-            Some(vec![
+            actual.map(|parsed| (parsed.matching_release_count, parsed.references)),
+            Some((2, vec![
                 MacroOfficialReference {
                     target: target.clone(),
                     kind: CalendarEventReferenceKind::IndividualDocument,
@@ -171,29 +190,45 @@ mod tests {
                     publication_evidence: Some("Official GDP archive row states publication date 2099-04-08 for 2098年10-12月期確報値".to_owned()),
                     publication_evidence_url: Some(archive_url.to_owned()),
                 },
-            ]),
+            ])),
         );
     }
 
     #[test]
-    fn gdp_archive_ignores_documents_outside_official_origin() {
+    fn gdp_archive_keeps_matching_rows_when_document_urls_are_untrusted() {
         let archive = indoc! {
             r#"
             <table><tbody>
-              <tr><td>2099年4月8日</td><td>2099年1-3月期2次推計値</td><td><a href="https://attacker.invalid/result/sample.pdf">結果の概要</a></td></tr>
+              <tr><td>2099年4月8日</td><td>2099年1-3月期2次推計値</td><td><a href="/result/allowed.pdf">結果の概要</a></td></tr>
+              <tr><td>2099年4月8日</td><td>2098年10-12月期確報値</td><td><a href="https://attacker.invalid/result/external.pdf">結果の概要</a></td></tr>
+              <tr><td>2099年4月8日</td><td>2098年7-9月期確報値</td><td><a href="https://attacker.invalid@example.invalid/result/credentialed.pdf">結果の概要</a></td></tr>
             </tbody></table>
             "#
         };
         let target = target("sample-stat-code", "209904080850");
+        let archive_url = "https://example.invalid/gdp/2099.html";
 
-        let actual = parse_gdp_archive(
-            archive,
-            "https://example.invalid/gdp/2099.html",
-            &target,
-            "sample-stat-code",
+        let actual = parse_gdp_archive(archive, archive_url, &target, "sample-stat-code");
+
+        assert_eq!(
+            actual.map(|parsed| (parsed.matching_release_count, parsed.references)),
+            Some((
+                3,
+                vec![MacroOfficialReference {
+                    target,
+                    kind: CalendarEventReferenceKind::IndividualDocument,
+                    source: "esri_jp".to_owned(),
+                    external_id: "https://example.invalid/result/allowed.pdf".to_owned(),
+                    title: "2099年1-3月期2次推計値".to_owned(),
+                    url: Some("https://example.invalid/result/allowed.pdf".to_owned()),
+                    target_period_start: NaiveDate::from_ymd_opt(2099, 1, 1),
+                    target_period_end: NaiveDate::from_ymd_opt(2099, 3, 31),
+                    target_period_type: Some("quarter".to_owned()),
+                    publication_evidence: Some("Official GDP archive row states publication date 2099-04-08 for 2099年1-3月期2次推計値".to_owned()),
+                    publication_evidence_url: Some(archive_url.to_owned()),
+                }],
+            )),
         );
-
-        assert_eq!(actual, Some(Vec::new()));
     }
 
     #[test]

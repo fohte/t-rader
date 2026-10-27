@@ -59,14 +59,14 @@ impl EsriMacroReferenceSource {
                     }
                 };
             for target in year_targets {
-                let references =
-                    parser::parse_gdp_archive(&html, &archive_url, &target, GDP_STAT_CODE)
-                        .unwrap_or_default();
-                results.push(individual_or_listing(
+                let parsed = parser::parse_gdp_archive(&html, &archive_url, &target, GDP_STAT_CODE);
+                let (matching_release_count, references) = parsed
+                    .map(|parsed| (parsed.matching_release_count, parsed.references))
+                    .unwrap_or_default();
+                results.push(gdp_individual_or_listing(
                     target,
+                    matching_release_count,
                     references,
-                    "gdp-release-listing",
-                    GDP_LISTING_URL,
                 ));
             }
         }
@@ -243,6 +243,23 @@ fn individual_or_listing(
     }
 }
 
+fn gdp_individual_or_listing(
+    target: MacroReferenceTarget,
+    matching_release_count: usize,
+    references: Vec<MacroOfficialReference>,
+) -> MacroReferenceFetchResult {
+    if references.len() != matching_release_count {
+        listing_result(
+            &target,
+            "gdp-release-listing",
+            "公式統計資料一覧",
+            GDP_LISTING_URL,
+        )
+    } else {
+        individual_or_listing(target, references, "gdp-release-listing", GDP_LISTING_URL)
+    }
+}
+
 fn listing_result(
     target: &MacroReferenceTarget,
     external_id: &str,
@@ -276,7 +293,7 @@ mod tests {
     };
     use core_domain::calendar_event::CalendarEventReferenceKind;
 
-    use super::{individual_or_listing, machinery_candidate_periods};
+    use super::{gdp_individual_or_listing, individual_or_listing, machinery_candidate_periods};
 
     #[test]
     fn machinery_candidates_include_the_two_months_before_the_release_date() {
@@ -339,6 +356,7 @@ mod tests {
                 "sample-listing",
                 "https://example.invalid/listing",
             ),
+            gdp_individual_or_listing(target.clone(), 2, vec![reference.clone()]),
         );
 
         assert_eq!(
@@ -356,7 +374,13 @@ mod tests {
                     "公式統計資料一覧",
                     "https://example.invalid/listing",
                 ),
-                MacroReferenceFetchResult::success(target, vec![reference]),
+                MacroReferenceFetchResult::success(target.clone(), vec![reference]),
+                super::listing_result(
+                    &target,
+                    "gdp-release-listing",
+                    "公式統計資料一覧",
+                    super::GDP_LISTING_URL,
+                ),
             ),
         );
     }

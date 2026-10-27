@@ -173,19 +173,19 @@ mod tests {
     }
 
     #[test]
-    fn machinery_index_ignores_release_pages_outside_official_origin() {
+    fn machinery_index_ignores_release_pages_with_untrusted_urls() {
         let index = indoc! {
             r#"
             <main>
               <a href="https://attacker.invalid/releases/sample-juchu.html">令和81年10月実績</a>
+              <a href="https://attacker.invalid@example.invalid/releases/sample-juchu.html">令和81年10月実績</a>
             </main>
             "#
         };
 
-        let actual = parse_machinery_index(index, "https://example.invalid/machinery/index.html")
-            .map(|pages| pages.len());
+        let actual = parse_machinery_index(index, "https://example.invalid/machinery/index.html");
 
-        assert_eq!(actual, Some(0));
+        assert_eq!(actual, Some(Vec::new()));
     }
 
     #[test]

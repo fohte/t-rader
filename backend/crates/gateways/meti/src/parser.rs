@@ -58,19 +58,19 @@ mod tests {
     }
 
     #[test]
-    fn archive_ignores_release_pages_outside_official_origin() {
+    fn archive_ignores_release_pages_with_untrusted_urls() {
         let archive = indoc! {
             r#"
             <table class="press-table"><tbody>
               <tr><td><a href="https://attacker.invalid/result/sample_209910sj.html">結果の概要</a></td></tr>
+              <tr><td><a href="https://attacker.invalid@example.invalid/result/sample_209910kj.html">結果の概要</a></td></tr>
             </tbody></table>
             "#
         };
 
-        let actual = parse_iip_archive(archive, "https://example.invalid/industrial/archive.html")
-            .map(|pages| pages.len());
+        let actual = parse_iip_archive(archive, "https://example.invalid/industrial/archive.html");
 
-        assert_eq!(actual, Some(0));
+        assert_eq!(actual, Some(Vec::new()));
     }
 
     #[test]
