@@ -71,13 +71,13 @@ impl NoteRepository for PostgresNoteRepository {
     ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
-        note_version::Entity::find()
+        let row = note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(note_id))
             .filter(note_version::Column::IsCurrent.eq(true))
             .one(transaction)
             .await
-            .map(|row| row.map(to_version))
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        row.map(to_version).transpose()
     }
 
     async fn find_latest_version(
@@ -87,13 +87,13 @@ impl NoteRepository for PostgresNoteRepository {
     ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
-        note_version::Entity::find()
+        let row = note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(note_id))
             .order_by_desc(note_version::Column::VersionNo)
             .one(transaction)
             .await
-            .map(|row| row.map(to_version))
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        row.map(to_version).transpose()
     }
 
     async fn find_latest_pending_versions_by_kind(
@@ -112,13 +112,13 @@ impl NoteRepository for PostgresNoteRepository {
     ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
-        note_version::Entity::find()
+        let row = note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(note_id))
             .filter(note_version::Column::VersionNo.eq(version_no))
             .one(transaction)
             .await
-            .map(|row| row.map(to_version))
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        row.map(to_version).transpose()
     }
 
     async fn supersede_pending_versions_before(
@@ -237,7 +237,7 @@ impl NoteRepository for PostgresNoteRepository {
     ) -> Result<NoteVersion, NoteRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
-        note_version::Entity::insert(note_version::ActiveModel {
+        let model = note_version::Entity::insert(note_version::ActiveModel {
             id: Set(version.id),
             note_id: Set(version.note_id),
             version_no: Set(version.version_no),
@@ -245,6 +245,8 @@ impl NoteRepository for PostgresNoteRepository {
             body_md: Set(version.body_md),
             frontmatter_json: Set(version.frontmatter_json),
             graphs_json: Set(version.graphs_json),
+            warning_dispositions_json: Set(serde_json::to_value(version.warning_dispositions)
+                .map_err(|error| NoteRepositoryError::InvalidData(error.to_string()))?),
             resolved_price_references_json: Set(version.resolved_price_references_json),
             status: Set(version.status),
             is_current: Set(version.is_current),
@@ -256,8 +258,8 @@ impl NoteRepository for PostgresNoteRepository {
         })
         .exec_with_returning(transaction)
         .await
-        .map(to_version)
-        .map_err(repository_error)
+        .map_err(repository_error)?;
+        to_version(model)
     }
 
     async fn update_version(
@@ -280,7 +282,7 @@ impl NoteRepository for PostgresNoteRepository {
         .update(transaction)
         .await
         .map_err(repository_error)?;
-        Ok(to_version(updated))
+        to_version(updated)
     }
 
     async fn update_note_timestamp(
@@ -426,13 +428,82 @@ impl NoteRepository for PostgresNoteRepository {
 
 #[cfg(test)]
 mod tests {
-    use core_application::note::{NewNote, NewNoteVersion, NoteRepository, NoteVersion};
+    use core_application::note::{
+        NewNote, NewNoteVersion, NoteRepository, NoteVersion, NoteWarningDispositionLocation,
+        NoteWarningDispositionRecord,
+    };
     use core_application::unit_of_work::{UnitOfWork, UnitOfWorkTransaction};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
     use uuid::Uuid;
 
     use super::PostgresNoteRepository;
+
+    #[backend_test_macros::database_test]
+    async fn insert_version_round_trips_warning_dispositions_in_its_transaction(
+        db: crate::DatabaseHandle,
+    ) {
+        let repository = PostgresNoteRepository::new();
+        let unit_of_work = crate::unit_of_work::PostgresUnitOfWork::new(db);
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        let note_id = Uuid::new_v4();
+        repository
+            .insert_note(
+                &transaction,
+                NewNote {
+                    id: note_id,
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                    execution_id: None,
+                },
+            )
+            .await
+            .expect("insert note")
+            .expect("note inserted");
+        let expected = vec![NoteWarningDispositionRecord {
+            warning_id: "price:12%2C345%E5%86%86:1".into(),
+            value: "12,345円".into(),
+            location: NoteWarningDispositionLocation::Body { start: 0, end: 9 },
+            reason: "sample reason".into(),
+        }];
+        let inserted = repository
+            .insert_version(
+                &transaction,
+                NewNoteVersion {
+                    id: Uuid::new_v4(),
+                    note_id,
+                    version_no: 1,
+                    title: "Sample version".into(),
+                    body_md: "12,345円".into(),
+                    frontmatter_json: serde_json::json!({}),
+                    graphs_json: serde_json::json!([]),
+                    resolved_price_references_json: serde_json::json!({}),
+                    warning_dispositions: expected.clone(),
+                    status: "unread".into(),
+                    is_current: false,
+                    change_reason: None,
+                    created_by_kind: "llm".into(),
+                    execution_id: None,
+                },
+            )
+            .await
+            .expect("insert note version");
+        let read = repository
+            .find_version_by_number(&transaction, note_id, 1)
+            .await
+            .expect("read note version")
+            .expect("note version exists");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit transaction");
+
+        assert_eq!(
+            (inserted.warning_dispositions, read.warning_dispositions,),
+            (expected.clone(), expected),
+        );
+    }
 
     #[backend_test_macros::database_test]
     async fn find_latest_pending_versions_by_kind_returns_latest_unread_per_note(
@@ -605,6 +676,7 @@ mod tests {
                     frontmatter_json: serde_json::json!({}),
                     graphs_json: serde_json::json!([]),
                     resolved_price_references_json: serde_json::json!({}),
+                    warning_dispositions: Vec::new(),
                     status: status.to_string(),
                     is_current,
                     change_reason: None,

@@ -6,7 +6,9 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
-use crate::note::types::{NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate};
+use crate::note::types::{
+    NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate, NoteWarningDispositionRecord,
+};
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -21,6 +23,7 @@ pub(super) struct AppendVersionCommand {
     pub body_md: String,
     pub frontmatter_json: Value,
     pub graphs_json: Value,
+    pub warning_dispositions: Vec<NoteWarningDispositionRecord>,
     pub created_by_kind: String,
     pub execution_id: Option<String>,
     pub change_reason: Option<String>,
@@ -141,6 +144,7 @@ impl NoteUseCases {
                     frontmatter_json: content.frontmatter_json,
                     graphs_json: content.graphs_json,
                     resolved_price_references_json,
+                    warning_dispositions: content.warning_dispositions,
                     status: status.to_string(),
                     is_current: becomes_current,
                     change_reason: content.change_reason,

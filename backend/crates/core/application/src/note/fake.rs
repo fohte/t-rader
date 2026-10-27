@@ -44,6 +44,7 @@ impl FakeNoteReadQuery {
                 frontmatter_json: json!({}),
                 graphs_json: json!([]),
                 resolved_price_references_json: json!({}),
+                warning_dispositions: Vec::new(),
                 status: "approved".into(),
                 is_current: true,
                 change_reason: None,

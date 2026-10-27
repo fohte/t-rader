@@ -157,11 +157,8 @@ fn required_version(
     versions: &HashMap<Uuid, note_version::Model>,
     version_id: Uuid,
 ) -> Result<core_application::note::NoteVersion, NoteReadQueryError> {
-    versions
-        .get(&version_id)
-        .cloned()
-        .map(to_version)
-        .ok_or_else(|| {
-            NoteReadQueryError::InvalidData(format!("note version {version_id} not found"))
-        })
+    let version = versions.get(&version_id).cloned().ok_or_else(|| {
+        NoteReadQueryError::InvalidData(format!("note version {version_id} not found"))
+    })?;
+    to_version(version)
 }

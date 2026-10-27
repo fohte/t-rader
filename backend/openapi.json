@@ -12259,6 +12259,7 @@
           "body_md",
           "frontmatter_json",
           "resolved_price_references_json",
+          "warning_dispositions",
           "graphs_json",
           "status",
           "is_current",
@@ -12328,6 +12329,12 @@
           "version_no": {
             "type": "integer",
             "format": "int32"
+          },
+          "warning_dispositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WarningDispositionResponse"
+            }
           }
         }
       },
@@ -15077,6 +15084,85 @@
         "additionalProperties": false
       },
       "Value": {},
+      "WarningDispositionLocationResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "start",
+              "end",
+              "kind"
+            ],
+            "properties": {
+              "end": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "body"
+                ]
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "path",
+              "start",
+              "end",
+              "kind"
+            ],
+            "properties": {
+              "end": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "graph"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "WarningDispositionResponse": {
+        "type": "object",
+        "required": [
+          "warning_id",
+          "value",
+          "location",
+          "reason"
+        ],
+        "properties": {
+          "location": {
+            "$ref": "#/components/schemas/WarningDispositionLocationResponse"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "warning_id": {
+            "type": "string"
+          }
+        }
+      },
       "WidgetAggregationRequest": {
         "type": "string",
         "enum": [

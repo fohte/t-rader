@@ -38,6 +38,7 @@ const historicalVersion: NoteVersion = {
   body_md: rawBody,
   frontmatter_json: {},
   resolved_price_references_json: {},
+  warning_dispositions: [],
   graphs_json: [],
   status: 'approved',
   created_by_kind: 'human',

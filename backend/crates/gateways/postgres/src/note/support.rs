@@ -33,8 +33,8 @@ pub(super) fn to_note(model: note::Model) -> Note {
     }
 }
 
-pub(super) fn to_version(model: note_version::Model) -> NoteVersion {
-    NoteVersion {
+pub(super) fn to_version(model: note_version::Model) -> Result<NoteVersion, NoteRepositoryError> {
+    Ok(NoteVersion {
         id: model.id,
         note_id: model.note_id,
         version_no: model.version_no,
@@ -43,6 +43,8 @@ pub(super) fn to_version(model: note_version::Model) -> NoteVersion {
         frontmatter_json: model.frontmatter_json,
         graphs_json: model.graphs_json,
         resolved_price_references_json: model.resolved_price_references_json,
+        warning_dispositions: serde_json::from_value(model.warning_dispositions_json)
+            .map_err(|error| NoteRepositoryError::InvalidData(error.to_string()))?,
         status: model.status,
         is_current: model.is_current,
         change_reason: model.change_reason,
@@ -50,5 +52,5 @@ pub(super) fn to_version(model: note_version::Model) -> NoteVersion {
         execution_id: model.execution_id,
         created_at: model.created_at,
         reviewed_at: model.reviewed_at,
-    }
+    })
 }

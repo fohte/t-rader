@@ -181,6 +181,7 @@ mod tests {
                     "body_md": anchored_body,
                     "frontmatter_json": {},
                     "resolved_price_references_json": {},
+                    "warning_dispositions": [],
                     "graphs_json": [],
                     "status": "rejected",
                     "is_current": true,

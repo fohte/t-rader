@@ -57,9 +57,8 @@ pub(super) async fn find_latest_pending_versions_by_kind(
         .await
         .map_err(repository_error)?;
     let mut seen_note_ids = std::collections::HashSet::new();
-    Ok(rows
-        .into_iter()
+    rows.into_iter()
         .filter(|row| seen_note_ids.insert(row.note_id))
         .map(to_version)
-        .collect())
+        .collect()
 }

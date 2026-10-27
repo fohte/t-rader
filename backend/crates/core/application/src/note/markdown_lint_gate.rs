@@ -1,15 +1,19 @@
 use std::collections::HashSet;
 
 use core_domain::markdown_lint::{Disposition, LintReport, Severity, evaluate_dispositions};
-use core_domain::note_body_warning::{NoteBodyWarning, scan_graph_warnings_with_ids};
+use core_domain::note_body_warning::{NoteBodyWarning, scan_graph_warning_findings_with_ids};
 
 use crate::markdown_lint::AGENT_NOTE_WRITE;
-use crate::note::types::{NoteBodyWarningDisposition, NoteWriteResult};
+use crate::note::types::{
+    NoteBodyWarningDisposition, NoteWarningDispositionLocation, NoteWarningDispositionRecord,
+    NoteWriteResult,
+};
 use crate::note::{NoteUseCaseError, NoteUseCases};
 
 pub(super) struct CheckedLintOutcome {
     report: LintReport,
     warnings: Vec<NoteBodyWarning>,
+    pub(super) accepted_dispositions: Vec<NoteWarningDispositionRecord>,
 }
 
 impl NoteUseCases {
@@ -39,7 +43,11 @@ impl NoteUseCases {
                 message: diagnostic.message.clone(),
             })
             .collect::<Vec<_>>();
-        let graph_warnings = scan_graph_warnings_with_ids(&graphs, &body_warnings);
+        let graph_warning_findings = scan_graph_warning_findings_with_ids(&graphs, &body_warnings);
+        let graph_warnings = graph_warning_findings
+            .iter()
+            .map(|finding| finding.warning.clone())
+            .collect::<Vec<_>>();
         let graph_warning_ids = graph_warnings
             .iter()
             .map(|warning| warning.id.clone())
@@ -73,7 +81,66 @@ impl NoteUseCases {
             });
         }
 
-        Ok(Some(CheckedLintOutcome { report, warnings }))
+        let accepted_reasons = evaluation
+            .accepted_dispositions
+            .into_iter()
+            .map(|disposition| (disposition.warning_id, disposition.reason))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut accepted_dispositions = Vec::new();
+        for diagnostic in report
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity == Severity::Warning)
+        {
+            let Some(reason) = accepted_reasons.get(&diagnostic.id) else {
+                continue;
+            };
+            let value = body_md
+                .get(diagnostic.range.clone())
+                .ok_or_else(|| {
+                    NoteUseCaseError::Validation(format!(
+                        "warning range is outside note body: {}..{}",
+                        diagnostic.range.start, diagnostic.range.end
+                    ))
+                })?
+                .to_string();
+            accepted_dispositions.push(NoteWarningDispositionRecord {
+                warning_id: diagnostic.id.clone(),
+                value,
+                location: NoteWarningDispositionLocation::Body {
+                    start: diagnostic.range.start,
+                    end: diagnostic.range.end,
+                },
+                reason: reason.clone(),
+            });
+        }
+        for finding in graph_warning_findings {
+            let Some(reason) = accepted_reasons.get(&finding.warning.id) else {
+                continue;
+            };
+            let path = finding.path.ok_or_else(|| {
+                NoteUseCaseError::Validation(format!(
+                    "graph warning has no source path: {}",
+                    finding.warning.id
+                ))
+            })?;
+            accepted_dispositions.push(NoteWarningDispositionRecord {
+                warning_id: finding.warning.id,
+                value: finding.value,
+                location: NoteWarningDispositionLocation::Graph {
+                    path,
+                    start: finding.range.start,
+                    end: finding.range.end,
+                },
+                reason: reason.clone(),
+            });
+        }
+
+        Ok(Some(CheckedLintOutcome {
+            report,
+            warnings,
+            accepted_dispositions,
+        }))
     }
 }
 
