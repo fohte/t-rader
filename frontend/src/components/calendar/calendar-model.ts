@@ -216,8 +216,10 @@ function buildEarningsStatus(
 }
 
 function buildIndicatorStatus(
-  references: EventReference[],
+  event: Event,
+  today: string,
 ): CalendarIndicatorStatus {
+  const references = event.references
   const individualDocuments = references.filter(
     (reference) =>
       reference.kind === 'individual_document' && reference.url != null,
@@ -233,9 +235,11 @@ function buildIndicatorStatus(
     label:
       individualDocuments.length > 0
         ? '個別資料あり'
-        : listings.length > 0
-          ? '公式一覧 / 個別資料未確認'
-          : '遷移先未確認 / 非リンク',
+        : event.event_date >= today
+          ? '発表予定'
+          : listings.length > 0
+            ? '公式一覧 / 個別資料未確認'
+            : '遷移先未確認 / 非リンク',
     references: selectedReferences.map(toIndicatorReferenceView),
   }
 }
@@ -349,7 +353,7 @@ function buildEventRow(
         ? { earningsStatus: buildEarningsStatus(event, today) }
         : {}),
       ...(event.category === 'indicator'
-        ? { indicatorStatus: buildIndicatorStatus(event.references) }
+        ? { indicatorStatus: buildIndicatorStatus(event, today) }
         : {}),
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',

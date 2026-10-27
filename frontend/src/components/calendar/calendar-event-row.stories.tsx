@@ -109,6 +109,16 @@ const indicatorListingStatus: CalendarIndicatorStatus = {
   ],
 }
 
+const indicatorScheduledStatus: CalendarIndicatorStatus = {
+  label: '発表予定',
+  references: [],
+}
+
+const indicatorScheduledWithListingStatus: CalendarIndicatorStatus = {
+  label: '発表予定',
+  references: indicatorListingStatus.references,
+}
+
 const indicatorDestinationUnconfirmedStatus: CalendarIndicatorStatus = {
   label: '遷移先未確認 / 非リンク',
   references: [],
@@ -364,6 +374,21 @@ export const IndicatorDestinationUnconfirmedMobile: Story = {
   },
 }
 
+export const IndicatorScheduledWithListingMobile: Story = {
+  name: '390px 幅で発表予定と公式一覧へのリンクを表示します。',
+  ...mobileCalendarViewport,
+  args: {
+    time: '09:00',
+    country: 'JP',
+    category: '指標',
+    title: '架空生産指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorScheduledWithListingStatus,
+  },
+}
+
 export const IndicatorDocumentAvailableDesktop: Story = {
   name: 'デスクトップ幅で個別資料へのリンクを表示します。',
   args: {
@@ -417,5 +442,19 @@ export const IndicatorDestinationUnconfirmedDesktop: Story = {
     emphasized: false,
     target: false,
     indicatorStatus: indicatorDestinationUnconfirmedStatus,
+  },
+}
+
+export const IndicatorScheduledDesktop: Story = {
+  name: 'デスクトップ幅で発表予定の指標をリンクなしで表示します。',
+  args: {
+    time: '09:00',
+    country: 'US',
+    category: '指標',
+    title: '架空雇用指標',
+    stockId: undefined,
+    emphasized: false,
+    target: false,
+    indicatorStatus: indicatorScheduledStatus,
   },
 }

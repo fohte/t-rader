@@ -13,6 +13,7 @@ const TODAY = '2099-01-07'
 function makeIndicator(
   country: 'JP' | 'US',
   references: EventReference[],
+  eventDate = EVENT_DATE,
 ): Event {
   return {
     kind: 'event',
@@ -25,7 +26,7 @@ function makeIndicator(
     fiscal_period: null,
     fiscal_period_type: null,
     has_matching_earnings_summary: false,
-    event_date: EVENT_DATE,
+    event_date: eventDate,
     event_at: null,
     time_of_day: null,
     references,
@@ -131,6 +132,8 @@ describe('buildCalendarDays indicator references', () => {
       name: 'unconfirmed destination',
       country: 'JP' as const,
       references: [],
+      eventDate: EVENT_DATE,
+      dayLabel: '1/6 (火)',
       label: '遷移先未確認 / 非リンク',
       expectedReferences: [],
     },
@@ -138,18 +141,54 @@ describe('buildCalendarDays indicator references', () => {
       name: 'document without a destination',
       country: 'US' as const,
       references: [documentWithoutUrl],
+      eventDate: EVENT_DATE,
+      dayLabel: '1/6 (火)',
       label: '遷移先未確認 / 非リンク',
       expectedReferences: [],
     },
+    {
+      name: 'publication scheduled for today',
+      country: 'JP' as const,
+      references: [],
+      eventDate: TODAY,
+      dayLabel: '1/7 (水)',
+      label: '発表予定',
+      expectedReferences: [],
+    },
+    {
+      name: 'future publication without individual document',
+      country: 'US' as const,
+      references: [],
+      eventDate: '2099-01-08',
+      dayLabel: '1/8 (木)',
+      label: '発表予定',
+      expectedReferences: [],
+    },
+    {
+      name: 'future publication with an official listing',
+      country: 'JP' as const,
+      references: [officialListing],
+      eventDate: '2099-01-08',
+      dayLabel: '1/8 (木)',
+      label: '発表予定',
+      expectedReferences: referenceViews.listing,
+    },
   ])(
     'shows $name status for $country indicators',
-    ({ country, references, label, expectedReferences }) => {
-      const event = makeIndicator(country, references)
+    ({
+      country,
+      references,
+      eventDate = EVENT_DATE,
+      dayLabel = '1/6 (火)',
+      label,
+      expectedReferences,
+    }) => {
+      const event = makeIndicator(country, references, eventDate)
 
       expect(buildCalendarDays([event], 'all', undefined, TODAY)).toEqual([
         {
-          date: EVENT_DATE,
-          label: '1/6 (火)',
+          date: eventDate,
+          label: dayLabel,
           rows: [
             {
               key: 'sample-indicator-event',
