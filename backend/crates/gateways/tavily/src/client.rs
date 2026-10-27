@@ -323,31 +323,37 @@ struct ExtractFailure {
 #[cfg(test)]
 mod tests {
     use reqwest::StatusCode;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use serde_json::json;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
 
-    async fn client_with_usage_response(body: serde_json::Value) -> (MockServer, TavilyClient) {
-        let mock = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/usage"))
-            .and(header("authorization", "Bearer fake-tavily-key"))
-            .respond_with(ResponseTemplate::new(StatusCode::OK).set_body_json(body))
-            .mount(&mock)
-            .await;
+    struct UsageMockServer(MockServer);
 
-        let client = TavilyClient::with_endpoints(
-            format!("{}/search", mock.uri()),
-            format!("{}/extract", mock.uri()),
-            format!("{}/usage", mock.uri()),
-            "fake-tavily-key",
-        )
-        .expect("build client");
+    impl UsageMockServer {
+        async fn client_with_response(&self, body: serde_json::Value) -> TavilyClient {
+            Mock::given(method("GET"))
+                .and(path("/usage"))
+                .and(header("authorization", "Bearer fake-tavily-key"))
+                .respond_with(ResponseTemplate::new(StatusCode::OK).set_body_json(body))
+                .mount(&self.0)
+                .await;
 
-        (mock, client)
+            TavilyClient::with_endpoints(
+                format!("{}/search", self.0.uri()),
+                format!("{}/extract", self.0.uri()),
+                format!("{}/usage", self.0.uri()),
+                "fake-tavily-key",
+            )
+            .expect("build client")
+        }
+    }
+
+    #[fixture]
+    async fn usage_mock_server() -> UsageMockServer {
+        UsageMockServer(MockServer::start().await)
     }
 
     #[test]
@@ -605,10 +611,12 @@ mod tests {
     )]
     #[tokio::test]
     async fn account_usage_reads_account_totals(
+        #[future] usage_mock_server: UsageMockServer,
         #[case] body: serde_json::Value,
         #[case] expected: WebSearchAccountUsage,
     ) {
-        let (_mock, client) = client_with_usage_response(body).await;
+        let usage_mock_server = usage_mock_server.await;
+        let client = usage_mock_server.client_with_response(body).await;
 
         assert_eq!(client.account_usage().await, Ok(expected));
     }
@@ -645,13 +653,18 @@ mod tests {
     }))]
     #[tokio::test]
     async fn account_usage_rejects_missing_or_invalid_account_fields(
+        #[future] usage_mock_server: UsageMockServer,
         #[case] body: serde_json::Value,
     ) {
-        let (_mock, client) = client_with_usage_response(body).await;
+        let usage_mock_server = usage_mock_server.await;
+        let client = usage_mock_server.client_with_response(body).await;
 
-        assert_eq!(
-            client.account_usage().await.map_err(|_| "usage error"),
-            Err("usage error"),
-        );
+        let actual = match client.account_usage().await {
+            Ok(_) => "success",
+            Err(WebSearchError::Usage(_)) => "usage error",
+            Err(_) => "other error",
+        };
+
+        assert_eq!(actual, "usage error");
     }
 }
