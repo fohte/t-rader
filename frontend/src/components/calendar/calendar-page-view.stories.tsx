@@ -143,6 +143,7 @@ const meta = {
   parameters: { layout: 'fullscreen' },
   args: {
     calendar: { from: weekRange.from, to: weekRange.to, events },
+    today: '2099-01-07',
     weekRange,
     strategies,
     selectedStrategyId: STRATEGY_ID,
@@ -184,6 +185,34 @@ export const Loading: Story = {
 export const Empty: Story = {
   name: '選択した週に予定がありません。',
   args: { calendar: { from: weekRange.from, to: weekRange.to, events: [] } },
+}
+
+export const UpcomingEarnings: Story = {
+  name: '未来の決算予定を発表予定として表示します。',
+  args: {
+    today: '2099-01-05',
+    calendar: {
+      from: weekRange.from,
+      to: weekRange.to,
+      events: [
+        {
+          ...EVENT_REFERENCE_DEFAULTS,
+          kind: 'event',
+          source: 'jquants',
+          external_id: 'sample-upcoming-earnings',
+          category: 'earnings',
+          country: 'JP',
+          title: '架空工業',
+          stock_id: '0000',
+          fiscal_period: '2099-06-30',
+          fiscal_period_type: '2Q',
+          event_date: '2099-01-06',
+          event_at: null,
+          time_of_day: 'post_market',
+        },
+      ],
+    },
+  },
 }
 
 export const Error: Story = {

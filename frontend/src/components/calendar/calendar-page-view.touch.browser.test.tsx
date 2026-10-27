@@ -127,6 +127,7 @@ function CalendarRoute({ scenario }: { scenario: Scenario }) {
   return (
     <CalendarPageView
       calendar={{ ...WEEK_RANGE, events: [createSummary(scenario)] }}
+      today="2099-01-07"
       weekRange={WEEK_RANGE}
       strategies={[]}
       selectedStrategyId={undefined}

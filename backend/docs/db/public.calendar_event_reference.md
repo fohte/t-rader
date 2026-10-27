@@ -26,22 +26,23 @@
 
 ## Constraints
 
-| Name                                                | Type        | Definition                                                                                                           |
-| --------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
-| calendar_event_reference_calendar_event_id_not_null | n           | NOT NULL calendar_event_id                                                                                           |
-| calendar_event_reference_checked_at_not_null        | n           | NOT NULL checked_at                                                                                                  |
-| calendar_event_reference_created_at_not_null        | n           | NOT NULL created_at                                                                                                  |
-| calendar_event_reference_document_evidence_check    | CHECK       | CHECK (((kind <> 'individual_document'::text) OR (publication_evidence IS NOT NULL)))                                |
-| calendar_event_reference_external_id_not_null       | n           | NOT NULL external_id                                                                                                 |
-| calendar_event_reference_id_not_null                | n           | NOT NULL id                                                                                                          |
-| calendar_event_reference_kind_check                 | CHECK       | CHECK ((kind = ANY (ARRAY['earnings_summary'::text, 'individual_document'::text, 'official_listing'::text])))        |
-| calendar_event_reference_kind_not_null              | n           | NOT NULL kind                                                                                                        |
-| calendar_event_reference_period_range_check         | CHECK       | CHECK (((target_period_start IS NULL) OR (target_period_end IS NULL) OR (target_period_start <= target_period_end))) |
-| calendar_event_reference_source_not_null            | n           | NOT NULL source                                                                                                      |
-| calendar_event_reference_title_not_null             | n           | NOT NULL title                                                                                                       |
-| calendar_event_reference_updated_at_not_null        | n           | NOT NULL updated_at                                                                                                  |
-| fk_calendar_event_reference_event                   | FOREIGN KEY | FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE                                      |
-| calendar_event_reference_pkey                       | PRIMARY KEY | PRIMARY KEY (id)                                                                                                     |
+| Name                                                | Type        | Definition                                                                                                                |
+| --------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| calendar_event_reference_calendar_event_id_not_null | n           | NOT NULL calendar_event_id                                                                                                |
+| calendar_event_reference_checked_at_not_null        | n           | NOT NULL checked_at                                                                                                       |
+| calendar_event_reference_created_at_not_null        | n           | NOT NULL created_at                                                                                                       |
+| calendar_event_reference_document_evidence_check    | CHECK       | CHECK (((kind <> 'individual_document'::text) OR (publication_evidence IS NOT NULL)))                                     |
+| calendar_event_reference_document_period_check      | CHECK       | CHECK (((kind <> 'individual_document'::text) OR ((target_period_end IS NOT NULL) AND (target_period_type IS NOT NULL)))) |
+| calendar_event_reference_external_id_not_null       | n           | NOT NULL external_id                                                                                                      |
+| calendar_event_reference_id_not_null                | n           | NOT NULL id                                                                                                               |
+| calendar_event_reference_kind_check                 | CHECK       | CHECK ((kind = ANY (ARRAY['earnings_summary'::text, 'individual_document'::text, 'official_listing'::text])))             |
+| calendar_event_reference_kind_not_null              | n           | NOT NULL kind                                                                                                             |
+| calendar_event_reference_period_range_check         | CHECK       | CHECK (((target_period_start IS NULL) OR (target_period_end IS NULL) OR (target_period_start <= target_period_end)))      |
+| calendar_event_reference_source_not_null            | n           | NOT NULL source                                                                                                           |
+| calendar_event_reference_title_not_null             | n           | NOT NULL title                                                                                                            |
+| calendar_event_reference_updated_at_not_null        | n           | NOT NULL updated_at                                                                                                       |
+| fk_calendar_event_reference_event                   | FOREIGN KEY | FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE                                           |
+| calendar_event_reference_pkey                       | PRIMARY KEY | PRIMARY KEY (id)                                                                                                          |
 
 ## Indexes
 

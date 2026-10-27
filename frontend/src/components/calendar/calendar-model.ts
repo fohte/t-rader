@@ -125,31 +125,45 @@ function getEventTime(event: Event): { label: string; sortOrder: number } {
   return { label: '', sortOrder: 2880 }
 }
 
-function buildEarningsStatus(event: Event): CalendarEarningsStatus {
+function matchesEventPeriod(reference: EventReference, event: Event): boolean {
+  return (
+    event.fiscal_period != null &&
+    event.fiscal_period_type != null &&
+    reference.target_period_end === event.fiscal_period &&
+    reference.target_period_type === event.fiscal_period_type
+  )
+}
+
+function buildEarningsStatus(
+  event: Event,
+  today: string,
+): CalendarEarningsStatus {
   const references = event.references
   const matchingSummaryReference = references.some(
     (reference) =>
       reference.kind === 'earnings_summary' &&
-      event.fiscal_period != null &&
-      event.fiscal_period_type != null &&
-      reference.target_period_end === event.fiscal_period &&
-      reference.target_period_type === event.fiscal_period_type,
+      matchesEventPeriod(reference, event),
   )
   const hasSummary =
     event.has_matching_earnings_summary || matchingSummaryReference
-  const hasIndividualDocument = references.some(
+  const individualDocuments = references.filter(
     (reference) => reference.kind === 'individual_document',
+  )
+  const hasMatchingIndividualDocument = individualDocuments.some((reference) =>
+    matchesEventPeriod(reference, event),
   )
   const hasOfficialListing = references.some(
     (reference) => reference.kind === 'official_listing',
   )
   const label = hasSummary
     ? '実績あり'
-    : hasIndividualDocument
+    : hasMatchingIndividualDocument
       ? '資料あり / 実績未取得'
-      : hasOfficialListing
+      : hasOfficialListing || individualDocuments.length > 0
         ? '個別資料未確認'
-        : '実績・資料未取得 / 公表未確認'
+        : event.event_date >= today
+          ? '発表予定'
+          : '実績・資料未取得 / 公表未確認'
   const periodType = toFinancialPeriodType(event.fiscal_period_type)
   const internalTarget =
     event.has_matching_earnings_summary &&
@@ -223,6 +237,7 @@ function isEmphasized(event: Event): boolean {
 function buildEventRow(
   event: Event,
   selectedStrategyId: string | undefined,
+  today: string,
 ): { row: CalendarRowView; sortOrder: number } {
   const time = getEventTime(event)
   const stockId = event.stock_id ?? undefined
@@ -241,7 +256,7 @@ function buildEventRow(
       title,
       stockId: isEarningsStock ? stockId : undefined,
       ...(isEarningsStock
-        ? { earningsStatus: buildEarningsStatus(event) }
+        ? { earningsStatus: buildEarningsStatus(event, today) }
         : {}),
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',
@@ -276,6 +291,7 @@ export function buildCalendarDays(
   events: CalendarEvent[],
   countryFilter: CalendarCountryFilter,
   selectedStrategyId: string | undefined,
+  today: string,
 ): CalendarDayView[] {
   const dayRows = new Map<
     string,
@@ -287,7 +303,7 @@ export function buildCalendarDays(
 
     const built =
       event.kind === 'event'
-        ? buildEventRow(event, selectedStrategyId)
+        ? buildEventRow(event, selectedStrategyId, today)
         : buildOtherEarningsRow(event)
     const rows = dayRows.get(event.event_date) ?? []
     rows.push({ ...built, insertionOrder })

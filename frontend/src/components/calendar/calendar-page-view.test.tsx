@@ -23,6 +23,7 @@ const EVENT_REFERENCE_DEFAULTS = {
 afterEach(cleanup)
 
 const WEEK_RANGE = { from: '2099-01-05', to: '2099-01-11' }
+const TODAY = '2099-01-07'
 const NOOP = (): void => {}
 const STRATEGY: Strategy = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -38,6 +39,7 @@ function makeProps(
 ): CalendarPageViewProps {
   return {
     calendar: { ...WEEK_RANGE, events: [] },
+    today: TODAY,
     weekRange: WEEK_RANGE,
     strategies: [],
     selectedStrategyId: undefined,

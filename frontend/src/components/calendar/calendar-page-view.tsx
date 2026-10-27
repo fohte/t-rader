@@ -37,6 +37,7 @@ const COUNTRY_FILTER_OPTIONS = [
 
 export function CalendarPageView({
   calendar,
+  today,
   weekRange,
   strategies,
   selectedStrategyId,
@@ -56,6 +57,7 @@ export function CalendarPageView({
   openFilter,
 }: {
   calendar: CalendarEventsResponse | undefined
+  today: string
   weekRange: CalendarWeekRange
   strategies: Strategy[]
   selectedStrategyId: string | undefined
@@ -78,11 +80,13 @@ export function CalendarPageView({
     calendar?.events ?? [],
     countryFilter,
     selectedStrategyId,
+    today,
   )
   const otherEarningsRows = buildCalendarDays(
     otherEarningsEvents ?? [],
     countryFilter,
     undefined,
+    today,
   ).flatMap((day) => day.rows)
   const strategyOptions = [
     { value: null, label: '全戦略' },

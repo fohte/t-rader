@@ -22,11 +22,12 @@ export const Route = createFileRoute('/calendar')({
 function CalendarRoute() {
   const { country, strategy, week } = Route.useSearch()
   const navigate = Route.useNavigate()
+  const today = getTokyoDate()
   const [expandedOtherEarnings, setExpandedOtherEarnings] =
     useState<OtherEarningsSelection>()
   const weekRange = useMemo(
-    () => getCalendarWeekRange(week ?? getTokyoDate()),
-    [week],
+    () => getCalendarWeekRange(week ?? today),
+    [today, week],
   )
   const {
     data: calendar,
@@ -75,6 +76,7 @@ function CalendarRoute() {
   return (
     <CalendarPageView
       calendar={calendar}
+      today={today}
       weekRange={weekRange}
       strategies={strategies}
       selectedStrategyId={strategy}

@@ -66,7 +66,9 @@ fn is_valid_reference(reference: &CalendarEventReference) -> bool {
         && reference.checked_at <= Utc::now()
         && (reference.kind
             != core_domain::calendar_event::CalendarEventReferenceKind::IndividualDocument
-            || reference.publication_evidence.is_some())
+            || (reference.publication_evidence.is_some()
+                && reference.target_period_end.is_some()
+                && reference.target_period_type.is_some()))
         && reference.url.as_deref().is_none_or(is_http_url)
         && reference
             .publication_evidence_url
@@ -86,10 +88,11 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use chrono::NaiveDate;
+    use chrono::{DateTime, NaiveDate};
     use core_domain::calendar_event::{
         CalendarEvent, CalendarEventReadModel, CalendarEventReference, CalendarEventReferenceKind,
     };
+    use rstest::{fixture, rstest};
 
     use crate::{
         calendar::repository::{
@@ -163,15 +166,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn individual_document_requires_evidence_before_transaction() {
-        let repository = Arc::new(FakeCalendarEventRepository);
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
-        let use_cases = CalendarEventReferenceUseCases::new(
-            repository as SharedCalendarEventRepository,
-            unit_of_work.clone() as SharedUnitOfWork,
-        );
-        let reference = CalendarEventReference {
+    #[fixture]
+    fn individual_document_reference() -> CalendarEventReference {
+        CalendarEventReference {
             event_source: "sample_source".into(),
             event_external_id: "sample-event".into(),
             kind: CalendarEventReferenceKind::IndividualDocument,
@@ -180,13 +177,64 @@ mod tests {
             title: "架空の資料".into(),
             url: Some("https://example.invalid/document".into()),
             target_period_start: None,
-            target_period_end: None,
-            target_period_type: None,
-            publication_evidence: None,
+            target_period_end: Some(NaiveDate::MIN),
+            target_period_type: Some("2Q".into()),
+            publication_evidence: Some("sample-release-record".into()),
             publication_evidence_url: None,
-            checked_at: chrono::DateTime::from_timestamp(1_700_000_000, 0)
-                .expect("valid timestamp"),
-        };
+            checked_at: DateTime::<chrono::Utc>::UNIX_EPOCH,
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn individual_document_requires_evidence_before_transaction(
+        individual_document_reference: CalendarEventReference,
+    ) {
+        let mut reference = individual_document_reference;
+        reference.publication_evidence = None;
+        let repository = Arc::new(FakeCalendarEventRepository);
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let use_cases = CalendarEventReferenceUseCases::new(
+            repository as SharedCalendarEventRepository,
+            unit_of_work.clone() as SharedUnitOfWork,
+        );
+
+        let actual = (
+            use_cases
+                .upsert(vec![reference])
+                .await
+                .err()
+                .map(|error| error.to_string()),
+            unit_of_work.begun.lock().await.clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                Some("calendar event reference is invalid".to_owned()),
+                Vec::new(),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::missing_period_end(None, Some("2Q"))]
+    #[case::missing_period_type(Some(NaiveDate::MIN), None)]
+    #[tokio::test]
+    async fn individual_document_requires_target_period_before_transaction(
+        individual_document_reference: CalendarEventReference,
+        #[case] target_period_end: Option<NaiveDate>,
+        #[case] target_period_type: Option<&str>,
+    ) {
+        let mut reference = individual_document_reference;
+        reference.target_period_end = target_period_end;
+        reference.target_period_type = target_period_type.map(str::to_owned);
+        let repository = Arc::new(FakeCalendarEventRepository);
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let use_cases = CalendarEventReferenceUseCases::new(
+            repository as SharedCalendarEventRepository,
+            unit_of_work.clone() as SharedUnitOfWork,
+        );
 
         let actual = (
             use_cases
