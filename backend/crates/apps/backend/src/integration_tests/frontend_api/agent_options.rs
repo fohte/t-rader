@@ -158,7 +158,7 @@ mod tests {
                         .expect("tool description is a string");
                     tool["description"] = serde_json::Value::String(description.replace(
                         "a successful write means all warnings were covered. For price and relative warnings,",
-                        "a successful write means all warnings were covered. If warning_dispositions is non-empty, the version remains unread and non-current until a human reviews each recorded value, location, and reason and explicitly confirms the exception during approval; note-kind auto-approval does not make it current. For price and relative warnings,",
+                        "a successful write means all warnings were covered. If warning_dispositions is non-empty, the version remains unread and non-current until a human reviews each recorded value, location, and reason and explicitly confirms the exception during approval; note-kind auto-approval does not make it current. The tool does not accept a status field, and a version with non-empty warning_dispositions cannot be saved with status=approved. For price and relative warnings,",
                     ));
                 }
                 tool
