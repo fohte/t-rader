@@ -169,6 +169,10 @@ export function NotesList({
             const titleTarget = defaultTarget ?? representativeTarget
             const titleVersionId = titleTarget?.id ?? note.version_id
             const titleVersionNo = titleTarget?.versionNo ?? note.version_no
+            const hasWarningDispositions =
+              (latestUnread?.warning_dispositions.length ?? 0) > 0 ||
+              (selectedItem?.kind === 'note' &&
+                (selectedItem.warningDispositions?.length ?? 0) > 0)
             const selectedLatestVersionDiffers =
               selectedItem?.kind === 'note' &&
               latestUnread != null &&
@@ -233,6 +237,7 @@ export function NotesList({
                           : `代表 v${String(note.version_no)} · 非現行`}
                       </Chip>
                       <StatusPill status={note.status} />
+                      {hasWarningDispositions && <Chip>理由付き警告あり</Chip>}
                       {overview.unread_version_count > 0 && (
                         <Chip>
                           未読 {String(overview.unread_version_count)}{' '}

@@ -82,6 +82,36 @@ function getQueryInvalidationOutput(
   return { noteVersionsInvalidated, overviewInvalidated }
 }
 
+function getWarningApprovalOutput(
+  approve: HTMLElement,
+  confirmation: HTMLElement,
+) {
+  return {
+    approveDisabled: approve.matches(':disabled'),
+    warningValue: screen.getByText(
+      (_, element) =>
+        element?.tagName === 'P' && element.textContent === '対象: 42%',
+    ).textContent,
+    location: screen.getByText('本文 byte 13–16').textContent,
+    reason: screen.getByText('理由: 架空の値の例外として示したため')
+      .textContent,
+    confirmationChecked: confirmation.getAttribute('aria-checked'),
+  }
+}
+
+function getChangedVersionOutput() {
+  return {
+    confirmationChecked: screen
+      .getByRole('checkbox', {
+        name: '理由と対象箇所を確認し、数値の例外として承認します',
+      })
+      .getAttribute('aria-checked'),
+    approveDisabled: screen
+      .getByRole('button', { name: '✓ 承認' })
+      .matches(':disabled'),
+  }
+}
+
 afterEach(() => {
   cleanup()
   apiMock.callbacks = {}
@@ -145,24 +175,13 @@ describe('NoteVersionReviewPanel', () => {
       name: '理由と対象箇所を確認し、数値の例外として承認します',
     })
 
-    expect(
-      Array.of(
-        approve.matches(':disabled'),
-        screen.getByText(
-          (_, element) =>
-            element?.tagName === 'P' && element.textContent === '対象: 42%',
-        ).textContent,
-        screen.getByText('本文 byte 13–16').textContent,
-        screen.getByText('理由: 架空の値の例外として示したため').textContent,
-        confirmation.getAttribute('aria-checked'),
-      ),
-    ).toEqual([
-      true,
-      '対象: 42%',
-      '本文 byte 13–16',
-      '理由: 架空の値の例外として示したため',
-      'false',
-    ])
+    expect(getWarningApprovalOutput(approve, confirmation)).toEqual({
+      approveDisabled: true,
+      warningValue: '対象: 42%',
+      location: '本文 byte 13–16',
+      reason: '理由: 架空の値の例外として示したため',
+      confirmationChecked: 'false',
+    })
 
     await user.click(confirmation)
     await user.click(approve)
@@ -207,16 +226,10 @@ describe('NoteVersionReviewPanel', () => {
       </QueryClientProvider>,
     )
 
-    expect(
-      Array.of(
-        screen
-          .getByRole('checkbox', {
-            name: '理由と対象箇所を確認し、数値の例外として承認します',
-          })
-          .getAttribute('aria-checked'),
-        screen.getByRole('button', { name: '✓ 承認' }).matches(':disabled'),
-      ),
-    ).toEqual(['false', true])
+    expect(getChangedVersionOutput()).toEqual({
+      confirmationChecked: 'false',
+      approveDisabled: true,
+    })
   })
 
   it('invalidates note queries for every version of the reviewed note', async () => {

@@ -152,6 +152,57 @@ function getSelectedSnapshotOutput() {
   }
 }
 
+function getUnselectedWarningRowOutput() {
+  const row = screen.getByRole('listitem')
+  return [
+    Array.from(row.querySelectorAll('[data-slot="chip"]'))
+      .map((chip) => chip.textContent)
+      .filter((text) => text === '理由付き警告あり'),
+    screen
+      .getByRole('checkbox', {
+        name: '架空の確認ノート の最新未読バージョンを選択',
+      })
+      .getAttribute('aria-checked'),
+  ]
+}
+
+function getWarningReviewOutput(confirmation: HTMLElement) {
+  return {
+    warningValue: screen.getByText(
+      (_, element) =>
+        element?.tagName === 'P' && element.textContent === '対象: 42%',
+    ).textContent,
+    location: screen.getByText('本文 byte 13–16').textContent,
+    reason: screen.getByText('理由: 架空の値の例外として示したため')
+      .textContent,
+    confirmationChecked: confirmation.getAttribute('aria-checked'),
+    bulkApprovalButtonsDisabled: screen
+      .getAllByRole('button', { name: '選択した 1 件を承認' })
+      .map((button) => button.matches(':disabled')),
+    individualApprovalDisabled: screen
+      .getByRole('button', {
+        name: 'このバージョンを個別に承認',
+      })
+      .matches(':disabled'),
+    notice: screen.getByText(
+      '理由付きの警告があるバージョンは一括承認できません。確認後、個別に承認してください。',
+    ).textContent,
+  }
+}
+
+function getConfirmedWarningApprovalOutput(
+  individualApproval: HTMLElement,
+  approvalCalls: unknown,
+) {
+  return {
+    bulkApprovalButtonsDisabled: screen
+      .getAllByRole('button', { name: '選択した 1 件を承認' })
+      .map((button) => button.matches(':disabled')),
+    individualApprovalDisabled: individualApproval.matches(':disabled'),
+    approvalCalls,
+  }
+}
+
 function getLoadingStateOutput() {
   const status = screen.getByRole('status')
   return {
@@ -365,6 +416,43 @@ describe('NotesList', () => {
     expect(onToggleItem.mock.calls).toEqual([['note:fake-note-a', true]])
   })
 
+  it('marks a warning-bearing pending row before it is selected', async () => {
+    const warningDispositions = [
+      {
+        warning_id: 'price:42%25:1',
+        value: '42%',
+        location: { kind: 'body' as const, start: 13, end: 16 },
+        reason: '架空の値の例外として示したため',
+      },
+    ]
+    const warningLatestUnread = makeVersion({
+      id: 'fake-version-warning',
+      version_no: 4,
+      is_current: false,
+      status: 'unread',
+      created_by_kind: 'llm',
+      warning_dispositions: warningDispositions,
+    })
+    await renderList(
+      [
+        makeOverview(
+          { status: 'approved' },
+          {
+            current: representative,
+            latestUnread: warningLatestUnread,
+            unreadVersionCount: 1,
+          },
+        ),
+      ],
+      { view: 'pending' },
+    )
+
+    expect(getUnselectedWarningRowOutput()).toEqual([
+      ['理由付き警告あり'],
+      'false',
+    ])
+  })
+
   it('shows the selected snapshot version and its approval action', async () => {
     const selectedItem: ReviewQueueItem = {
       kind: 'note',
@@ -422,36 +510,16 @@ describe('NotesList', () => {
     const confirmation = screen.getByRole('checkbox', {
       name: '理由と対象箇所を確認し、数値の例外として承認します',
     })
-    expect(
-      Array.of(
-        screen.getByText(
-          (_, element) =>
-            element?.tagName === 'P' && element.textContent === '対象: 42%',
-        ).textContent,
-        screen.getByText('本文 byte 13–16').textContent,
-        screen.getByText('理由: 架空の値の例外として示したため').textContent,
-        confirmation.getAttribute('aria-checked'),
-        screen
-          .getAllByRole('button', { name: '選択した 1 件を承認' })
-          .map((button) => button.matches(':disabled')),
-        screen
-          .getByRole('button', {
-            name: 'このバージョンを個別に承認',
-          })
-          .matches(':disabled'),
-        screen.getByText(
-          '理由付きの警告があるバージョンは一括承認できません。確認後、個別に承認してください。',
-        ).textContent,
-      ),
-    ).toEqual([
-      '対象: 42%',
-      '本文 byte 13–16',
-      '理由: 架空の値の例外として示したため',
-      'false',
-      [true, true],
-      true,
-      '理由付きの警告があるバージョンは一括承認できません。確認後、個別に承認してください。',
-    ])
+    expect(getWarningReviewOutput(confirmation)).toEqual({
+      warningValue: '対象: 42%',
+      location: '本文 byte 13–16',
+      reason: '理由: 架空の値の例外として示したため',
+      confirmationChecked: 'false',
+      bulkApprovalButtonsDisabled: [true, true],
+      individualApprovalDisabled: true,
+      notice:
+        '理由付きの警告があるバージョンは一括承認できません。確認後、個別に承認してください。',
+    })
 
     fireEvent.click(confirmation)
 
@@ -494,14 +562,15 @@ describe('NotesList', () => {
     fireEvent.click(individualApproval)
 
     expect(
-      Array.of(
-        screen
-          .getAllByRole('button', { name: '選択した 1 件を承認' })
-          .map((button) => button.matches(':disabled')),
-        individualApproval.matches(':disabled'),
+      getConfirmedWarningApprovalOutput(
+        individualApproval,
         onApproveWarningVersion.mock.calls,
       ),
-    ).toEqual([[true, true], false, [['note:fake-note-a']]])
+    ).toEqual({
+      bulkApprovalButtonsDisabled: [true, true],
+      individualApprovalDisabled: false,
+      approvalCalls: [['note:fake-note-a']],
+    })
   })
 
   it('shows the loading state while overviews are being fetched', async () => {
