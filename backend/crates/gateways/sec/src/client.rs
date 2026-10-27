@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
+#[cfg(test)]
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use core_application::us_stock_master_source::{UsStockMasterSource, UsStockMasterSourceError};
 use core_domain::{stock_id::ForeignStockId, us_stock_master::UsStockMasterEntry};
@@ -25,6 +28,8 @@ pub(super) enum SecRateLimiter {
     Shared(RateLimiter),
     #[cfg(test)]
     TestNoop,
+    #[cfg(test)]
+    TestRecording(Arc<tokio::sync::Mutex<Vec<Duration>>>),
 }
 
 impl SecRateLimiter {
@@ -43,7 +48,7 @@ impl SecRateLimiter {
                     .await
             }
             #[cfg(test)]
-            Self::TestNoop => Ok(()),
+            Self::TestNoop | Self::TestRecording(_) => Ok(()),
         }
     }
 
@@ -54,6 +59,11 @@ impl SecRateLimiter {
             }
             #[cfg(test)]
             Self::TestNoop => Ok(()),
+            #[cfg(test)]
+            Self::TestRecording(penalties) => {
+                penalties.lock().await.push(duration);
+                Ok(())
+            }
         }
     }
 }
@@ -295,11 +305,15 @@ fn parse_cik(value: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use core_application::us_stock_master_source::{UsStockMasterSource, UsStockMasterSourceError};
     use indoc::indoc;
     use rstest::rstest;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use crate::error::SecClientError;
 
     use super::{SecClient, SecRateLimiter};
 
@@ -395,6 +409,43 @@ mod tests {
             Err(UsStockMasterSourceError::Failed(
                 "SEC returned HTTP status 503".into(),
             )),
+        );
+    }
+
+    #[rstest]
+    #[case::numeric_retry_after(Some("7"), Duration::from_secs(7))]
+    #[case::missing_retry_after(None, Duration::from_secs(60))]
+    #[tokio::test]
+    async fn records_the_shared_cooldown_for_sec_rate_limit_responses(
+        #[case] retry_after: Option<&str>,
+        #[case] expected_cooldown: Duration,
+    ) {
+        let server = MockServer::start().await;
+        let mut response = ResponseTemplate::new(429);
+        if let Some(retry_after) = retry_after {
+            response = response.insert_header("retry-after", retry_after);
+        }
+        Mock::given(method("GET"))
+            .and(path("/data"))
+            .respond_with(response)
+            .mount(&server)
+            .await;
+        let penalties = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let client = SecClient::build(
+            "Synthetic Client contact@fictional.invalid",
+            &format!("{}/master", server.uri()),
+            &format!("{}/", server.uri()),
+            &format!("{}/Archives/edgar/data/", server.uri()),
+            SecRateLimiter::TestRecording(penalties.clone()),
+        )
+        .expect("client initializes");
+        let url = reqwest::Url::parse(&format!("{}/data", server.uri())).expect("test URL parses");
+
+        let result = client.get_text(url).await;
+
+        assert_eq!(
+            (result, penalties.lock().await.clone()),
+            (Err(SecClientError::Status(429)), vec![expected_cooldown],),
         );
     }
 }

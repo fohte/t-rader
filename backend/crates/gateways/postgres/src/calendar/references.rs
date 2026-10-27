@@ -199,6 +199,7 @@ pub(super) async fn list_pending_sec_filing_targets(
                     s.id AS stock_id, s.cik AS cik, e.fiscal_period AS fiscal_period \
              FROM calendar_event e \
              JOIN stock s ON s.id = e.stock_id \
+             LEFT JOIN calendar_event_sec_filing_check c ON c.calendar_event_id = e.id \
              WHERE e.source = 'alpha_vantage' AND e.country = 'US' \
                AND e.category = 'earnings' \
                AND e.event_date <= $1 AND e.fiscal_period IS NOT NULL \
@@ -209,7 +210,7 @@ pub(super) async fn list_pending_sec_filing_targets(
                    WHERE r.calendar_event_id = e.id \
                      AND r.kind = 'individual_document' AND r.source = 'sec' \
                ) \
-             ORDER BY e.event_date DESC, e.source, e.external_id \
+             ORDER BY c.checked_at ASC NULLS FIRST, e.event_date DESC, e.source, e.external_id \
              LIMIT $2",
             [today.into(), MAX_PENDING_SEC_FILING_TARGETS.into()],
         ))
@@ -228,6 +229,42 @@ pub(super) async fn list_pending_sec_filing_targets(
             })
         })
         .collect()
+}
+
+pub(super) async fn mark_sec_filing_targets_checked(
+    repository: &PostgresCalendarEventRepository,
+    targets: &[SecFilingReferenceTarget],
+    checked_at: DateTime<Utc>,
+) -> Result<(), CalendarEventRepositoryError> {
+    if targets.is_empty() {
+        return Ok(());
+    }
+    let targets_json = serde_json::json!(
+        targets
+            .iter()
+            .map(|target| serde_json::json!({
+                "event_source": target.event_source,
+                "event_external_id": target.event_external_id,
+            }))
+            .collect::<Vec<_>>()
+    );
+    repository
+        .db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO calendar_event_sec_filing_check (calendar_event_id, checked_at) \
+             SELECT e.id, $1 \
+             FROM calendar_event e \
+             JOIN jsonb_to_recordset($2::jsonb) AS target(event_source text, event_external_id text) \
+               ON e.source = target.event_source AND e.external_id = target.event_external_id \
+             ON CONFLICT (calendar_event_id) DO UPDATE \
+             SET checked_at = EXCLUDED.checked_at",
+            [checked_at.into(), targets_json.into()],
+        ))
+        .await
+        .map_err(repository_error)?;
+
+    Ok(())
 }
 
 pub(super) async fn upsert_references(

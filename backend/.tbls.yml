@@ -597,6 +597,11 @@ comments:
       publication_evidence: '個別資料の公表を確認した取得元の識別情報。'
       publication_evidence_url: '公表根拠を確認できる URL。'
       checked_at: '取得元で参照先と根拠を確認した日時。'
+  - table: calendar_event_sec_filing_check
+    tableComment: 'SEC の資料を照合した最終日時をカレンダーイベントごとに保持する。'
+    columnComments:
+      calendar_event_id: 'SEC の資料照合対象となるカレンダーイベント。'
+      checked_at: 'SEC の照合が正常に完了した日時。'
   - table: earnings_schedule_ingested_date
     tableComment: '決算予定を取得した公表日を記録する。'
     columnComments:

@@ -1,12 +1,7 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261027_173631_add_us_stock_cik"
-    }
-}
 
 #[derive(DeriveIden)]
 enum Stock {

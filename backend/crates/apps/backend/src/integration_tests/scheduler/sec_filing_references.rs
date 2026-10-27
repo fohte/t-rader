@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_application::calendar::repository::CalendarEventRepository;
+use core_application::sec_filing_reference::{SecFilingReferenceTarget, SecFilingTargetRepository};
 use core_application::sec_filing_source::{
     SecFilingDocument, SecFilingSource, SecFilingSourceError,
 };
@@ -9,8 +10,11 @@ use core_application::us_stock_master_source::{UsStockMasterSource, UsStockMaste
 use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory, CalendarEventTimeOfDay};
 use core_domain::stock_id::ForeignStockId;
 use core_domain::us_stock_master::UsStockMasterEntry;
+use gateway_postgres::entities::{calendar_event, calendar_event_sec_filing_check};
 use gateway_postgres::{PostgresCalendarEventRepository, PostgresUnitOfWork};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+};
 use serde_json::{Value, json};
 
 use crate::{
@@ -30,6 +34,21 @@ impl UsStockMasterSource for FixedUsStockMasterSource {
             stock_entry("QZ7", "架空銘柄 A", Some("900000001")),
             stock_entry("QZ8", "架空銘柄 B", Some("900000002")),
             stock_entry("QZ9", "架空銘柄 C", None),
+        ])
+    }
+}
+
+struct RotationUsStockMasterSource;
+
+#[async_trait]
+impl UsStockMasterSource for RotationUsStockMasterSource {
+    async fn fetch_all_us_stocks(
+        &self,
+    ) -> Result<Vec<UsStockMasterEntry>, UsStockMasterSourceError> {
+        Ok(vec![
+            stock_entry("QZ7", "架空銘柄 A", Some("900000001")),
+            stock_entry("QZ8", "架空銘柄 B", Some("900000002")),
+            stock_entry("QZ9", "架空銘柄 C", Some("900000003")),
         ])
     }
 }
@@ -54,7 +73,6 @@ impl SecFilingSource for FixedSecFilingSource {
             form: "10-Q".to_owned(),
             report_date,
             accession_number,
-            primary_document: "report.htm".to_owned(),
             url: format!(
                 "https://example.invalid/Archives/edgar/data/{cik}/{accession_path}/report.htm"
             ),
@@ -155,6 +173,7 @@ async fn sec_filing_references_are_available_for_targeted_and_expanded_us_earnin
             external_failures: 0,
             references_upserted: 2,
             budget_exhausted: false,
+            failures: Vec::new(),
         },
     );
 
@@ -274,4 +293,87 @@ async fn sec_filing_references_are_available_for_targeted_and_expanded_us_earnin
             }),
         ),
     );
+}
+
+#[backend_test_macros::database_test]
+async fn pending_sec_filing_targets_rotate_by_last_successful_check(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let use_cases = build_use_cases_without_agent_task_client(db.clone());
+    use_cases
+        .us_stock_master()
+        .sync(&RotationUsStockMasterSource)
+        .await
+        .expect("US stock master sync succeeds");
+
+    let repository = PostgresCalendarEventRepository::new(db.clone());
+    let unit_of_work = PostgresUnitOfWork::new(db.clone());
+    let transaction = unit_of_work.begin().await.expect("transaction begins");
+    repository
+        .upsert(
+            &transaction,
+            vec![
+                us_earnings_event("QZ7", "架空銘柄 A"),
+                us_earnings_event("QZ8", "架空銘柄 B"),
+                us_earnings_event("QZ9", "架空銘柄 C"),
+            ],
+        )
+        .await
+        .expect("US earnings events insert");
+    unit_of_work
+        .commit(transaction)
+        .await
+        .expect("transaction commits");
+
+    let events = calendar_event::Entity::find()
+        .filter(calendar_event::Column::Source.eq("alpha_vantage"))
+        .order_by_asc(calendar_event::Column::ExternalId)
+        .all(&db)
+        .await
+        .expect("calendar event query succeeds");
+    let checked_at = [
+        chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+            .expect("synthetic check time parses"),
+        chrono::DateTime::parse_from_rfc3339("2021-01-01T00:00:00Z")
+            .expect("synthetic check time parses"),
+    ];
+    calendar_event_sec_filing_check::Entity::insert_many(
+        events
+            .iter()
+            .take(2)
+            .zip(checked_at)
+            .map(
+                |(event, checked_at)| calendar_event_sec_filing_check::ActiveModel {
+                    calendar_event_id: Set(event.id),
+                    checked_at: Set(checked_at),
+                },
+            ),
+    )
+    .exec(&db)
+    .await
+    .expect("successful checks insert");
+
+    let actual = repository
+        .list_pending_sec_filing_targets(date(2031, 4, 1))
+        .await
+        .expect("pending target query succeeds");
+
+    assert_eq!(
+        actual,
+        vec![
+            sec_filing_target("QZ9", "900000003"),
+            sec_filing_target("QZ7", "900000001"),
+            sec_filing_target("QZ8", "900000002"),
+        ],
+    );
+}
+
+fn sec_filing_target(code: &str, cik: &str) -> SecFilingReferenceTarget {
+    SecFilingReferenceTarget {
+        event_source: "alpha_vantage".to_owned(),
+        event_external_id: format!("US:{code}:2031-03-30"),
+        stock_id: format!("US:{code}"),
+        cik: cik.to_owned(),
+        fiscal_period: "2031-03-30".to_owned(),
+    }
 }

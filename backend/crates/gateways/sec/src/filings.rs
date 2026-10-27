@@ -159,7 +159,6 @@ impl SecClient {
                 form: record.form,
                 report_date: record.report_date,
                 accession_number: record.accession_number,
-                primary_document: record.primary_document,
                 url: document_url.to_string(),
             });
         }
@@ -397,7 +396,6 @@ mod tests {
                 form: "10-Q".to_owned(),
                 report_date: date(2099, 6, 30),
                 accession_number: "0900000001-99-000001".to_owned(),
-                primary_document: "quarter.htm".to_owned(),
                 url: format!(
                     "{}/Archives/edgar/data/900000001/090000000199000001/quarter.htm",
                     server.uri()
@@ -564,7 +562,6 @@ mod tests {
                 form: "10-K".to_owned(),
                 report_date: date(2099, 6, 30),
                 accession_number: "0900000001-99-000004".to_owned(),
-                primary_document: "annual.htm".to_owned(),
                 url: format!(
                     "{}/Archives/edgar/data/900000001/090000000199000004/annual.htm",
                     server.uri()

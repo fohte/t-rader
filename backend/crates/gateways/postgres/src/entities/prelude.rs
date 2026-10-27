@@ -7,6 +7,7 @@ pub use super::bars::Entity as Bars;
 pub use super::bars_timestamp_coverage::Entity as BarsTimestampCoverage;
 pub use super::calendar_event::Entity as CalendarEvent;
 pub use super::calendar_event_reference::Entity as CalendarEventReference;
+pub use super::calendar_event_sec_filing_check::Entity as CalendarEventSecFilingCheck;
 pub use super::change_history::Entity as ChangeHistory;
 pub use super::checkpoint::Entity as Checkpoint;
 pub use super::comment::Entity as Comment;

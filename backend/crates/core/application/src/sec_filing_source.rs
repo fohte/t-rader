@@ -8,7 +8,6 @@ pub struct SecFilingDocument {
     pub form: String,
     pub report_date: NaiveDate,
     pub accession_number: String,
-    pub primary_document: String,
     pub url: String,
 }
 
