@@ -108,7 +108,10 @@ impl MigrationTrait for Migration {
                  CHECK (target_period_start IS NULL OR target_period_end IS NULL OR target_period_start <= target_period_end); \
                  ALTER TABLE calendar_event_reference \
                  ADD CONSTRAINT calendar_event_reference_document_evidence_check \
-                 CHECK (kind <> 'individual_document' OR publication_evidence IS NOT NULL)",
+                 CHECK (kind <> 'individual_document' OR publication_evidence IS NOT NULL); \
+                 ALTER TABLE calendar_event_reference \
+                 ADD CONSTRAINT calendar_event_reference_document_period_check \
+                 CHECK (kind <> 'individual_document' OR (target_period_end IS NOT NULL AND target_period_type IS NOT NULL))",
             )
             .await?;
 
