@@ -54,3 +54,8 @@ export const Confirmed: Story = {
   name: 'shows that every ignored warning has been confirmed for approval.',
   args: { confirmation: { checked: true, onChange: () => {} } },
 }
+
+export const Reviewed: Story = {
+  name: 'keeps warning details visible after review without another confirmation control.',
+  args: { confirmation: undefined },
+}
