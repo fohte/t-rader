@@ -1,7 +1,7 @@
 use crate::{
     comparison::compare_manifests,
     model::{ComparisonReport, Manifest, Provenance, SqlDifference},
-    runner::{ExclusionFingerprint, InputComparison, SqlFingerprint},
+    runner::{ExclusionFingerprint, GroupMoversFingerprint, InputComparison, SqlFingerprint},
 };
 
 #[test]
@@ -75,6 +75,47 @@ fn added_sql_fails_comparison() {
         Vec::new(),
         Vec::new(),
     );
+    let mut expected = expected_report();
+    expected.matches = false;
+    expected.actual_parsed_sql_count = 2;
+    expected.added_sql_count = 1;
+    expected.sql_differences = vec![SqlDifference {
+        sql_sha256: digest('z'),
+        expected_present: false,
+        actual_present: true,
+        expected_bind_count: None,
+        actual_bind_count: Some(1),
+        bind_set_matches: false,
+        parameter_types_match: false,
+        shifted_bind_values_match: false,
+    }];
+
+    assert_eq!(compare_manifests(&baseline, &actual), expected);
+}
+
+#[test]
+fn matching_group_movers_remains_visible_when_an_unrelated_sql_differs() {
+    let mut group_sql = sql_fingerprint('d', 'e', 'f');
+    group_sql.bind_count = 6;
+    let mut baseline = manifest(
+        vec![group_sql.clone()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    baseline.comparison.group_movers = Some(group_movers_fingerprint());
+
+    let added_sql = sql_fingerprint_with_hash('z', 'e', 'f', 'g');
+    let mut actual = manifest(
+        vec![group_sql, added_sql],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    actual.comparison.group_movers = Some(group_movers_fingerprint());
+
     let mut expected = expected_report();
     expected.matches = false;
     expected.actual_parsed_sql_count = 2;
@@ -246,6 +287,19 @@ fn sql_fingerprint_with_hash(
         parameter_types_set_sha256: digest(parameter_types),
         shifted_bind_set_sha256: digest(shifted_values),
         typed_shifted_bind_set_sha256: digest(typed_bind),
+    }
+}
+
+fn group_movers_fingerprint() -> GroupMoversFingerprint {
+    GroupMoversFingerprint {
+        sql_sha256: digest('a'),
+        bind_count: 6,
+        specified_bind_count: 4,
+        specified_bind_hashes: vec![digest('1'), digest('2'), digest('3'), digest('4')],
+        specified_bind_set_sha256: digest('5'),
+        parameter_types_sha256: digest('6'),
+        parameter_types_set_sha256: digest('d'),
+        typed_shifted_bind_set_sha256: digest('f'),
     }
 }
 

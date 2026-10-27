@@ -233,6 +233,9 @@ async fn build_manifest_inner(options: BuildOptions) -> Result<(), String> {
         comparison,
     };
     write_json(&output, &manifest)?;
+    if let Some(group_binds_output) = group_binds_output {
+        write_json(&group_binds_output, &raw_group_binds)?;
+    }
 
     if let Some(baseline_path) = compare_to {
         let comparison_output =
@@ -254,9 +257,6 @@ async fn build_manifest_inner(options: BuildOptions) -> Result<(), String> {
                 "regenerated query log differs from the hash-only reference manifest".to_string(),
             );
         }
-    }
-    if let Some(group_binds_output) = group_binds_output {
-        write_json(&group_binds_output, &raw_group_binds)?;
     }
     Ok(())
 }

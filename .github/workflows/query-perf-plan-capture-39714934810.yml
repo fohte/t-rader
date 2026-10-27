@@ -149,22 +149,20 @@ jobs:
           steps.backend-tests.outcome == 'success' &&
           steps.capture-query-log.outcome == 'success' &&
           steps.upload-regenerated-log.outcome == 'success' &&
-          steps.input-comparison.outcome == 'success' &&
-          steps.input-comparison.outputs.matches == 'true'
+          steps.input-comparison.outputs.group_matches == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Replay and capture query plans
+      - name: Capture group query plans without replay
         id: capture-plans
         if: >-
           steps.backend-tests.outcome == 'success' &&
           steps.capture-query-log.outcome == 'success' &&
           steps.upload-regenerated-log.outcome == 'success' &&
-          steps.input-comparison.outcome == 'success' &&
-          steps.input-comparison.outputs.matches == 'true' &&
+          steps.input-comparison.outputs.group_matches == 'true' &&
           steps.ghcr-login.outcome == 'success'
         env:
           QUERY_LOG_FILE: ${{ runner.temp }}/backend-query-log-regenerated/postgresql.json
@@ -172,14 +170,15 @@ jobs:
           INPUT_ARTIFACT_ID: ${{ steps.upload-regenerated-log.outputs.artifact-id }}
           INPUT_MANIFEST_FILE: query-perf-plan-capture/input/regenerated-manifest.json
           INPUT_COMPARISON_FILE: query-perf-plan-capture/input/comparison.json
+          INPUT_GROUP_BINDS_FILE: query-perf-plan-capture/binds/source-binds.json
           CAPTURE_OUTPUT_DIR: query-perf-plan-capture
-        run: backend/scripts/capture-query-perf-plan.sh
+        run: backend/scripts/capture-group-query-plans.sh
 
       - name: Remove any remaining perf DB container
         if: always()
         run: |
-          if docker ps -a --format '{{.Names}}' | grep -Fxq 'query-perf-plan-capture-db'; then
-            docker rm --force query-perf-plan-capture-db
+          if docker ps -a --format '{{.Names}}' | grep -Fxq 'query-perf-group-plan-capture-db'; then
+            docker rm --force query-perf-group-plan-capture-db
           fi
 
       - name: Record why replay or plan capture was skipped
@@ -190,6 +189,7 @@ jobs:
           LOG_UPLOAD_OUTCOME: ${{ steps.upload-regenerated-log.outcome }}
           INPUT_COMPARISON_OUTCOME: ${{ steps.input-comparison.outcome }}
           INPUT_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.matches }}
+          GROUP_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.group_matches }}
           GHCR_LOGIN_OUTCOME: ${{ steps.ghcr-login.outcome }}
           PLAN_CAPTURE_OUTCOME: ${{ steps.capture-plans.outcome }}
         run: bash backend/scripts/query-perf-plan-capture-record-prerequisites.sh
@@ -202,6 +202,7 @@ jobs:
           LOG_UPLOAD_OUTCOME: ${{ steps.upload-regenerated-log.outcome }}
           INPUT_COMPARISON_OUTCOME: ${{ steps.input-comparison.outcome }}
           INPUT_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.matches }}
+          GROUP_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.group_matches }}
           GHCR_LOGIN_OUTCOME: ${{ steps.ghcr-login.outcome }}
           PLAN_CAPTURE_OUTCOME: ${{ steps.capture-plans.outcome }}
         run: bash backend/scripts/query-perf-plan-capture-check-results.sh

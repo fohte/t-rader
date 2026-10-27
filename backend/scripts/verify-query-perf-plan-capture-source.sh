@@ -26,12 +26,15 @@ fi
 while IFS= read -r path; do
   case "$path" in
     .github/workflows/query-perf-plan-capture-39714934810.yml | \
+      backend/scripts/capture-group-query-plan-observation.sh | \
+      backend/scripts/capture-group-query-plans.sh | \
       backend/scripts/capture-query-perf-plan.sh | \
       backend/scripts/query-perf-plan-capture-tune-postgres.sh | \
       backend/scripts/query-perf-plan-capture-copy-query-log.sh | \
       backend/scripts/query-perf-plan-capture-compare-input.sh | \
       backend/scripts/query-perf-plan-capture-record-prerequisites.sh | \
       backend/scripts/query-perf-plan-capture-check-results.sh | \
+      backend/scripts/prepare-group-query-plan-input.sh | \
       backend/scripts/verify-query-perf-plan-capture-source.sh | \
       backend/scripts/query-perf-input-manifest/Cargo.toml | \
       backend/scripts/query-perf-input-manifest/Cargo.lock | \
