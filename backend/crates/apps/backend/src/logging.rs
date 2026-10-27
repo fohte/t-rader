@@ -13,6 +13,7 @@ where
 {
     tracing_subscriber::fmt()
         .with_env_filter(filter)
+        // Loki の logfmt parser は ANSI escape 付きの field key を解析できない。
         .with_ansi(false)
         .with_writer(writer)
         .finish()
