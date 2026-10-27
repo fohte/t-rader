@@ -155,9 +155,9 @@ function getSelectedSnapshotOutput() {
 function getUnselectedWarningRowOutput() {
   const row = screen.getByRole('listitem')
   return [
-    Array.from(row.querySelectorAll('[data-slot="chip"]'))
-      .map((chip) => chip.textContent)
-      .filter((text) => text === '理由付き警告あり'),
+    Array.from(row.querySelectorAll('[data-slot="chip"]')).map(
+      (chip) => chip.textContent,
+    ),
     screen
       .getByRole('checkbox', {
         name: '架空の確認ノート の最新未読バージョンを選択',
@@ -448,7 +448,13 @@ describe('NotesList', () => {
     )
 
     expect(getUnselectedWarningRowOutput()).toEqual([
-      ['理由付き警告あり'],
+      [
+        '架空の種別表示名',
+        '現行 v2',
+        '理由付き警告あり',
+        '未読 1 バージョン',
+        '架空タグ',
+      ],
       'false',
     ])
   })
