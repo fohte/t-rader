@@ -70,6 +70,7 @@ pub use super::trade::Entity as Trade;
 pub use super::trade_note::Entity as TradeNote;
 pub use super::trigger::Entity as Trigger;
 pub use super::us_stock_hourly_bar_ingest_progress::Entity as UsStockHourlyBarIngestProgress;
+pub use super::us_stock_minute_bar_downsample_cursor::Entity as UsStockMinuteBarDownsampleCursor;
 pub use super::us_stock_minute_bar_ingest_progress::Entity as UsStockMinuteBarIngestProgress;
 pub use super::us_stock_sip_bar_refetch_progress::Entity as UsStockSipBarRefetchProgress;
 pub use super::us_stock_sip_bar_refetch_write_budget::Entity as UsStockSipBarRefetchWriteBudget;

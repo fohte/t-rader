@@ -80,6 +80,7 @@
 | [public.tavily_retrieval_cache](public.tavily_retrieval_cache.md)                               | 7       | 認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。                                                    | BASE TABLE        |
 | [public.calendar_event_sec_filing_check](public.calendar_event_sec_filing_check.md)             | 2       | SEC の資料を照合した最終日時をカレンダーイベントごとに保持する。                                                                                   | BASE TABLE        |
 | [public.calendar_event_macro_reference_check](public.calendar_event_macro_reference_check.md)   | 2       | 経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。                                                   | BASE TABLE        |
+| [public.us_stock_minute_bar_downsample_cursor](public.us_stock_minute_bar_downsample_cursor.md) | 2       | 米国株の 1 分足 downsample の再開位置を保持する。                                                                                                  | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -1029,6 +1030,10 @@ erDiagram
 "public.calendar_event_macro_reference_check" {
   uuid calendar_event_id FK
   timestamp_with_time_zone checked_at
+}
+"public.us_stock_minute_bar_downsample_cursor" {
+  smallint singleton_key
+  timestamp_with_time_zone cursor_timestamp
 }
 ```
 

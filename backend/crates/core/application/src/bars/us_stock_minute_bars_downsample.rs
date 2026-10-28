@@ -28,6 +28,8 @@ async fn acquire_us_stock_bars_write_lock(
 enum DownsamplePostponementReason {
     ProcessingBudgetExhausted,
     WriteLockBusy,
+    MinuteBarsRemain,
+    CursorChanged,
 }
 
 impl DownsamplePostponementReason {
@@ -35,6 +37,8 @@ impl DownsamplePostponementReason {
         match self {
             Self::ProcessingBudgetExhausted => "processing_budget_exhausted",
             Self::WriteLockBusy => "write_lock_busy",
+            Self::MinuteBarsRemain => "minute_bars_remain",
+            Self::CursorChanged => "cursor_changed",
         }
     }
 }
@@ -80,18 +84,108 @@ enum InstrumentDownsampleOutcome {
 fn log_downsample_postponed(
     reason: DownsamplePostponementReason,
     batch_from: DateTime<Utc>,
+    cursor_timestamp: Option<DateTime<Utc>>,
     stats: &UsStockMinuteBarsDownsampleStats,
 ) {
     tracing::info!(
         reason = reason.as_str(),
         batch_from = %batch_from,
+        cursor_timestamp = ?cursor_timestamp,
         hourly_bars_inserted = stats.hourly_bars_inserted,
         minute_bars_deleted = stats.minute_bars_deleted,
         "米国株の分足間引きを次回の実行に延期しました"
     );
 }
 
+fn cursor_advance_postponement_reason(
+    batch_from: DateTime<Utc>,
+    cursor_timestamp: Option<DateTime<Utc>>,
+) -> DownsamplePostponementReason {
+    if cursor_timestamp == Some(batch_from) {
+        DownsamplePostponementReason::MinuteBarsRemain
+    } else {
+        DownsamplePostponementReason::CursorChanged
+    }
+}
+
 impl UsStockBarsIngestUseCases {
+    fn log_processing_budget_exhausted(
+        &self,
+        batch_from: DateTime<Utc>,
+        stats: &UsStockMinuteBarsDownsampleStats,
+    ) {
+        log_downsample_postponed(
+            DownsamplePostponementReason::ProcessingBudgetExhausted,
+            batch_from,
+            None,
+            stats,
+        );
+    }
+
+    fn postpone_if_budget_exhausted(
+        &self,
+        budget: &DownsampleProcessingBudget,
+        batch_from: DateTime<Utc>,
+        stats: &UsStockMinuteBarsDownsampleStats,
+    ) -> bool {
+        if !budget.is_exhausted(self.clock.as_ref()) {
+            return false;
+        }
+
+        self.log_processing_budget_exhausted(batch_from, stats);
+        true
+    }
+
+    async fn find_or_initialize_downsample_cursor(
+        &self,
+        cutoff: DateTime<Utc>,
+        cutoff_bucket_start: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, BarsUseCaseError> {
+        if let Some(cursor) = self
+            .bars
+            .repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await?
+        {
+            return Ok(Some(cursor));
+        }
+
+        // 検索から記録までに古い分足が書かれると、カーソルがなく巻き戻せず間引き漏れが生じるため取り込みと直列化する。
+        let Some(write_lock_guard) = acquire_us_stock_bars_write_lock(
+            self.us_stock_bars_write_lock.as_ref(),
+            WRITE_LOCK_WAIT_TIMEOUT,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+
+        let cursor = match self
+            .bars
+            .repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await?
+        {
+            Some(cursor) => cursor,
+            None => {
+                let initial_cursor = self
+                    .bars
+                    .repository
+                    .find_earliest_us_stock_minute_bar_before(cutoff)
+                    .await?
+                    .map(hourly_bar_bucket_start)
+                    .unwrap_or(cutoff_bucket_start);
+                self.bars
+                    .repository
+                    .initialize_us_stock_minute_bar_downsample_cursor(initial_cursor)
+                    .await?
+            }
+        };
+        drop(write_lock_guard);
+
+        Ok(Some(cursor))
+    }
+
     async fn downsample_instrument(
         &self,
         instrument_id: &str,
@@ -173,41 +267,44 @@ impl UsStockBarsIngestUseCases {
         let mut budget =
             DownsampleProcessingBudget::new(self.clock.instant(), config.max_processing_duration);
         let cutoff = us_stock_hourly_history_cutoff(now);
-        let Some(oldest_bar) = self
-            .bars
-            .repository
-            .find_earliest_us_stock_minute_bar_before(cutoff)
+        let mut stats = UsStockMinuteBarsDownsampleStats::default();
+        let cutoff_bucket_start = hourly_bar_bucket_start(cutoff);
+        let Some(mut batch_from) = self
+            .find_or_initialize_downsample_cursor(cutoff, cutoff_bucket_start)
             .await?
         else {
-            return Ok(UsStockMinuteBarsDownsampleStats::default());
-        };
-
-        let mut stats = UsStockMinuteBarsDownsampleStats::default();
-        let mut batch_from = hourly_bar_bucket_start(oldest_bar);
-        if budget.is_exhausted(self.clock.as_ref()) {
             log_downsample_postponed(
-                DownsamplePostponementReason::ProcessingBudgetExhausted,
-                batch_from,
+                DownsamplePostponementReason::WriteLockBusy,
+                cutoff_bucket_start,
+                None,
                 &stats,
             );
             return Ok(stats);
+        };
+
+        if batch_from >= cutoff_bucket_start {
+            return Ok(stats);
         }
 
-        while batch_from < cutoff {
+        if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
+            return Ok(stats);
+        }
+
+        while batch_from < cutoff_bucket_start {
+            if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
+                return Ok(stats);
+            }
+
             let batch_until = batch_from
                 .checked_add_signed(Duration::days(DOWNSAMPLE_BATCH_DAYS))
-                .unwrap_or(cutoff);
+                .unwrap_or(cutoff_bucket_start)
+                .min(cutoff_bucket_start);
             let instrument_ids = self
                 .bars
                 .repository
                 .find_us_stock_minute_bar_instrument_ids(batch_from, batch_until, cutoff)
                 .await?;
-            if budget.is_exhausted(self.clock.as_ref()) {
-                log_downsample_postponed(
-                    DownsamplePostponementReason::ProcessingBudgetExhausted,
-                    batch_from,
-                    &stats,
-                );
+            if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
                 return Ok(stats);
             }
 
@@ -217,7 +314,7 @@ impl UsStockBarsIngestUseCases {
                     .await?
                 {
                     InstrumentDownsampleOutcome::Postponed(reason) => {
-                        log_downsample_postponed(reason, batch_from, &stats);
+                        log_downsample_postponed(reason, batch_from, None, &stats);
                         return Ok(stats);
                     }
                     InstrumentDownsampleOutcome::Completed {
@@ -227,12 +324,7 @@ impl UsStockBarsIngestUseCases {
                         stats.hourly_bars_inserted += batch_stats.hourly_bars_inserted;
                         stats.minute_bars_deleted += batch_stats.minute_bars_deleted;
 
-                        if budget.is_exhausted(self.clock.as_ref()) {
-                            log_downsample_postponed(
-                                DownsamplePostponementReason::ProcessingBudgetExhausted,
-                                batch_from,
-                                &stats,
-                            );
+                        if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
                             return Ok(stats);
                         }
 
@@ -247,6 +339,50 @@ impl UsStockBarsIngestUseCases {
                     }
                 }
             }
+
+            if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
+                return Ok(stats);
+            }
+
+            let Some(write_lock_guard) = acquire_us_stock_bars_write_lock(
+                self.us_stock_bars_write_lock.as_ref(),
+                WRITE_LOCK_WAIT_TIMEOUT,
+            )
+            .await?
+            else {
+                log_downsample_postponed(
+                    DownsamplePostponementReason::WriteLockBusy,
+                    batch_from,
+                    None,
+                    &stats,
+                );
+                return Ok(stats);
+            };
+
+            if budget.is_exhausted(self.clock.as_ref()) {
+                drop(write_lock_guard);
+                self.log_processing_budget_exhausted(batch_from, &stats);
+                return Ok(stats);
+            }
+
+            let cursor_advanced = self
+                .bars
+                .repository
+                .advance_us_stock_minute_bar_downsample_cursor(batch_from, batch_until)
+                .await?;
+
+            if !cursor_advanced {
+                let cursor_timestamp = self
+                    .bars
+                    .repository
+                    .find_us_stock_minute_bar_downsample_cursor()
+                    .await?;
+                let reason = cursor_advance_postponement_reason(batch_from, cursor_timestamp);
+                drop(write_lock_guard);
+                log_downsample_postponed(reason, batch_from, cursor_timestamp, &stats);
+                return Ok(stats);
+            }
+            drop(write_lock_guard);
             batch_from = batch_until;
         }
 
@@ -259,7 +395,7 @@ mod tests {
     use std::sync::{Arc, Mutex as StdMutex};
     use std::time::Instant;
 
-    use chrono::{DateTime, Utc};
+    use chrono::{DateTime, Duration as ChronoDuration, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
@@ -508,6 +644,16 @@ mod tests {
         let write_transaction_ids = repository.write_transaction_ids.lock().await.clone();
         let begun = downsample_fixture.unit_of_work.begun.lock().await.clone();
         let write_lock_attempts = downsample_fixture.write_lock.attempts();
+        let cursor_initializations = repository
+            .minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .clone();
+        let cursor_advances = repository
+            .minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .clone();
         let committed = downsample_fixture
             .unit_of_work
             .committed
@@ -523,6 +669,8 @@ mod tests {
                 cutoffs,
                 begun.len(),
                 write_lock_attempts,
+                cursor_initializations,
+                cursor_advances,
                 write_transaction_ids == begun,
                 committed == begun,
             ),
@@ -536,7 +684,7 @@ mod tests {
                 vec![
                     (date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z"),),
                     (date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z"),),
-                    (date("2038-12-27T03:00:00Z"), date("2039-01-03T03:00:00Z"),),
+                    (date("2038-12-27T03:00:00Z"), date("2039-01-01T12:00:00Z"),),
                 ],
                 vec![
                     date("2039-01-01T12:00:00Z"),
@@ -544,9 +692,303 @@ mod tests {
                     date("2039-01-01T12:00:00Z"),
                 ],
                 3,
-                3,
+                6,
+                vec![date("2038-12-20T03:00:00Z")],
+                vec![
+                    (date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z")),
+                    (date("2038-12-27T03:00:00Z"), date("2039-01-01T12:00:00Z")),
+                ],
                 true,
                 true,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_initializes_empty_cursor_at_cutoff_hour_and_reuses_it(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+
+        let first = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:30:00Z"), Default::default())
+            .await;
+        let second = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:30:00Z"), Default::default())
+            .await;
+        let earliest_queries = repository
+            .earliest_minute_bar_before_queries
+            .lock()
+            .await
+            .clone();
+        let initializations = repository
+            .minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .clone();
+        let cursor = *repository
+            .us_stock_minute_bar_downsample_cursor
+            .lock()
+            .await;
+
+        assert_eq!(
+            (
+                first.map_err(|_| ()),
+                second.map_err(|_| ()),
+                earliest_queries,
+                initializations,
+                cursor,
+            ),
+            (
+                Ok(Default::default()),
+                Ok(Default::default()),
+                vec![date("2039-01-01T12:30:00Z")],
+                vec![date("2039-01-01T12:00:00Z")],
+                Some(date("2039-01-01T12:00:00Z")),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_persists_initialized_cursor_when_search_exhausts_budget(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        let cutoff = date("2039-01-01T12:00:00Z");
+        let initial_cursor = date("2038-12-30T03:00:00Z");
+        repository
+            .seed_bars(vec![minute_bar(
+                "US:DEMO-ALPHA",
+                date("2038-12-30T03:05:00Z"),
+            )])
+            .await;
+        let clock = downsample_fixture.clock.clone();
+        repository
+            .set_earliest_minute_bar_before_query_hook(Arc::new(move || {
+                clock.advance(StdDuration::from_secs(2));
+            }))
+            .await;
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(
+                date("2040-01-01T12:00:00Z"),
+                UsStockMinuteBarsDownsampleConfig {
+                    max_processing_duration: Some(StdDuration::from_secs(1)),
+                },
+            )
+            .await;
+        let earliest_queries = repository
+            .earliest_minute_bar_before_queries
+            .lock()
+            .await
+            .clone();
+        let initializations = repository
+            .minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .clone();
+        let cursor = *repository
+            .us_stock_minute_bar_downsample_cursor
+            .lock()
+            .await;
+        let candidate_ranges = repository
+            .minute_bar_downsample_candidate_ranges
+            .lock()
+            .await
+            .clone();
+        let advances = repository
+            .minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .clone();
+
+        assert_eq!(
+            (
+                result.map_err(|_| ()),
+                earliest_queries,
+                initializations,
+                cursor,
+                candidate_ranges,
+                advances,
+            ),
+            (
+                Ok(Default::default()),
+                vec![cutoff],
+                vec![initial_cursor],
+                Some(initial_cursor),
+                Vec::new(),
+                Vec::new(),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::minute_bars_remain(false, true, "2038-12-30T03:00:00Z", "minute_bars_remain")]
+    #[case::cursor_changed(true, false, "2038-12-30T02:00:00Z", "cursor_changed")]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_does_not_advance_cursor_when_advance_fails(
+        #[case] cursor_changes_before_advance: bool,
+        #[case] force_advance_failure: bool,
+        #[case] expected_cursor: &str,
+        #[case] expected_reason: &str,
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        let cursor = date("2038-12-30T03:00:00Z");
+        let batch_until = date("2039-01-01T12:00:00Z");
+        repository
+            .seed_us_stock_minute_bar_downsample_cursor(cursor)
+            .await;
+        repository
+            .seed_bars(vec![minute_bar(
+                "US:DEMO-ALPHA",
+                date("2038-12-30T03:05:00Z"),
+            )])
+            .await;
+        if cursor_changes_before_advance {
+            repository
+                .set_minute_bar_downsample_cursor_before_next_advance(
+                    cursor - ChronoDuration::hours(1),
+                )
+                .await;
+        }
+        if force_advance_failure {
+            repository.fail_minute_bar_downsample_cursor_advance().await;
+        }
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"), Default::default())
+            .await;
+        let advances = repository
+            .minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .clone();
+        let cursor_after_rejected_advance = *repository
+            .us_stock_minute_bar_downsample_cursor
+            .lock()
+            .await;
+        let downsample_ranges = repository.minute_bar_downsample_ranges.lock().await.clone();
+        let reason =
+            super::cursor_advance_postponement_reason(cursor, cursor_after_rejected_advance);
+
+        assert_eq!(
+            (
+                result.map_err(|_| ()),
+                advances,
+                cursor_after_rejected_advance,
+                downsample_ranges,
+                reason.as_str(),
+            ),
+            (
+                Ok(Default::default()),
+                vec![(cursor, batch_until)],
+                Some(date(expected_cursor)),
+                vec![(cursor, batch_until)],
+                expected_reason,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_does_not_initialize_cursor_when_initialization_lock_is_busy(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        downsample_fixture.write_lock.set_busy_on_attempt(1);
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"), Default::default())
+            .await;
+        let cursor = *repository
+            .us_stock_minute_bar_downsample_cursor
+            .lock()
+            .await;
+        let earliest_queries = repository
+            .earliest_minute_bar_before_queries
+            .lock()
+            .await
+            .clone();
+        let initializations = repository
+            .minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .clone();
+
+        assert_eq!(
+            (
+                result.map_err(|_| ()),
+                downsample_fixture.write_lock.attempts(),
+                cursor,
+                earliest_queries,
+                initializations,
+            ),
+            (Ok(Default::default()), 1, None, Vec::new(), Vec::new()),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_skips_the_earliest_bar_search_when_cursor_exists(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        let cursor = date("2038-12-30T03:00:00Z");
+        repository
+            .seed_us_stock_minute_bar_downsample_cursor(cursor)
+            .await;
+        repository
+            .seed_bars(vec![minute_bar(
+                "US:DEMO-ALPHA",
+                date("2038-12-30T03:05:00Z"),
+            )])
+            .await;
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"), Default::default())
+            .await;
+        let earliest_queries = repository
+            .earliest_minute_bar_before_queries
+            .lock()
+            .await
+            .clone();
+        let initializations = repository
+            .minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .clone();
+        let advances = repository
+            .minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .clone();
+
+        assert_eq!(
+            (
+                result.map_err(|_| ()),
+                earliest_queries,
+                initializations,
+                advances,
+            ),
+            (
+                Ok(Default::default()),
+                Vec::new(),
+                Vec::new(),
+                vec![(cursor, date("2039-01-01T12:00:00Z"))],
             ),
         );
     }
@@ -608,7 +1050,7 @@ mod tests {
                 Err(()),
                 vec!["US:DEMO-ALPHA".to_owned(), "US:DEMO-BETA".to_owned()],
                 vec![(true, true), (true, false)],
-                2,
+                3,
             ),
         );
     }
@@ -666,7 +1108,7 @@ mod tests {
                 minute_bars_deleted: 3,
             })
             .await;
-        downsample_fixture.write_lock.set_busy_on_attempt(2);
+        downsample_fixture.write_lock.set_busy_on_attempt(3);
 
         let result = downsample_fixture
             .use_cases
@@ -695,7 +1137,7 @@ mod tests {
                     hourly_bars_inserted: 1,
                     minute_bars_deleted: 3,
                 }),
-                2,
+                3,
                 1,
                 true,
                 vec![(date("2038-12-20T03:00:00Z"), date("2038-12-27T03:00:00Z"),),],
@@ -749,9 +1191,9 @@ mod tests {
             ),
             (
                 Ok(Default::default()),
-                vec![(date("2038-12-30T03:00:00Z"), date("2039-01-06T03:00:00Z"))],
+                vec![(date("2038-12-30T03:00:00Z"), date("2039-01-01T12:00:00Z"))],
                 Vec::new(),
-                0,
+                1,
             ),
         );
     }
@@ -804,6 +1246,11 @@ mod tests {
             .lock()
             .await
             .clone();
+        let cursor_advances = repository
+            .minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .clone();
 
         assert_eq!(
             (
@@ -812,6 +1259,7 @@ mod tests {
                 begun.len(),
                 committed == begun,
                 downsample_fixture.write_lock.attempts(),
+                cursor_advances,
                 downsample_fixture
                     .clock
                     .sleeps
@@ -829,7 +1277,8 @@ mod tests {
                 vec!["US:DEMO-ALPHA".to_owned()],
                 1,
                 true,
-                1,
+                2,
+                Vec::new(),
                 Vec::new(),
             ),
         );
@@ -947,7 +1396,7 @@ mod tests {
                     .expect("lock history lock is available")
                     .clone(),
             ),
-            (Ok(Default::default()), 2, true, 2, vec![9, 9], vec![0, 0],),
+            (Ok(Default::default()), 2, true, 4, vec![9, 9], vec![0, 0],),
         );
     }
 

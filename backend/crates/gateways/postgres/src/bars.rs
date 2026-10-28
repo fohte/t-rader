@@ -4,11 +4,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
+    earliest_us_stock_minute_bar_timestamp,
 };
 use core_application::persistence::PersistenceError;
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::bar::{Bar, Timeframe};
-use core_domain::instrument::Market;
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
@@ -20,13 +20,17 @@ use crate::entities::{
     instruments, jquants_daily_bars_ingested_date, us_stock_hourly_bar_ingest_progress,
     us_stock_minute_bar_ingest_progress,
 };
-use crate::persistence::persistence_error;
-use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQuery};
-use crate::transaction::transaction_ref as postgres_transaction_ref;
+use crate::repositories::bars as bar_queries;
+#[cfg(test)]
+use crate::repositories::bars::BarsQuery as PostgresBarsQuery;
 
+mod repository_support;
+mod us_instrument_lookup;
 mod us_stock_bar_targets;
 mod us_stock_minute_bars_downsample;
 mod us_stock_sip_bar_refetch;
+
+use repository_support::{repository_error, to_postgres_query, transaction_ref};
 
 fn current_hourly_history_cutoff_for(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
     matches!(timeframe, Timeframe::Hourly | Timeframe::FourHours)
@@ -41,28 +45,6 @@ pub struct PostgresBarsRepository {
 impl PostgresBarsRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self { db }
-    }
-
-    async fn us_instrument_ids(
-        &self,
-        instrument_ids: &[String],
-    ) -> Result<Vec<String>, BarsRepositoryError> {
-        if instrument_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        instruments::Entity::find()
-            .filter(instruments::Column::Id.is_in(instrument_ids.to_vec()))
-            .filter(instruments::Column::Market.eq(Market::Us.to_string()))
-            .all(&self.db)
-            .await
-            .map(|instruments| {
-                instruments
-                    .into_iter()
-                    .map(|instrument| instrument.id)
-                    .collect()
-            })
-            .map_err(repository_error)
     }
 }
 
@@ -246,6 +228,33 @@ impl BarsRepository for PostgresBarsRepository {
         cutoff: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
         us_stock_minute_bars_downsample::find_earliest_minute_bar_before(&self.db, cutoff)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn find_us_stock_minute_bar_downsample_cursor(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+        us_stock_minute_bars_downsample::find_downsample_cursor(&self.db)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn initialize_us_stock_minute_bar_downsample_cursor(
+        &self,
+        cursor_timestamp: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, BarsRepositoryError> {
+        us_stock_minute_bars_downsample::initialize_downsample_cursor(&self.db, cursor_timestamp)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn advance_us_stock_minute_bar_downsample_cursor(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> Result<bool, BarsRepositoryError> {
+        us_stock_minute_bars_downsample::advance_downsample_cursor(&self.db, from, until)
             .await
             .map_err(repository_error)
     }
@@ -447,9 +456,19 @@ impl BarsRepository for PostgresBarsRepository {
         bars: Vec<Bar>,
     ) -> Result<(), BarsRepositoryError> {
         let transaction = transaction_ref(transaction)?;
+        let earliest_us_stock_minute_timestamp = earliest_us_stock_minute_bar_timestamp(&bars);
         bar_queries::upsert_bars(transaction, bars)
             .await
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        if let Some(earliest_timestamp) = earliest_us_stock_minute_timestamp {
+            us_stock_minute_bars_downsample::rewind_downsample_cursor(
+                transaction,
+                earliest_timestamp,
+            )
+            .await
+            .map_err(repository_error)?;
+        }
+        Ok(())
     }
 
     async fn mark_ingested(
@@ -471,25 +490,6 @@ impl BarsRepository for PostgresBarsRepository {
         .map(|_| ())
         .map_err(repository_error)
     }
-}
-
-fn to_postgres_query(query: BarsQuery) -> PostgresBarsQuery {
-    PostgresBarsQuery {
-        instrument_id: query.instrument_id,
-        timeframe: query.timeframe,
-        from: query.from,
-        to: query.to,
-    }
-}
-
-fn transaction_ref(
-    transaction: &UnitOfWorkTransaction,
-) -> Result<&sea_orm::DatabaseTransaction, BarsRepositoryError> {
-    postgres_transaction_ref(transaction).ok_or(BarsRepositoryError::InvalidTransaction)
-}
-
-fn repository_error(error: sea_orm::DbErr) -> BarsRepositoryError {
-    BarsRepositoryError::Database(persistence_error(error))
 }
 
 #[cfg(test)]
@@ -1224,6 +1224,227 @@ mod tests {
             .expect("find US minute bars before an equal cutoff");
 
         assert_eq!((before_cutoff, at_cutoff), (Some(timestamp(8, 0)), None),);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn initializes_downsample_cursor_once(db: DatabaseHandle) {
+        let repository = PostgresBarsRepository::new(db);
+        let initial = Utc
+            .with_ymd_and_hms(2040, 1, 2, 6, 0, 0)
+            .single()
+            .expect("fixture cursor");
+        let replacement = Utc
+            .with_ymd_and_hms(2040, 1, 2, 8, 0, 0)
+            .single()
+            .expect("fixture replacement cursor");
+
+        let first = repository
+            .initialize_us_stock_minute_bar_downsample_cursor(initial)
+            .await
+            .expect("initialize downsample cursor");
+        let second = repository
+            .initialize_us_stock_minute_bar_downsample_cursor(replacement)
+            .await
+            .expect("preserve initialized downsample cursor");
+        let stored = repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await
+            .expect("read downsample cursor");
+
+        assert_eq!((first, second, stored), (initial, initial, Some(initial)));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn minute_written_before_cursor_advance_keeps_the_range_open(db: DatabaseHandle) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let instrument_id = format!("US:DEMO-CURSOR-RACE-{suffix}");
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(instrument_id.clone()),
+            name: Set(instrument_id.clone()),
+            market: Set("US".to_owned()),
+            sector: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert US instrument");
+
+        let from = Utc
+            .with_ymd_and_hms(2040, 1, 2, 6, 0, 0)
+            .single()
+            .expect("fixture start");
+        let inserted_minute = Utc
+            .with_ymd_and_hms(2040, 1, 2, 7, 11, 0)
+            .single()
+            .expect("fixture minute");
+        let until = Utc
+            .with_ymd_and_hms(2040, 1, 2, 8, 0, 0)
+            .single()
+            .expect("fixture end");
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        repository
+            .initialize_us_stock_minute_bar_downsample_cursor(from)
+            .await
+            .expect("initialize downsample cursor");
+        let transaction = unit_of_work.begin().await.expect("begin minute write");
+        repository
+            .upsert_bars(
+                &transaction,
+                vec![test_bar(&instrument_id, Timeframe::Minute, inserted_minute)],
+            )
+            .await
+            .expect("write minute bar");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit minute write");
+
+        let advanced = repository
+            .advance_us_stock_minute_bar_downsample_cursor(from, until)
+            .await
+            .expect("check pending minutes before advancing");
+        let cursor_after_pending_minute = repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await
+            .expect("read cursor with pending minute");
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM bars WHERE instrument_id = $1 AND timeframe = '1m' AND timestamp = $2",
+            [instrument_id.into(), inserted_minute.fixed_offset().into()],
+        ))
+        .await
+        .expect("remove processed minute bar");
+        let advanced_after_delete = repository
+            .advance_us_stock_minute_bar_downsample_cursor(from, until)
+            .await
+            .expect("advance empty range");
+        let cursor_after_empty_range = repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await
+            .expect("read advanced cursor");
+
+        assert_eq!(
+            (
+                advanced,
+                cursor_after_pending_minute,
+                advanced_after_delete,
+                cursor_after_empty_range,
+            ),
+            (false, Some(from), true, Some(until)),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn writing_an_older_minute_rewinds_the_downsample_cursor(db: DatabaseHandle) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let instrument_id = format!("US:DEMO-CURSOR-REWIND-{suffix}");
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(instrument_id.clone()),
+            name: Set(instrument_id.clone()),
+            market: Set("US".to_owned()),
+            sector: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert US instrument");
+
+        let cursor = Utc
+            .with_ymd_and_hms(2040, 1, 2, 8, 0, 0)
+            .single()
+            .expect("fixture cursor");
+        let earliest_minute = Utc
+            .with_ymd_and_hms(2040, 1, 2, 6, 31, 0)
+            .single()
+            .expect("fixture minute");
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        repository
+            .initialize_us_stock_minute_bar_downsample_cursor(cursor)
+            .await
+            .expect("initialize downsample cursor");
+        let transaction = unit_of_work.begin().await.expect("begin minute write");
+        repository
+            .upsert_bars(
+                &transaction,
+                vec![test_bar(&instrument_id, Timeframe::Minute, earliest_minute)],
+            )
+            .await
+            .expect("write older minute bar");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit minute write");
+        let rewound = repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await
+            .expect("read rewound cursor");
+        let expected = Utc
+            .with_ymd_and_hms(2040, 1, 2, 6, 0, 0)
+            .single()
+            .expect("fixture hour start");
+
+        assert_eq!(rewound, Some(expected));
+    }
+
+    #[rstest::rstest]
+    #[case::minute_at_or_after_cursor("US:", "US", Timeframe::Minute, true, 1)]
+    #[case::non_us_instrument("JP:", "OTHER", Timeframe::Minute, true, -31)]
+    #[case::non_minute_timeframe("US:", "US", Timeframe::Hourly, true, -60)]
+    #[case::cursor_row_absent("US:", "US", Timeframe::Minute, false, -31)]
+    #[tokio::test]
+    async fn upserting_an_ineligible_bar_does_not_rewind_the_downsample_cursor(
+        #[case] instrument_prefix: &str,
+        #[case] market: &str,
+        #[case] timeframe: Timeframe,
+        #[case] has_cursor: bool,
+        #[case] timestamp_offset_minutes: i64,
+    ) {
+        let db = crate::test_support::create_test_transaction().await;
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let instrument_id = format!("{instrument_prefix}DEMO-CURSOR-NO-REWIND-{suffix}");
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(instrument_id.clone()),
+            name: Set(instrument_id.clone()),
+            market: Set(market.to_owned()),
+            sector: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert test instrument");
+
+        let cursor = Utc
+            .with_ymd_and_hms(2040, 1, 2, 8, 0, 0)
+            .single()
+            .expect("fixture cursor");
+        let timestamp = cursor + ChronoDuration::minutes(timestamp_offset_minutes);
+        let repository = PostgresBarsRepository::new(db.clone());
+        if has_cursor {
+            repository
+                .initialize_us_stock_minute_bar_downsample_cursor(cursor)
+                .await
+                .expect("initialize downsample cursor");
+        }
+
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let transaction = unit_of_work.begin().await.expect("begin bar write");
+        repository
+            .upsert_bars(
+                &transaction,
+                vec![test_bar(&instrument_id, timeframe, timestamp)],
+            )
+            .await
+            .expect("upsert test bar");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit bar write");
+
+        let stored_cursor = repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await
+            .expect("read downsample cursor");
+
+        assert_eq!(stored_cursor, has_cursor.then_some(cursor));
     }
 
     #[backend_test_macros::database_test]
