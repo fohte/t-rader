@@ -12,7 +12,6 @@ import type { components } from '#lib/api/schema.gen'
 import type { FinancialPeriodType } from '#lib/stock-page-date'
 
 export type { CalendarCentralBankStatus } from '#components/calendar/calendar-model-central-bank'
-export type { CalendarEventReferenceView } from '#components/calendar/calendar-model-reference'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Event = Extract<CalendarEvent, { kind: 'event' }>
