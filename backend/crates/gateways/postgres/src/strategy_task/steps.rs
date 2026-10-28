@@ -30,7 +30,7 @@ pub(super) async fn list_model_call_limit_reached_task_ids(
         .into_tuple::<Uuid>()
         .all(db)
         .await
-        .map_err(super::repository_error)
+        .map_err(repository_error)
 }
 
 pub(super) async fn list_steps(
@@ -43,7 +43,7 @@ pub(super) async fn list_steps(
         .all(db)
         .await
         .map(|rows| rows.into_iter().map(step_from_model).collect())
-        .map_err(super::repository_error)
+        .map_err(repository_error)
 }
 
 fn step_status_from_raw(status: &str) -> Option<StrategyTaskStepStatus> {
