@@ -39,7 +39,11 @@ function makeReference(
     source: 'sample_authority',
     external_id: `sample-${kind}`,
     title:
-      kind === 'individual_document' ? '架空の個別資料' : '架空の公式資料一覧',
+      kind === 'individual_document'
+        ? '架空の個別資料'
+        : periodType === 'official_schedule'
+          ? '架空の公式日程'
+          : '架空の公式資料一覧',
     url,
     target_period_start:
       kind === 'individual_document' && periodType != null
@@ -93,17 +97,29 @@ describe('buildCalendarDays central bank references', () => {
         references: [individualDocument, officialArchive],
       }),
       phase: 'first_day',
-      status: '公式一覧のみ',
+      status: '遷移先未確認 / 非リンク',
+      dateLabel: '1/6 (火)',
+      time: '',
+      references: [],
+    },
+    {
+      name: 'shows a past BOJ first-day official schedule without decision material',
+      event: makeCentralBankEvent({
+        title: '架空金融政策決定会合 (1日目)',
+        references: [officialSchedule, individualDocument, officialArchive],
+      }),
+      phase: 'first_day',
+      status: '公式日程',
       dateLabel: '1/6 (火)',
       time: '',
       references: [
         {
           key: 'official_listing:sample_authority:sample-official_listing',
-          title: '架空の公式資料一覧',
+          title: '架空の公式日程',
           source: 'sample_authority',
           checkedAt: '2099-01-06T00:00:00Z',
-          href: 'https://example.invalid/sample-archive',
-          referenceTypeLabel: '公式一覧',
+          href: 'https://example.invalid/sample-schedule',
+          referenceTypeLabel: '公式日程',
         },
       ],
     },
@@ -166,7 +182,7 @@ describe('buildCalendarDays central bank references', () => {
       references: [
         {
           key: 'official_listing:sample_authority:sample-official_listing',
-          title: '架空の公式資料一覧',
+          title: '架空の公式日程',
           source: 'sample_authority',
           checkedAt: '2099-01-06T00:00:00Z',
           href: 'https://example.invalid/sample-schedule',
@@ -201,17 +217,33 @@ describe('buildCalendarDays central bank references', () => {
         references: [individualDocument, officialArchive],
       }),
       phase: 'first_day',
-      status: '公式一覧のみ',
+      status: '遷移先未確認 / 非リンク',
+      dateLabel: '1/6 (火)',
+      time: '',
+      references: [],
+    },
+    {
+      name: 'shows a past ECB first-day official schedule without decision material',
+      event: makeCentralBankEvent({
+        source: 'ecb',
+        external_id: '2099-01-06',
+        country: 'EU',
+        title: '架空中央銀行理事会会合',
+        event_at: null,
+        references: [officialSchedule, individualDocument, officialArchive],
+      }),
+      phase: 'first_day',
+      status: '公式日程',
       dateLabel: '1/6 (火)',
       time: '',
       references: [
         {
           key: 'official_listing:sample_authority:sample-official_listing',
-          title: '架空の公式資料一覧',
+          title: '架空の公式日程',
           source: 'sample_authority',
           checkedAt: '2099-01-06T00:00:00Z',
-          href: 'https://example.invalid/sample-archive',
-          referenceTypeLabel: '公式一覧',
+          href: 'https://example.invalid/sample-schedule',
+          referenceTypeLabel: '公式日程',
         },
       ],
     },
@@ -264,7 +296,7 @@ describe('buildCalendarDays central bank references', () => {
       references: [
         {
           key: 'official_listing:sample_authority:sample-official_listing',
-          title: '架空の公式資料一覧',
+          title: '架空の公式日程',
           source: 'sample_authority',
           checkedAt: '2099-01-06T00:00:00Z',
           href: 'https://example.invalid/sample-schedule',

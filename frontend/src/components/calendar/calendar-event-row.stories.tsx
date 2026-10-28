@@ -160,17 +160,23 @@ const indicatorDestinationUnconfirmedStatus: CalendarIndicatorStatus = {
 
 const centralBankFirstDayStatus: CalendarCentralBankStatus = {
   phase: 'first_day',
-  label: '公式一覧のみ',
+  label: '公式日程',
   references: [
     {
-      key: 'official_listing:sample_authority:sample-archive',
-      title: '架空の公式資料一覧',
+      key: 'official_listing:sample_authority:sample-calendar',
+      title: '架空の公式日程',
       source: 'sample_authority',
       checkedAt: '2030-01-01T00:00:00Z',
-      href: 'https://example.invalid/sample-archive',
-      referenceTypeLabel: '公式一覧',
+      href: 'https://example.invalid/sample-calendar',
+      referenceTypeLabel: '公式日程',
     },
   ],
+}
+
+const centralBankFirstDayUnconfirmedStatus: CalendarCentralBankStatus = {
+  phase: 'first_day',
+  label: '遷移先未確認 / 非リンク',
+  references: [],
 }
 
 const centralBankDecisionDocumentStatus: CalendarCentralBankStatus = {
@@ -654,7 +660,7 @@ export const IndicatorScheduledDesktop: Story = {
 }
 
 export const CentralBankFirstDayMobile: Story = {
-  name: '390px 幅で決定資料を紐付けない会合初日を表示します。',
+  name: '390px 幅で公式日程へ進む会合初日を表示します。',
   ...mobileCentralBankViewport,
   args: {
     time: '',
@@ -669,7 +675,7 @@ export const CentralBankFirstDayMobile: Story = {
 }
 
 export const CentralBankFirstDayDesktop: Story = {
-  name: 'デスクトップ幅で決定資料を紐付けない会合初日を表示します。',
+  name: 'デスクトップ幅で公式日程へ進む会合初日を表示します。',
   args: {
     time: '',
     country: 'JP',
@@ -679,6 +685,35 @@ export const CentralBankFirstDayDesktop: Story = {
     emphasized: true,
     target: false,
     centralBankStatus: centralBankFirstDayStatus,
+  },
+}
+
+export const CentralBankFirstDayUnconfirmedMobile: Story = {
+  name: '390px 幅で遷移先未確認の会合初日を非リンクで表示します。',
+  ...mobileCentralBankViewport,
+  args: {
+    time: '',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (1日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankFirstDayUnconfirmedStatus,
+  },
+}
+
+export const CentralBankFirstDayUnconfirmedDesktop: Story = {
+  name: 'デスクトップ幅で遷移先未確認の会合初日を非リンクで表示します。',
+  args: {
+    time: '',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (1日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankFirstDayUnconfirmedStatus,
   },
 }
 

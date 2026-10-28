@@ -65,6 +65,26 @@ impl MacroReferenceSource for EcbMacroReferenceSource {
         let (calendar_events, _) = crate::parser::parse_calendar_events(&calendar_html)
             .map_err(|error| source_error(error.to_string()))?;
 
+        if supported
+            .iter()
+            .all(|target| !is_decision_day(&target.event_title))
+        {
+            return Ok(supported
+                .into_iter()
+                .map(|target| {
+                    let scheduled = calendar_events
+                        .iter()
+                        .any(|event| event.external_id == target.event_external_id);
+                    let references = if scheduled {
+                        vec![listing_reference(&target, true)]
+                    } else {
+                        Vec::new()
+                    };
+                    MacroReferenceFetchResult::success(target, references)
+                })
+                .collect());
+        }
+
         let current_index_html = self
             .http
             .get_text(DECISION_ARCHIVE_URL)
@@ -137,7 +157,11 @@ impl MacroReferenceSource for EcbMacroReferenceSource {
                     let scheduled = calendar_events
                         .iter()
                         .any(|event| event.external_id == target.event_external_id);
-                    vec![listing_reference(&target, scheduled)]
+                    if scheduled || is_decision_day(&target.event_title) {
+                        vec![listing_reference(&target, scheduled)]
+                    } else {
+                        Vec::new()
+                    }
                 };
                 MacroReferenceFetchResult::success(target, references)
             })
@@ -309,8 +333,15 @@ mod tests {
     }
 
     #[test]
-    fn absent_official_schedule_entry_uses_the_archive_listing() {
-        let reference = listing_reference(&target("ecb", "2099-04-08", "架空の政策会合"), false);
+    fn decision_day_without_an_official_schedule_uses_the_archive_listing() {
+        let reference = listing_reference(
+            &target(
+                "ecb",
+                "2099-04-08",
+                "Governing Council of the ECB: monetary policy meeting (Day 2), followed by press conference",
+            ),
+            false,
+        );
 
         assert_eq!(
             (
@@ -403,6 +434,32 @@ mod tests {
                     }],
                 ),
             ],
+        );
+    }
+
+    #[tokio::test]
+    async fn source_keeps_an_unscheduled_first_meeting_day_unlinked_without_loading_decision_archives()
+     {
+        let first_day = target(
+            "ecb",
+            "2099-04-06",
+            "Governing Council of the ECB: monetary policy meeting (Day 1)",
+        );
+        let source = EcbMacroReferenceSource {
+            http: fixture_http(&[(
+                MEETING_SCHEDULE_URL,
+                include_str!("fixtures/meeting_schedule_reference_source_synthetic.html"),
+            )]),
+        };
+
+        let actual = source
+            .fetch_references(std::slice::from_ref(&first_day))
+            .await
+            .expect("the meeting schedule fixture should resolve");
+
+        assert_eq!(
+            actual,
+            vec![MacroReferenceFetchResult::success(first_day, vec![])],
         );
     }
 

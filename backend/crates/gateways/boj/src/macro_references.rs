@@ -202,7 +202,11 @@ impl MacroReferenceSource for BojMacroReferenceSource {
                         .unwrap_or_else(|| {
                             let scheduled = target_date(&target, "meeting-")
                                 .is_some_and(|date| scheduled_meeting_dates.contains(&date));
-                            vec![listing_reference(&target, false, scheduled)]
+                            if scheduled || is_decision_day(&target.event_title) {
+                                vec![listing_reference(&target, false, scheduled)]
+                            } else {
+                                Vec::new()
+                            }
                         })
                 } else {
                     tankan
@@ -313,6 +317,11 @@ fn is_decision_day(title: &str) -> bool {
     title
         .strip_prefix("金融政策決定会合 (")
         .and_then(|value| value.strip_suffix("日目)"))
+        .or_else(|| {
+            title
+                .strip_prefix("金融政策決定会合（")
+                .and_then(|value| value.strip_suffix("日目）"))
+        })
         .and_then(|value| value.parse::<u32>().ok())
         .is_some_and(|day| day > 1)
 }
@@ -415,8 +424,10 @@ mod tests {
                 is_decision_day("金融政策決定会合 (2日目)"),
                 is_decision_day("金融政策決定会合 (x日目)"),
                 is_decision_day("金融政策決定会合"),
+                is_decision_day("金融政策決定会合（1日目）"),
+                is_decision_day("金融政策決定会合（2日目）"),
             ],
-            [false, true, false, false],
+            [false, true, false, false, false, true],
         );
     }
 
@@ -526,6 +537,27 @@ mod tests {
                     }],
                 ),
             ],
+        );
+    }
+
+    #[tokio::test]
+    async fn source_keeps_an_unscheduled_first_meeting_day_unlinked() {
+        let first_day = target("boj", "meeting-2099-04-06", "金融政策決定会合 (1日目)");
+        let source = BojMacroReferenceSource {
+            http: fixture_http(&[(
+                MEETING_SCHEDULE_URL,
+                include_str!("fixtures/meeting_schedule_source_synthetic.html"),
+            )]),
+        };
+
+        let actual = source
+            .fetch_references(std::slice::from_ref(&first_day))
+            .await
+            .expect("the meeting schedule fixture should resolve");
+
+        assert_eq!(
+            actual,
+            vec![MacroReferenceFetchResult::success(first_day, vec![])],
         );
     }
 }

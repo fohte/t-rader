@@ -36,15 +36,14 @@ export function buildCentralBankStatus(
   const scheduleReferences = listings.filter(
     (reference) => reference.target_period_type === 'official_schedule',
   )
-  const scheduled = event.event_date >= today && scheduleReferences.length > 0
+  const hasScheduleReference = scheduleReferences.length > 0
+  const scheduled = event.event_date >= today && hasScheduleReference
 
   const label =
     phase === 'first_day'
-      ? scheduled
+      ? hasScheduleReference
         ? '公式日程'
-        : listings.length > 0
-          ? '公式一覧のみ'
-          : '遷移先未確認 / 非リンク'
+        : '遷移先未確認 / 非リンク'
       : eligibleIndividualDocuments.length > 0
         ? '個別資料あり'
         : scheduled
@@ -54,9 +53,7 @@ export function buildCentralBankStatus(
             : '遷移先未確認 / 非リンク'
   const selectedReferences =
     phase === 'first_day'
-      ? scheduled
-        ? scheduleReferences
-        : listings
+      ? scheduleReferences
       : eligibleIndividualDocuments.length > 0
         ? eligibleIndividualDocuments
         : scheduled
