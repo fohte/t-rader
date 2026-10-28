@@ -38,6 +38,7 @@ pub struct FakeBarsRepository {
     pub minute_bar_downsample_cursor_initializations: Mutex<Vec<DateTime<Utc>>>,
     pub minute_bar_downsample_cursor_advances: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub earliest_minute_bar_before_queries: Mutex<Vec<DateTime<Utc>>>,
+    earliest_minute_bar_before_query_hook: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     pub bar_compression_times: Mutex<Vec<DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
@@ -152,6 +153,13 @@ impl FakeBarsRepository {
         hook: Arc<dyn Fn() + Send + Sync>,
     ) {
         *self.minute_bar_downsample_transaction_hook.lock().await = Some(hook);
+    }
+
+    pub async fn set_earliest_minute_bar_before_query_hook(
+        &self,
+        hook: Arc<dyn Fn() + Send + Sync>,
+    ) {
+        *self.earliest_minute_bar_before_query_hook.lock().await = Some(hook);
     }
 
     pub async fn fail_bar_compression_with(&self, message: impl Into<String>) {
@@ -277,6 +285,14 @@ impl BarsRepository for FakeBarsRepository {
             .lock()
             .await
             .push(cutoff);
+        if let Some(hook) = self
+            .earliest_minute_bar_before_query_hook
+            .lock()
+            .await
+            .clone()
+        {
+            hook();
+        }
         Ok(self
             .bars
             .lock()

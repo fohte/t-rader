@@ -1386,6 +1386,67 @@ mod tests {
         assert_eq!(rewound, Some(expected));
     }
 
+    #[rstest::rstest]
+    #[case::minute_at_or_after_cursor("US:", "US", Timeframe::Minute, true, 1)]
+    #[case::non_us_instrument("JP:", "OTHER", Timeframe::Minute, true, -31)]
+    #[case::non_minute_timeframe("US:", "US", Timeframe::Hourly, true, -60)]
+    #[case::cursor_row_absent("US:", "US", Timeframe::Minute, false, -31)]
+    #[tokio::test]
+    async fn upserting_an_ineligible_bar_does_not_rewind_the_downsample_cursor(
+        #[case] instrument_prefix: &str,
+        #[case] market: &str,
+        #[case] timeframe: Timeframe,
+        #[case] has_cursor: bool,
+        #[case] timestamp_offset_minutes: i64,
+    ) {
+        let db = crate::test_support::create_test_transaction().await;
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let instrument_id = format!("{instrument_prefix}DEMO-CURSOR-NO-REWIND-{suffix}");
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(instrument_id.clone()),
+            name: Set(instrument_id.clone()),
+            market: Set(market.to_owned()),
+            sector: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert test instrument");
+
+        let cursor = Utc
+            .with_ymd_and_hms(2040, 1, 2, 8, 0, 0)
+            .single()
+            .expect("fixture cursor");
+        let timestamp = cursor + ChronoDuration::minutes(timestamp_offset_minutes);
+        let repository = PostgresBarsRepository::new(db.clone());
+        if has_cursor {
+            repository
+                .initialize_us_stock_minute_bar_downsample_cursor(cursor)
+                .await
+                .expect("initialize downsample cursor");
+        }
+
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let transaction = unit_of_work.begin().await.expect("begin bar write");
+        repository
+            .upsert_bars(
+                &transaction,
+                vec![test_bar(&instrument_id, timeframe, timestamp)],
+            )
+            .await
+            .expect("upsert test bar");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit bar write");
+
+        let stored_cursor = repository
+            .find_us_stock_minute_bar_downsample_cursor()
+            .await
+            .expect("read downsample cursor");
+
+        assert_eq!(stored_cursor, has_cursor.then_some(cursor));
+    }
+
     #[backend_test_macros::database_test]
     async fn finds_no_minute_bar_when_no_us_instrument_exists(db: DatabaseHandle) {
         let instrument_id = format!(

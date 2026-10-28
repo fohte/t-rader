@@ -29,6 +29,7 @@ enum DownsamplePostponementReason {
     ProcessingBudgetExhausted,
     WriteLockBusy,
     MinuteBarsRemain,
+    CursorChanged,
 }
 
 impl DownsamplePostponementReason {
@@ -37,6 +38,7 @@ impl DownsamplePostponementReason {
             Self::ProcessingBudgetExhausted => "processing_budget_exhausted",
             Self::WriteLockBusy => "write_lock_busy",
             Self::MinuteBarsRemain => "minute_bars_remain",
+            Self::CursorChanged => "cursor_changed",
         }
     }
 }
@@ -93,6 +95,22 @@ fn log_downsample_postponed(
     );
 }
 
+fn log_downsample_cursor_advance_postponed(
+    reason: DownsamplePostponementReason,
+    batch_from: DateTime<Utc>,
+    cursor_timestamp: Option<DateTime<Utc>>,
+    stats: &UsStockMinuteBarsDownsampleStats,
+) {
+    tracing::info!(
+        reason = reason.as_str(),
+        batch_from = %batch_from,
+        cursor_timestamp = ?cursor_timestamp,
+        hourly_bars_inserted = stats.hourly_bars_inserted,
+        minute_bars_deleted = stats.minute_bars_deleted,
+        "米国株の分足間引きを次回の実行に延期しました"
+    );
+}
+
 impl UsStockBarsIngestUseCases {
     fn log_processing_budget_exhausted(
         &self,
@@ -134,6 +152,7 @@ impl UsStockBarsIngestUseCases {
             return Ok(Some(cursor));
         }
 
+        // 検索から記録までに古い分足が書かれると、カーソルがなく巻き戻せず間引き漏れが生じるため取り込みと直列化する。
         let Some(write_lock_guard) = acquire_us_stock_bars_write_lock(
             self.us_stock_bars_write_lock.as_ref(),
             WRITE_LOCK_WAIT_TIMEOUT,
@@ -351,16 +370,28 @@ impl UsStockBarsIngestUseCases {
                 .repository
                 .advance_us_stock_minute_bar_downsample_cursor(batch_from, batch_until)
                 .await?;
-            drop(write_lock_guard);
 
             if !cursor_advanced {
-                log_downsample_postponed(
-                    DownsamplePostponementReason::MinuteBarsRemain,
+                let cursor_timestamp = self
+                    .bars
+                    .repository
+                    .find_us_stock_minute_bar_downsample_cursor()
+                    .await?;
+                let reason = if cursor_timestamp == Some(batch_from) {
+                    DownsamplePostponementReason::MinuteBarsRemain
+                } else {
+                    DownsamplePostponementReason::CursorChanged
+                };
+                drop(write_lock_guard);
+                log_downsample_cursor_advance_postponed(
+                    reason,
                     batch_from,
+                    cursor_timestamp,
                     &stats,
                 );
                 return Ok(stats);
             }
+            drop(write_lock_guard);
             batch_from = batch_until;
         }
 
@@ -727,6 +758,82 @@ mod tests {
                 vec![date("2039-01-01T12:30:00Z")],
                 vec![date("2039-01-01T12:00:00Z")],
                 Some(date("2039-01-01T12:00:00Z")),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_persists_initialized_cursor_when_search_exhausts_budget(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        let cutoff = date("2039-01-01T12:00:00Z");
+        let initial_cursor = date("2038-12-30T03:00:00Z");
+        repository
+            .seed_bars(vec![minute_bar(
+                "US:DEMO-ALPHA",
+                date("2038-12-30T03:05:00Z"),
+            )])
+            .await;
+        let clock = downsample_fixture.clock.clone();
+        repository
+            .set_earliest_minute_bar_before_query_hook(Arc::new(move || {
+                clock.advance(StdDuration::from_secs(2));
+            }))
+            .await;
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(
+                date("2040-01-01T12:00:00Z"),
+                UsStockMinuteBarsDownsampleConfig {
+                    max_processing_duration: Some(StdDuration::from_secs(1)),
+                },
+            )
+            .await;
+        let earliest_queries = repository
+            .earliest_minute_bar_before_queries
+            .lock()
+            .await
+            .clone();
+        let initializations = repository
+            .minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .clone();
+        let cursor = *repository
+            .us_stock_minute_bar_downsample_cursor
+            .lock()
+            .await;
+        let candidate_ranges = repository
+            .minute_bar_downsample_candidate_ranges
+            .lock()
+            .await
+            .clone();
+        let advances = repository
+            .minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .clone();
+
+        assert_eq!(
+            (
+                result.map_err(|_| ()),
+                earliest_queries,
+                initializations,
+                cursor,
+                candidate_ranges,
+                advances,
+            ),
+            (
+                Ok(Default::default()),
+                vec![cutoff],
+                vec![initial_cursor],
+                Some(initial_cursor),
+                Vec::new(),
+                Vec::new(),
             ),
         );
     }
