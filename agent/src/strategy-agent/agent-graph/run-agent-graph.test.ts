@@ -2032,6 +2032,7 @@ describe('runAgentGraph', () => {
       buildPhaseAgent: (options): CompiledPhaseAgent => ({
         invoke: () => {
           options.onModelCallLimitReached?.()
+          options.onModelCallLimitReached?.()
           return Promise.resolve({ structuredResponse: { value: 'A-OUT' } })
         },
       }),
@@ -2100,6 +2101,179 @@ describe('runAgentGraph', () => {
           spanId: NOOP_SPAN_ID,
         },
       ],
+    ])
+  })
+
+  it('keeps the marker when a structured-output retry fails', async () => {
+    let invokeCount = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => ({
+        invoke: () => {
+          invokeCount += 1
+          if (invokeCount === 1) {
+            options.onModelCallLimitReached?.()
+            return Promise.resolve({ structuredResponse: {} })
+          }
+          return Promise.reject(new Error('retry failed'))
+        },
+      }),
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'model-a',
+          prompt: 'do plan',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'model-a',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(
+      Array.of<unknown>(
+        invokeCount,
+        normalizeStepTimestamps(notifications.at(-1) ?? []),
+      ),
+    ).toEqual([
+      2,
+      [
+        {
+          phaseKey: 'plan',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Plan',
+          model: 'model-a',
+          status: 'failed',
+          modelCallLimitReached: true,
+          error: 'retry failed',
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('marks only the for_each item that reaches the model-call limit', async () => {
+    let buildCount = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => {
+        const stepNumber = buildCount
+        buildCount += 1
+        return {
+          invoke: () => {
+            if (stepNumber === 0) {
+              return Promise.resolve({
+                structuredResponse: { items: ['first', 'second'] },
+              })
+            }
+            if (stepNumber === 1) options.onModelCallLimitReached?.()
+            return Promise.resolve({ structuredResponse: {} })
+          },
+        }
+      },
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'model-a',
+          prompt: 'do plan',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'model-a',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(normalizeStepTimestamps(notifications.at(-1) ?? [])).toEqual([
+      {
+        phaseKey: 'plan',
+        executionStepId: '<execution-step-id-1>',
+        label: 'Plan',
+        model: 'model-a',
+        status: 'completed',
+        output: { items: ['first', 'second'] },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'work',
+        executionStepId: '<execution-step-id-2>',
+        label: 'Work',
+        model: 'model-a',
+        status: 'completed',
+        modelCallLimitReached: true,
+        item: 'first',
+        output: {},
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'work',
+        executionStepId: '<execution-step-id-3>',
+        label: 'Work',
+        model: 'model-a',
+        status: 'completed',
+        item: 'second',
+        output: {},
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
     ])
   })
 

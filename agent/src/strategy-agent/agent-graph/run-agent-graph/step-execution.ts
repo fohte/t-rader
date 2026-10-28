@@ -52,6 +52,14 @@ export const createStepRecorder = (
     update: (index, update) => {
       const current = steps[index]
       if (current === undefined) return
+      if (
+        update.modelCallLimitReached === true &&
+        update.inputRef === undefined &&
+        update.outputRef === undefined &&
+        current.modelCallLimitReached === true
+      ) {
+        return
+      }
       steps[index] = { ...current, ...update }
       notify()
     },
@@ -292,6 +300,7 @@ export const invokeAndRecordStep = (
                   mcpTools,
                   localTools.value,
                   stepMcpClient,
+                  // 再提出が失敗しても、この step が上限に達した事実を残す。
                   () => {
                     recorder.update(index, { modelCallLimitReached: true })
                   },

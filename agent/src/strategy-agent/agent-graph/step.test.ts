@@ -66,32 +66,6 @@ describe('toStepJson', () => {
     })
   })
 
-  it('accepts and restores the optional marker on resumed steps', () => {
-    const parsed = strategyTaskStepJsonSchema.parse({
-      phase_key: 'stage_a',
-      execution_step_id: 'exec-2',
-      label: '項目の作成',
-      model: 'demo-model-a',
-      status: 'completed',
-      model_call_limit_reached: true,
-      started_at: '2026-01-01T00:00:00.000Z',
-      trace_id: 'trace-2',
-      span_id: 'span-2',
-    })
-
-    expect(fromStepJson(parsed)).toEqual({
-      phaseKey: 'stage_a',
-      executionStepId: 'exec-2',
-      label: '項目の作成',
-      model: 'demo-model-a',
-      status: 'completed',
-      modelCallLimitReached: true,
-      startedAt: '2026-01-01T00:00:00.000Z',
-      traceId: 'trace-2',
-      spanId: 'span-2',
-    })
-  })
-
   it('keeps item but omits item_label when label_field is not configured', () => {
     const step: StrategyTaskStep = {
       phaseKey: 'stage_b',
@@ -143,6 +117,34 @@ describe('toStepJson', () => {
       trace_id: 'trace-3',
       span_id: 'span-3',
       error: 'agent did not return a structured response',
+    })
+  })
+})
+
+describe('fromStepJson', () => {
+  it('accepts and restores the optional marker on resumed steps', () => {
+    const parsed = strategyTaskStepJsonSchema.parse({
+      phase_key: 'stage_a',
+      execution_step_id: 'exec-2',
+      label: '項目の作成',
+      model: 'demo-model-a',
+      status: 'completed',
+      model_call_limit_reached: true,
+      started_at: '2026-01-01T00:00:00.000Z',
+      trace_id: 'trace-2',
+      span_id: 'span-2',
+    })
+
+    expect(fromStepJson(parsed)).toEqual({
+      phaseKey: 'stage_a',
+      executionStepId: 'exec-2',
+      label: '項目の作成',
+      model: 'demo-model-a',
+      status: 'completed',
+      modelCallLimitReached: true,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      traceId: 'trace-2',
+      spanId: 'span-2',
     })
   })
 })
