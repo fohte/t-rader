@@ -311,26 +311,27 @@ mod tests {
 
     #[test]
     fn tankan_archive_matches_release_date_and_records_survey_period() {
-        let pages = tankan_archive_pages(TANKAN_INDEX, TANKAN_INDEX_URL).expect("archive links");
-        let page = pages
-            .iter()
-            .find(|page| page.first_year <= 2099 && 2099 <= page.last_year)
-            .expect("fictional archive year");
+        let archive_url =
+            format!("{BOJ_ORIGIN}/en/statistics/tk/gaiyo/archive/fictional-current.html");
 
         assert_eq!(
-            tankan_entries(TANKAN_ARCHIVE, &page.url).expect("entries"),
+            tankan_entries(TANKAN_ARCHIVE, &archive_url).expect("entries"),
             vec![TankanEntry {
                 publication_date: NaiveDate::from_ymd_opt(2099, 7, 1).unwrap_or(NaiveDate::MIN),
                 title: "TANKAN (Summary) June 2099 Survey".to_owned(),
                 survey_title: "June 2099 Survey".to_owned(),
                 url: format!("{BOJ_ORIGIN}/en/statistics/tk/archive/fictional-summary.pdf"),
-                archive_url: page.url.clone(),
+                archive_url,
                 survey_period_start: NaiveDate::from_ymd_opt(2099, 6, 1).unwrap_or(NaiveDate::MIN),
                 survey_period_end: NaiveDate::from_ymd_opt(2099, 6, 30).unwrap_or(NaiveDate::MIN),
             }],
         );
+    }
+
+    #[test]
+    fn tankan_archive_year_links_cover_their_published_periods() {
         assert_eq!(
-            pages,
+            tankan_archive_pages(TANKAN_INDEX, TANKAN_INDEX_URL).expect("archive links"),
             vec![
                 TankanArchivePage {
                     first_year: 2099,

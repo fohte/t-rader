@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
 use rate_limit::{Quota, RateLimiter};
 use reqwest::{Client, StatusCode, Url, redirect::Policy};
 
@@ -7,6 +8,11 @@ const OFFICIAL_ORIGIN: &str = "https://www.boj.or.jp";
 const RATE_LIMIT_KEY_PREFIX: &str = "t-rader:ratelimit:";
 const RATE_LIMIT_MAX_WAIT: Duration = Duration::from_secs(60);
 const MAX_REDIRECTS: usize = 5;
+
+#[async_trait]
+pub(super) trait OfficialHttp: Send + Sync {
+    async fn get_text(&self, url: &str) -> Result<String, String>;
+}
 
 #[derive(Clone)]
 pub(super) struct OfficialHttpClient {
@@ -85,6 +91,13 @@ impl OfficialHttpClient {
         let url = base.join(href).ok()?;
         validate_url(&url).ok()?;
         Some(url.to_string())
+    }
+}
+
+#[async_trait]
+impl OfficialHttp for OfficialHttpClient {
+    async fn get_text(&self, url: &str) -> Result<String, String> {
+        OfficialHttpClient::get_text(self, url).await
     }
 }
 

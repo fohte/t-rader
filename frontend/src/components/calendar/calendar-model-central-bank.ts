@@ -1,22 +1,11 @@
+import {
+  type CalendarEventReferenceView,
+  toCalendarEventReferenceView,
+} from '#components/calendar/calendar-model-reference'
 import type { components } from '#lib/api/schema.gen'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Event = Extract<CalendarEvent, { kind: 'event' }>
-type EventReference = components['schemas']['CalendarEventReferenceResponse']
-
-export type CalendarEventReferenceView = {
-  key: string
-  title: string
-  source: string
-  checkedAt: string
-  targetPeriodStart?: string
-  targetPeriodEnd?: string
-  targetPeriodType?: string
-  href?: string
-  publicationEvidence?: string
-  publicationEvidenceHref?: string
-  referenceTypeLabel?: string
-}
 
 export type CalendarCentralBankStatus = {
   phase?: 'first_day' | 'decision_day'
@@ -52,14 +41,14 @@ export function buildCentralBankStatus(
   const label =
     phase === 'first_day'
       ? scheduled
-        ? '発表予定'
+        ? '公式日程'
         : listings.length > 0
           ? '公式一覧のみ'
           : '遷移先未確認 / 非リンク'
       : eligibleIndividualDocuments.length > 0
         ? '個別資料あり'
         : scheduled
-          ? '発表予定'
+          ? '公式日程'
           : listings.length > 0
             ? '公式一覧のみ'
             : '遷移先未確認 / 非リンク'
@@ -104,7 +93,7 @@ function getCentralBankMeetingPhase(
 }
 
 function toCentralBankReferenceView(
-  reference: EventReference,
+  reference: components['schemas']['CalendarEventReferenceResponse'],
 ): CalendarEventReferenceView {
   const view = toCalendarEventReferenceView(reference)
   const referenceTypeLabel = formatCentralBankReferenceType(
@@ -114,48 +103,6 @@ function toCentralBankReferenceView(
     ...view,
     ...(referenceTypeLabel == null ? {} : { referenceTypeLabel }),
   }
-}
-
-export function toCalendarEventReferenceView(
-  reference: EventReference,
-): CalendarEventReferenceView {
-  const targetPeriodType =
-    reference.target_period_type == null
-      ? undefined
-      : formatIndicatorPeriodType(reference.target_period_type)
-  return {
-    key: `${reference.kind}:${reference.source}:${reference.external_id}`,
-    title: reference.title,
-    source: reference.source,
-    checkedAt: reference.checked_at,
-    ...(reference.target_period_start == null
-      ? {}
-      : { targetPeriodStart: reference.target_period_start }),
-    ...(reference.target_period_end == null
-      ? {}
-      : { targetPeriodEnd: reference.target_period_end }),
-    ...(targetPeriodType == null ? {} : { targetPeriodType }),
-    ...(reference.url == null ? {} : { href: reference.url }),
-    ...(reference.publication_evidence == null
-      ? {}
-      : { publicationEvidence: reference.publication_evidence }),
-    ...(reference.publication_evidence_url == null
-      ? {}
-      : { publicationEvidenceHref: reference.publication_evidence_url }),
-  }
-}
-
-const INDICATOR_PERIOD_TYPE_LABELS: Readonly<Record<string, string>> = {
-  month: '月次',
-  quarter: '四半期',
-  half_year: '半期',
-  fiscal_year: '年度',
-  month_range: '複数月',
-  year: '年次',
-}
-
-function formatIndicatorPeriodType(value: string): string | undefined {
-  return INDICATOR_PERIOD_TYPE_LABELS[value]
 }
 
 const CENTRAL_BANK_REFERENCE_TYPE_LABELS: Readonly<Record<string, string>> = {

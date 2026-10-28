@@ -13,5 +13,8 @@ reqwest = { workspace = true, features = ["rustls"] }
 rate-limit = { workspace = true }
 scraper = { workspace = true }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
 [lints]
 workspace = true

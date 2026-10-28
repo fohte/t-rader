@@ -192,7 +192,7 @@ const centralBankDecisionDocumentStatus: CalendarCentralBankStatus = {
 
 const centralBankScheduledStatus: CalendarCentralBankStatus = {
   phase: 'decision_day',
-  label: '発表予定',
+  label: '公式日程',
   references: [
     {
       key: 'official_listing:sample_authority:sample-calendar',
@@ -712,7 +712,7 @@ export const CentralBankDecisionDocumentDesktop: Story = {
 }
 
 export const CentralBankScheduledMobile: Story = {
-  name: '390px 幅で発表予定と公式日程へのリンクを表示します。',
+  name: '390px 幅で公式日程へのリンクを表示します。',
   ...mobileCentralBankViewport,
   args: {
     time: '',
@@ -727,7 +727,7 @@ export const CentralBankScheduledMobile: Story = {
 }
 
 export const CentralBankScheduledDesktop: Story = {
-  name: 'デスクトップ幅で発表予定と公式日程へのリンクを表示します。',
+  name: 'デスクトップ幅で公式日程へのリンクを表示します。',
   args: {
     time: '',
     country: 'US',

@@ -1,6 +1,9 @@
 mod parser;
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{Datelike, NaiveDate, Utc};
@@ -14,7 +17,7 @@ use core_application::{
 };
 use core_domain::calendar_event::CalendarEventReferenceKind;
 
-use crate::official_http::OfficialHttpClient;
+use crate::official_http::{OfficialHttp, OfficialHttpClient};
 
 const SOURCE: &str = "boj";
 const STATEMENT_ARCHIVE_URL: &str = "https://www.boj.or.jp/en/mopo/mpmdeci/state_all/index.htm";
@@ -23,13 +26,13 @@ const MEETING_SCHEDULE_URL: &str = "https://www.boj.or.jp/mopo/mpmsche_minu/inde
 const RELEASE_SCHEDULE_URL: &str = "https://www.boj.or.jp/about/calendar/index.htm";
 
 pub struct BojMacroReferenceSource {
-    http: OfficialHttpClient,
+    http: Arc<dyn OfficialHttp>,
 }
 
 impl BojMacroReferenceSource {
     pub fn new(redis_url: &str) -> Result<Self, String> {
         Ok(Self {
-            http: OfficialHttpClient::new(redis_url)?,
+            http: Arc::new(OfficialHttpClient::new(redis_url)?),
         })
     }
 
@@ -320,11 +323,40 @@ fn source_error(error: String) -> MacroReferenceSourceError {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use async_trait::async_trait;
     use chrono::NaiveDate;
-    use core_application::calendar::macro_reference_targets::MacroReferenceTarget;
+    use core_application::{
+        calendar::macro_reference_targets::MacroReferenceTarget,
+        macro_reference_source::{
+            MacroOfficialReference, MacroReferenceFetchResult, MacroReferenceSource,
+        },
+    };
     use core_domain::calendar_event::CalendarEventReferenceKind;
 
-    use super::{is_decision_day, listing_reference, target_date};
+    use crate::official_http::OfficialHttp;
+
+    use super::{
+        BojMacroReferenceSource, MEETING_SCHEDULE_URL, RELEASE_SCHEDULE_URL, STATEMENT_ARCHIVE_URL,
+        TANKAN_ARCHIVE_URL, is_decision_day, listing_reference, target_date,
+    };
+
+    struct FixtureHttp(HashMap<&'static str, &'static str>);
+
+    #[async_trait]
+    impl OfficialHttp for FixtureHttp {
+        async fn get_text(&self, url: &str) -> Result<String, String> {
+            self.0
+                .get(url)
+                .map(|html| (*html).to_owned())
+                .ok_or_else(|| "synthetic response is missing".to_owned())
+        }
+    }
+
+    fn fixture_http(responses: &[(&'static str, &'static str)]) -> Arc<dyn OfficialHttp> {
+        Arc::new(FixtureHttp(responses.iter().copied().collect()))
+    }
 
     fn target(event_source: &str, external_id: &str, title: &str) -> MacroReferenceTarget {
         MacroReferenceTarget {
@@ -385,6 +417,115 @@ mod tests {
                 is_decision_day("金融政策決定会合"),
             ],
             [false, true, false, false],
+        );
+    }
+
+    #[tokio::test]
+    async fn source_links_decisions_and_tankan_to_exact_archived_documents() {
+        let first_day = target("boj", "meeting-2099-04-07", "金融政策決定会合 (1日目)");
+        let decision_day = target("boj", "meeting-2099-04-08", "金融政策決定会合 (2日目)");
+        let tankan = target("boj", "tankan-2099-07-01", "架空の短観");
+        let source = BojMacroReferenceSource {
+            http: fixture_http(&[
+                (
+                    STATEMENT_ARCHIVE_URL,
+                    include_str!("fixtures/statement_archive_index_synthetic.html"),
+                ),
+                (
+                    "https://www.boj.or.jp/en/mopo/archive/fictional-year-list.html",
+                    include_str!("fixtures/statement_archive_synthetic.html"),
+                ),
+                (
+                    TANKAN_ARCHIVE_URL,
+                    include_str!("fixtures/tankan_archive_index_synthetic.html"),
+                ),
+                (
+                    "https://www.boj.or.jp/en/statistics/tk/gaiyo/archive/fictional-current.html",
+                    include_str!("fixtures/tankan_archive_synthetic.html"),
+                ),
+                (
+                    MEETING_SCHEDULE_URL,
+                    include_str!("fixtures/meeting_schedule_source_synthetic.html"),
+                ),
+                (
+                    RELEASE_SCHEDULE_URL,
+                    include_str!("fixtures/publication_schedule_synthetic.html"),
+                ),
+            ]),
+        };
+
+        let actual = source
+            .fetch_references(&[first_day.clone(), decision_day.clone(), tankan.clone()])
+            .await
+            .expect("synthetic archive responses should resolve");
+
+        let meeting_document_url = "https://www.boj.or.jp/en/mopo/archive/fictional-statement.pdf";
+        let tankan_document_url =
+            "https://www.boj.or.jp/en/statistics/tk/archive/fictional-summary.pdf";
+        assert_eq!(
+            actual,
+            vec![
+                MacroReferenceFetchResult::success(
+                    first_day.clone(),
+                    vec![MacroOfficialReference {
+                        target: first_day.clone(),
+                        kind: CalendarEventReferenceKind::OfficialListing,
+                        source: "boj".to_owned(),
+                        external_id: "meeting-2099-04-07:official-listing".to_owned(),
+                        title: "金融政策決定会合の公式日程".to_owned(),
+                        url: Some(MEETING_SCHEDULE_URL.to_owned()),
+                        target_period_start: None,
+                        target_period_end: None,
+                        target_period_type: Some("official_schedule".to_owned()),
+                        publication_evidence: None,
+                        publication_evidence_url: None,
+                    }],
+                ),
+                MacroReferenceFetchResult::success(
+                    decision_day.clone(),
+                    vec![MacroOfficialReference {
+                        target: decision_day,
+                        kind: CalendarEventReferenceKind::IndividualDocument,
+                        source: "boj".to_owned(),
+                        external_id: meeting_document_url.to_owned(),
+                        title: "Statement on Monetary Policy".to_owned(),
+                        url: Some(meeting_document_url.to_owned()),
+                        target_period_start: NaiveDate::from_ymd_opt(2099, 4, 8),
+                        target_period_end: NaiveDate::from_ymd_opt(2099, 4, 8),
+                        target_period_type: Some("meeting".to_owned()),
+                        publication_evidence: Some(
+                            "公式資料一覧に公表日 2099-04-08 と資料名「Statement on Monetary Policy」を確認"
+                                .to_owned(),
+                        ),
+                        publication_evidence_url: Some(
+                            "https://www.boj.or.jp/en/mopo/archive/fictional-year-list.html"
+                                .to_owned(),
+                        ),
+                    }],
+                ),
+                MacroReferenceFetchResult::success(
+                    tankan.clone(),
+                    vec![MacroOfficialReference {
+                        target: tankan,
+                        kind: CalendarEventReferenceKind::IndividualDocument,
+                        source: "boj".to_owned(),
+                        external_id: tankan_document_url.to_owned(),
+                        title: "TANKAN (Summary) June 2099 Survey".to_owned(),
+                        url: Some(tankan_document_url.to_owned()),
+                        target_period_start: NaiveDate::from_ymd_opt(2099, 6, 1),
+                        target_period_end: NaiveDate::from_ymd_opt(2099, 6, 30),
+                        target_period_type: Some("tankan".to_owned()),
+                        publication_evidence: Some(
+                            "公式 TANKAN (Summary) 一覧に公表日 2099-07-01 と資料名「June 2099 Survey」を確認"
+                                .to_owned(),
+                        ),
+                        publication_evidence_url: Some(
+                            "https://www.boj.or.jp/en/statistics/tk/gaiyo/archive/fictional-current.html"
+                                .to_owned(),
+                        ),
+                    }],
+                ),
+            ],
         );
     }
 }

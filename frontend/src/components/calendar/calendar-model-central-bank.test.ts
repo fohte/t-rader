@@ -160,7 +160,7 @@ describe('buildCalendarDays central bank references', () => {
         references: [officialSchedule],
       }),
       phase: 'decision_day',
-      status: '発表予定',
+      status: '公式日程',
       dateLabel: '1/8 (木)',
       time: '',
       references: [
@@ -258,7 +258,7 @@ describe('buildCalendarDays central bank references', () => {
         references: [officialSchedule],
       }),
       phase: undefined,
-      status: '発表予定',
+      status: '公式日程',
       dateLabel: '1/8 (木)',
       time: '',
       references: [

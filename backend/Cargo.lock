@@ -2071,6 +2071,7 @@ dependencies = [
  "rate-limit",
  "reqwest",
  "scraper",
+ "tokio",
 ]
 
 [[package]]
@@ -2144,6 +2145,7 @@ dependencies = [
  "rate-limit",
  "reqwest",
  "scraper",
+ "tokio",
 ]
 
 [[package]]
@@ -2195,6 +2197,7 @@ dependencies = [
  "rate-limit",
  "reqwest",
  "scraper",
+ "tokio",
 ]
 
 [[package]]

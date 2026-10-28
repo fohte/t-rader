@@ -1,6 +1,9 @@
 mod parser;
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{Datelike, NaiveDate};
@@ -13,7 +16,7 @@ use core_application::{
 };
 use core_domain::calendar_event::CalendarEventReferenceKind;
 
-use crate::official_http::OfficialHttpClient;
+use crate::official_http::{OfficialHttp, OfficialHttpClient};
 
 const SOURCE: &str = "fed";
 const CALENDAR_URL: &str = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
@@ -23,13 +26,13 @@ const HISTORICAL_LISTING_URL: &str =
     "https://www.federalreserve.gov/monetarypolicy/fomc_historical.htm";
 
 pub struct FedMacroReferenceSource {
-    http: OfficialHttpClient,
+    http: Arc<dyn OfficialHttp>,
 }
 
 impl FedMacroReferenceSource {
     pub fn new(redis_url: &str) -> Result<Self, String> {
         Ok(Self {
-            http: OfficialHttpClient::new(redis_url)?,
+            http: Arc::new(OfficialHttpClient::new(redis_url)?),
         })
     }
 
@@ -222,11 +225,39 @@ fn source_error(error: String) -> MacroReferenceSourceError {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use async_trait::async_trait;
     use chrono::NaiveDate;
-    use core_application::calendar::macro_reference_targets::MacroReferenceTarget;
+    use core_application::{
+        calendar::macro_reference_targets::MacroReferenceTarget,
+        macro_reference_source::{
+            MacroOfficialReference, MacroReferenceFetchResult, MacroReferenceSource,
+        },
+    };
     use core_domain::calendar_event::CalendarEventReferenceKind;
 
-    use super::{listing_reference, target_date};
+    use crate::official_http::OfficialHttp;
+
+    use super::{
+        CALENDAR_URL, FedMacroReferenceSource, HISTORICAL_INDEX_URL, listing_reference, target_date,
+    };
+
+    struct FixtureHttp(HashMap<&'static str, &'static str>);
+
+    #[async_trait]
+    impl OfficialHttp for FixtureHttp {
+        async fn get_text(&self, url: &str) -> Result<String, String> {
+            self.0
+                .get(url)
+                .map(|html| (*html).to_owned())
+                .ok_or_else(|| "synthetic response is missing".to_owned())
+        }
+    }
+
+    fn fixture_http(responses: &[(&'static str, &'static str)]) -> Arc<dyn OfficialHttp> {
+        Arc::new(FixtureHttp(responses.iter().copied().collect()))
+    }
 
     fn target(event_source: &str, external_id: &str) -> MacroReferenceTarget {
         MacroReferenceTarget {
@@ -262,5 +293,58 @@ mod tests {
             NaiveDate::from_ymd_opt(2099, 4, 8),
         );
         assert_eq!(target_date(&target("fed", "invalid")), None);
+    }
+
+    #[tokio::test]
+    async fn source_matches_saved_statement_events_against_the_official_archive() {
+        let event = target("fed", "2099-04-08");
+        let source = FedMacroReferenceSource {
+            http: fixture_http(&[
+                (
+                    CALENDAR_URL,
+                    include_str!("fixtures/calendar_reference_synthetic.html"),
+                ),
+                (
+                    HISTORICAL_INDEX_URL,
+                    include_str!("fixtures/historical_year_index_synthetic.html"),
+                ),
+                (
+                    "https://www.federalreserve.gov/monetarypolicy/fictional-period.html",
+                    include_str!("fixtures/historical_archive_synthetic.html"),
+                ),
+            ]),
+        };
+
+        let actual = source
+            .fetch_references(std::slice::from_ref(&event))
+            .await
+            .expect("synthetic archive responses should resolve");
+
+        let document_url =
+            "https://www.federalreserve.gov/newsevents/pressreleases/fictional-statement.html";
+        assert_eq!(
+            actual,
+            vec![MacroReferenceFetchResult::success(
+                event.clone(),
+                vec![MacroOfficialReference {
+                    target: event,
+                    kind: CalendarEventReferenceKind::IndividualDocument,
+                    source: "fed".to_owned(),
+                    external_id: document_url.to_owned(),
+                    title: "Statement".to_owned(),
+                    url: Some(document_url.to_owned()),
+                    target_period_start: NaiveDate::from_ymd_opt(2099, 4, 8),
+                    target_period_end: NaiveDate::from_ymd_opt(2099, 4, 8),
+                    target_period_type: Some("meeting".to_owned()),
+                    publication_evidence: Some(
+                        "公式 FOMC カレンダーに会合日 2099-04-08 と声明のリンクを確認".to_owned(),
+                    ),
+                    publication_evidence_url: Some(
+                        "https://www.federalreserve.gov/monetarypolicy/fictional-period.html"
+                            .to_owned(),
+                    ),
+                }],
+            )],
+        );
     }
 }

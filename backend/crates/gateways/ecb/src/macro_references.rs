@@ -1,6 +1,9 @@
 mod parser;
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{Datelike, NaiveDate};
@@ -13,7 +16,7 @@ use core_application::{
 };
 use core_domain::calendar_event::CalendarEventReferenceKind;
 
-use crate::official_http::OfficialHttpClient;
+use crate::official_http::{OfficialHttp, OfficialHttpClient};
 
 const SOURCE: &str = "ecb";
 const DECISION_ARCHIVE_URL: &str =
@@ -24,13 +27,13 @@ const MEETING_SCHEDULE_URL: &str =
     "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html";
 
 pub struct EcbMacroReferenceSource {
-    http: OfficialHttpClient,
+    http: Arc<dyn OfficialHttp>,
 }
 
 impl EcbMacroReferenceSource {
     pub fn new(redis_url: &str) -> Result<Self, String> {
         Ok(Self {
-            http: OfficialHttpClient::new(redis_url)?,
+            http: Arc::new(OfficialHttpClient::new(redis_url)?),
         })
     }
 }
@@ -208,11 +211,40 @@ fn source_error(error: String) -> MacroReferenceSourceError {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use async_trait::async_trait;
     use chrono::NaiveDate;
-    use core_application::calendar::macro_reference_targets::MacroReferenceTarget;
+    use core_application::{
+        calendar::macro_reference_targets::MacroReferenceTarget,
+        macro_reference_source::{
+            MacroOfficialReference, MacroReferenceFetchResult, MacroReferenceSource,
+        },
+    };
     use core_domain::calendar_event::CalendarEventReferenceKind;
 
-    use super::{is_decision_day, listing_reference, target_date};
+    use crate::official_http::OfficialHttp;
+
+    use super::{
+        DECISION_ARCHIVE_URL, EcbMacroReferenceSource, MEETING_SCHEDULE_URL, is_decision_day,
+        listing_reference, target_date,
+    };
+
+    struct FixtureHttp(HashMap<&'static str, &'static str>);
+
+    #[async_trait]
+    impl OfficialHttp for FixtureHttp {
+        async fn get_text(&self, url: &str) -> Result<String, String> {
+            self.0
+                .get(url)
+                .map(|html| (*html).to_owned())
+                .ok_or_else(|| "synthetic response is missing".to_owned())
+        }
+    }
+
+    fn fixture_http(responses: &[(&'static str, &'static str)]) -> Arc<dyn OfficialHttp> {
+        Arc::new(FixtureHttp(responses.iter().copied().collect()))
+    }
 
     fn target(event_source: &str, external_id: &str, title: &str) -> MacroReferenceTarget {
         MacroReferenceTarget {
@@ -291,6 +323,136 @@ mod tests {
                 Some("https://www.ecb.europa.eu/press/govcdec/mopo/html/index.en.html"),
                 Some("official_archive"),
             ),
+        );
+    }
+
+    #[tokio::test]
+    async fn source_links_a_decision_document_only_on_the_scheduled_decision_day() {
+        let first_day = target(
+            "ecb",
+            "2099-04-07",
+            "Governing Council of the ECB: monetary policy meeting (Day 1)",
+        );
+        let decision_day = target(
+            "ecb",
+            "2099-04-08",
+            "Governing Council of the ECB: monetary policy meeting (Day 2), followed by press conference",
+        );
+        let source = EcbMacroReferenceSource {
+            http: fixture_http(&[
+                (
+                    MEETING_SCHEDULE_URL,
+                    include_str!("fixtures/meeting_schedule_reference_source_synthetic.html"),
+                ),
+                (
+                    DECISION_ARCHIVE_URL,
+                    include_str!("fixtures/decision_archive_index_synthetic.html"),
+                ),
+                (
+                    "https://www.ecb.europa.eu/press/govcdec/mopo/2099/html/index_include.en.html",
+                    include_str!("fixtures/decision_archive_synthetic.html"),
+                ),
+            ]),
+        };
+
+        let actual = source
+            .fetch_references(&[first_day.clone(), decision_day.clone()])
+            .await
+            .expect("synthetic archive responses should resolve");
+
+        let document_url = "https://www.ecb.europa.eu/press/fictional/decision-document.html";
+        assert_eq!(
+            actual,
+            vec![
+                MacroReferenceFetchResult::success(
+                    first_day.clone(),
+                    vec![MacroOfficialReference {
+                        target: first_day,
+                        kind: CalendarEventReferenceKind::OfficialListing,
+                        source: "ecb".to_owned(),
+                        external_id: "2099-04-07:official-listing".to_owned(),
+                        title: "ECB の公式会合日程".to_owned(),
+                        url: Some(MEETING_SCHEDULE_URL.to_owned()),
+                        target_period_start: None,
+                        target_period_end: None,
+                        target_period_type: Some("official_schedule".to_owned()),
+                        publication_evidence: None,
+                        publication_evidence_url: None,
+                    }],
+                ),
+                MacroReferenceFetchResult::success(
+                    decision_day.clone(),
+                    vec![MacroOfficialReference {
+                        target: decision_day,
+                        kind: CalendarEventReferenceKind::IndividualDocument,
+                        source: "ecb".to_owned(),
+                        external_id: document_url.to_owned(),
+                        title: "Monetary policy decisions".to_owned(),
+                        url: Some(document_url.to_owned()),
+                        target_period_start: NaiveDate::from_ymd_opt(2099, 4, 8),
+                        target_period_end: NaiveDate::from_ymd_opt(2099, 4, 8),
+                        target_period_type: Some("meeting".to_owned()),
+                        publication_evidence: Some(
+                            "公式アーカイブに公表日 2099-04-08 と資料名「Monetary policy decisions」を確認"
+                                .to_owned(),
+                        ),
+                        publication_evidence_url: Some(
+                            "https://www.ecb.europa.eu/press/govcdec/mopo/2099/html/index_include.en.html"
+                                .to_owned(),
+                        ),
+                    }],
+                ),
+            ],
+        );
+    }
+
+    #[tokio::test]
+    async fn source_keeps_ambiguous_decision_records_as_an_official_listing() {
+        let decision_day = target(
+            "ecb",
+            "2099-04-08",
+            "Governing Council of the ECB: monetary policy meeting (Day 2), followed by press conference",
+        );
+        let source = EcbMacroReferenceSource {
+            http: fixture_http(&[
+                (
+                    MEETING_SCHEDULE_URL,
+                    include_str!("fixtures/meeting_schedule_reference_source_synthetic.html"),
+                ),
+                (
+                    DECISION_ARCHIVE_URL,
+                    include_str!("fixtures/decision_archive_index_synthetic.html"),
+                ),
+                (
+                    "https://www.ecb.europa.eu/press/govcdec/mopo/2099/html/index_include.en.html",
+                    include_str!("fixtures/decision_archive_ambiguous_synthetic.html"),
+                ),
+            ]),
+        };
+
+        let actual = source
+            .fetch_references(std::slice::from_ref(&decision_day))
+            .await
+            .expect("synthetic archive responses should resolve");
+
+        assert_eq!(
+            actual,
+            vec![MacroReferenceFetchResult::success(
+                decision_day.clone(),
+                vec![MacroOfficialReference {
+                    target: decision_day,
+                    kind: CalendarEventReferenceKind::OfficialListing,
+                    source: "ecb".to_owned(),
+                    external_id: "2099-04-08:official-listing".to_owned(),
+                    title: "ECB の公式会合日程".to_owned(),
+                    url: Some(MEETING_SCHEDULE_URL.to_owned()),
+                    target_period_start: None,
+                    target_period_end: None,
+                    target_period_type: Some("official_schedule".to_owned()),
+                    publication_evidence: None,
+                    publication_evidence_url: None,
+                }],
+            )],
         );
     }
 }

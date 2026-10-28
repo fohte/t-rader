@@ -2,21 +2,17 @@ import {
   type CalendarCountryFilter,
   formatCalendarDayLabel,
 } from '#components/calendar/calendar-date'
-import type {
-  CalendarCentralBankStatus,
-  CalendarEventReferenceView,
-} from '#components/calendar/calendar-model-central-bank'
+import type { CalendarCentralBankStatus } from '#components/calendar/calendar-model-central-bank'
+import { buildCentralBankStatus } from '#components/calendar/calendar-model-central-bank'
 import {
-  buildCentralBankStatus,
+  type CalendarEventReferenceView,
   toCalendarEventReferenceView,
-} from '#components/calendar/calendar-model-central-bank'
+} from '#components/calendar/calendar-model-reference'
 import type { components } from '#lib/api/schema.gen'
 import type { FinancialPeriodType } from '#lib/stock-page-date'
 
-export type {
-  CalendarCentralBankStatus,
-  CalendarEventReferenceView,
-} from '#components/calendar/calendar-model-central-bank'
+export type { CalendarCentralBankStatus } from '#components/calendar/calendar-model-central-bank'
+export type { CalendarEventReferenceView } from '#components/calendar/calendar-model-reference'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Event = Extract<CalendarEvent, { kind: 'event' }>
