@@ -2,14 +2,14 @@
 
 ## Description
 
-経済指標の公式発表記録を照合した最終日時をカレンダーイベントごとに保持する。
+経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。
 
 ## Columns
 
-| Name              | Type                     | Default | Nullable | Children | Parents                                           | Comment                                          |
-| ----------------- | ------------------------ | ------- | -------- | -------- | ------------------------------------------------- | ------------------------------------------------ |
-| calendar_event_id | uuid                     |         | false    |          | [public.calendar_event](public.calendar_event.md) | 公式発表記録の照合対象となるカレンダーイベント。 |
-| checked_at        | timestamp with time zone |         | false    |          |                                                   | 公式情報の取得が正常に完了した日時。             |
+| Name              | Type                     | Default | Nullable | Children | Parents                                           | Comment                                            |
+| ----------------- | ------------------------ | ------- | -------- | -------- | ------------------------------------------------- | -------------------------------------------------- |
+| calendar_event_id | uuid                     |         | false    |          | [public.calendar_event](public.calendar_event.md) | 公式資料・日程の照合対象となるカレンダーイベント。 |
+| checked_at        | timestamp with time zone |         | false    |          |                                                   | 公式情報の取得が正常に完了した日時。               |
 
 ## Constraints
 

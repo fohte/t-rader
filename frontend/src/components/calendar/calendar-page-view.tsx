@@ -243,6 +243,7 @@ export function CalendarPageView({
                         stockId={row.stockId}
                         earningsStatus={row.earningsStatus}
                         indicatorStatus={row.indicatorStatus}
+                        centralBankStatus={row.centralBankStatus}
                         emphasized={row.emphasized}
                         target={row.target}
                         muted={row.muted}

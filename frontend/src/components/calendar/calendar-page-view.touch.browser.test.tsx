@@ -443,3 +443,76 @@ describe('CalendarPageView indicator references on mobile', () => {
     })
   })
 })
+
+describe('CalendarPageView central bank references on mobile', () => {
+  it('opens an individual decision document in a new tab when tapped', async () => {
+    const targetUrl = new URL(
+      '/__link-fixture__/calendar-central-bank-decision',
+      window.location.origin,
+    ).href
+    const event: CalendarEvent = {
+      ...EVENT_REFERENCE_DEFAULTS,
+      kind: 'event',
+      source: 'boj',
+      external_id: 'meeting-2099-01-06',
+      category: 'central_bank',
+      country: 'JP',
+      title: '架空金融政策決定会合 (2日目)',
+      stock_id: null,
+      fiscal_period: null,
+      event_date: EVENT_DATE,
+      event_at: null,
+      time_of_day: null,
+      references: [
+        {
+          kind: 'individual_document',
+          source: 'sample_authority',
+          external_id: 'sample-central-bank-decision',
+          title: '架空の決定資料',
+          url: targetUrl,
+          target_period_start: null,
+          target_period_end: null,
+          target_period_type: 'meeting',
+          publication_evidence: '架空の公表記録',
+          publication_evidence_url: null,
+          checked_at: '2099-01-06T00:00:00Z',
+        },
+      ],
+    }
+    const router = createStoryRouter(
+      () => (
+        <CalendarPageView
+          calendar={{ ...WEEK_RANGE, events: [event] }}
+          today="2099-01-07"
+          weekRange={WEEK_RANGE}
+          strategies={[]}
+          selectedStrategyId={undefined}
+          countryFilter="all"
+          isPending={false}
+          errorMessage={undefined}
+          strategyErrorMessage={undefined}
+          expandedOtherEarnings={undefined}
+          otherEarningsEvents={undefined}
+          isOtherEarningsPending={false}
+          otherEarningsErrorMessage={undefined}
+          onPreviousWeek={() => {}}
+          onNextWeek={() => {}}
+          onStrategyChange={() => {}}
+          onCountryChange={() => {}}
+          onOtherEarningsToggle={() => {}}
+        />
+      ),
+      { paths: ['/calendar'], initialPath: '/calendar' },
+    )
+    const session = cdp()
+
+    await withMobileViewport(session, async () => {
+      render(<RouterProvider router={router} />)
+      await screen.findByRole('link', { name: '架空の決定資料 →' })
+
+      await expectNewTab(session, targetUrl, () =>
+        tapLinkOnTouch('架空の決定資料 →'),
+      )
+    })
+  })
+})

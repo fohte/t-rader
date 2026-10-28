@@ -492,6 +492,10 @@ describe('buildCalendarDays', () => {
             category: '中銀',
             title: '架空会合',
             stockId: undefined,
+            centralBankStatus: {
+              label: '遷移先未確認 / 非リンク',
+              references: [],
+            },
             emphasized: true,
             target: false,
             muted: false,
@@ -574,6 +578,10 @@ describe('buildCalendarDays', () => {
             category: '中銀',
             title: '架空会合',
             stockId: undefined,
+            centralBankStatus: {
+              label: '遷移先未確認 / 非リンク',
+              references: [],
+            },
             emphasized: true,
             target: false,
             muted: false,

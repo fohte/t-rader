@@ -2068,8 +2068,10 @@ dependencies = [
  "chrono-tz",
  "core-application",
  "core-domain",
+ "rate-limit",
  "reqwest",
  "scraper",
+ "tokio",
 ]
 
 [[package]]
@@ -2140,8 +2142,10 @@ dependencies = [
  "chrono-tz",
  "core-application",
  "core-domain",
+ "rate-limit",
  "reqwest",
  "scraper",
+ "tokio",
 ]
 
 [[package]]
@@ -2190,8 +2194,10 @@ dependencies = [
  "chrono-tz",
  "core-application",
  "core-domain",
+ "rate-limit",
  "reqwest",
  "scraper",
+ "tokio",
 ]
 
 [[package]]

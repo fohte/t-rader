@@ -32,6 +32,112 @@ pub(crate) fn parse_calendar_event_batch(
     Ok(CalendarEventBatch { date_range, events })
 }
 
+pub(crate) fn scheduled_meeting_dates(
+    html: &str,
+) -> Result<HashSet<NaiveDate>, CalendarEventSourceError> {
+    let document = Html::parse_document(html);
+    let headings = selector("#contents h2")?;
+    let rows = selector("tbody tr")?;
+    let cells = selector("td")?;
+    let links = selector("a[href]")?;
+    let mut parsed_rows = 0;
+    let mut dates = HashSet::new();
+
+    for heading in document.select(&headings) {
+        let Some(id) = heading.value().attr("id") else {
+            continue;
+        };
+        let Some(year_text) = id.strip_prefix('p') else {
+            continue;
+        };
+        if year_text.len() != 4 || !year_text.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(year) = year_text.parse::<i32>() else {
+            continue;
+        };
+        let table_selector = selector(&format!("#{id} + .tbl-box table"))?;
+        let Some(table) = document.select(&table_selector).next() else {
+            return Err(parse_error(format!(
+                "BOJ meeting table for {year} was not found"
+            )));
+        };
+
+        for row in table.select(&rows) {
+            let Some(first_cell) = row.select(&cells).next() else {
+                continue;
+            };
+            let date_text = text(&first_cell);
+            let mut previous_date = None;
+            let meeting_dates = date_text
+                .split('・')
+                .map(|date_text| {
+                    let parts = parse_japanese_date_parts(date_text).ok_or_else(|| {
+                        parse_error(format!("invalid BOJ meeting date: {date_text}"))
+                    })?;
+                    let date = date_from_parts(
+                        parts,
+                        NaiveDate::from_ymd_opt(year, 1, 1).unwrap_or(NaiveDate::MIN),
+                        previous_date,
+                        Some(year),
+                    )
+                    .ok_or_else(|| parse_error(format!("invalid BOJ meeting date: {date_text}")))?;
+                    previous_date = Some(date);
+                    Ok(date)
+                })
+                .collect::<Result<Vec<_>, CalendarEventSourceError>>()?;
+            parsed_rows += 1;
+
+            if first_cell.select(&links).next().is_none() {
+                dates.extend(meeting_dates);
+            }
+        }
+    }
+
+    if parsed_rows == 0 {
+        return Err(parse_error("BOJ meeting schedule contained no dated rows"));
+    }
+    Ok(dates)
+}
+
+pub(crate) fn scheduled_tankan_dates(
+    html: &str,
+    today: NaiveDate,
+) -> Result<HashSet<NaiveDate>, CalendarEventSourceError> {
+    let document = Html::parse_document(html);
+    let table_selector = selector("#p01 + .tbl-box table")?;
+    let rows = selector("tbody tr")?;
+    let cells = selector("td")?;
+    let table = document
+        .select(&table_selector)
+        .next()
+        .ok_or_else(|| parse_error("BOJ publication schedule table was not found"))?;
+    let mut previous_date = None;
+    let mut dates = HashSet::new();
+
+    for row in table.select(&rows) {
+        let row_cells = row.select(&cells).collect::<Vec<_>>();
+        if row_cells.len() < 5 {
+            return Err(parse_error("BOJ publication row has fewer than five cells"));
+        }
+        let date_text = text(&row_cells[0]);
+        let event_date = if date_text.trim().is_empty() {
+            previous_date
+                .ok_or_else(|| parse_error("BOJ publication row has no date to inherit"))?
+        } else {
+            let parts = parse_japanese_date_parts(&date_text)
+                .ok_or_else(|| parse_error(format!("invalid BOJ publication date: {date_text}")))?;
+            date_from_parts(parts, today, previous_date, None)
+                .ok_or_else(|| parse_error(format!("invalid BOJ publication date: {date_text}")))?
+        };
+        previous_date = Some(event_date);
+        if is_tankan_title(&text(&row_cells[4])) {
+            dates.insert(event_date);
+        }
+    }
+    Ok(dates)
+}
+
 fn parse_meeting_events(
     html: &str,
     today: NaiveDate,
@@ -369,6 +475,34 @@ mod tests {
                     ),
                 ],
             },
+        );
+    }
+
+    #[test]
+    fn scheduled_meeting_dates_come_from_unlinked_schedule_rows() {
+        assert_eq!(
+            scheduled_meeting_dates(include_str!(
+                "fixtures/meeting_schedule_reference_synthetic.html"
+            )),
+            Ok([
+                date(2099, 7, 8),
+                date(2099, 7, 9),
+                date(2099, 10, 6),
+                date(2099, 10, 7),
+            ]
+            .into_iter()
+            .collect()),
+        );
+    }
+
+    #[test]
+    fn scheduled_tankan_dates_match_official_release_schedule_titles() {
+        assert_eq!(
+            scheduled_tankan_dates(
+                include_str!("fixtures/publication_schedule_synthetic.html"),
+                date(2099, 8, 1),
+            ),
+            Ok([date(2099, 8, 21)].into_iter().collect()),
         );
     }
 
