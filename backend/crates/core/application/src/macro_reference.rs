@@ -472,13 +472,20 @@ mod tests {
             targets,
             checked: tokio::sync::Mutex::new(Vec::new()),
         });
+        (
+            use_cases_for_target_repository(target_repository.clone(), sources),
+            target_repository,
+        )
+    }
+
+    fn use_cases_for_target_repository(
+        target_repository: Arc<FakeTargetRepository>,
+        sources: Vec<SharedMacroReferenceSource>,
+    ) -> MacroReferenceUseCases {
         let calendar_repository: SharedCalendarEventRepository = Arc::new(FakeCalendarRepository);
         let unit_of_work: SharedUnitOfWork = Arc::new(FakeUnitOfWork::new());
         let references = CalendarEventReferenceUseCases::new(calendar_repository, unit_of_work);
-        (
-            MacroReferenceUseCases::new(target_repository.clone(), references, sources),
-            target_repository,
-        )
+        MacroReferenceUseCases::new(target_repository, references, sources)
     }
 
     #[tokio::test]
@@ -604,6 +611,76 @@ mod tests {
                     ..MacroReferenceStats::default()
                 },
                 Vec::new(),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn central_bank_lookup_retries_after_external_failure() {
+        let target = MacroReferenceTarget {
+            event_source: "boj".to_owned(),
+            event_external_id: "meeting-2099-04-08".to_owned(),
+            event_title: "架空会合 (1日目)".to_owned(),
+            same_day_event_count: 1,
+        };
+        let repository = Arc::new(FakeTargetRepository {
+            targets: vec![target.clone()],
+            checked: tokio::sync::Mutex::new(Vec::new()),
+        });
+        let failure_source: SharedMacroReferenceSource = Arc::new(FixedMacroSource {
+            failure: true,
+            failure_target: None,
+            delay: Duration::ZERO,
+            supported_event_source: Some("boj".to_owned()),
+            supported_external_id_prefix: Some("meeting-".to_owned()),
+        });
+        let failed_use_cases =
+            use_cases_for_target_repository(repository.clone(), vec![failure_source]);
+        let failed_stats = failed_use_cases
+            .fetch_pending(
+                NaiveDate::from_ymd_opt(2099, 4, 9).unwrap_or(NaiveDate::MIN),
+                "boj",
+            )
+            .await
+            .unwrap_or_default();
+        let failed_checked = repository.checked.lock().await.clone();
+
+        let success_source: SharedMacroReferenceSource = Arc::new(FixedMacroSource {
+            failure: false,
+            failure_target: None,
+            delay: Duration::ZERO,
+            supported_event_source: Some("boj".to_owned()),
+            supported_external_id_prefix: Some("meeting-".to_owned()),
+        });
+        let successful_use_cases =
+            use_cases_for_target_repository(repository.clone(), vec![success_source]);
+        let successful_stats = successful_use_cases
+            .fetch_pending(
+                NaiveDate::from_ymd_opt(2099, 4, 9).unwrap_or(NaiveDate::MIN),
+                "boj",
+            )
+            .await
+            .unwrap_or_default();
+        let successful_checked = repository.checked.lock().await.clone();
+
+        assert_eq!(
+            (
+                failed_stats,
+                failed_checked,
+                successful_stats,
+                successful_checked,
+            ),
+            (
+                MacroReferenceStats {
+                    external_failures: 1,
+                    ..MacroReferenceStats::default()
+                },
+                Vec::new(),
+                MacroReferenceStats {
+                    events_checked: 1,
+                    ..MacroReferenceStats::default()
+                },
+                vec![target],
             ),
         );
     }

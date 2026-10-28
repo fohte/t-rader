@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 
 import { CalendarEventRow } from '#components/calendar/calendar-event-row'
 import type {
+  CalendarCentralBankStatus,
   CalendarEarningsStatus,
   CalendarIndicatorStatus,
 } from '#components/calendar/calendar-model'
@@ -157,6 +158,92 @@ const indicatorDestinationUnconfirmedStatus: CalendarIndicatorStatus = {
   references: [],
 }
 
+const centralBankFirstDayStatus: CalendarCentralBankStatus = {
+  phase: 'first_day',
+  label: '公式一覧のみ',
+  references: [
+    {
+      key: 'official_listing:sample_authority:sample-archive',
+      title: '架空の公式資料一覧',
+      source: 'sample_authority',
+      checkedAt: '2030-01-01T00:00:00Z',
+      href: 'https://example.invalid/sample-archive',
+      referenceTypeLabel: '公式一覧',
+    },
+  ],
+}
+
+const centralBankDecisionDocumentStatus: CalendarCentralBankStatus = {
+  phase: 'decision_day',
+  label: '個別資料あり',
+  references: [
+    {
+      key: 'individual_document:sample_authority:sample-decision',
+      title: '架空の政策決定資料',
+      source: 'sample_authority',
+      checkedAt: '2030-01-01T00:00:00Z',
+      referenceTypeLabel: '会合資料',
+      href: 'https://example.invalid/sample-decision',
+      publicationEvidence: '架空の公表記録',
+      publicationEvidenceHref: 'https://example.invalid/sample-evidence',
+    },
+  ],
+}
+
+const centralBankScheduledStatus: CalendarCentralBankStatus = {
+  phase: 'decision_day',
+  label: '発表予定',
+  references: [
+    {
+      key: 'official_listing:sample_authority:sample-calendar',
+      title: '架空の公式日程',
+      source: 'sample_authority',
+      checkedAt: '2030-01-01T00:00:00Z',
+      referenceTypeLabel: '公式日程',
+      href: 'https://example.invalid/sample-calendar',
+    },
+  ],
+}
+
+const centralBankListingStatus: CalendarCentralBankStatus = {
+  phase: 'decision_day',
+  label: '公式一覧のみ',
+  references: [
+    {
+      key: 'official_listing:sample_authority:sample-archive',
+      title: '架空の公式資料一覧',
+      source: 'sample_authority',
+      checkedAt: '2030-01-01T00:00:00Z',
+      referenceTypeLabel: '公式一覧',
+      href: 'https://example.invalid/sample-archive',
+    },
+  ],
+}
+
+const centralBankDestinationUnconfirmedStatus: CalendarCentralBankStatus = {
+  phase: 'decision_day',
+  label: '遷移先未確認 / 非リンク',
+  references: [],
+}
+
+const centralBankTankanDocumentStatus: CalendarCentralBankStatus = {
+  label: '個別資料あり',
+  references: [
+    {
+      key: 'individual_document:sample_authority:sample-survey',
+      title: '架空の短観資料',
+      source: 'sample_authority',
+      checkedAt: '2030-01-01T00:00:00Z',
+      targetPeriodStart: '2029-10-01',
+      targetPeriodEnd: '2029-12-31',
+      targetPeriodType: '四半期',
+      referenceTypeLabel: '短観',
+      href: 'https://example.invalid/sample-survey',
+      publicationEvidence: '架空の公表記録',
+    },
+  ],
+}
+
 const mobileCalendarViewport = {
   globals: { viewport: { value: 'mobileCalendarIndicator' } },
   parameters: {
@@ -164,6 +251,22 @@ const mobileCalendarViewport = {
       options: {
         mobileCalendarIndicator: {
           name: 'Calendar indicator mobile',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: { viewport: { width: 390, height: 700 } },
+  },
+}
+
+const mobileCentralBankViewport = {
+  globals: { viewport: { value: 'mobileCalendarCentralBank' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileCalendarCentralBank: {
+          name: 'Calendar central bank mobile',
           styles: { width: '390px', height: '700px' },
           type: 'mobile',
         },
@@ -547,5 +650,179 @@ export const IndicatorScheduledDesktop: Story = {
     emphasized: false,
     target: false,
     indicatorStatus: indicatorScheduledStatus,
+  },
+}
+
+export const CentralBankFirstDayMobile: Story = {
+  name: '390px 幅で決定資料を紐付けない会合初日を表示します。',
+  ...mobileCentralBankViewport,
+  args: {
+    time: '',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (1日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankFirstDayStatus,
+  },
+}
+
+export const CentralBankFirstDayDesktop: Story = {
+  name: 'デスクトップ幅で決定資料を紐付けない会合初日を表示します。',
+  args: {
+    time: '',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (1日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankFirstDayStatus,
+  },
+}
+
+export const CentralBankDecisionDocumentMobile: Story = {
+  name: '390px 幅で決定日と個別資料へのリンクを表示します。',
+  ...mobileCentralBankViewport,
+  args: {
+    time: '12:00',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (2日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankDecisionDocumentStatus,
+  },
+}
+
+export const CentralBankDecisionDocumentDesktop: Story = {
+  name: 'デスクトップ幅で決定日と個別資料へのリンクを表示します。',
+  args: {
+    time: '12:00',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (2日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankDecisionDocumentStatus,
+  },
+}
+
+export const CentralBankScheduledMobile: Story = {
+  name: '390px 幅で発表予定と公式日程へのリンクを表示します。',
+  ...mobileCentralBankViewport,
+  args: {
+    time: '',
+    country: 'US',
+    category: '中銀',
+    title: '架空金融政策会合の声明',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankScheduledStatus,
+  },
+}
+
+export const CentralBankScheduledDesktop: Story = {
+  name: 'デスクトップ幅で発表予定と公式日程へのリンクを表示します。',
+  args: {
+    time: '',
+    country: 'US',
+    category: '中銀',
+    title: '架空金融政策会合の声明',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankScheduledStatus,
+  },
+}
+
+export const CentralBankListingMobile: Story = {
+  name: '390px 幅で個別資料未確認の公式一覧を表示します。',
+  ...mobileCentralBankViewport,
+  args: {
+    time: '12:00',
+    country: 'EU',
+    category: '中銀',
+    title: '架空中央銀行理事会会合',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankListingStatus,
+  },
+}
+
+export const CentralBankListingDesktop: Story = {
+  name: 'デスクトップ幅で個別資料未確認の公式一覧を表示します。',
+  args: {
+    time: '12:00',
+    country: 'EU',
+    category: '中銀',
+    title: '架空中央銀行理事会会合',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankListingStatus,
+  },
+}
+
+export const CentralBankDestinationUnconfirmedMobile: Story = {
+  name: '390px 幅で遷移先未確認の決定日を非リンクで表示します。',
+  ...mobileCentralBankViewport,
+  args: {
+    time: '12:00',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (2日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankDestinationUnconfirmedStatus,
+  },
+}
+
+export const CentralBankDestinationUnconfirmedDesktop: Story = {
+  name: 'デスクトップ幅で遷移先未確認の決定日を非リンクで表示します。',
+  args: {
+    time: '12:00',
+    country: 'JP',
+    category: '中銀',
+    title: '架空金融政策決定会合 (2日目)',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankDestinationUnconfirmedStatus,
+  },
+}
+
+export const CentralBankTankanDocumentMobile: Story = {
+  name: '390px 幅で短観の個別資料と対象期間を表示します。',
+  ...mobileCentralBankViewport,
+  args: {
+    time: '08:50',
+    country: 'JP',
+    category: '中銀',
+    title: '架空短観',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankTankanDocumentStatus,
+  },
+}
+
+export const CentralBankTankanDocumentDesktop: Story = {
+  name: 'デスクトップ幅で短観の個別資料と対象期間を表示します。',
+  args: {
+    time: '08:50',
+    country: 'JP',
+    category: '中銀',
+    title: '架空短観',
+    stockId: undefined,
+    emphasized: true,
+    target: false,
+    centralBankStatus: centralBankTankanDocumentStatus,
   },
 }

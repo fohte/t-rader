@@ -38,15 +38,15 @@ pub(crate) fn initialize_news_and_central_bank_sources(
         };
 
     let boj_calendar_source: Option<SharedCalendarEventSource> =
-        Some(Arc::new(BojClient::new().map_err(|error| {
+        Some(Arc::new(BojClient::new(redis_url).map_err(|error| {
             StartupError::Config(format!("failed to initialize BOJ calendar source: {error}"))
         })?));
     let ecb_calendar_source: Option<SharedCalendarEventSource> =
-        Some(Arc::new(EcbClient::new().map_err(|error| {
+        Some(Arc::new(EcbClient::new(redis_url).map_err(|error| {
             StartupError::Config(format!("failed to initialize ECB calendar source: {error}"))
         })?));
     let fed_calendar_source: Option<SharedCalendarEventSource> =
-        Some(Arc::new(FedClient::new().map_err(|error| {
+        Some(Arc::new(FedClient::new(redis_url).map_err(|error| {
             StartupError::Config(format!(
                 "failed to initialize Federal Reserve calendar source: {error}"
             ))

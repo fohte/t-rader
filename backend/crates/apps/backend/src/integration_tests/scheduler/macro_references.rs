@@ -42,6 +42,27 @@ fn indicator_event(
     }
 }
 
+fn central_bank_event(
+    source: &str,
+    external_id: &str,
+    country: &str,
+    title: &str,
+    event_date: NaiveDate,
+) -> CalendarEvent {
+    CalendarEvent {
+        source: source.to_owned(),
+        external_id: external_id.to_owned(),
+        category: CalendarEventCategory::CentralBank,
+        country: country.to_owned(),
+        title: title.to_owned(),
+        stock_id: None,
+        fiscal_period: None,
+        event_date,
+        event_at: None,
+        time_of_day: None,
+    }
+}
+
 #[backend_test_macros::database_test]
 async fn macro_reference_query_excludes_today_and_selects_previous_day_events(
     db: gateway_postgres::DatabaseHandle,
@@ -179,6 +200,122 @@ async fn macro_reference_query_excludes_today_and_selects_previous_day_events(
                 same_day_event_count: 1,
             }],
             vec![expected_checked_at, expected_checked_at],
+        ),
+    );
+    Ok(())
+}
+
+#[backend_test_macros::database_test]
+async fn central_bank_reference_query_uses_official_event_identifiers(
+    db: gateway_postgres::DatabaseHandle,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let repository = PostgresCalendarEventRepository::new(db.clone());
+    let unit_of_work = PostgresUnitOfWork::new(db);
+    let transaction = unit_of_work.begin().await?;
+    repository
+        .upsert(
+            &transaction,
+            vec![
+                central_bank_event(
+                    "boj",
+                    "meeting-2099-04-08",
+                    "JP",
+                    "架空会合 (1日目)",
+                    date(2099, 4, 8),
+                ),
+                central_bank_event(
+                    "boj",
+                    "meeting-2099-04-09",
+                    "JP",
+                    "架空会合 (決定日)",
+                    date(2099, 4, 9),
+                ),
+                central_bank_event("fed", "2099-04-08", "US", "架空声明", date(2099, 4, 9)),
+                central_bank_event(
+                    "ecb",
+                    "2099-04-16",
+                    "EU",
+                    "架空会合 (1日目)",
+                    date(2099, 4, 16),
+                ),
+                central_bank_event(
+                    "ecb",
+                    "2099-04-17",
+                    "EU",
+                    "架空会合 (決定日)",
+                    date(2099, 4, 17),
+                ),
+                central_bank_event(
+                    "ecb",
+                    "2099-04-20",
+                    "EU",
+                    "架空会合 (決定日)",
+                    date(2099, 4, 20),
+                ),
+            ],
+        )
+        .await?;
+    unit_of_work.commit(transaction).await?;
+
+    let boj_selector = MacroReferenceTargetSelector::for_event_source("boj")
+        .ok_or_else(|| std::io::Error::other("BOJ selector was not configured"))?;
+    let fed_selector = MacroReferenceTargetSelector::for_event_source("fed")
+        .ok_or_else(|| std::io::Error::other("Fed selector was not configured"))?;
+    let ecb_selector = MacroReferenceTargetSelector::for_event_source("ecb")
+        .ok_or_else(|| std::io::Error::other("ECB selector was not configured"))?;
+    let boj_targets = repository
+        .list_pending_macro_reference_targets(date(2099, 4, 18), &boj_selector)
+        .await?;
+    let fed_targets = repository
+        .list_pending_macro_reference_targets(date(2099, 4, 18), &fed_selector)
+        .await?;
+    let ecb_targets = repository
+        .list_pending_macro_reference_targets(date(2099, 4, 18), &ecb_selector)
+        .await?;
+
+    assert_eq!(
+        (boj_targets, fed_targets, ecb_targets),
+        (
+            vec![
+                MacroReferenceTarget {
+                    event_source: "boj".to_owned(),
+                    event_external_id: "meeting-2099-04-09".to_owned(),
+                    event_title: "架空会合 (決定日)".to_owned(),
+                    same_day_event_count: 1,
+                },
+                MacroReferenceTarget {
+                    event_source: "boj".to_owned(),
+                    event_external_id: "meeting-2099-04-08".to_owned(),
+                    event_title: "架空会合 (1日目)".to_owned(),
+                    same_day_event_count: 1,
+                },
+            ],
+            vec![MacroReferenceTarget {
+                event_source: "fed".to_owned(),
+                event_external_id: "2099-04-08".to_owned(),
+                event_title: "架空声明".to_owned(),
+                same_day_event_count: 1,
+            }],
+            vec![
+                MacroReferenceTarget {
+                    event_source: "ecb".to_owned(),
+                    event_external_id: "2099-04-20".to_owned(),
+                    event_title: "架空会合 (決定日)".to_owned(),
+                    same_day_event_count: 1,
+                },
+                MacroReferenceTarget {
+                    event_source: "ecb".to_owned(),
+                    event_external_id: "2099-04-17".to_owned(),
+                    event_title: "架空会合 (決定日)".to_owned(),
+                    same_day_event_count: 1,
+                },
+                MacroReferenceTarget {
+                    event_source: "ecb".to_owned(),
+                    event_external_id: "2099-04-16".to_owned(),
+                    event_title: "架空会合 (1日目)".to_owned(),
+                    same_day_event_count: 1,
+                },
+            ],
         ),
     );
     Ok(())

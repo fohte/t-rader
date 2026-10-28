@@ -603,9 +603,9 @@ comments:
       calendar_event_id: 'SEC の資料照合対象となるカレンダーイベント。'
       checked_at: 'SEC の照合が正常に完了した日時。'
   - table: calendar_event_macro_reference_check
-    tableComment: '経済指標の公式発表記録を照合した最終日時をカレンダーイベントごとに保持する。'
+    tableComment: '経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。'
     columnComments:
-      calendar_event_id: '公式発表記録の照合対象となるカレンダーイベント。'
+      calendar_event_id: '公式資料・日程の照合対象となるカレンダーイベント。'
       checked_at: '公式情報の取得が正常に完了した日時。'
   - table: earnings_schedule_ingested_date
     tableComment: '決算予定を取得した公表日を記録する。'

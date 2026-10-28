@@ -2,8 +2,21 @@ import {
   type CalendarCountryFilter,
   formatCalendarDayLabel,
 } from '#components/calendar/calendar-date'
+import type {
+  CalendarCentralBankStatus,
+  CalendarEventReferenceView,
+} from '#components/calendar/calendar-model-central-bank'
+import {
+  buildCentralBankStatus,
+  toCalendarEventReferenceView,
+} from '#components/calendar/calendar-model-central-bank'
 import type { components } from '#lib/api/schema.gen'
 import type { FinancialPeriodType } from '#lib/stock-page-date'
+
+export type {
+  CalendarCentralBankStatus,
+  CalendarEventReferenceView,
+} from '#components/calendar/calendar-model-central-bank'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Event = Extract<CalendarEvent, { kind: 'event' }>
@@ -35,18 +48,7 @@ export type CalendarEarningsStatus = {
   references: CalendarEarningsReferenceView[]
 }
 
-export type CalendarIndicatorReferenceView = {
-  key: string
-  title: string
-  source: string
-  checkedAt: string
-  targetPeriodStart?: string
-  targetPeriodEnd?: string
-  targetPeriodType?: string
-  href?: string
-  publicationEvidence?: string
-  publicationEvidenceHref?: string
-}
+export type CalendarIndicatorReferenceView = CalendarEventReferenceView
 
 export type CalendarIndicatorStatus = {
   label: string
@@ -77,6 +79,7 @@ type CalendarRowView = {
   stockId?: string
   earningsStatus?: CalendarEarningsStatus
   indicatorStatus?: CalendarIndicatorStatus
+  centralBankStatus?: CalendarCentralBankStatus
   emphasized: boolean
   target: boolean
   muted: boolean
@@ -240,50 +243,8 @@ function buildIndicatorStatus(
           : listings.length > 0
             ? '公式一覧 / 個別資料未確認'
             : '遷移先未確認 / 非リンク',
-    references: selectedReferences.map(toIndicatorReferenceView),
+    references: selectedReferences.map(toCalendarEventReferenceView),
   }
-}
-
-function toIndicatorReferenceView(
-  reference: EventReference,
-): CalendarIndicatorReferenceView {
-  const targetPeriodType =
-    reference.target_period_type == null
-      ? undefined
-      : formatIndicatorPeriodType(reference.target_period_type)
-  return {
-    key: `${reference.kind}:${reference.source}:${reference.external_id}`,
-    title: reference.title,
-    source: reference.source,
-    checkedAt: reference.checked_at,
-    ...(reference.target_period_start == null
-      ? {}
-      : { targetPeriodStart: reference.target_period_start }),
-    ...(reference.target_period_end == null
-      ? {}
-      : { targetPeriodEnd: reference.target_period_end }),
-    ...(targetPeriodType == null ? {} : { targetPeriodType }),
-    ...(reference.url == null ? {} : { href: reference.url }),
-    ...(reference.publication_evidence == null
-      ? {}
-      : { publicationEvidence: reference.publication_evidence }),
-    ...(reference.publication_evidence_url == null
-      ? {}
-      : { publicationEvidenceHref: reference.publication_evidence_url }),
-  }
-}
-
-const INDICATOR_PERIOD_TYPE_LABELS: Readonly<Record<string, string>> = {
-  month: '月次',
-  quarter: '四半期',
-  half_year: '半期',
-  fiscal_year: '年度',
-  month_range: '複数月',
-  year: '年次',
-}
-
-function formatIndicatorPeriodType(value: string): string | undefined {
-  return INDICATOR_PERIOD_TYPE_LABELS[value]
 }
 
 function toFinancialPeriodType(
@@ -361,6 +322,9 @@ function buildEventRow(
         : {}),
       ...(event.category === 'indicator'
         ? { indicatorStatus: buildIndicatorStatus(event, today) }
+        : {}),
+      ...(event.category === 'central_bank'
+        ? { centralBankStatus: buildCentralBankStatus(event, today) }
         : {}),
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',

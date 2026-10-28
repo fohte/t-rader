@@ -21,27 +21,50 @@ pub(super) async fn list_macro_reference_targets(
     today: NaiveDate,
     selector: &MacroReferenceTargetSelector,
 ) -> Result<Vec<MacroReferenceTarget>, CalendarEventRepositoryError> {
-    let rows = repository
-        .db
-        .query_all_raw(Statement::from_sql_and_values(
+    let statement = if selector.include_future {
+        Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT e.source AS event_source, e.external_id AS event_external_id, e.title AS event_title, \
                     COUNT(*) OVER (PARTITION BY e.source, e.country, split_part(e.external_id, ':', 1), e.event_date) \
                       AS same_day_event_count \
              FROM calendar_event e \
              LEFT JOIN calendar_event_macro_reference_check c ON c.calendar_event_id = e.id \
-             WHERE e.event_date < $1 AND e.category = 'indicator' \
-               AND e.source = $2 AND e.country = $3 AND e.external_id ~ $4 \
+             WHERE e.category = $1 AND e.source = $2 AND e.country = $3 AND e.external_id ~ $4 \
              ORDER BY c.checked_at ASC NULLS FIRST, e.event_date DESC, e.source, e.external_id \
              LIMIT $5",
             [
-                today.into(),
+                selector.category.clone().into(),
                 selector.event_source.clone().into(),
                 selector.country.clone().into(),
                 selector.external_id_pattern.clone().into(),
                 MAX_PENDING_MACRO_REFERENCE_TARGETS.into(),
             ],
-        ))
+        )
+    } else {
+        Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT e.source AS event_source, e.external_id AS event_external_id, e.title AS event_title, \
+                    COUNT(*) OVER (PARTITION BY e.source, e.country, split_part(e.external_id, ':', 1), e.event_date) \
+                      AS same_day_event_count \
+             FROM calendar_event e \
+             LEFT JOIN calendar_event_macro_reference_check c ON c.calendar_event_id = e.id \
+             WHERE e.event_date < $1 AND e.category = $2 \
+               AND e.source = $3 AND e.country = $4 AND e.external_id ~ $5 \
+             ORDER BY c.checked_at ASC NULLS FIRST, e.event_date DESC, e.source, e.external_id \
+             LIMIT $6",
+            [
+                today.into(),
+                selector.category.clone().into(),
+                selector.event_source.clone().into(),
+                selector.country.clone().into(),
+                selector.external_id_pattern.clone().into(),
+                MAX_PENDING_MACRO_REFERENCE_TARGETS.into(),
+            ],
+        )
+    };
+    let rows = repository
+        .db
+        .query_all_raw(statement)
         .await
         .map_err(repository_error)?;
 

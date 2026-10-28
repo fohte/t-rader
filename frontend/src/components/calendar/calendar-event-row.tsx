@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import clsx from 'clsx'
 
 import type {
+  CalendarCentralBankStatus,
   CalendarEarningsReferenceView,
   CalendarEarningsStatus,
   CalendarIndicatorReferenceView,
@@ -138,6 +139,11 @@ function IndicatorReference({
           )}
         </span>
       )}
+      {reference.referenceTypeLabel != null && (
+        <span className="text-2xs text-muted-foreground">
+          資料種別: {reference.referenceTypeLabel}
+        </span>
+      )}
       <span className="text-2xs text-muted-foreground">
         取得元: {reference.source} / 確認日時:{' '}
         {formatCheckedAt(reference.checkedAt)}
@@ -174,6 +180,27 @@ function IndicatorStatus({ status }: { status: CalendarIndicatorStatus }) {
   )
 }
 
+function CentralBankStatus({ status }: { status: CalendarCentralBankStatus }) {
+  const phaseLabel =
+    status.phase === 'first_day'
+      ? '会合初日'
+      : status.phase === 'decision_day'
+        ? '決定日'
+        : undefined
+
+  return (
+    <div className="mt-1 min-w-0 border-l-2 border-border pl-2 text-2xs">
+      {phaseLabel != null && (
+        <p className="min-h-6 text-muted-foreground">{phaseLabel}</p>
+      )}
+      <p className="min-h-6 text-muted-foreground">{status.label}</p>
+      {status.references.map((reference) => (
+        <IndicatorReference key={reference.key} reference={reference} />
+      ))}
+    </div>
+  )
+}
+
 export function CalendarEventRow({
   time,
   country,
@@ -182,6 +209,7 @@ export function CalendarEventRow({
   stockId,
   earningsStatus,
   indicatorStatus,
+  centralBankStatus,
   emphasized,
   target,
   muted,
@@ -194,6 +222,7 @@ export function CalendarEventRow({
   stockId?: string
   earningsStatus?: CalendarEarningsStatus
   indicatorStatus?: CalendarIndicatorStatus
+  centralBankStatus?: CalendarCentralBankStatus
   emphasized: boolean
   target: boolean
   muted: boolean
@@ -262,6 +291,9 @@ export function CalendarEventRow({
         {earningsStatus != null && <EarningsStatus status={earningsStatus} />}
         {indicatorStatus != null && (
           <IndicatorStatus status={indicatorStatus} />
+        )}
+        {centralBankStatus != null && (
+          <CentralBankStatus status={centralBankStatus} />
         )}
       </div>
     </div>
