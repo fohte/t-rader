@@ -84,20 +84,6 @@ enum InstrumentDownsampleOutcome {
 fn log_downsample_postponed(
     reason: DownsamplePostponementReason,
     batch_from: DateTime<Utc>,
-    stats: &UsStockMinuteBarsDownsampleStats,
-) {
-    tracing::info!(
-        reason = reason.as_str(),
-        batch_from = %batch_from,
-        hourly_bars_inserted = stats.hourly_bars_inserted,
-        minute_bars_deleted = stats.minute_bars_deleted,
-        "米国株の分足間引きを次回の実行に延期しました"
-    );
-}
-
-fn log_downsample_cursor_advance_postponed(
-    reason: DownsamplePostponementReason,
-    batch_from: DateTime<Utc>,
     cursor_timestamp: Option<DateTime<Utc>>,
     stats: &UsStockMinuteBarsDownsampleStats,
 ) {
@@ -111,6 +97,17 @@ fn log_downsample_cursor_advance_postponed(
     );
 }
 
+fn cursor_advance_postponement_reason(
+    batch_from: DateTime<Utc>,
+    cursor_timestamp: Option<DateTime<Utc>>,
+) -> DownsamplePostponementReason {
+    if cursor_timestamp == Some(batch_from) {
+        DownsamplePostponementReason::MinuteBarsRemain
+    } else {
+        DownsamplePostponementReason::CursorChanged
+    }
+}
+
 impl UsStockBarsIngestUseCases {
     fn log_processing_budget_exhausted(
         &self,
@@ -120,6 +117,7 @@ impl UsStockBarsIngestUseCases {
         log_downsample_postponed(
             DownsamplePostponementReason::ProcessingBudgetExhausted,
             batch_from,
+            None,
             stats,
         );
     }
@@ -278,6 +276,7 @@ impl UsStockBarsIngestUseCases {
             log_downsample_postponed(
                 DownsamplePostponementReason::WriteLockBusy,
                 cutoff_bucket_start,
+                None,
                 &stats,
             );
             return Ok(stats);
@@ -315,7 +314,7 @@ impl UsStockBarsIngestUseCases {
                     .await?
                 {
                     InstrumentDownsampleOutcome::Postponed(reason) => {
-                        log_downsample_postponed(reason, batch_from, &stats);
+                        log_downsample_postponed(reason, batch_from, None, &stats);
                         return Ok(stats);
                     }
                     InstrumentDownsampleOutcome::Completed {
@@ -354,6 +353,7 @@ impl UsStockBarsIngestUseCases {
                 log_downsample_postponed(
                     DownsamplePostponementReason::WriteLockBusy,
                     batch_from,
+                    None,
                     &stats,
                 );
                 return Ok(stats);
@@ -377,18 +377,9 @@ impl UsStockBarsIngestUseCases {
                     .repository
                     .find_us_stock_minute_bar_downsample_cursor()
                     .await?;
-                let reason = if cursor_timestamp == Some(batch_from) {
-                    DownsamplePostponementReason::MinuteBarsRemain
-                } else {
-                    DownsamplePostponementReason::CursorChanged
-                };
+                let reason = cursor_advance_postponement_reason(batch_from, cursor_timestamp);
                 drop(write_lock_guard);
-                log_downsample_cursor_advance_postponed(
-                    reason,
-                    batch_from,
-                    cursor_timestamp,
-                    &stats,
-                );
+                log_downsample_postponed(reason, batch_from, cursor_timestamp, &stats);
                 return Ok(stats);
             }
             drop(write_lock_guard);
@@ -404,7 +395,7 @@ mod tests {
     use std::sync::{Arc, Mutex as StdMutex};
     use std::time::Instant;
 
-    use chrono::{DateTime, Utc};
+    use chrono::{DateTime, Duration as ChronoDuration, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
@@ -839,9 +830,15 @@ mod tests {
     }
 
     #[rstest]
+    #[case::minute_bars_remain(false, true, "2038-12-30T03:00:00Z", "minute_bars_remain")]
+    #[case::cursor_changed(true, false, "2038-12-30T02:00:00Z", "cursor_changed")]
     #[tokio::test]
     #[awt]
-    async fn downsample_does_not_advance_cursor_when_repository_rejects_the_range(
+    async fn downsample_does_not_advance_cursor_when_advance_fails(
+        #[case] cursor_changes_before_advance: bool,
+        #[case] force_advance_failure: bool,
+        #[case] expected_cursor: &str,
+        #[case] expected_reason: &str,
         #[future] downsample_fixture: DownsampleFixture,
     ) {
         let repository = &downsample_fixture.repository;
@@ -856,7 +853,16 @@ mod tests {
                 date("2038-12-30T03:05:00Z"),
             )])
             .await;
-        repository.fail_minute_bar_downsample_cursor_advance().await;
+        if cursor_changes_before_advance {
+            repository
+                .set_minute_bar_downsample_cursor_before_next_advance(
+                    cursor - ChronoDuration::hours(1),
+                )
+                .await;
+        }
+        if force_advance_failure {
+            repository.fail_minute_bar_downsample_cursor_advance().await;
+        }
 
         let result = downsample_fixture
             .use_cases
@@ -872,6 +878,8 @@ mod tests {
             .lock()
             .await;
         let downsample_ranges = repository.minute_bar_downsample_ranges.lock().await.clone();
+        let reason =
+            super::cursor_advance_postponement_reason(cursor, cursor_after_rejected_advance);
 
         assert_eq!(
             (
@@ -879,12 +887,14 @@ mod tests {
                 advances,
                 cursor_after_rejected_advance,
                 downsample_ranges,
+                reason.as_str(),
             ),
             (
                 Ok(Default::default()),
                 vec![(cursor, batch_until)],
-                Some(cursor),
+                Some(date(expected_cursor)),
                 vec![(cursor, batch_until)],
+                expected_reason,
             ),
         );
     }

@@ -35,6 +35,7 @@ pub struct FakeBarsRepository {
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub us_stock_minute_bar_downsample_cursor: Mutex<Option<DateTime<Utc>>>,
     pub minute_bar_downsample_cursor_advance_failure: Mutex<bool>,
+    minute_bar_downsample_cursor_before_next_advance: Mutex<Option<DateTime<Utc>>>,
     pub minute_bar_downsample_cursor_initializations: Mutex<Vec<DateTime<Utc>>>,
     pub minute_bar_downsample_cursor_advances: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub earliest_minute_bar_before_queries: Mutex<Vec<DateTime<Utc>>>,
@@ -109,6 +110,16 @@ impl FakeBarsRepository {
             .minute_bar_downsample_cursor_advance_failure
             .lock()
             .await = true;
+    }
+
+    pub async fn set_minute_bar_downsample_cursor_before_next_advance(
+        &self,
+        cursor_timestamp: DateTime<Utc>,
+    ) {
+        *self
+            .minute_bar_downsample_cursor_before_next_advance
+            .lock()
+            .await = Some(cursor_timestamp);
     }
 
     pub async fn seed_daily_adjustment_factors(
@@ -338,7 +349,15 @@ impl BarsRepository for FakeBarsRepository {
             .minute_bar_downsample_cursor_advance_failure
             .lock()
             .await;
+        let cursor_before_advance = self
+            .minute_bar_downsample_cursor_before_next_advance
+            .lock()
+            .await
+            .take();
         let mut cursor = self.us_stock_minute_bar_downsample_cursor.lock().await;
+        if let Some(cursor_before_advance) = cursor_before_advance {
+            *cursor = Some(cursor_before_advance);
+        }
         if !advance_failed && *cursor == Some(from) {
             *cursor = Some(until);
             Ok(true)
