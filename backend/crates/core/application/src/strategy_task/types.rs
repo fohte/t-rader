@@ -114,6 +114,8 @@ pub struct StrategyTaskStep {
     pub kind: StrategyTaskStepKind,
     pub label: String,
     pub model: Option<String>,
+    /// モデル呼び出し上限でこのステップが打ち切られたことを示す。
+    pub model_call_limit_reached: bool,
     pub status: StrategyTaskStepStatus,
     pub item: Option<serde_json::Value>,
     pub item_key: Option<serde_json::Value>,
@@ -159,6 +161,8 @@ pub struct TaskStatusView {
     pub result_text: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    /// いずれかのステップがモデル呼び出し上限で打ち切られたことを示す。
+    pub model_call_limit_reached: bool,
     pub steps: serde_json::Value,
     pub purpose: Option<String>,
     pub as_of: Option<DateTime<FixedOffset>>,

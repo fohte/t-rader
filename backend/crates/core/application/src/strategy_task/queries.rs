@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use uuid::Uuid;
 
 use crate::strategy_scope::StrategyScope;
@@ -21,11 +23,28 @@ impl StrategyTaskUseCases {
     }
 
     pub async fn list(&self, query: TaskListQuery) -> Result<Vec<TaskStatusView>, ListTasksError> {
-        self.repository
+        let tasks = self
+            .repository
             .list(query)
             .await
-            .map(|tasks| tasks.into_iter().map(status_view).collect())
-            .map_err(Into::into)
+            .map_err(ListTasksError::from)?;
+        let task_ids = tasks.iter().map(|task| task.task_id).collect::<Vec<_>>();
+        let model_call_limit_reached_task_ids = self
+            .repository
+            .list_model_call_limit_reached_task_ids(&task_ids)
+            .await
+            .map_err(ListTasksError::from)?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        Ok(tasks
+            .into_iter()
+            .map(|task| {
+                let mut view = status_view(task);
+                view.model_call_limit_reached =
+                    model_call_limit_reached_task_ids.contains(&view.task_id);
+                view
+            })
+            .collect())
     }
 
     pub async fn list_for_strategy(
@@ -82,8 +101,10 @@ impl StrategyTaskUseCases {
         task: StrategyTask,
     ) -> Result<TaskStatusView, GetTaskError> {
         let steps = self.repository.list_steps(task.task_id).await?;
+        let model_call_limit_reached = steps.iter().any(|step| step.model_call_limit_reached);
         let steps = steps.iter().map(step_to_wire_json).collect::<Vec<_>>();
         let mut view = status_view(task);
+        view.model_call_limit_reached = model_call_limit_reached;
         view.steps = serde_json::Value::Array(steps);
         Ok(view)
     }
@@ -101,6 +122,7 @@ fn status_view(task: StrategyTask) -> TaskStatusView {
         result_text: task.result_text,
         created_at: task.created_at,
         updated_at: task.updated_at,
+        model_call_limit_reached: false,
         steps: serde_json::json!([]),
         purpose: task.purpose,
         as_of: task.as_of,
@@ -153,6 +175,12 @@ pub(super) fn step_to_wire_json(step: &StrategyTaskStep) -> serde_json::Value {
     if let Some(error) = &step.error {
         object.insert("error".to_string(), serde_json::json!(error));
     }
+    if step.model_call_limit_reached {
+        object.insert(
+            "model_call_limit_reached".to_string(),
+            serde_json::json!(true),
+        );
+    }
     serde_json::Value::Object(object)
 }
 
@@ -165,8 +193,12 @@ mod tests {
 
     use super::step_to_wire_json;
 
-    #[test]
-    fn operation_step_wire_includes_nullable_model_and_payload_references() {
+    #[rstest::rstest]
+    #[case::unmarked(false)]
+    #[case::marked(true)]
+    fn operation_step_wire_includes_nullable_model_and_payload_references(
+        #[case] model_call_limit_reached: bool,
+    ) {
         let started_at =
             DateTime::parse_from_rfc3339("2031-04-05T06:07:08Z").expect("parse start time");
         let finished_at =
@@ -178,6 +210,7 @@ mod tests {
             kind: StrategyTaskStepKind::Operation,
             label: "Fictional operation".to_string(),
             model: None,
+            model_call_limit_reached,
             status: StrategyTaskStepStatus::Completed,
             item: None,
             item_key: Some(serde_json::json!({
@@ -203,33 +236,34 @@ mod tests {
             seq: 2,
         });
 
-        assert_eq!(
-            actual,
-            serde_json::json!({
-                "phase_key": "fictional-operation",
-                "kind": "operation",
-                "label": "Fictional operation",
-                "model": null,
-                "status": "completed",
-                "started_at": "2031-04-05T06:07:08+00:00",
-                "trace_id": "fictional-trace",
-                "span_id": "fictional-span",
-                "item_key": {
-                    "payload_id": "00000000-0000-0000-0000-000000000463",
-                    "pointer": "/items",
-                    "index": 3,
-                },
-                "input_ref": {
-                    "payload_id": "00000000-0000-0000-0000-000000000464",
-                    "pointer": "/input",
-                },
-                "output_ref": {
-                    "payload_id": "00000000-0000-0000-0000-000000000465",
-                    "pointer": "/value",
-                },
-                "output": { "count": 1 },
-                "finished_at": "2031-04-05T06:07:09+00:00",
-            }),
-        );
+        let mut expected = serde_json::json!({
+            "phase_key": "fictional-operation",
+            "kind": "operation",
+            "label": "Fictional operation",
+            "model": null,
+            "status": "completed",
+            "started_at": "2031-04-05T06:07:08+00:00",
+            "trace_id": "fictional-trace",
+            "span_id": "fictional-span",
+            "item_key": {
+                "payload_id": "00000000-0000-0000-0000-000000000463",
+                "pointer": "/items",
+                "index": 3,
+            },
+            "input_ref": {
+                "payload_id": "00000000-0000-0000-0000-000000000464",
+                "pointer": "/input",
+            },
+            "output_ref": {
+                "payload_id": "00000000-0000-0000-0000-000000000465",
+                "pointer": "/value",
+            },
+            "output": { "count": 1 },
+            "finished_at": "2031-04-05T06:07:09+00:00",
+        });
+        if model_call_limit_reached {
+            expected["model_call_limit_reached"] = serde_json::json!(true);
+        }
+        assert_eq!(actual, expected);
     }
 }

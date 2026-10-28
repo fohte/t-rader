@@ -248,6 +248,25 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             .map_err(repository_error)
     }
 
+    async fn list_model_call_limit_reached_task_ids(
+        &self,
+        task_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, StrategyTaskRepositoryError> {
+        if task_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        strategy_task_step::Entity::find()
+            .select_only()
+            .column(strategy_task_step::Column::TaskId)
+            .filter(strategy_task_step::Column::TaskId.is_in(task_ids.to_vec()))
+            .filter(strategy_task_step::Column::ModelCallLimitReached.eq(true))
+            .distinct()
+            .into_tuple::<Uuid>()
+            .all(&self.db)
+            .await
+            .map_err(repository_error)
+    }
+
     async fn list_in_flight(&self) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
         strategy_task::Entity::find()
             .filter(strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]))
@@ -435,6 +454,7 @@ fn step_from_model(model: strategy_task_step::Model) -> StrategyTaskStep {
         item: model.item,
         item_key: model.item_key,
         item_label: model.item_label,
+        model_call_limit_reached: model.model_call_limit_reached,
         input_ref: model.input_ref,
         output_ref: model.output_ref,
         output: model.output,
@@ -476,6 +496,8 @@ struct StepWire {
     span_id: String,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    model_call_limit_reached: bool,
 }
 
 fn default_step_kind() -> String {
@@ -513,9 +535,14 @@ async fn upsert_steps(
             tracing::warn!(kind = wire.kind, task_id = %task_id, "unknown strategy task step kind; skipping");
             continue;
         };
+        let model_call_limit_reached = wire.model_call_limit_reached
+            || existing
+                .get(&wire.execution_step_id)
+                .is_some_and(|row| row.model_call_limit_reached);
         if let Some(row) = existing.get(&wire.execution_step_id)
             && row.kind == kind.as_str()
             && row.model == wire.model
+            && row.model_call_limit_reached == model_call_limit_reached
             && row.status == step_status_to_db(status)
             && row.item_key == wire.item_key
             && row.input_ref == wire.input_ref
@@ -533,6 +560,7 @@ async fn upsert_steps(
             kind: Set(kind.as_str().to_owned()),
             label: Set(wire.label),
             model: Set(wire.model),
+            model_call_limit_reached: Set(model_call_limit_reached),
             status: Set(step_status_to_db(status)),
             item: Set(wire.item),
             item_key: Set(wire.item_key),
@@ -556,6 +584,7 @@ async fn upsert_steps(
             OnConflict::column(strategy_task_step::Column::ExecutionStepId)
                 .update_columns([
                     strategy_task_step::Column::Status,
+                    strategy_task_step::Column::ModelCallLimitReached,
                     strategy_task_step::Column::ItemKey,
                     strategy_task_step::Column::InputRef,
                     strategy_task_step::Column::OutputRef,
@@ -648,6 +677,7 @@ mod tests {
                 kind: "llm".to_string(),
                 label: "Fictional phase".to_string(),
                 model: Some("fictional-model".to_string()),
+                model_call_limit_reached: false,
                 status: "completed".to_string(),
                 item: None,
                 item_key: None,
@@ -676,6 +706,7 @@ mod tests {
             "label": "Fictional operation",
             "model": null,
             "status": "completed",
+            "model_call_limit_reached": true,
             "item_key": { "payload_id": "00000000-0000-0000-0000-000000000455", "pointer": "/items", "index": 3 },
             "input_ref": input_ref,
             "output_ref": output_ref,
@@ -694,6 +725,7 @@ mod tests {
                 kind: "operation".to_string(),
                 label: "Fictional operation".to_string(),
                 model: None,
+                model_call_limit_reached: true,
                 status: "completed".to_string(),
                 item: None,
                 item_key: Some(serde_json::json!({
@@ -758,6 +790,7 @@ mod tests {
             kind: Set("llm".to_string()),
             label: Set("Fictional phase".to_string()),
             model: Set(Some("fictional-model".to_string())),
+            model_call_limit_reached: Set(false),
             status: Set(status),
             item: Set(None),
             item_key: Set(None),
@@ -1039,6 +1072,7 @@ mod tests {
         kind: StrategyTaskStepKind,
         label: String,
         model: Option<String>,
+        model_call_limit_reached: bool,
         status: StrategyTaskStepStatus,
         item: Option<serde_json::Value>,
         item_key: Option<serde_json::Value>,
@@ -1063,6 +1097,7 @@ mod tests {
                 kind: step.kind,
                 label: step.label,
                 model: step.model,
+                model_call_limit_reached: step.model_call_limit_reached,
                 status: step.status,
                 item: step.item,
                 item_key: step.item_key,
@@ -1122,6 +1157,7 @@ mod tests {
             kind: Set("operation".to_string()),
             label: Set("Completed phase".to_string()),
             model: Set(None),
+            model_call_limit_reached: Set(true),
             status: Set(DbStepStatus::Completed),
             item: Set(Some(serde_json::json!({ "ticker": "FAKE" }))),
             item_key: Set(Some(serde_json::json!({
@@ -1156,6 +1192,7 @@ mod tests {
             kind: Set("llm".to_string()),
             label: Set("Running phase".to_string()),
             model: Set(Some("fictional-model".to_string())),
+            model_call_limit_reached: Set(false),
             status: Set(DbStepStatus::Running),
             item: Set(None),
             item_key: Set(None),
@@ -1195,6 +1232,7 @@ mod tests {
                     kind: StrategyTaskStepKind::Llm,
                     label: "Running phase".to_string(),
                     model: Some("fictional-model".to_string()),
+                    model_call_limit_reached: false,
                     status: StrategyTaskStepStatus::Running,
                     item: None,
                     item_key: None,
@@ -1216,6 +1254,7 @@ mod tests {
                     kind: StrategyTaskStepKind::Operation,
                     label: "Completed phase".to_string(),
                     model: None,
+                    model_call_limit_reached: true,
                     status: StrategyTaskStepStatus::Completed,
                     item: Some(serde_json::json!({ "ticker": "FAKE" })),
                     item_key: Some(serde_json::json!({
@@ -1241,6 +1280,136 @@ mod tests {
                     seq: 20,
                 },
             ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn step_limit_mark_survives_later_upserts(db: DatabaseHandle) {
+        let strategy_id = Uuid::from_u128(0x510);
+        strategy::ActiveModel {
+            id: Set(strategy_id),
+            name: Set("Fictional strategy".to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test strategy");
+
+        let task_id = Uuid::from_u128(0x511);
+        let execution_step_id = Uuid::from_u128(0x512);
+        let repository = PostgresStrategyTaskRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let transaction = unit_of_work.begin().await.expect("begin setup transaction");
+        repository
+            .insert(
+                &transaction,
+                task(task_id, strategy_id, StrategyTaskPhase::Running, None),
+            )
+            .await
+            .expect("insert test task");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit setup transaction");
+
+        let started_at = fixed_time();
+        let finished_at = started_at + chrono::Duration::seconds(1);
+        let transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin marked step transaction");
+        repository
+            .apply_status_and_steps(
+                &transaction,
+                task_id,
+                None,
+                None,
+                Some(serde_json::json!([{
+                    "execution_step_id": execution_step_id,
+                    "phase_key": "fictional-phase",
+                    "kind": "llm",
+                    "label": "Fictional phase",
+                    "model": "fictional-model",
+                    "status": "running",
+                    "started_at": started_at,
+                    "trace_id": "fictional-trace",
+                    "span_id": "fictional-span",
+                    "model_call_limit_reached": true,
+                }])),
+            )
+            .await
+            .expect("persist limit mark");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit marked step");
+
+        let transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin update transaction");
+        repository
+            .apply_status_and_steps(
+                &transaction,
+                task_id,
+                None,
+                None,
+                Some(serde_json::json!([{
+                    "execution_step_id": execution_step_id,
+                    "phase_key": "fictional-phase",
+                    "kind": "llm",
+                    "label": "Fictional phase",
+                    "model": "fictional-model",
+                    "status": "completed",
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                    "trace_id": "fictional-trace",
+                    "span_id": "fictional-span",
+                    "output": { "summary": "fictional result" },
+                }])),
+            )
+            .await
+            .expect("update marked step");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit step update");
+
+        let mut actual = repository
+            .list_steps(task_id)
+            .await
+            .expect("list updated task step")
+            .into_iter()
+            .map(StepView::from)
+            .collect::<Vec<_>>();
+        actual[0].seq = 0;
+        assert_eq!(
+            actual,
+            vec![StepView {
+                execution_step_id,
+                task_id,
+                phase_key: "fictional-phase".to_string(),
+                kind: StrategyTaskStepKind::Llm,
+                label: "Fictional phase".to_string(),
+                model: Some("fictional-model".to_string()),
+                model_call_limit_reached: true,
+                status: StrategyTaskStepStatus::Completed,
+                item: None,
+                item_key: None,
+                item_label: None,
+                input_ref: None,
+                output_ref: None,
+                output: Some(serde_json::json!({ "summary": "fictional result" })),
+                started_at,
+                finished_at: Some(finished_at),
+                trace_id: "fictional-trace".to_string(),
+                span_id: "fictional-span".to_string(),
+                error: None,
+                seq: 0,
+            }],
         );
     }
 }

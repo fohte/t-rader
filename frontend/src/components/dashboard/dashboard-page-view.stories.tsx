@@ -183,6 +183,7 @@ const args: DashboardPageViewProps = {
       purpose: null,
       as_of: null,
       error_summary: null,
+      model_call_limit_reached: false,
       created_at: '2026-10-10T03:00:00Z',
       updated_at: '2026-10-10T03:00:00Z',
     },

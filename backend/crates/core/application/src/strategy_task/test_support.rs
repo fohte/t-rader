@@ -233,6 +233,21 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
         Ok(Vec::new())
     }
 
+    async fn list_model_call_limit_reached_task_ids(
+        &self,
+        task_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, StrategyTaskRepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .await
+            .steps
+            .iter()
+            .filter(|step| step.model_call_limit_reached && task_ids.contains(&step.task_id))
+            .map(|step| step.task_id)
+            .collect())
+    }
+
     async fn list_in_flight(&self) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
         Ok(Vec::new())
     }

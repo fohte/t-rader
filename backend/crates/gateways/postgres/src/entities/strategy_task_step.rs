@@ -40,6 +40,7 @@ pub struct Model {
     pub input_ref: Option<Json>,
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub output_ref: Option<Json>,
+    pub model_call_limit_reached: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

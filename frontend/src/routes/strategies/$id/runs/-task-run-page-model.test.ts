@@ -23,6 +23,7 @@ describe('task run page model', () => {
         created_at: '2030-01-02T03:04:05Z',
         updated_at: '2030-01-02T03:06:05Z',
         error_summary: null,
+        model_call_limit_reached: false,
         steps: [],
       }),
     ).toEqual({

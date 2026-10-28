@@ -283,6 +283,7 @@ pub async fn get_strategy_task(
         result_text: view.result_text,
         created_at: view.created_at,
         updated_at: view.updated_at,
+        model_call_limit_reached: view.model_call_limit_reached,
         steps: view.steps,
         purpose: view.purpose,
         as_of: view.as_of,

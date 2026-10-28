@@ -100,6 +100,7 @@ erDiagram
   jsonb item_key
   jsonb input_ref
   jsonb output_ref
+  boolean model_call_limit_reached
 }
 "public.event_firing" {
   uuid event_id FK

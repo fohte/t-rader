@@ -273,6 +273,7 @@ fn step(
         kind: StrategyTaskStepKind::Llm,
         label: phase_key.to_string(),
         model: Some("fictional-model".to_string()),
+        model_call_limit_reached: false,
         status,
         item: None,
         item_key: None,

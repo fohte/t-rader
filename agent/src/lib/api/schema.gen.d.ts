@@ -3075,6 +3075,8 @@ export interface components {
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
+      /** @description いずれかの step がモデル呼び出し上限で打ち切られたことを示す。 */
+      model_call_limit_reached: boolean
       phase: string
       prompt: string
       /**
@@ -3122,6 +3124,8 @@ export interface components {
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
+      /** @description いずれかの step がモデル呼び出し上限で打ち切られたことを示す。 */
+      model_call_limit_reached: boolean
       phase: string
       prompt: string
       /** @description 投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。 */
