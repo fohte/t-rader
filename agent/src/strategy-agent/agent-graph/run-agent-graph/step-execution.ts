@@ -109,6 +109,7 @@ const createPhaseAgent = (
   tools: readonly DynamicStructuredTool[],
   localTools: readonly DynamicStructuredTool[],
   mcpClient: McpToolsClient,
+  onModelCallLimitReached: () => void,
 ): CompiledPhaseAgent => {
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   const { tools: phaseTools } = phase
@@ -145,6 +146,7 @@ const createPhaseAgent = (
     ...(context.phaseTimeout !== undefined
       ? { phaseTimeout: context.phaseTimeout }
       : {}),
+    onModelCallLimitReached,
   })
 }
 
@@ -265,6 +267,7 @@ export const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
+    let modelCallLimitReachedRecorded = false
     // createStepMcpClient() 自体の同期 throw も含め、ステップの失敗として
     // 記録できるよう Promise チェーンの中で構築する。
     return (
@@ -290,6 +293,12 @@ export const invokeAndRecordStep = (
                   mcpTools,
                   localTools.value,
                   stepMcpClient,
+                  // 再提出が失敗しても、この step が上限に達した事実を残す。
+                  () => {
+                    if (modelCallLimitReachedRecorded) return
+                    modelCallLimitReachedRecorded = true
+                    recorder.update(index, { modelCallLimitReached: true })
+                  },
                 ),
                 messages,
                 executionStepId,

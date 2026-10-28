@@ -51,13 +51,19 @@ const buildCompiledAgent = (
       state: 'consumed' | 'released',
     ) => Promise<void>
     captureMessagesOnAbort?: boolean
+    onModelCallLimitReached?: () => void
   },
 ): CompiledPhaseAgent => {
   const maxModelCalls =
     options.modelCallBudget?.maxModelCalls ?? MAX_MODEL_CALLS_PER_INVOKE
   const modelCallMiddleware =
-    options.modelCallBudget !== undefined
-      ? createFinalTurnMiddleware(maxModelCalls, options.modelCallBudget)
+    options.modelCallBudget !== undefined ||
+    options.onModelCallLimitReached !== undefined
+      ? createFinalTurnMiddleware(
+          maxModelCalls,
+          options.modelCallBudget,
+          options.onModelCallLimitReached,
+        )
       : finalTurnMiddleware
   const agent = createAgent({
     model: options.model,

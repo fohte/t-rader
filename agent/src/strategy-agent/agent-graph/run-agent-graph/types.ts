@@ -25,6 +25,7 @@ export interface BuildPhaseAgentOptions {
     state: 'consumed' | 'released',
   ) => Promise<void>
   readonly captureMessagesOnAbort?: boolean
+  readonly onModelCallLimitReached?: () => void
 }
 
 export interface CompiledPhaseAgent {
@@ -97,7 +98,9 @@ export interface StepRecorder {
   readonly start: (step: StepStartInput) => number
   readonly update: (
     index: number,
-    update: Partial<Pick<StrategyTaskStep, 'inputRef' | 'outputRef'>>,
+    update: Partial<
+      Pick<StrategyTaskStep, 'inputRef' | 'outputRef' | 'modelCallLimitReached'>
+    >,
   ) => void
   readonly finish: (index: number, outcome: StepOutcome) => void
   // resume でスキップした (再実行しない) 完了済みステップをそのまま steps に
