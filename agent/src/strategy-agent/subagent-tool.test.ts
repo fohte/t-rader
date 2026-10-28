@@ -491,10 +491,11 @@ describe('createRunSubagentTool', () => {
     ])
   })
 
-  it('finalizes the child conversation when its timeout aborts the run', async () => {
+  it('marks the step when a timed-out subagent finalizer reaches the call limit', async () => {
     vi.useFakeTimers()
     const buildOptions: BuildPhaseAgentOptions[] = []
     const finalizerMessageHistory: unknown[][] = []
+    const notifications: (readonly StrategyTaskStep[])[] = []
     const runAgentDeps: RunAgentGraphDeps = {
       createChatModel: () => new FakeChatModel({}),
       buildPhaseAgent: (options): CompiledPhaseAgent => {
@@ -502,6 +503,7 @@ describe('createRunSubagentTool', () => {
         return {
           invoke: ({ messages }) => {
             if (options.tools.length === 0) {
+              options.onModelCallLimitReached?.()
               finalizerMessageHistory.push(
                 messages.map((message) => {
                   if (message instanceof AIMessage) {
@@ -578,7 +580,7 @@ describe('createRunSubagentTool', () => {
     const tool = createRunSubagentTool({
       phase,
       parentExecutionStepId: 'parent-step-id',
-      recorder: createStepRecorder(() => undefined),
+      recorder: createStepRecorder((steps) => notifications.push(steps)),
       parentMcpClient: buildFakeMcpClient(),
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 3 }),
@@ -599,6 +601,7 @@ describe('createRunSubagentTool', () => {
       buildOptions.map((options) => options.tools.length),
       buildOptions.map((options) => options.agentSignal !== undefined),
       finalizerMessageHistory,
+      normalizeStepTimestamps(notifications.at(-1) ?? []),
     )
 
     expect(actual).toEqual([
@@ -646,6 +649,25 @@ describe('createRunSubagentTool', () => {
               '制限時間に達しました。追加調査は行わず、ここまでの情報から指定形式の結果を返してください。',
           },
         ],
+      ],
+      [
+        {
+          phaseKey: 'subagent:researcher',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Investigate one question',
+          model: 'sample-model',
+          status: 'completed',
+          modelCallLimitReached: true,
+          item: { brief: 'Find what can be established.' },
+          output: {
+            conclusion: 'A partial conclusion',
+            sources: [],
+          },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: '00000000000000000000000000000000',
+          spanId: '0000000000000000',
+        },
       ],
     ])
   })
