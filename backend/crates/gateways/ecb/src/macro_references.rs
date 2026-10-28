@@ -14,7 +14,7 @@ use core_application::{
         MacroReferenceSourceError,
     },
 };
-use core_domain::calendar_event::CalendarEventReferenceKind;
+use core_domain::calendar_event::{CalendarEvent, CalendarEventReferenceKind};
 
 use crate::official_http::{OfficialHttp, OfficialHttpClient};
 
@@ -72,14 +72,7 @@ impl MacroReferenceSource for EcbMacroReferenceSource {
             return Ok(supported
                 .into_iter()
                 .map(|target| {
-                    let scheduled = calendar_events
-                        .iter()
-                        .any(|event| event.external_id == target.event_external_id);
-                    let references = if scheduled {
-                        vec![listing_reference(&target, true)]
-                    } else {
-                        Vec::new()
-                    };
+                    let references = meeting_listing_references(&target, &calendar_events);
                     MacroReferenceFetchResult::success(target, references)
                 })
                 .collect());
@@ -154,14 +147,7 @@ impl MacroReferenceSource for EcbMacroReferenceSource {
                         .map(|entry| vec![decision_reference(&target, entry)])
                         .unwrap_or_default()
                 } else {
-                    let scheduled = calendar_events
-                        .iter()
-                        .any(|event| event.external_id == target.event_external_id);
-                    if scheduled || is_decision_day(&target.event_title) {
-                        vec![listing_reference(&target, scheduled)]
-                    } else {
-                        Vec::new()
-                    }
+                    meeting_listing_references(&target, &calendar_events)
                 };
                 MacroReferenceFetchResult::success(target, references)
             })
@@ -216,6 +202,20 @@ fn listing_reference(target: &MacroReferenceTarget, scheduled: bool) -> MacroOff
         ),
         publication_evidence: None,
         publication_evidence_url: None,
+    }
+}
+
+fn meeting_listing_references(
+    target: &MacroReferenceTarget,
+    calendar_events: &[CalendarEvent],
+) -> Vec<MacroOfficialReference> {
+    let scheduled = calendar_events
+        .iter()
+        .any(|event| event.external_id == target.event_external_id);
+    if scheduled || is_decision_day(&target.event_title) {
+        vec![listing_reference(target, scheduled)]
+    } else {
+        Vec::new()
     }
 }
 
@@ -460,6 +460,46 @@ mod tests {
         assert_eq!(
             actual,
             vec![MacroReferenceFetchResult::success(first_day, vec![])],
+        );
+    }
+
+    #[tokio::test]
+    async fn source_links_a_scheduled_first_day_only_to_the_official_schedule() {
+        let first_day = target(
+            "ecb",
+            "2099-04-07",
+            "Governing Council of the ECB: monetary policy meeting (Day 1)",
+        );
+        let source = EcbMacroReferenceSource {
+            http: fixture_http(&[(
+                MEETING_SCHEDULE_URL,
+                include_str!("fixtures/meeting_schedule_reference_source_synthetic.html"),
+            )]),
+        };
+
+        let actual = source
+            .fetch_references(std::slice::from_ref(&first_day))
+            .await
+            .expect("the meeting schedule fixture should resolve");
+
+        assert_eq!(
+            actual,
+            vec![MacroReferenceFetchResult::success(
+                first_day.clone(),
+                vec![MacroOfficialReference {
+                    target: first_day,
+                    kind: CalendarEventReferenceKind::OfficialListing,
+                    source: "ecb".to_owned(),
+                    external_id: "2099-04-07:official-listing".to_owned(),
+                    title: "ECB の公式会合日程".to_owned(),
+                    url: Some(MEETING_SCHEDULE_URL.to_owned()),
+                    target_period_start: None,
+                    target_period_end: None,
+                    target_period_type: Some("official_schedule".to_owned()),
+                    publication_evidence: None,
+                    publication_evidence_url: None,
+                }],
+            )],
         );
     }
 
