@@ -15,6 +15,7 @@ export interface StrategyTaskStep {
   readonly label: string
   readonly model: string | null
   readonly status: StrategyTaskStepStatus
+  readonly modelCallLimitReached?: boolean
   readonly item?: unknown
   readonly itemKey?: unknown
   readonly itemLabel?: string
@@ -36,6 +37,7 @@ export interface StrategyTaskStepJson {
   readonly label: string
   readonly model: string | null
   readonly status: StrategyTaskStepStatus
+  readonly model_call_limit_reached?: boolean
   readonly item?: unknown
   readonly item_key?: unknown
   readonly item_label?: string
@@ -56,6 +58,9 @@ export const toStepJson = (step: StrategyTaskStep): StrategyTaskStepJson => ({
   label: step.label,
   model: step.model,
   status: step.status,
+  ...(step.modelCallLimitReached === true
+    ? { model_call_limit_reached: true }
+    : {}),
   ...(step.item !== undefined ? { item: step.item } : {}),
   ...(step.itemKey !== undefined ? { item_key: step.itemKey } : {}),
   ...(step.itemLabel !== undefined ? { item_label: step.itemLabel } : {}),
@@ -79,6 +84,7 @@ export const strategyTaskStepJsonSchema = z.object({
   label: z.string(),
   model: z.string().nullable(),
   status: z.enum(['running', 'completed', 'failed']),
+  model_call_limit_reached: z.boolean().optional(),
   item: z.unknown().optional(),
   item_key: z.unknown().optional(),
   item_label: z.string().optional(),
@@ -101,6 +107,9 @@ export const fromStepJson = (
   label: json.label,
   model: json.model,
   status: json.status,
+  ...(json.model_call_limit_reached === true
+    ? { modelCallLimitReached: true }
+    : {}),
   ...(json.item !== undefined ? { item: json.item } : {}),
   ...(json.item_key !== undefined ? { itemKey: json.item_key } : {}),
   ...(json.item_label !== undefined ? { itemLabel: json.item_label } : {}),

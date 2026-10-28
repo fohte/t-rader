@@ -75,6 +75,7 @@ export const finalizeTimedOutSubagent = (
   options: CreateRunSubagentToolOptions,
   modelCallBudget: ModelCallBudget,
   messages: readonly BaseMessage[],
+  onModelCallLimitReached?: () => void,
 ): Promise<Result<Record<string, unknown>, Error>> => {
   if (options.deadlineSignal?.aborted === true) {
     return Promise.resolve(err(getParentDeadlineError(options)))
@@ -104,6 +105,9 @@ export const finalizeTimedOutSubagent = (
       ? { phaseTimeout: options.phaseTimeout }
       : {}),
     modelCallBudget,
+    ...(onModelCallLimitReached !== undefined
+      ? { onModelCallLimitReached }
+      : {}),
     systemPrompt: [
       definition.prompt,
       '制限時間に達しました。これまでに得た情報だけを使って結果を返してください。',

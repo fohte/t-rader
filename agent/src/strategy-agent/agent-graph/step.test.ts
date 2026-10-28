@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
-import { toStepJson } from '#strategy-agent/agent-graph/step'
+import {
+  fromStepJson,
+  strategyTaskStepJsonSchema,
+  toStepJson,
+} from '#strategy-agent/agent-graph/step'
 
 describe('toStepJson', () => {
   it('converts a running for_each step to snake_case, keeping optional fields present', () => {
@@ -39,6 +43,7 @@ describe('toStepJson', () => {
       label: '項目の作成',
       model: 'demo-model-a',
       status: 'completed',
+      modelCallLimitReached: true,
       output: { entries: [] },
       startedAt: '2026-01-01T00:00:00.000Z',
       finishedAt: '2026-01-01T00:00:05.000Z',
@@ -52,11 +57,38 @@ describe('toStepJson', () => {
       label: '項目の作成',
       model: 'demo-model-a',
       status: 'completed',
+      model_call_limit_reached: true,
       output: { entries: [] },
       started_at: '2026-01-01T00:00:00.000Z',
       finished_at: '2026-01-01T00:00:05.000Z',
       trace_id: 'trace-2',
       span_id: 'span-2',
+    })
+  })
+
+  it('accepts and restores the optional marker on resumed steps', () => {
+    const parsed = strategyTaskStepJsonSchema.parse({
+      phase_key: 'stage_a',
+      execution_step_id: 'exec-2',
+      label: '項目の作成',
+      model: 'demo-model-a',
+      status: 'completed',
+      model_call_limit_reached: true,
+      started_at: '2026-01-01T00:00:00.000Z',
+      trace_id: 'trace-2',
+      span_id: 'span-2',
+    })
+
+    expect(fromStepJson(parsed)).toEqual({
+      phaseKey: 'stage_a',
+      executionStepId: 'exec-2',
+      label: '項目の作成',
+      model: 'demo-model-a',
+      status: 'completed',
+      modelCallLimitReached: true,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      traceId: 'trace-2',
+      spanId: 'span-2',
     })
   })
 

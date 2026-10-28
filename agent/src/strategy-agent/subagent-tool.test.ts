@@ -137,6 +137,71 @@ const buildReservationTestTool = (
   })
 
 describe('createRunSubagentTool', () => {
+  it('marks a subagent step when its model-call limit is reached', async () => {
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+      .mockReturnValueOnce('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const tool = createRunSubagentTool({
+      phase,
+      parentExecutionStepId: 'parent-step-id',
+      recorder: createStepRecorder((steps) => notifications.push(steps)),
+      parentMcpClient: buildFakeMcpClient(),
+      fetchDefinition: () => okAsync(definition),
+      createMcpClient: () => buildFakeMcpClient([buildFakeTool('search_web')]),
+      deps: {
+        createChatModel: () => new FakeChatModel({}),
+        buildPhaseAgent: (options): CompiledPhaseAgent => ({
+          invoke: () => {
+            options.onModelCallLimitReached?.()
+            return Promise.resolve({
+              structuredResponse: {
+                conclusion: 'A supported conclusion',
+                sources: [],
+              },
+            })
+          },
+        }),
+      },
+    })
+
+    const result = await tool.invoke({
+      key: 'researcher',
+      brief: 'Find evidence for the specified question.',
+    })
+
+    const actual = Array.of<unknown>(
+      result,
+      normalizeStepTimestamps(notifications.at(-1) ?? []),
+    )
+
+    expect(actual).toEqual([
+      {
+        conclusion: 'A supported conclusion',
+        sources: [],
+      },
+      [
+        {
+          phaseKey: 'subagent:researcher',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Investigate one question',
+          model: 'sample-model',
+          status: 'completed',
+          modelCallLimitReached: true,
+          item: { brief: 'Find evidence for the specified question.' },
+          output: {
+            conclusion: 'A supported conclusion',
+            sources: [],
+          },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: '00000000000000000000000000000000',
+          spanId: '0000000000000000',
+        },
+      ],
+    ])
+  })
+
   it('reserves a child run before starting it', async () => {
     vi.spyOn(crypto, 'randomUUID')
       .mockReturnValueOnce('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')

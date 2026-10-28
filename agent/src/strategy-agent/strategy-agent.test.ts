@@ -1782,6 +1782,7 @@ describe('createStrategyAgentDeps', () => {
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     captureWithFingerprintMock.mockClear()
     const requestedToolCounts: number[] = []
+    let modelCallLimitReached = false
     let callCount = 0
     const model = buildStubModel((_url, init) => {
       callCount += 1
@@ -1811,28 +1812,37 @@ describe('createStrategyAgentDeps', () => {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
+      onModelCallLimitReached: () => {
+        modelCallLimitReached = true
+      },
     })
     const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
 
-    expect(
+    const actual = Array.of<unknown>(
       getForcedSubmissionOutput(result.structuredResponse, requestedToolCounts),
-    ).toEqual({
-      structuredResponse: { status: 'completed', message: 'done' },
-      requestedToolCounts: [
-        ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
-        1,
-      ],
-      captures: [
-        {
-          errorName: 'Error',
-          errorMessage:
-            'finalTurnMiddleware: forcing structured-output submission at model call 15',
-          fingerprint: ['final-turn-middleware.forced-submission'],
-          level: 'warning',
-          extras: null,
-        },
-      ],
-    })
+      modelCallLimitReached,
+    )
+
+    expect(actual).toEqual([
+      {
+        structuredResponse: { status: 'completed', message: 'done' },
+        requestedToolCounts: [
+          ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
+          1,
+        ],
+        captures: [
+          {
+            errorName: 'Error',
+            errorMessage:
+              'finalTurnMiddleware: forcing structured-output submission at model call 15',
+            fingerprint: ['final-turn-middleware.forced-submission'],
+            level: 'warning',
+            extras: null,
+          },
+        ],
+      },
+      true,
+    ])
   })
 
   it('enforces a shared per-subagent model-call budget', async () => {

@@ -109,6 +109,7 @@ const createPhaseAgent = (
   tools: readonly DynamicStructuredTool[],
   localTools: readonly DynamicStructuredTool[],
   mcpClient: McpToolsClient,
+  onModelCallLimitReached: () => void,
 ): CompiledPhaseAgent => {
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   const { tools: phaseTools } = phase
@@ -145,6 +146,7 @@ const createPhaseAgent = (
     ...(context.phaseTimeout !== undefined
       ? { phaseTimeout: context.phaseTimeout }
       : {}),
+    onModelCallLimitReached,
   })
 }
 
@@ -290,6 +292,9 @@ export const invokeAndRecordStep = (
                   mcpTools,
                   localTools.value,
                   stepMcpClient,
+                  () => {
+                    recorder.update(index, { modelCallLimitReached: true })
+                  },
                 ),
                 messages,
                 executionStepId,

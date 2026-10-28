@@ -1109,6 +1109,8 @@ describe('runAgentGraph', () => {
             ...capturedOptions,
             reserveModelCall: typeof capturedOptions.reserveModelCall,
             transitionReservation: typeof capturedOptions.transitionReservation,
+            onModelCallLimitReached:
+              typeof capturedOptions.onModelCallLimitReached,
           }
 
     expect(capturedOptionSnapshot).toEqual({
@@ -1117,6 +1119,7 @@ describe('runAgentGraph', () => {
       mcpTools: [toolA],
       reserveModelCall: 'function',
       transitionReservation: 'function',
+      onModelCallLimitReached: 'function',
       systemPrompt: 'AGENTS\n\n# Skill: skill-a\n\nbody a',
       responseSchema: {
         type: 'object',
@@ -1170,6 +1173,8 @@ describe('runAgentGraph', () => {
             ...capturedOptions,
             reserveModelCall: typeof capturedOptions.reserveModelCall,
             transitionReservation: typeof capturedOptions.transitionReservation,
+            onModelCallLimitReached:
+              typeof capturedOptions.onModelCallLimitReached,
           }
 
     expect(capturedOptionSnapshot).toEqual({
@@ -1178,6 +1183,7 @@ describe('runAgentGraph', () => {
       mcpTools: [toolA, toolB],
       reserveModelCall: 'function',
       transitionReservation: 'function',
+      onModelCallLimitReached: 'function',
       systemPrompt: 'AGENTS',
       responseSchema: {
         type: 'object',
@@ -2009,6 +2015,84 @@ describe('runAgentGraph', () => {
           label: 'Step A',
           model: 'model-a',
           status: 'completed',
+          output: { value: 'A-OUT' },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('keeps the model-call limit marker on the completed phase step', async () => {
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => ({
+        invoke: () => {
+          options.onModelCallLimitReached?.()
+          return Promise.resolve({ structuredResponse: { value: 'A-OUT' } })
+        },
+      }),
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(notifications.map(normalizeStepTimestamps)).toEqual([
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          modelCallLimitReached: true,
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'completed',
+          modelCallLimitReached: true,
           output: { value: 'A-OUT' },
           startedAt: '<started-at>',
           finishedAt: '<finished-at>',

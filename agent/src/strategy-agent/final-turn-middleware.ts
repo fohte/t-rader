@@ -17,6 +17,7 @@ export interface ModelCallBudget {
 export const createFinalTurnMiddleware = (
   maxModelCalls: number = MAX_MODEL_CALLS_PER_INVOKE,
   budget?: ModelCallBudget,
+  onModelCallLimitReached?: () => void,
 ) =>
   createMiddleware({
     name: 'finalTurnMiddleware',
@@ -42,6 +43,7 @@ export const createFinalTurnMiddleware = (
       const error = new Error(
         `finalTurnMiddleware: forcing structured-output submission at model call ${String(modelCallCount)}`,
       )
+      onModelCallLimitReached?.()
       logger.warn({}, error.message)
       captureWithFingerprint(error, FINAL_TURN_FORCED_FINGERPRINT, {
         level: 'warning',
