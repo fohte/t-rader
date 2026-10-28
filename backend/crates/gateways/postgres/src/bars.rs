@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
+    earliest_us_stock_minute_bar_timestamp,
 };
 use core_application::persistence::PersistenceError;
 use core_application::unit_of_work::UnitOfWorkTransaction;
@@ -455,13 +456,7 @@ impl BarsRepository for PostgresBarsRepository {
         bars: Vec<Bar>,
     ) -> Result<(), BarsRepositoryError> {
         let transaction = transaction_ref(transaction)?;
-        let earliest_us_stock_minute_timestamp = bars
-            .iter()
-            .filter(|bar| {
-                bar.instrument_id.starts_with("US:") && bar.timeframe == Timeframe::Minute
-            })
-            .map(|bar| bar.timestamp)
-            .min();
+        let earliest_us_stock_minute_timestamp = earliest_us_stock_minute_bar_timestamp(&bars);
         bar_queries::upsert_bars(transaction, bars)
             .await
             .map_err(repository_error)?;

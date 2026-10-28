@@ -94,6 +94,32 @@ fn log_downsample_postponed(
 }
 
 impl UsStockBarsIngestUseCases {
+    fn log_processing_budget_exhausted(
+        &self,
+        batch_from: DateTime<Utc>,
+        stats: &UsStockMinuteBarsDownsampleStats,
+    ) {
+        log_downsample_postponed(
+            DownsamplePostponementReason::ProcessingBudgetExhausted,
+            batch_from,
+            stats,
+        );
+    }
+
+    fn postpone_if_budget_exhausted(
+        &self,
+        budget: &DownsampleProcessingBudget,
+        batch_from: DateTime<Utc>,
+        stats: &UsStockMinuteBarsDownsampleStats,
+    ) -> bool {
+        if !budget.is_exhausted(self.clock.as_ref()) {
+            return false;
+        }
+
+        self.log_processing_budget_exhausted(batch_from, stats);
+        true
+    }
+
     async fn find_or_initialize_downsample_cursor(
         &self,
         cutoff: DateTime<Utc>,
@@ -242,22 +268,12 @@ impl UsStockBarsIngestUseCases {
             return Ok(stats);
         }
 
-        if budget.is_exhausted(self.clock.as_ref()) {
-            log_downsample_postponed(
-                DownsamplePostponementReason::ProcessingBudgetExhausted,
-                batch_from,
-                &stats,
-            );
+        if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
             return Ok(stats);
         }
 
         while batch_from < cutoff_bucket_start {
-            if budget.is_exhausted(self.clock.as_ref()) {
-                log_downsample_postponed(
-                    DownsamplePostponementReason::ProcessingBudgetExhausted,
-                    batch_from,
-                    &stats,
-                );
+            if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
                 return Ok(stats);
             }
 
@@ -270,12 +286,7 @@ impl UsStockBarsIngestUseCases {
                 .repository
                 .find_us_stock_minute_bar_instrument_ids(batch_from, batch_until, cutoff)
                 .await?;
-            if budget.is_exhausted(self.clock.as_ref()) {
-                log_downsample_postponed(
-                    DownsamplePostponementReason::ProcessingBudgetExhausted,
-                    batch_from,
-                    &stats,
-                );
+            if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
                 return Ok(stats);
             }
 
@@ -295,12 +306,7 @@ impl UsStockBarsIngestUseCases {
                         stats.hourly_bars_inserted += batch_stats.hourly_bars_inserted;
                         stats.minute_bars_deleted += batch_stats.minute_bars_deleted;
 
-                        if budget.is_exhausted(self.clock.as_ref()) {
-                            log_downsample_postponed(
-                                DownsamplePostponementReason::ProcessingBudgetExhausted,
-                                batch_from,
-                                &stats,
-                            );
+                        if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
                             return Ok(stats);
                         }
 
@@ -316,12 +322,7 @@ impl UsStockBarsIngestUseCases {
                 }
             }
 
-            if budget.is_exhausted(self.clock.as_ref()) {
-                log_downsample_postponed(
-                    DownsamplePostponementReason::ProcessingBudgetExhausted,
-                    batch_from,
-                    &stats,
-                );
+            if self.postpone_if_budget_exhausted(&budget, batch_from, &stats) {
                 return Ok(stats);
             }
 
@@ -341,11 +342,7 @@ impl UsStockBarsIngestUseCases {
 
             if budget.is_exhausted(self.clock.as_ref()) {
                 drop(write_lock_guard);
-                log_downsample_postponed(
-                    DownsamplePostponementReason::ProcessingBudgetExhausted,
-                    batch_from,
-                    &stats,
-                );
+                self.log_processing_budget_exhausted(batch_from, &stats);
                 return Ok(stats);
             }
 
@@ -731,6 +728,97 @@ mod tests {
                 vec![date("2039-01-01T12:00:00Z")],
                 Some(date("2039-01-01T12:00:00Z")),
             ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_does_not_advance_cursor_when_repository_rejects_the_range(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        let cursor = date("2038-12-30T03:00:00Z");
+        let batch_until = date("2039-01-01T12:00:00Z");
+        repository
+            .seed_us_stock_minute_bar_downsample_cursor(cursor)
+            .await;
+        repository
+            .seed_bars(vec![minute_bar(
+                "US:DEMO-ALPHA",
+                date("2038-12-30T03:05:00Z"),
+            )])
+            .await;
+        repository.fail_minute_bar_downsample_cursor_advance().await;
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"), Default::default())
+            .await;
+        let advances = repository
+            .minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .clone();
+        let cursor_after_rejected_advance = *repository
+            .us_stock_minute_bar_downsample_cursor
+            .lock()
+            .await;
+        let downsample_ranges = repository.minute_bar_downsample_ranges.lock().await.clone();
+
+        assert_eq!(
+            (
+                result.map_err(|_| ()),
+                advances,
+                cursor_after_rejected_advance,
+                downsample_ranges,
+            ),
+            (
+                Ok(Default::default()),
+                vec![(cursor, batch_until)],
+                Some(cursor),
+                vec![(cursor, batch_until)],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_does_not_initialize_cursor_when_initialization_lock_is_busy(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
+        downsample_fixture.write_lock.set_busy_on_attempt(1);
+
+        let result = downsample_fixture
+            .use_cases
+            .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"), Default::default())
+            .await;
+        let cursor = *repository
+            .us_stock_minute_bar_downsample_cursor
+            .lock()
+            .await;
+        let earliest_queries = repository
+            .earliest_minute_bar_before_queries
+            .lock()
+            .await
+            .clone();
+        let initializations = repository
+            .minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .clone();
+
+        assert_eq!(
+            (
+                result.map_err(|_| ()),
+                downsample_fixture.write_lock.attempts(),
+                cursor,
+                earliest_queries,
+                initializations,
+            ),
+            (Ok(Default::default()), 1, None, Vec::new(), Vec::new()),
         );
     }
 
