@@ -411,6 +411,11 @@ comments:
     columnComments:
       instrument_id: '取得対象の銘柄。'
       completed_through: 'この時刻まで 1 分足 API の取得が完了した。'
+  - table: us_stock_minute_bar_downsample_cursor
+    tableComment: '米国株の 1 分足 downsample の再開位置を保持する。'
+    columnComments:
+      singleton_key: '単一行を識別する固定キー。'
+      cursor_timestamp: 'この時刻より前に米国株の 1 分足が存在しないことを示す。'
   - table: us_stock_sip_bar_refetch_progress
     tableComment: '米国株の SIP 足を再取得した銘柄と、再取得できない理由を保持する。'
     columnComments:

@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
+use super::hourly_bar_bucket_start;
 use super::repository::{BarsRepository, BarsRepositoryError};
 use super::types::{
     BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget,
@@ -32,6 +33,10 @@ pub struct FakeBarsRepository {
     pub us_stock_sip_refetch_pacing_millis: Mutex<Vec<u64>>,
     pub us_stock_minute_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
+    pub us_stock_minute_bar_downsample_cursor: Mutex<Option<DateTime<Utc>>>,
+    pub minute_bar_downsample_cursor_initializations: Mutex<Vec<DateTime<Utc>>>,
+    pub minute_bar_downsample_cursor_advances: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
+    pub earliest_minute_bar_before_queries: Mutex<Vec<DateTime<Utc>>>,
     pub bar_compression_times: Mutex<Vec<DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
@@ -88,6 +93,13 @@ impl FakeBarsRepository {
             .lock()
             .await
             .insert(instrument_id.into(), completed_through);
+    }
+
+    pub async fn seed_us_stock_minute_bar_downsample_cursor(
+        &self,
+        cursor_timestamp: DateTime<Utc>,
+    ) {
+        *self.us_stock_minute_bar_downsample_cursor.lock().await = Some(cursor_timestamp);
     }
 
     pub async fn seed_daily_adjustment_factors(
@@ -253,6 +265,10 @@ impl BarsRepository for FakeBarsRepository {
         &self,
         cutoff: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+        self.earliest_minute_bar_before_queries
+            .lock()
+            .await
+            .push(cutoff);
         Ok(self
             .bars
             .lock()
@@ -265,6 +281,42 @@ impl BarsRepository for FakeBarsRepository {
             })
             .map(|bar| bar.timestamp)
             .min())
+    }
+
+    async fn find_us_stock_minute_bar_downsample_cursor(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+        Ok(*self.us_stock_minute_bar_downsample_cursor.lock().await)
+    }
+
+    async fn initialize_us_stock_minute_bar_downsample_cursor(
+        &self,
+        cursor_timestamp: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, BarsRepositoryError> {
+        self.minute_bar_downsample_cursor_initializations
+            .lock()
+            .await
+            .push(cursor_timestamp);
+        let mut cursor = self.us_stock_minute_bar_downsample_cursor.lock().await;
+        Ok(*cursor.get_or_insert(cursor_timestamp))
+    }
+
+    async fn advance_us_stock_minute_bar_downsample_cursor(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> Result<bool, BarsRepositoryError> {
+        self.minute_bar_downsample_cursor_advances
+            .lock()
+            .await
+            .push((from, until));
+        let mut cursor = self.us_stock_minute_bar_downsample_cursor.lock().await;
+        if *cursor == Some(from) {
+            *cursor = Some(until);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     async fn find_us_stock_minute_bar_instrument_ids(
@@ -616,6 +668,19 @@ impl BarsRepository for FakeBarsRepository {
             return Err(BarsRepositoryError::Database(PersistenceError::Database(
                 message,
             )));
+        }
+        let earliest_us_stock_minute_timestamp = new_bars
+            .iter()
+            .filter(|bar| {
+                bar.instrument_id.starts_with("US:") && bar.timeframe == Timeframe::Minute
+            })
+            .map(|bar| hourly_bar_bucket_start(bar.timestamp))
+            .min();
+        if let Some(earliest_timestamp) = earliest_us_stock_minute_timestamp {
+            let mut cursor = self.us_stock_minute_bar_downsample_cursor.lock().await;
+            if let Some(current) = *cursor {
+                *cursor = Some(current.min(earliest_timestamp));
+            }
         }
         let mut bars = self.bars.lock().await;
         upsert_bar_batch(&mut bars, new_bars);

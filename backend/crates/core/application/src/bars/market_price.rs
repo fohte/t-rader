@@ -315,6 +315,27 @@ mod tests {
             Err(database_error())
         }
 
+        async fn find_us_stock_minute_bar_downsample_cursor(
+            &self,
+        ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn initialize_us_stock_minute_bar_downsample_cursor(
+            &self,
+            _: DateTime<Utc>,
+        ) -> Result<DateTime<Utc>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn advance_us_stock_minute_bar_downsample_cursor(
+            &self,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+        ) -> Result<bool, BarsRepositoryError> {
+            Err(database_error())
+        }
+
         async fn find_us_stock_minute_bar_instrument_ids(
             &self,
             _: DateTime<Utc>,

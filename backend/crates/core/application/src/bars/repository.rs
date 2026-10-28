@@ -35,6 +35,21 @@ pub trait BarsRepository: Send + Sync {
         cutoff: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
 
+    async fn find_us_stock_minute_bar_downsample_cursor(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
+
+    async fn initialize_us_stock_minute_bar_downsample_cursor(
+        &self,
+        cursor_timestamp: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, BarsRepositoryError>;
+
+    async fn advance_us_stock_minute_bar_downsample_cursor(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> Result<bool, BarsRepositoryError>;
+
     async fn find_us_stock_minute_bar_instrument_ids(
         &self,
         from: DateTime<Utc>,

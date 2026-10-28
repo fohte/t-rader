@@ -87,6 +87,89 @@ pub(super) async fn find_earliest_minute_bar_before(
         .map(|row| row.and_then(|row| row.timestamp.map(|timestamp| timestamp.to_utc())))
 }
 
+#[derive(Debug, FromQueryResult)]
+struct DownsampleCursorRow {
+    cursor_timestamp: DateTime<FixedOffset>,
+}
+
+pub(super) async fn find_downsample_cursor(
+    db: &impl ConnectionTrait,
+) -> Result<Option<DateTime<Utc>>, sea_orm::DbErr> {
+    db.query_one_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT cursor_timestamp FROM us_stock_minute_bar_downsample_cursor \
+         WHERE singleton_key = 1",
+        [],
+    ))
+    .await?
+    .map(|row| DownsampleCursorRow::from_query_result(&row, ""))
+    .transpose()
+    .map(|row| row.map(|row| row.cursor_timestamp.to_utc()))
+}
+
+pub(super) async fn initialize_downsample_cursor(
+    db: &impl ConnectionTrait,
+    cursor_timestamp: DateTime<Utc>,
+) -> Result<DateTime<Utc>, sea_orm::DbErr> {
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "INSERT INTO us_stock_minute_bar_downsample_cursor \
+         (singleton_key, cursor_timestamp) VALUES (1, $1) \
+         ON CONFLICT (singleton_key) DO NOTHING",
+        [cursor_timestamp.fixed_offset().into()],
+    ))
+    .await?;
+    find_downsample_cursor(db)
+        .await?
+        .ok_or_else(|| sea_orm::DbErr::Custom("downsample cursor was not initialized".to_owned()))
+}
+
+pub(super) async fn advance_downsample_cursor(
+    db: &impl ConnectionTrait,
+    from: DateTime<Utc>,
+    until: DateTime<Utc>,
+) -> Result<bool, sea_orm::DbErr> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE us_stock_minute_bar_downsample_cursor AS cursor
+            SET cursor_timestamp = $2
+            WHERE cursor.singleton_key = 1
+              AND cursor.cursor_timestamp = $1
+              AND $2 > $1
+              AND NOT EXISTS (
+                    SELECT 1 FROM bars
+                    WHERE instrument_id LIKE 'US:%'
+                      AND timeframe = '1m'
+                      AND timestamp >= $1
+                      AND timestamp < $2
+              )
+            RETURNING cursor_timestamp
+            "#,
+            [from.fixed_offset().into(), until.fixed_offset().into()],
+        ))
+        .await?;
+    Ok(row.is_some())
+}
+
+pub(super) async fn rewind_downsample_cursor(
+    transaction: &sea_orm::DatabaseTransaction,
+    earliest_minute_timestamp: DateTime<Utc>,
+) -> Result<(), sea_orm::DbErr> {
+    transaction
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE us_stock_minute_bar_downsample_cursor \
+             SET cursor_timestamp = LEAST( \
+                 cursor_timestamp, time_bucket('1 hour', $1::timestamptz)) \
+             WHERE singleton_key = 1 AND $1 < cursor_timestamp",
+            [earliest_minute_timestamp.fixed_offset().into()],
+        ))
+        .await
+        .map(|_| ())
+}
+
 pub(super) async fn downsample_minute_bar_range(
     transaction: &sea_orm::DatabaseTransaction,
     instrument_id: &str,
