@@ -8,7 +8,6 @@ use core_application::bars::{
 use core_application::persistence::PersistenceError;
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::bar::{Bar, Timeframe};
-use core_domain::instrument::Market;
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
@@ -20,13 +19,17 @@ use crate::entities::{
     instruments, jquants_daily_bars_ingested_date, us_stock_hourly_bar_ingest_progress,
     us_stock_minute_bar_ingest_progress,
 };
-use crate::persistence::persistence_error;
-use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQuery};
-use crate::transaction::transaction_ref as postgres_transaction_ref;
+use crate::repositories::bars as bar_queries;
+#[cfg(test)]
+use crate::repositories::bars::BarsQuery as PostgresBarsQuery;
 
+mod repository_support;
+mod us_instrument_lookup;
 mod us_stock_bar_targets;
 mod us_stock_minute_bars_downsample;
 mod us_stock_sip_bar_refetch;
+
+use repository_support::{repository_error, to_postgres_query, transaction_ref};
 
 fn current_hourly_history_cutoff_for(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
     matches!(timeframe, Timeframe::Hourly | Timeframe::FourHours)
@@ -41,28 +44,6 @@ pub struct PostgresBarsRepository {
 impl PostgresBarsRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self { db }
-    }
-
-    async fn us_instrument_ids(
-        &self,
-        instrument_ids: &[String],
-    ) -> Result<Vec<String>, BarsRepositoryError> {
-        if instrument_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        instruments::Entity::find()
-            .filter(instruments::Column::Id.is_in(instrument_ids.to_vec()))
-            .filter(instruments::Column::Market.eq(Market::Us.to_string()))
-            .all(&self.db)
-            .await
-            .map(|instruments| {
-                instruments
-                    .into_iter()
-                    .map(|instrument| instrument.id)
-                    .collect()
-            })
-            .map_err(repository_error)
     }
 }
 
@@ -514,25 +495,6 @@ impl BarsRepository for PostgresBarsRepository {
         .map(|_| ())
         .map_err(repository_error)
     }
-}
-
-fn to_postgres_query(query: BarsQuery) -> PostgresBarsQuery {
-    PostgresBarsQuery {
-        instrument_id: query.instrument_id,
-        timeframe: query.timeframe,
-        from: query.from,
-        to: query.to,
-    }
-}
-
-fn transaction_ref(
-    transaction: &UnitOfWorkTransaction,
-) -> Result<&sea_orm::DatabaseTransaction, BarsRepositoryError> {
-    postgres_transaction_ref(transaction).ok_or(BarsRepositoryError::InvalidTransaction)
-}
-
-fn repository_error(error: sea_orm::DbErr) -> BarsRepositoryError {
-    BarsRepositoryError::Database(persistence_error(error))
 }
 
 #[cfg(test)]
