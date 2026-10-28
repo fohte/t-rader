@@ -1,17 +1,12 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
 enum StrategyTaskStep {
     Table,
     ModelCallLimitReached,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261028_174020_add_strategy_task_step_model_call_limit_reached"
-    }
 }
 
 #[async_trait::async_trait]

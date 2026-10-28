@@ -377,14 +377,16 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
     let task_id = task.task_id;
     let completed_step_id = Uuid::from_u128(5);
     let failed_step_id = Uuid::from_u128(6);
+    let mut completed_step = step(
+        task_id,
+        completed_step_id,
+        "planning",
+        StrategyTaskStepStatus::Completed,
+        1,
+    );
+    completed_step.model_call_limit_reached = true;
     let steps = vec![
-        step(
-            task_id,
-            completed_step_id,
-            "planning",
-            StrategyTaskStepStatus::Completed,
-            1,
-        ),
+        completed_step,
         step(
             task_id,
             failed_step_id,
@@ -426,6 +428,7 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
                         "label": "planning",
                         "model": "fictional-model",
                         "status": "completed",
+                        "model_call_limit_reached": true,
                         "started_at": "2026-01-01T00:00:00+00:00",
                         "trace_id": "trace-placeholder",
                         "span_id": "span-placeholder",

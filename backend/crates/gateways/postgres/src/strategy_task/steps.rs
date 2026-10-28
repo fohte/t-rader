@@ -172,6 +172,7 @@ pub(super) async fn upsert_steps(
             tracing::warn!(kind = wire.kind, task_id = %task_id, "unknown strategy task step kind; skipping");
             continue;
         };
+        // agent は false の印を省略するため、後続送信でも既存の印を保持する。
         let model_call_limit_reached = wire.model_call_limit_reached
             || existing
                 .get(&wire.execution_step_id)
