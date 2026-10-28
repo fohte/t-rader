@@ -2032,6 +2032,84 @@ describe('runAgentGraph', () => {
       buildPhaseAgent: (options): CompiledPhaseAgent => ({
         invoke: () => {
           options.onModelCallLimitReached?.()
+          return Promise.resolve({ structuredResponse: { value: 'A-OUT' } })
+        },
+      }),
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(notifications.map(normalizeStepTimestamps)).toEqual([
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          modelCallLimitReached: true,
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'completed',
+          modelCallLimitReached: true,
+          output: { value: 'A-OUT' },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('notifies once when the model-call limit is reported repeatedly', async () => {
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => ({
+        invoke: () => {
+          options.onModelCallLimitReached?.()
           options.onModelCallLimitReached?.()
           return Promise.resolve({ structuredResponse: { value: 'A-OUT' } })
         },

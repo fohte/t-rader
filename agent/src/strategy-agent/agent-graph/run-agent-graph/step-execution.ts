@@ -52,14 +52,6 @@ export const createStepRecorder = (
     update: (index, update) => {
       const current = steps[index]
       if (current === undefined) return
-      if (
-        update.modelCallLimitReached === true &&
-        update.inputRef === undefined &&
-        update.outputRef === undefined &&
-        current.modelCallLimitReached === true
-      ) {
-        return
-      }
       steps[index] = { ...current, ...update }
       notify()
     },
@@ -275,6 +267,7 @@ export const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
+    let modelCallLimitReachedRecorded = false
     // createStepMcpClient() 自体の同期 throw も含め、ステップの失敗として
     // 記録できるよう Promise チェーンの中で構築する。
     return (
@@ -302,6 +295,8 @@ export const invokeAndRecordStep = (
                   stepMcpClient,
                   // 再提出が失敗しても、この step が上限に達した事実を残す。
                   () => {
+                    if (modelCallLimitReachedRecorded) return
+                    modelCallLimitReachedRecorded = true
                     recorder.update(index, { modelCallLimitReached: true })
                   },
                 ),
