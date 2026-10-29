@@ -72,8 +72,6 @@ function isTaskStep(v: unknown): v is TaskStep {
     typeof v['label'] === 'string' &&
     (v['model'] === null || typeof v['model'] === 'string') &&
     typeof v['status'] === 'string' &&
-    (v['model_call_limit_reached'] === undefined ||
-      typeof v['model_call_limit_reached'] === 'boolean') &&
     typeof v['started_at'] === 'string' &&
     typeof v['trace_id'] === 'string' &&
     typeof v['span_id'] === 'string'

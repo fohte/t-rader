@@ -118,7 +118,7 @@ function readStepBadgeRows(entries: { label: string; row: HTMLElement }[]) {
   return entries.map(({ label, row }) => ({
     label: within(row).getByText(label).textContent,
     badges: within(row)
-      .queryAllByText('上限で打ち切り')
+      .queryAllByText('モデル呼び出し上限で打ち切り')
       .map((element) => element.textContent),
   }))
 }
@@ -138,7 +138,7 @@ describe('readTaskSteps', () => {
     expect(readTaskSteps([step])).toEqual([step])
   })
 
-  it('accepts an optional boolean model call limit marker and rejects other values', () => {
+  it('keeps steps with any value for the optional model call limit marker', () => {
     const flagged = {
       ...makeStep({ phase_key: 'limited' }),
       model_call_limit_reached: true,
@@ -148,10 +148,16 @@ describe('readTaskSteps', () => {
       ...makeStep({ phase_key: 'invalid' }),
       model_call_limit_reached: 'true',
     }
+    const invalidNull = {
+      ...makeStep({ phase_key: 'invalid-null' }),
+      model_call_limit_reached: null,
+    }
 
-    expect(readTaskSteps([flagged, unflagged, invalid])).toEqual([
+    expect(readTaskSteps([flagged, unflagged, invalid, invalidNull])).toEqual([
       flagged,
       unflagged,
+      invalid,
+      invalidNull,
     ])
   })
 
@@ -258,38 +264,49 @@ describe('TaskExecutionTree', () => {
   })
 
   it('model call limit marker は印のある step にだけ表示する', () => {
-    render(
-      <TaskExecutionTree
-        {...makeProps({
-          steps: [
-            makeStep({
-              phase_key: 'limited',
-              label: '架空の確認対象 A',
-              model_call_limit_reached: true,
-            }),
-            makeStep({
-              phase_key: 'regular',
-              label: '架空の確認対象 B',
-            }),
-          ],
-        })}
-      />,
-    )
+    const steps = readTaskSteps([
+      makeStep({
+        phase_key: 'limited',
+        label: '架空の確認対象 A',
+        model_call_limit_reached: true,
+      }),
+      makeStep({
+        phase_key: 'regular',
+        label: '架空の確認対象 B',
+      }),
+      {
+        ...makeStep({
+          phase_key: 'malformed',
+          label: '架空の確認対象 C',
+          status: 'failed',
+        }),
+        model_call_limit_reached: 'true',
+      },
+    ])
+    render(<TaskExecutionTree {...makeProps({ steps })} />)
     const limitedStep = screen.getByRole('button', {
       name: /架空の確認対象 A/,
     })
     const regularStep = screen.getByRole('button', {
       name: /架空の確認対象 B/,
     })
+    const malformedStep = screen.getByRole('button', {
+      name: /架空の確認対象 C/,
+    })
 
     expect(
       readStepBadgeRows([
         { label: '架空の確認対象 A', row: limitedStep },
         { label: '架空の確認対象 B', row: regularStep },
+        { label: '架空の確認対象 C', row: malformedStep },
       ]),
     ).toEqual([
-      { label: '架空の確認対象 A', badges: ['上限で打ち切り'] },
+      {
+        label: '架空の確認対象 A',
+        badges: ['モデル呼び出し上限で打ち切り'],
+      },
       { label: '架空の確認対象 B', badges: [] },
+      { label: '架空の確認対象 C', badges: [] },
     ])
   })
 

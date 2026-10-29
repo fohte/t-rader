@@ -54,7 +54,7 @@ function readTaskBadgeRows(rows: HTMLElement[]) {
   return rows.map((row) => ({
     taskId: row.getAttribute('href')?.split('/').at(-1),
     badges: within(row)
-      .queryAllByText('上限で打ち切り')
+      .queryAllByText('モデル呼び出し上限で打ち切り')
       .map((element) => element.textContent),
   }))
 }
@@ -104,7 +104,7 @@ describe('DashboardRecentRuns', () => {
     })
 
     expect(readTaskBadgeRows([limitedTask, regularTask])).toEqual([
-      { taskId: 'synthetic-task-a', badges: ['上限で打ち切り'] },
+      { taskId: 'synthetic-task-a', badges: ['モデル呼び出し上限で打ち切り'] },
       { taskId: 'synthetic-task-b', badges: [] },
     ])
   })

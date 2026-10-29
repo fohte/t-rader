@@ -65,7 +65,7 @@ export const Recent: Story = {
 }
 
 export const WithModelCallLimitReached: Story = {
-  name: 'shows the limit badge only on marked tasks.',
+  name: 'shows the model call limit badge only on marked tasks.',
   args: {
     tasks: [
       {
