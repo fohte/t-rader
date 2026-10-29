@@ -440,6 +440,67 @@ phases:
   })
 
   it.each([
+    { name: 'tools are omitted', tools: undefined, toolsYaml: '' },
+    {
+      name: 'the required tool is configured',
+      tools: ['demo_tool_a'],
+      toolsYaml: '    tools: [demo_tool_a]\n',
+    },
+  ])('parses required tools when $name', ({ tools, toolsYaml }) => {
+    const yaml = `phases:
+  - key: stage_a
+    label: Stage A
+    model: demo-model-a
+    prompt: Process the input
+${toolsYaml}    required_tools: [demo_tool_a]
+`
+
+    expect(parseAgentGraph(yaml)).toEqual(
+      ok({
+        phases: [
+          {
+            key: 'stage_a',
+            label: 'Stage A',
+            model: 'demo-model-a',
+            prompt: 'Process the input',
+            skills: [],
+            subagents: [],
+            ...(tools !== undefined ? { tools } : {}),
+            requiredTools: ['demo_tool_a'],
+            output: {},
+          },
+        ],
+      }),
+    )
+  })
+
+  it.each([
+    {
+      name: 'the required tool is not listed',
+      toolsYaml: '    tools: [demo_tool_b]\n',
+    },
+    { name: 'the tool list is empty', toolsYaml: '    tools: []\n' },
+  ])('rejects required tools when $name', ({ toolsYaml }) => {
+    const normalized = parseAgentGraph(`phases:
+  - key: stage_a
+    label: Stage A
+    model: demo-model-a
+    prompt: Process the input
+${toolsYaml}    required_tools: [demo_tool_a]
+`).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+
+    expect(normalized).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
+  it.each([
     { name: 'negative', value: '-1' },
     { name: 'fractional', value: '1.5' },
     { name: 'larger than an unsigned 32-bit integer', value: '4294967296' },

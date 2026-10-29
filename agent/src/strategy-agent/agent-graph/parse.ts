@@ -59,6 +59,7 @@ const phaseBaseShape = {
   max_subagent_runs: z.number().int().min(0).max(4_294_967_295).optional(),
   // 省略 (undefined) と明示的な空配列を区別するため .default([]) は付けない。
   tools: z.array(z.string()).optional(),
+  required_tools: z.array(z.string()).optional(),
   input: z.record(z.string(), inputBindingSchema).optional(),
   output: z.record(z.string(), z.unknown()).default({}),
 }
@@ -115,6 +116,7 @@ const agentGraphPhaseSchema = z
       for (const field of [
         'reasoning_effort',
         'tools',
+        'required_tools',
         'skills',
         'max_subagent_runs',
         'max_parallel',
@@ -126,6 +128,16 @@ const agentGraphPhaseSchema = z
             path: [field],
           })
         }
+      }
+    }
+    if (phase.tools !== undefined && phase.required_tools !== undefined) {
+      for (const tool of phase.required_tools) {
+        if (phase.tools.includes(tool)) continue
+        context.addIssue({
+          code: 'custom',
+          message: `required tool ${tool} must be included in tools when tools are configured`,
+          path: ['required_tools'],
+        })
       }
     }
   })
@@ -219,6 +231,9 @@ const toCommonPhaseFields = (raw: z.infer<typeof agentGraphPhaseSchema>) => ({
     ? { maxSubagentRuns: raw.max_subagent_runs }
     : {}),
   ...(raw.tools !== undefined ? { tools: raw.tools } : {}),
+  ...(raw.required_tools !== undefined
+    ? { requiredTools: raw.required_tools }
+    : {}),
   ...(raw.input !== undefined
     ? {
         input: Object.fromEntries(

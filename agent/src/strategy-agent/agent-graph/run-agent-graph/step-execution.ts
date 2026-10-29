@@ -79,28 +79,57 @@ const hasRequiredArrayFields = (
   [...requiredArrayFields].every((field) => Array.isArray(response[field]))
 
 type StructuredOutputRejectionReason =
-  'missing_structured_output' | 'missing_required_array_fields'
+  | 'missing_structured_output'
+  | 'missing_required_array_fields'
+  | 'missing_required_tools'
 
 const buildRejectionMessage = (
   reason: StructuredOutputRejectionReason,
   requiredArrayFields: ReadonlySet<string>,
-): string =>
-  reason === 'missing_structured_output'
-    ? 'agent did not return a structured response'
-    : `agent's structured response did not resolve required for_each field(s) to an array: ${[...requiredArrayFields].join(', ')}`
+  missingRequiredTools: readonly string[],
+): string => {
+  const reasons: string[] = []
+  if (reason === 'missing_structured_output') {
+    reasons.push('agent did not return a structured response')
+  }
+  if (reason === 'missing_required_array_fields') {
+    reasons.push(
+      `agent's structured response did not resolve required for_each field(s) to an array: ${[...requiredArrayFields].join(', ')}`,
+    )
+  }
+  if (missingRequiredTools.length > 0) {
+    reasons.push(
+      `required tool(s) did not complete successfully: ${missingRequiredTools.join(', ')}`,
+    )
+  }
+  return reasons.join('; ')
+}
 
 const buildRetryFeedbackMessage = (
   reason: StructuredOutputRejectionReason,
   requiredArrayFields: ReadonlySet<string>,
-): HumanMessage =>
-  new HumanMessage(
-    [
-      `前回の試行は却下されました (理由: ${buildRejectionMessage(reason, requiredArrayFields)})。`,
+  missingRequiredTools: readonly string[],
+): HumanMessage => {
+  const instructions: string[] = []
+  if (reason !== 'missing_required_tools') {
+    instructions.push(
       '構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。',
+    )
+  }
+  if (missingRequiredTools.length > 0) {
+    instructions.push(
+      `未成功の必須 tool を実行してから、構造化出力を提出し直してください: ${missingRequiredTools.join(', ')}`,
+    )
+  }
+  return new HumanMessage(
+    [
+      `前回の試行は却下されました (理由: ${buildRejectionMessage(reason, requiredArrayFields, missingRequiredTools)})。`,
+      ...instructions,
       'write_note・create_annotation などの書き込み系 tool は前回の試行で' +
         '既に実行済みの可能性があります。同じ内容を重複して実行しないでください。',
     ].join('\n'),
   )
+}
 
 const createPhaseAgent = (
   deps: RunAgentGraphDeps,
@@ -110,6 +139,7 @@ const createPhaseAgent = (
   localTools: readonly DynamicStructuredTool[],
   mcpClient: McpToolsClient,
   onModelCallLimitReached: () => void,
+  onToolSuccess: ((toolName: string) => void) | undefined,
 ): CompiledPhaseAgent => {
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   const { tools: phaseTools } = phase
@@ -147,6 +177,7 @@ const createPhaseAgent = (
       ? { phaseTimeout: context.phaseTimeout }
       : {}),
     onModelCallLimitReached,
+    ...(onToolSuccess !== undefined ? { onToolSuccess } : {}),
   })
 }
 
@@ -173,9 +204,8 @@ const resolveLocalTools = (
 
 // invoke() 自体の reject (usage limit・ツール失敗・ネットワークエラー等) は
 // 再試行せず即座に伝播する。再試行するのは invoke が成功したにもかかわらず
-// structured response を欠く場合と、structured response はあるが
-// requiredArrayFields (後続フェーズの for_each が要求する配列) を
-// 満たさない場合のみで、これが再試行で解消しうる唯一の失敗モードのため。
+// structured response を欠く場合、requiredArrayFields (後続フェーズの for_each が
+// 要求する配列) を満たさない場合、または requiredTools が成功していない場合。
 //
 // invoke() は attempt ごとに新規の LangGraph 実行になり、前の attempt の
 // AIMessage/ToolMessage を引き継がない。却下理由は次の attempt の messages に
@@ -185,6 +215,8 @@ const invokePhaseWithRetry = async (
   messages: readonly HumanMessage[],
   executionStepId: string,
   requiredArrayFields: ReadonlySet<string>,
+  requiredTools: ReadonlySet<string>,
+  successfulTools: ReadonlySet<string>,
   phaseKey: string,
   attemptsLeft: number = MAX_STRUCTURED_OUTPUT_ATTEMPTS,
 ): Promise<Result<Record<string, unknown>, unknown>> => {
@@ -200,18 +232,35 @@ const invokePhaseWithRetry = async (
   )
   if (invoked.isErr()) return invoked
   const { structuredResponse } = invoked.value
-  if (
+  const missingRequiredTools = [...requiredTools].filter(
+    (tool) => !successfulTools.has(tool),
+  )
+  const hasRequiredFields =
     structuredResponse !== undefined &&
     hasRequiredArrayFields(structuredResponse, requiredArrayFields)
+  if (
+    structuredResponse !== undefined &&
+    hasRequiredFields &&
+    missingRequiredTools.length === 0
   ) {
     return ok(structuredResponse)
   }
   const reason: StructuredOutputRejectionReason =
     structuredResponse === undefined
       ? 'missing_structured_output'
-      : 'missing_required_array_fields'
+      : !hasRequiredFields
+        ? 'missing_required_array_fields'
+        : 'missing_required_tools'
   if (attemptsLeft <= 1) {
-    return err(new Error(buildRejectionMessage(reason, requiredArrayFields)))
+    return err(
+      new Error(
+        buildRejectionMessage(
+          reason,
+          requiredArrayFields,
+          missingRequiredTools,
+        ),
+      ),
+    )
   }
 
   const attemptNumber = MAX_STRUCTURED_OUTPUT_ATTEMPTS - attemptsLeft + 1
@@ -226,9 +275,18 @@ const invokePhaseWithRetry = async (
 
   return invokePhaseWithRetry(
     agent,
-    [...messages, buildRetryFeedbackMessage(reason, requiredArrayFields)],
+    [
+      ...messages,
+      buildRetryFeedbackMessage(
+        reason,
+        requiredArrayFields,
+        missingRequiredTools,
+      ),
+    ],
     executionStepId,
     requiredArrayFields,
+    requiredTools,
+    successfulTools,
     phaseKey,
     attemptsLeft - 1,
   )
@@ -268,6 +326,8 @@ export const invokeAndRecordStep = (
       spanId: spanIds.spanId,
     })
     let modelCallLimitReachedRecorded = false
+    const requiredTools = new Set(phase.requiredTools ?? [])
+    const successfulTools = new Set<string>()
     // createStepMcpClient() 自体の同期 throw も含め、ステップの失敗として
     // 記録できるよう Promise チェーンの中で構築する。
     return (
@@ -299,10 +359,15 @@ export const invokeAndRecordStep = (
                     modelCallLimitReachedRecorded = true
                     recorder.update(index, { modelCallLimitReached: true })
                   },
+                  requiredTools.size > 0
+                    ? (toolName) => successfulTools.add(toolName)
+                    : undefined,
                 ),
                 messages,
                 executionStepId,
                 requiredArrayFields,
+                requiredTools,
+                successfulTools,
                 phase.key,
               )
             })

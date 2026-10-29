@@ -26,6 +26,7 @@ export interface BuildPhaseAgentOptions {
   ) => Promise<void>
   readonly captureMessagesOnAbort?: boolean
   readonly onModelCallLimitReached?: () => void
+  readonly onToolSuccess?: (toolName: string) => void
 }
 
 export interface CompiledPhaseAgent {
