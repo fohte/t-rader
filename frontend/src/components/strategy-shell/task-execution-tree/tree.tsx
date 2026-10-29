@@ -1,6 +1,7 @@
 import { Button } from '@fohte/ui/button'
 import { useEffect, useState } from 'react'
 
+import { ModelCallLimitBadge } from '#components/model-call-limit-badge'
 import {
   type AgentGraphOutputSchema,
   type AgentGraphPhaseSummary,
@@ -281,24 +282,31 @@ function TreeRow({
       aria-expanded={selected}
       className="h-auto w-full flex-col items-stretch justify-start text-left"
     >
-      <span className="flex w-full items-baseline gap-2">
-        <span
-          className={cn(
-            STATUS_COLOR[step.status],
-            step.status === 'running' && 'animate-pulse',
+      <span className="flex w-full flex-col gap-1">
+        <span className="flex w-full items-baseline gap-2">
+          <span
+            className={cn(
+              STATUS_COLOR[step.status],
+              step.status === 'running' && 'animate-pulse',
+            )}
+          >
+            {prefix}●
+          </span>
+          <span className="flex-1 truncate">{label}</span>
+          <span className="text-2xs text-muted-foreground">
+            {step.kind === 'operation' ? 'operation' : (step.model ?? '—')}
+          </span>
+          <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
+            {badgeText}
+          </span>
+          {duration != null && (
+            <span className="text-2xs text-muted-foreground">{duration}</span>
           )}
-        >
-          {prefix}●
         </span>
-        <span className="flex-1 truncate">{label}</span>
-        <span className="text-2xs text-muted-foreground">
-          {step.kind === 'operation' ? 'operation' : (step.model ?? '—')}
-        </span>
-        <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
-          {badgeText}
-        </span>
-        {duration != null && (
-          <span className="text-2xs text-muted-foreground">{duration}</span>
+        {step.model_call_limit_reached === true && (
+          <span className="flex w-full pl-5">
+            <ModelCallLimitBadge />
+          </span>
         )}
       </span>
       {subtitle != null && (

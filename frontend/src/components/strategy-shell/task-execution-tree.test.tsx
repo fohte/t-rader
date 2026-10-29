@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -108,6 +114,15 @@ function getTaskStepStatusLabels() {
   ]
 }
 
+function readStepBadgeRows(entries: { label: string; row: HTMLElement }[]) {
+  return entries.map(({ label, row }) => ({
+    label: within(row).getByText(label).textContent,
+    badges: within(row)
+      .queryAllByText('モデル呼び出し上限で打ち切り')
+      .map((element) => element.textContent),
+  }))
+}
+
 describe('readTaskSteps', () => {
   it('keeps a step with all required fields', () => {
     const step = makeStep({ phase_key: 'plan' })
@@ -121,6 +136,29 @@ describe('readTaskSteps', () => {
       model: null,
     })
     expect(readTaskSteps([step])).toEqual([step])
+  })
+
+  it('keeps steps with any value for the optional model call limit marker', () => {
+    const flagged = {
+      ...makeStep({ phase_key: 'limited' }),
+      model_call_limit_reached: true,
+    }
+    const unflagged = makeStep({ phase_key: 'regular' })
+    const invalid = {
+      ...makeStep({ phase_key: 'invalid' }),
+      model_call_limit_reached: 'true',
+    }
+    const invalidNull = {
+      ...makeStep({ phase_key: 'invalid-null' }),
+      model_call_limit_reached: null,
+    }
+
+    expect(readTaskSteps([flagged, unflagged, invalid, invalidNull])).toEqual([
+      flagged,
+      unflagged,
+      invalid,
+      invalidNull,
+    ])
   })
 
   it.each([
@@ -223,6 +261,53 @@ describe('TaskExecutionTree', () => {
 
     expect(screen.getByText('consistent')).toBeInTheDocument()
     expect(screen.queryByText('完了')).not.toBeInTheDocument()
+  })
+
+  it('model call limit marker は印のある step にだけ表示する', () => {
+    const steps = readTaskSteps([
+      makeStep({
+        phase_key: 'limited',
+        label: '架空の確認対象 A',
+        model_call_limit_reached: true,
+      }),
+      makeStep({
+        phase_key: 'regular',
+        label: '架空の確認対象 B',
+      }),
+      {
+        ...makeStep({
+          phase_key: 'malformed',
+          label: '架空の確認対象 C',
+          status: 'failed',
+        }),
+        model_call_limit_reached: 'true',
+      },
+    ])
+    render(<TaskExecutionTree {...makeProps({ steps })} />)
+    const limitedStep = screen.getByRole('button', {
+      name: /架空の確認対象 A/,
+    })
+    const regularStep = screen.getByRole('button', {
+      name: /架空の確認対象 B/,
+    })
+    const malformedStep = screen.getByRole('button', {
+      name: /架空の確認対象 C/,
+    })
+
+    expect(
+      readStepBadgeRows([
+        { label: '架空の確認対象 A', row: limitedStep },
+        { label: '架空の確認対象 B', row: regularStep },
+        { label: '架空の確認対象 C', row: malformedStep },
+      ]),
+    ).toEqual([
+      {
+        label: '架空の確認対象 A',
+        badges: ['モデル呼び出し上限で打ち切り'],
+      },
+      { label: '架空の確認対象 B', badges: [] },
+      { label: '架空の確認対象 C', badges: [] },
+    ])
   })
 
   it('output がまだ無いステップは enum バッジが無いのでステータス文言を表示する', () => {

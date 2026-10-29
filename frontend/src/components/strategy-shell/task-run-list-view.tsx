@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
+import { ModelCallLimitBadge } from '#components/model-call-limit-badge'
 import { sourceLabel } from '#components/strategy-shell/task-run-view'
 import { taskPhaseLabel } from '#components/task-phase-label'
 import { Skeleton } from '#components/ui/skeleton'
@@ -14,6 +15,7 @@ interface TaskRunListItem {
   phase: string
   purpose: string | null
   createdAt: string
+  modelCallLimitReached: boolean
 }
 
 export interface TaskRunListViewProps {
@@ -81,6 +83,7 @@ export function TaskRunListView({
               {sourceLabel(t.source)}
             </span>
             <PhaseBadge phase={t.phase} />
+            {t.modelCallLimitReached && <ModelCallLimitBadge />}
             <span className="font-mono text-2xs text-muted-foreground">
               {formatRelative(t.createdAt)}
             </span>
