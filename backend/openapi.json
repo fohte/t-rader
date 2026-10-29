@@ -14291,6 +14291,7 @@
           "phase",
           "created_at",
           "updated_at",
+          "model_call_limit_reached",
           "steps"
         ],
         "properties": {
@@ -14329,6 +14330,10 @@
               "string",
               "null"
             ]
+          },
+          "model_call_limit_reached": {
+            "type": "boolean",
+            "description": "いずれかの step がモデル呼び出し上限で打ち切られたことを示す。"
           },
           "phase": {
             "type": "string"
@@ -14398,7 +14403,8 @@
           "prompt",
           "phase",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "model_call_limit_reached"
         ],
         "properties": {
           "as_of": {
@@ -14430,6 +14436,10 @@
               "string",
               "null"
             ]
+          },
+          "model_call_limit_reached": {
+            "type": "boolean",
+            "description": "いずれかの step がモデル呼び出し上限で打ち切られたことを示す。"
           },
           "phase": {
             "type": "string"

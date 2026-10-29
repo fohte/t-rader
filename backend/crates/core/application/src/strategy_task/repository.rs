@@ -75,6 +75,10 @@ pub trait StrategyTaskRepository: Send + Sync {
         &self,
         query: TaskListQuery,
     ) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError>;
+    async fn list_model_call_limit_reached_task_ids(
+        &self,
+        task_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, StrategyTaskRepositoryError>;
     async fn list_in_flight(&self) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError>;
     async fn list_steps(
         &self,

@@ -513,6 +513,10 @@ mod tests {
             ),
         );
 
+        let started_at = chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .expect("valid step timestamp");
+        insert_test_task_step(&db, task_id, Uuid::from_u128(0x501), started_at, 0, true).await;
+
         let res = server
             .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))
             .await;
@@ -531,9 +535,21 @@ mod tests {
                     "phase": "running",
                     "error_summary": null,
                     "result_text": null,
+                    "model_call_limit_reached": true,
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
-                    "steps": [],
+                    "steps": [{
+                        "phase_key": "inspect",
+                        "kind": "llm",
+                        "label": "Inspect data",
+                        "model": "fixture-model",
+                        "status": "completed",
+                        "started_at": "2026-01-02T03:04:05+00:00",
+                        "trace_id": "fixture-trace",
+                        "span_id": "fixture-span",
+                        "finished_at": "2026-01-02T03:04:05+00:00",
+                        "model_call_limit_reached": true,
+                    }],
                     "purpose": "default",
                     "as_of": "<as_of>",
                 }),
@@ -615,16 +631,17 @@ mod tests {
         let first_step_id = Uuid::new_v4();
         let second_step_id = Uuid::new_v4();
         let other_step_id = Uuid::new_v4();
-        insert_test_task_step(&db, task_id, first_step_id, base, 0).await;
+        insert_test_task_step(&db, task_id, first_step_id, base, 0, true).await;
         insert_test_task_step(
             &db,
             task_id,
             second_step_id,
             base + chrono::Duration::seconds(1),
             1,
+            false,
         )
         .await;
-        insert_test_task_step(&db, other_task_id, other_step_id, base, 0).await;
+        insert_test_task_step(&db, other_task_id, other_step_id, base, 0, false).await;
 
         let updated_note_id = crate::testing::insert_test_note_with_execution_id(
             &db,
@@ -782,6 +799,7 @@ mod tests {
                         "prompt": "third",
                         "phase": "completed",
                         "error_summary": null,
+                        "model_call_limit_reached": false,
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
                         "purpose": null,
@@ -794,6 +812,7 @@ mod tests {
                         "prompt": "second",
                         "phase": "completed",
                         "error_summary": null,
+                        "model_call_limit_reached": false,
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
                         "purpose": null,
@@ -806,6 +825,7 @@ mod tests {
                         "prompt": "first",
                         "phase": "completed",
                         "error_summary": null,
+                        "model_call_limit_reached": false,
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
                         "purpose": null,
@@ -867,6 +887,7 @@ mod tests {
                     "prompt": "matching context",
                     "phase": "completed",
                     "error_summary": null,
+                    "model_call_limit_reached": false,
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "purpose": null,
@@ -943,6 +964,7 @@ mod tests {
         let base = chrono::Utc::now().fixed_offset();
         let task_a = insert_test_strategy_task(&db, strategy_a, "for-a", None, base).await;
         insert_test_strategy_task(&db, strategy_b, "for-b", None, base).await;
+        insert_test_task_step(&db, task_a, Uuid::from_u128(0x502), base, 0, true).await;
 
         let res = server
             .get(&format!("/api/strategies/{strategy_a}/tasks"))
@@ -960,6 +982,7 @@ mod tests {
                     "prompt": "for-a",
                     "phase": "completed",
                     "error_summary": null,
+                    "model_call_limit_reached": true,
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "purpose": null,
@@ -975,6 +998,7 @@ mod tests {
         execution_step_id: Uuid,
         started_at: chrono::DateTime<chrono::FixedOffset>,
         seq: i64,
+        model_call_limit_reached: bool,
     ) {
         strategy_task_step::ActiveModel {
             execution_step_id: Set(execution_step_id),
@@ -983,6 +1007,7 @@ mod tests {
             kind: Set("llm".to_string()),
             label: Set("Inspect data".to_string()),
             model: Set(Some("fixture-model".to_string())),
+            model_call_limit_reached: Set(model_call_limit_reached),
             status: Set(
                 gateway_postgres::entities::sea_orm_active_enums::StrategyTaskStepStatus::Completed,
             ),

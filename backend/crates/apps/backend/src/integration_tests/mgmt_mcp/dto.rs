@@ -79,6 +79,7 @@ pub struct GetStrategyTaskStatusResult {
     pub phase: String,
     pub error_summary: Option<String>,
     pub result_text: Option<String>,
+    pub model_call_limit_reached: bool,
     pub updated_at: DateTime<FixedOffset>,
 }
 

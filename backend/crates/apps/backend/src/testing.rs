@@ -269,6 +269,7 @@ pub async fn insert_test_strategy_task_step_for_task(
         kind: Set("llm".to_string()),
         label: Set("Sample step".to_string()),
         model: Set(Some("fictional-model".to_string())),
+        model_call_limit_reached: Set(false),
         status: Set(StrategyTaskStepStatus::Completed),
         item: Set(None),
         item_key: Set(None),

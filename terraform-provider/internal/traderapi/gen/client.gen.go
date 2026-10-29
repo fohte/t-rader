@@ -713,8 +713,11 @@ type StrategyTaskStatusResponse struct {
 	ContextKind  nullable.Nullable[string]    `json:"context_kind,omitempty"`
 	CreatedAt    time.Time                    `json:"created_at"`
 	ErrorSummary nullable.Nullable[string]    `json:"error_summary,omitempty"`
-	Phase        string                       `json:"phase"`
-	Prompt       string                       `json:"prompt"`
+
+	// ModelCallLimitReached いずれかの step がモデル呼び出し上限で打ち切られたことを示す。
+	ModelCallLimitReached bool   `json:"model_call_limit_reached"`
+	Phase                 string `json:"phase"`
+	Prompt                string `json:"prompt"`
 
 	// Purpose 投入時に指定された purpose。タスクは常に purpose キーの実行グラフでフェーズを
 	// 表示する。`None` はこのカラムが追加される前に作成された行に限られる。
@@ -744,8 +747,11 @@ type StrategyTaskSummary struct {
 	ContextKind  nullable.Nullable[string]    `json:"context_kind,omitempty"`
 	CreatedAt    time.Time                    `json:"created_at"`
 	ErrorSummary nullable.Nullable[string]    `json:"error_summary,omitempty"`
-	Phase        string                       `json:"phase"`
-	Prompt       string                       `json:"prompt"`
+
+	// ModelCallLimitReached いずれかの step がモデル呼び出し上限で打ち切られたことを示す。
+	ModelCallLimitReached bool   `json:"model_call_limit_reached"`
+	Phase                 string `json:"phase"`
+	Prompt                string `json:"prompt"`
 
 	// Purpose 投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。
 	Purpose    nullable.Nullable[string] `json:"purpose,omitempty"`

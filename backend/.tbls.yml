@@ -326,6 +326,7 @@ comments:
       kind: 'ステップの実行方式。'
       label: 'ステップの表示名。'
       model: 'LLM ステップに割り当てたモデル識別子。operation ステップでは null。'
+      model_call_limit_reached: 'このステップがモデル呼び出し上限に到達したことを示す。'
       status: 'ステップの実行状態。'
       item: 'ステップが処理する項目の構造化データ。'
       item_key: 'ページ取得した配列項目を再開時に識別するキー。'
