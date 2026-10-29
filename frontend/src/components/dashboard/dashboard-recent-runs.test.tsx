@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { DashboardRecentRuns } from '#components/dashboard/dashboard-recent-runs'
@@ -44,8 +50,18 @@ async function renderRecentRuns(tasks: Task[]) {
   })
 }
 
+function readTaskBadgeRows(rows: HTMLElement[]) {
+  return rows.map((row) => ({
+    taskId: row.getAttribute('href')?.split('/').at(-1),
+    badges: within(row)
+      .queryAllByText('上限で打ち切り')
+      .map((element) => element.textContent),
+  }))
+}
+
 function makeTask(
   taskId: string,
+  prompt: string,
   modelCallLimitReached: boolean,
   createdAt: string,
 ): Task {
@@ -53,7 +69,7 @@ function makeTask(
     task_id: taskId,
     strategy_id: 'synthetic-strategy',
     source: 'frontend',
-    prompt: '架空の項目を確認する',
+    prompt,
     phase: 'completed',
     purpose: null,
     as_of: null,
@@ -67,14 +83,29 @@ function makeTask(
 describe('DashboardRecentRuns', () => {
   it('model call limit marker は印のある task にだけ表示する', async () => {
     await renderRecentRuns([
-      makeTask('synthetic-task-a', true, '2030-01-02T03:05:05Z'),
-      makeTask('synthetic-task-b', false, '2030-01-02T03:04:05Z'),
+      makeTask(
+        'synthetic-task-a',
+        '架空の項目を確認する',
+        true,
+        '2030-01-02T03:05:05Z',
+      ),
+      makeTask(
+        'synthetic-task-b',
+        '別の架空項目を確認する',
+        false,
+        '2030-01-02T03:04:05Z',
+      ),
     ])
+    const limitedTask = screen.getByRole('link', {
+      name: /架空の項目を確認する/,
+    })
+    const regularTask = screen.getByRole('link', {
+      name: /別の架空項目を確認する/,
+    })
 
-    expect(
-      screen
-        .queryAllByText('上限で打ち切り')
-        .map((element) => element.textContent),
-    ).toEqual(['上限で打ち切り'])
+    expect(readTaskBadgeRows([limitedTask, regularTask])).toEqual([
+      { taskId: 'synthetic-task-a', badges: ['上限で打ち切り'] },
+      { taskId: 'synthetic-task-b', badges: [] },
+    ])
   })
 })

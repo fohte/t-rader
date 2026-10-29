@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -106,6 +112,15 @@ function getTaskStepStatusLabels() {
     screen.getByText('実行中').textContent,
     screen.getByText('失敗').textContent,
   ]
+}
+
+function readStepBadgeRows(entries: { label: string; row: HTMLElement }[]) {
+  return entries.map(({ label, row }) => ({
+    label: within(row).getByText(label).textContent,
+    badges: within(row)
+      .queryAllByText('上限で打ち切り')
+      .map((element) => element.textContent),
+  }))
 }
 
 describe('readTaskSteps', () => {
@@ -260,12 +275,22 @@ describe('TaskExecutionTree', () => {
         })}
       />,
     )
+    const limitedStep = screen.getByRole('button', {
+      name: /架空の確認対象 A/,
+    })
+    const regularStep = screen.getByRole('button', {
+      name: /架空の確認対象 B/,
+    })
 
     expect(
-      screen
-        .queryAllByText('上限で打ち切り')
-        .map((element) => element.textContent),
-    ).toEqual(['上限で打ち切り'])
+      readStepBadgeRows([
+        { label: '架空の確認対象 A', row: limitedStep },
+        { label: '架空の確認対象 B', row: regularStep },
+      ]),
+    ).toEqual([
+      { label: '架空の確認対象 A', badges: ['上限で打ち切り'] },
+      { label: '架空の確認対象 B', badges: [] },
+    ])
   })
 
   it('output がまだ無いステップは enum バッジが無いのでステータス文言を表示する', () => {

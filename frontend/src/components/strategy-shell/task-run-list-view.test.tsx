@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -37,6 +43,15 @@ async function renderInRouter(tasks: TaskRunListItem[]) {
       document.body.firstElementChild?.children.length ?? 0,
     ).toBeGreaterThan(0)
   })
+}
+
+function readTaskBadgeRows(rows: HTMLElement[]) {
+  return rows.map((row) => ({
+    taskId: row.getAttribute('href')?.split('/').at(-1),
+    badges: within(row)
+      .queryAllByText('上限で打ち切り')
+      .map((element) => element.textContent),
+  }))
 }
 
 describe('TaskRunListView', () => {
@@ -112,11 +127,16 @@ describe('TaskRunListView', () => {
         modelCallLimitReached: false,
       },
     ])
+    const limitedTask = screen.getByRole('link', {
+      name: /架空の項目を確認する/,
+    })
+    const regularTask = screen.getByRole('link', {
+      name: /別の架空項目を確認する/,
+    })
 
-    expect(
-      screen
-        .queryAllByText('上限で打ち切り')
-        .map((element) => element.textContent),
-    ).toEqual(['上限で打ち切り'])
+    expect(readTaskBadgeRows([limitedTask, regularTask])).toEqual([
+      { taskId: 'synthetic-task-a', badges: ['上限で打ち切り'] },
+      { taskId: 'synthetic-task-b', badges: [] },
+    ])
   })
 })
