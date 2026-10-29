@@ -50,6 +50,7 @@ describe('TaskRunListView', () => {
         phase: 'unknown-phase',
         purpose: null,
         createdAt: '2026-08-15T00:00:00.000Z',
+        modelCallLimitReached: false,
       },
     ])
     expect(screen.getByText('unknown-phase')).toBeInTheDocument()
@@ -65,6 +66,7 @@ describe('TaskRunListView', () => {
         phase: 'completed',
         purpose: null,
         createdAt: '2026-08-15T00:00:00.000Z',
+        modelCallLimitReached: false,
       },
       {
         taskId: 't2',
@@ -74,6 +76,7 @@ describe('TaskRunListView', () => {
         phase: 'completed',
         purpose: null,
         createdAt: '2026-08-15T00:00:00.000Z',
+        modelCallLimitReached: false,
       },
     ])
     expect(screen.getByRole('link', { name: /a/ })).toHaveAttribute(
@@ -84,5 +87,36 @@ describe('TaskRunListView', () => {
       'href',
       '/strategies/strategy-b/runs/t2',
     )
+  })
+
+  it('model call limit marker は印のある task にだけ表示する', async () => {
+    await renderInRouter([
+      {
+        taskId: 'synthetic-task-a',
+        strategyId: 'synthetic-strategy',
+        prompt: '架空の項目を確認する',
+        source: 'frontend',
+        phase: 'completed',
+        purpose: null,
+        createdAt: '2030-01-02T03:04:05.000Z',
+        modelCallLimitReached: true,
+      },
+      {
+        taskId: 'synthetic-task-b',
+        strategyId: 'synthetic-strategy',
+        prompt: '別の架空項目を確認する',
+        source: 'frontend',
+        phase: 'completed',
+        purpose: null,
+        createdAt: '2030-01-02T03:05:05.000Z',
+        modelCallLimitReached: false,
+      },
+    ])
+
+    expect(
+      screen
+        .queryAllByText('上限で打ち切り')
+        .map((element) => element.textContent),
+    ).toEqual(['上限で打ち切り'])
   })
 })

@@ -123,6 +123,23 @@ describe('readTaskSteps', () => {
     expect(readTaskSteps([step])).toEqual([step])
   })
 
+  it('accepts an optional boolean model call limit marker and rejects other values', () => {
+    const flagged = {
+      ...makeStep({ phase_key: 'limited' }),
+      model_call_limit_reached: true,
+    }
+    const unflagged = makeStep({ phase_key: 'regular' })
+    const invalid = {
+      ...makeStep({ phase_key: 'invalid' }),
+      model_call_limit_reached: 'true',
+    }
+
+    expect(readTaskSteps([flagged, unflagged, invalid])).toEqual([
+      flagged,
+      unflagged,
+    ])
+  })
+
   it.each([
     'phase_key',
     'label',
@@ -223,6 +240,32 @@ describe('TaskExecutionTree', () => {
 
     expect(screen.getByText('consistent')).toBeInTheDocument()
     expect(screen.queryByText('完了')).not.toBeInTheDocument()
+  })
+
+  it('model call limit marker は印のある step にだけ表示する', () => {
+    render(
+      <TaskExecutionTree
+        {...makeProps({
+          steps: [
+            makeStep({
+              phase_key: 'limited',
+              label: '架空の確認対象 A',
+              model_call_limit_reached: true,
+            }),
+            makeStep({
+              phase_key: 'regular',
+              label: '架空の確認対象 B',
+            }),
+          ],
+        })}
+      />,
+    )
+
+    expect(
+      screen
+        .queryAllByText('上限で打ち切り')
+        .map((element) => element.textContent),
+    ).toEqual(['上限で打ち切り'])
   })
 
   it('output がまだ無いステップは enum バッジが無いのでステータス文言を表示する', () => {

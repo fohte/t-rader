@@ -41,6 +41,7 @@ export const List: Story = {
             phase: 'running',
             purpose: 'inspect',
             createdAt: '2026-08-16T09:00:00.000Z',
+            modelCallLimitReached: false,
           },
           {
             taskId: 'task-0002',
@@ -50,6 +51,7 @@ export const List: Story = {
             phase: 'completed',
             purpose: null,
             createdAt: '2026-08-15T21:00:00.000Z',
+            modelCallLimitReached: false,
           },
           {
             taskId: 'task-0001',
@@ -59,6 +61,41 @@ export const List: Story = {
             phase: 'failed',
             purpose: null,
             createdAt: '2026-08-14T03:00:00.000Z',
+            modelCallLimitReached: false,
+          },
+        ],
+      })}
+    />
+  ),
+}
+
+export const WithModelCallLimitReached: Story = {
+  name: 'shows the limit badge only on marked tasks.',
+  render: () => (
+    <RouterProvider
+      router={createTaskRunListViewRouter({
+        tasks: [
+          {
+            taskId: 'synthetic-task-a',
+            strategyId: 'synthetic-strategy',
+            strategyName: 'デモ',
+            prompt: '架空の項目を確認する',
+            source: 'frontend',
+            phase: 'completed',
+            purpose: null,
+            createdAt: '2030-01-02T03:04:05.000Z',
+            modelCallLimitReached: true,
+          },
+          {
+            taskId: 'synthetic-task-b',
+            strategyId: 'synthetic-strategy',
+            strategyName: 'デモ',
+            prompt: '別の架空項目を確認する',
+            source: 'frontend',
+            phase: 'completed',
+            purpose: null,
+            createdAt: '2030-01-02T03:05:05.000Z',
+            modelCallLimitReached: false,
           },
         ],
       })}

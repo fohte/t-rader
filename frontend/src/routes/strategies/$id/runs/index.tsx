@@ -27,6 +27,7 @@ function TaskRunListPage() {
             phase: t.phase,
             purpose: t.purpose ?? null,
             createdAt: t.created_at,
+            modelCallLimitReached: t.model_call_limit_reached,
           })) ?? null
         }
       />

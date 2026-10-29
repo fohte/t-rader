@@ -1,6 +1,7 @@
 import { Button } from '@fohte/ui/button'
 import { useEffect, useState } from 'react'
 
+import { ModelCallLimitBadge } from '#components/model-call-limit-badge'
 import {
   type AgentGraphOutputSchema,
   type AgentGraphPhaseSummary,
@@ -297,6 +298,7 @@ function TreeRow({
         <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
           {badgeText}
         </span>
+        {step.model_call_limit_reached === true && <ModelCallLimitBadge />}
         {duration != null && (
           <span className="text-2xs text-muted-foreground">{duration}</span>
         )}
