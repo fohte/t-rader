@@ -460,6 +460,8 @@ phases:
     label: 計算
     model: fictional-model-orbit
     prompt: sample prompt
+    tools: [tool_alpha]
+    required_tools: [tool_alpha]
     timeout_minutes: 12
     input:
       request:
@@ -507,6 +509,19 @@ phases:
         codeId: 'sample-code',
       },
     ])
+  })
+
+  it('required_tools を持つ operation はフォームで編集できない', () => {
+    const operationYaml = `phases:
+  - key: calculate
+    label: 計算
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: sample-code
+    required_tools: [tool_alpha]
+`
+
+    expect(parseAgentGraphPhases(operationYaml)).toBeNull()
   })
 
   it('有効な operation の空 subagents と label_field を編集後も保つ', () => {

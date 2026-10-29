@@ -818,6 +818,31 @@ mod tests {
     }
 
     #[rstest]
+    #[case::required_tools("required_tools: [demo_tool_a]")]
+    #[case::empty_tools("tools: []")]
+    fn parse_rejects_llm_tool_metadata_on_operation(#[case] field: &str) {
+        let yaml = format!(
+            indoc! {"
+                phases:
+                  - key: run
+                    label: Run
+                    kind: operation
+                    operation: evaluate_saved_code
+                    code_id: demo-code
+                    {}
+            "},
+            field,
+        );
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Err(AgentGraphError::InvalidOperation {
+                phase: "run".to_string(),
+            }),
+        );
+    }
+
+    #[rstest]
     fn parse_rejects_operation_for_each_without_an_item_binding() {
         let yaml = indoc! {"
             phases:

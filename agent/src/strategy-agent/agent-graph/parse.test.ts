@@ -207,6 +207,7 @@ phases:
     { name: 'for_each', field: 'for_each: prepare.items' },
     { name: 'reasoning_effort', field: 'reasoning_effort: medium' },
     { name: 'tools', field: 'tools: []' },
+    { name: 'required_tools', field: 'required_tools: [demo_tool_a]' },
     { name: 'skills', field: 'skills: []' },
     { name: 'max_subagent_runs', field: 'max_subagent_runs: 1' },
     { name: 'max_parallel', field: 'max_parallel: 2' },

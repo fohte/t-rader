@@ -53,6 +53,7 @@ function toPhaseForm(v: unknown): AgentGraphPhaseForm | null {
         'reasoning_effort',
         'skills',
         'tools',
+        'required_tools',
         'max_subagent_runs',
       ].some((field) => v[field] !== undefined) ||
       (v['subagents'] !== undefined &&
@@ -181,6 +182,7 @@ export function setPhaseKind(
         'reasoning_effort',
         'skills',
         'tools',
+        'required_tools',
         'subagents',
         'max_subagent_runs',
         'max_parallel',

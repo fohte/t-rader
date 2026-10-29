@@ -1511,7 +1511,7 @@ describe('runAgentGraph', () => {
   it('fails after structured output is returned without any successful required tool', async () => {
     let attempts = 0
     const notifications: (readonly StrategyTaskStep[])[] = []
-    const { deps } = buildDeps(() => {
+    const { deps, calls } = buildDeps(() => {
       attempts++
       return Promise.resolve({ structuredResponse: { ok: true } })
     })
@@ -1545,7 +1545,21 @@ describe('runAgentGraph', () => {
       result,
       attempts,
       normalizeStepTimestamps(notifications.at(-1) ?? []),
+      calls.map((call) => call.messageText),
     )
+    const basePrompt = buildPhaseMessageText({
+      originalPromptText: 'req',
+      phaseKeys: ['stage_a'],
+      phaseKey: 'stage_a',
+      phasePrompt: 'Process the input',
+      item: undefined,
+      priorResults: {},
+    })
+    const feedback = [
+      '前回の試行は却下されました (理由: required tool(s) did not complete successfully: demo_tool_a)。',
+      '未成功の必須 tool を実行してから、構造化出力を提出し直してください: demo_tool_a',
+      'write_note・create_annotation などの書き込み系 tool は前回の試行で既に実行済みの可能性があります。同じ内容を重複して実行しないでください。',
+    ].join('\n')
     expect(actual).toEqual([
       {
         status: 'failed',
@@ -1567,6 +1581,11 @@ describe('runAgentGraph', () => {
           traceId: NOOP_TRACE_ID,
           spanId: NOOP_SPAN_ID,
         },
+      ],
+      [
+        basePrompt,
+        [basePrompt, feedback].join('\n'),
+        [basePrompt, feedback, feedback].join('\n'),
       ],
     ])
   })
