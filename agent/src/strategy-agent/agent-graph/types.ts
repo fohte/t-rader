@@ -27,6 +27,7 @@ interface AgentGraphPhaseBase {
   readonly maxSubagentRuns?: number
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   readonly tools?: readonly string[]
+  readonly requiredTools?: readonly string[]
   readonly input?: Readonly<Record<string, InputBinding>>
   readonly output: Readonly<Record<string, unknown>>
 }

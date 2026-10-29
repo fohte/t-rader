@@ -65,8 +65,10 @@ pub struct AgentGraphPhase {
     pub subagents: Vec<String>,
     #[serde(default)]
     pub max_subagent_runs: Option<u32>,
-    #[serde(default)]
-    pub tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_tools: Option<Vec<String>>,
     #[serde(default)]
     pub input: BTreeMap<String, InputBinding>,
     #[serde(default)]
@@ -134,6 +136,8 @@ pub enum AgentGraphError {
     DuplicatePhaseKey(String),
     #[error("phase {phase:?}: max_subagent_runs must be set when subagents are configured")]
     MissingMaxSubagentRuns { phase: String },
+    #[error("phase {phase:?}: required tool {tool:?} is not included in tools")]
+    RequiredToolNotDeclared { phase: String, tool: String },
     #[error("phase {phase:?}: max_parallel must be greater than zero")]
     InvalidMaxParallel { phase: String },
     #[error("phase {phase:?}: model and prompt are required for llm phases")]
@@ -219,6 +223,16 @@ fn validate(config: &AgentGraphConfig) -> Result<(), AgentGraphError> {
                 phase: phase.key.clone(),
             });
         }
+        if let (Some(tools), Some(required_tools)) = (&phase.tools, &phase.required_tools)
+            && let Some(tool) = required_tools
+                .iter()
+                .find(|tool| !tools.iter().any(|declared| declared == *tool))
+        {
+            return Err(AgentGraphError::RequiredToolNotDeclared {
+                phase: phase.key.clone(),
+                tool: tool.clone(),
+            });
+        }
         match phase.kind {
             AgentGraphPhaseKind::Llm => {
                 if phase.model.is_none() || phase.prompt.is_none() {
@@ -239,7 +253,8 @@ fn validate(config: &AgentGraphConfig) -> Result<(), AgentGraphError> {
                     || phase.prompt.is_some()
                     || phase.reasoning_effort.is_some()
                     || !phase.skills.is_empty()
-                    || !phase.tools.is_empty()
+                    || phase.tools.is_some()
+                    || phase.required_tools.is_some()
                     || phase.max_subagent_runs.is_some()
                     || phase.max_parallel.is_some()
                 {
@@ -413,7 +428,7 @@ mod tests {
                 subagents: [researcher, reviewer]
                 max_subagent_runs: 3
                 prompt: 割り当てられた仮説を検証せよ
-                tools: [query_data, write_note]
+                tools: [demo_tool_a, demo_tool_b]
         "};
 
         assert_eq!(
@@ -443,7 +458,8 @@ mod tests {
                         skills: vec![],
                         subagents: vec![],
                         max_subagent_runs: None,
-                        tools: vec![],
+                        tools: None,
+                        required_tools: None,
                         input: BTreeMap::new(),
                         output: serde_json::json!({
                             "hypotheses": {
@@ -472,7 +488,8 @@ mod tests {
                         skills: vec![],
                         subagents: vec!["researcher".to_string(), "reviewer".to_string()],
                         max_subagent_runs: Some(3),
-                        tools: vec!["query_data".to_string(), "write_note".to_string()],
+                        tools: Some(vec!["demo_tool_a".to_string(), "demo_tool_b".to_string()]),
+                        required_tools: None,
                         input: BTreeMap::new(),
                         output: serde_json::Map::new(),
                     },
@@ -514,11 +531,90 @@ mod tests {
                     skills: vec![],
                     subagents: vec![],
                     max_subagent_runs: None,
-                    tools: vec![],
+                    tools: None,
+                    required_tools: None,
                     input: BTreeMap::new(),
                     output: serde_json::Map::new(),
                 }],
             })),
+        );
+    }
+
+    #[rstest]
+    #[case::tools_omitted(None, "")]
+    #[case::tool_listed(Some(vec!["demo_tool_a".to_string()]), "tools: [demo_tool_a]")]
+    fn parse_accepts_required_tools_when_available(
+        #[case] tools: Option<Vec<String>>,
+        #[case] tools_yaml: &str,
+    ) {
+        let yaml = format!(
+            indoc! {"
+                phases:
+                  - key: run
+                    label: Run
+                    model: demo-model-a
+                    prompt: Process the input
+                    {}
+                    required_tools: [demo_tool_a]
+            "},
+            tools_yaml,
+        );
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Ok(Some(AgentGraphConfig {
+                timeout_minutes: None,
+                execution_limits: None,
+                tool_limits: BTreeMap::new(),
+                tool_models: BTreeMap::new(),
+                phases: vec![AgentGraphPhase {
+                    key: "run".to_string(),
+                    label: "Run".to_string(),
+                    kind: AgentGraphPhaseKind::Llm,
+                    model: Some("demo-model-a".to_string()),
+                    timeout_minutes: None,
+                    reasoning_effort: None,
+                    prompt: Some("Process the input".to_string()),
+                    operation: None,
+                    code_id: None,
+                    for_each: None,
+                    label_field: None,
+                    max_parallel: None,
+                    skills: vec![],
+                    subagents: vec![],
+                    max_subagent_runs: None,
+                    tools,
+                    required_tools: Some(vec!["demo_tool_a".to_string()]),
+                    input: BTreeMap::new(),
+                    output: serde_json::Map::new(),
+                }],
+            })),
+        );
+    }
+
+    #[rstest]
+    #[case::missing_from_list("[demo_tool_b]")]
+    #[case::empty_tool_list("[]")]
+    fn parse_rejects_required_tools_missing_from_configured_tools(#[case] tools: &str) {
+        let yaml = format!(
+            indoc! {"
+                phases:
+                  - key: run
+                    label: Run
+                    model: demo-model-a
+                    prompt: Process the input
+                    tools: {}
+                    required_tools: [demo_tool_a]
+            "},
+            tools,
+        );
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Err(AgentGraphError::RequiredToolNotDeclared {
+                phase: "run".to_string(),
+                tool: "demo_tool_a".to_string(),
+            }),
         );
     }
 
@@ -562,7 +658,8 @@ mod tests {
                     skills: vec![],
                     subagents: vec![],
                     max_subagent_runs: None,
-                    tools: vec![],
+                    tools: None,
+                    required_tools: None,
                     input: BTreeMap::new(),
                     output: serde_json::Map::new(),
                 }],
@@ -629,7 +726,8 @@ mod tests {
                         skills: vec![],
                         subagents: vec![],
                         max_subagent_runs: None,
-                        tools: vec![],
+                        tools: None,
+                        required_tools: None,
                         input: BTreeMap::from([
                             (
                                 "count".to_string(),
@@ -676,7 +774,8 @@ mod tests {
                         skills: vec![],
                         subagents: vec![],
                         max_subagent_runs: None,
-                        tools: vec![],
+                        tools: None,
+                        required_tools: None,
                         input: BTreeMap::from([(
                             "items".to_string(),
                             InputBinding::PriorOutput(PriorOutputInputBinding {
@@ -716,6 +815,31 @@ mod tests {
         );
 
         assert_eq!(parse_agent_graph(&yaml), Err(expected));
+    }
+
+    #[rstest]
+    #[case::required_tools("required_tools: [demo_tool_a]")]
+    #[case::empty_tools("tools: []")]
+    fn parse_rejects_llm_tool_metadata_on_operation(#[case] field: &str) {
+        let yaml = format!(
+            indoc! {"
+                phases:
+                  - key: run
+                    label: Run
+                    kind: operation
+                    operation: evaluate_saved_code
+                    code_id: demo-code
+                    {}
+            "},
+            field,
+        );
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Err(AgentGraphError::InvalidOperation {
+                phase: "run".to_string(),
+            }),
+        );
     }
 
     #[rstest]
@@ -892,7 +1016,8 @@ mod tests {
                     skills: vec![],
                     subagents: vec![],
                     max_subagent_runs: None,
-                    tools: vec![],
+                    tools: None,
+                    required_tools: None,
                     input: BTreeMap::new(),
                     output: serde_json::Map::new(),
                 }],
@@ -965,7 +1090,7 @@ mod tests {
         assert_eq!(
             parse_agent_graph(yaml),
             Err(AgentGraphError::InvalidYaml(
-                "phases[0]: unknown field `unknown_field`, expected one of `key`, `label`, `kind`, `model`, `timeout_minutes`, `reasoning_effort`, `prompt`, `operation`, `code_id`, `for_each`, `label_field`, `max_parallel`, `skills`, `subagents`, `max_subagent_runs`, `tools`, `input`, `output` at line 6 column 5".to_string(),
+                "phases[0]: unknown field `unknown_field`, expected one of `key`, `label`, `kind`, `model`, `timeout_minutes`, `reasoning_effort`, `prompt`, `operation`, `code_id`, `for_each`, `label_field`, `max_parallel`, `skills`, `subagents`, `max_subagent_runs`, `tools`, `required_tools`, `input`, `output` at line 6 column 5".to_string(),
             )),
         );
     }

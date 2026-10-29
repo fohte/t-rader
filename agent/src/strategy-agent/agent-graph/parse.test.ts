@@ -207,6 +207,7 @@ phases:
     { name: 'for_each', field: 'for_each: prepare.items' },
     { name: 'reasoning_effort', field: 'reasoning_effort: medium' },
     { name: 'tools', field: 'tools: []' },
+    { name: 'required_tools', field: 'required_tools: [demo_tool_a]' },
     { name: 'skills', field: 'skills: []' },
     { name: 'max_subagent_runs', field: 'max_subagent_runs: 1' },
     { name: 'max_parallel', field: 'max_parallel: 2' },
@@ -436,6 +437,67 @@ phases:
           },
         ],
       }),
+    )
+  })
+
+  it.each([
+    { name: 'tools are omitted', tools: undefined, toolsYaml: '' },
+    {
+      name: 'the required tool is configured',
+      tools: ['demo_tool_a'],
+      toolsYaml: '    tools: [demo_tool_a]\n',
+    },
+  ])('parses required tools when $name', ({ tools, toolsYaml }) => {
+    const yaml = `phases:
+  - key: stage_a
+    label: Stage A
+    model: demo-model-a
+    prompt: Process the input
+${toolsYaml}    required_tools: [demo_tool_a]
+`
+
+    expect(parseAgentGraph(yaml)).toEqual(
+      ok({
+        phases: [
+          {
+            key: 'stage_a',
+            label: 'Stage A',
+            model: 'demo-model-a',
+            prompt: 'Process the input',
+            skills: [],
+            subagents: [],
+            ...(tools !== undefined ? { tools } : {}),
+            requiredTools: ['demo_tool_a'],
+            output: {},
+          },
+        ],
+      }),
+    )
+  })
+
+  it.each([
+    {
+      name: 'the required tool is not listed',
+      toolsYaml: '    tools: [demo_tool_b]\n',
+    },
+    { name: 'the tool list is empty', toolsYaml: '    tools: []\n' },
+  ])('rejects required tools when $name', ({ toolsYaml }) => {
+    const normalized = parseAgentGraph(`phases:
+  - key: stage_a
+    label: Stage A
+    model: demo-model-a
+    prompt: Process the input
+${toolsYaml}    required_tools: [demo_tool_a]
+`).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+
+    expect(normalized).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
     )
   })
 

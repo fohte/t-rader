@@ -1404,9 +1404,11 @@ describe('createStrategyAgentDeps', () => {
   // 拾う。test 対象の agent は必ずこれを宣言するため、無ければテスト側のバグ。
   const pickStructuredOutputToolName = (
     tools: z.infer<typeof toolCallRequestSchema>['tools'],
+    excludedToolNames: readonly string[] = ['search'],
   ): string => {
-    const name = tools.find((tool) => tool.function.name !== 'search')?.function
-      .name
+    const name = tools.find(
+      (tool) => !excludedToolNames.includes(tool.function.name),
+    )?.function.name
     if (name === undefined) {
       throw new Error('expected a structured-output tool to be declared')
     }
@@ -1416,10 +1418,11 @@ describe('createStrategyAgentDeps', () => {
   const buildStructuredOutputResponse = (
     callId: string,
     requestBody: string,
+    excludedToolNames?: readonly string[],
   ): Response => {
     const { tools } = toolCallRequestSchema.parse(JSON.parse(requestBody))
     return buildToolCallResponse(callId, {
-      name: pickStructuredOutputToolName(tools),
+      name: pickStructuredOutputToolName(tools, excludedToolNames),
       arguments: JSON.stringify({ status: 'completed', message: 'done' }),
     })
   }
@@ -1777,6 +1780,67 @@ describe('createStrategyAgentDeps', () => {
       receivedArgs: [inputArgs],
       structuredResponse: { status: 'completed', message: 'done' },
     })
+  }, 15_000)
+
+  it('records only successful tool results for required-tool tracking', async () => {
+    const successfulTools: string[] = []
+    const successfulTool = new DynamicStructuredTool({
+      name: 'demo_tool_a',
+      description: 'Returns a synthetic result.',
+      schema: z.object({}),
+      func: () => Promise.resolve('synthetic result'),
+    })
+    const failingTool = new DynamicStructuredTool({
+      name: 'demo_tool_b',
+      description: 'Returns a synthetic failure.',
+      schema: z.object({}),
+      func: () => Promise.reject(new Error('synthetic tool failure')),
+    })
+    const requestBodies: string[] = []
+    const model = buildStubModel((_url, init) => {
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      if (requestBodies.length === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('call-1', {
+            name: 'demo_tool_a',
+            arguments: '{}',
+          }),
+        )
+      }
+      if (requestBodies.length === 2) {
+        return Promise.resolve(
+          buildToolCallResponse('call-2', {
+            name: 'demo_tool_b',
+            arguments: '{}',
+          }),
+        )
+      }
+      return Promise.resolve(
+        buildStructuredOutputResponse('call-3', body, [
+          'demo_tool_a',
+          'demo_tool_b',
+        ]),
+      )
+    })
+    const agent = buildPhaseAgentUnderTest(
+      createStrategyAgentDeps(baseConfig),
+      {
+        model,
+        tools: [successfulTool, failingTool],
+        systemPrompt: 'test system prompt',
+        onToolSuccess: (toolName) => successfulTools.push(toolName),
+      },
+    )
+    const result = await agent.invoke({
+      messages: [new HumanMessage('process the synthetic input')],
+    })
+
+    const actual = Array.of<unknown>(result.structuredResponse, successfulTools)
+    expect(actual).toEqual([
+      { status: 'completed', message: 'done' },
+      ['demo_tool_a'],
+    ])
   }, 15_000)
 
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
