@@ -129,12 +129,15 @@ const buildRetryFeedbackMessage = (
       `未成功の必須 tool を実行してから、構造化出力を提出し直してください: ${rejection.missingRequiredTools.join(', ')}`,
     )
   }
+  const writeToolWarning =
+    rejection.missingRequiredTools.length > 0
+      ? '成功済みの他の書き込み系 tool は重複して実行しないでください。'
+      : '前回の試行で成功した書き込み系 tool と同じ内容を重複して実行しないでください。'
   return new HumanMessage(
     [
       `前回の試行は却下されました (理由: ${buildRejectionMessage(rejection)})。`,
       ...instructions,
-      'write_note・create_annotation などの書き込み系 tool は前回の試行で' +
-        '既に実行済みの可能性があります。同じ内容を重複して実行しないでください。',
+      writeToolWarning,
     ].join('\n'),
   )
 }
