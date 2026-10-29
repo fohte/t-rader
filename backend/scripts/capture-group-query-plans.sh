@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly EXPECTED_IMAGE_REF='ghcr.io/fohte/t-rader/perf-db:e8715ae2cb74fa0a8a05d65f7af4ccfea9cb7658c56cb9bd2ee604572719922d'
-readonly EXPECTED_REPLAY_TARGET_DATE='2026-10-22'
+readonly FIXED_COMPARISON_TARGET_DATE='2026-10-22'
 readonly EXPECTED_GROUP_BIND_COUNT=6
 readonly SOURCE_CHECKOUT_SHA='d24a3e71dac02684f1d752c4d37aeb6462ca5c91'
 readonly SOURCE_RUN_ID='39714934810'
@@ -20,6 +20,8 @@ readonly INPUT_MANIFEST_FILE="${INPUT_MANIFEST_FILE:-query-perf-plan-capture/inp
 readonly INPUT_COMPARISON_FILE="${INPUT_COMPARISON_FILE:-query-perf-plan-capture/input/comparison.json}"
 readonly INPUT_GROUP_BINDS_FILE="${INPUT_GROUP_BINDS_FILE:-query-perf-plan-capture/binds/source-binds.json}"
 readonly CAPTURE_OUTPUT_DIR="${CAPTURE_OUTPUT_DIR:-query-perf-plan-capture}"
+readonly PROFILE_TARGET_GROUP_BINDS_FILE="$CAPTURE_OUTPUT_DIR/binds/profile-target-binds.json"
+readonly LOCAL_REBUILT_IMAGE_REF="query-perf-plan-capture:${GITHUB_RUN_ID:-local}"
 
 overall_status=0
 container_started=false
@@ -136,7 +138,7 @@ printf 'bind_id\tobservation\tcomponent\texit_code\telapsed_ms\tsqlstate\toutcom
 computed_image_ref=''
 if computed_image_ref=$(backend/scripts/build-perf-db-image.sh --image-ref \
   2> "$CAPTURE_OUTPUT_DIR/environment/image-ref.stderr"); then
-  printf 'expected=%s\ncomputed=%s\n' "$EXPECTED_IMAGE_REF" "$computed_image_ref" \
+  printf 'fixed_build_reference=%s\ncomputed=%s\n' "$EXPECTED_IMAGE_REF" "$computed_image_ref" \
     > "$CAPTURE_OUTPUT_DIR/environment/image-ref-check.txt"
 else
   printf 'Could not compute the fixed perf DB image reference.\n' \
@@ -149,52 +151,52 @@ if [[ "$computed_image_ref" != "$EXPECTED_IMAGE_REF" ]]; then
   exit 1
 fi
 
-if docker manifest inspect --verbose "$EXPECTED_IMAGE_REF" \
-  > "$CAPTURE_OUTPUT_DIR/environment/image-manifest.json" \
-  2> "$CAPTURE_OUTPUT_DIR/environment/image-manifest.stderr"; then
-  if docker pull "$EXPECTED_IMAGE_REF" \
-    > "$CAPTURE_OUTPUT_DIR/environment/image-pull.stdout" \
-    2> "$CAPTURE_OUTPUT_DIR/environment/image-pull.stderr"; then
-    printf 'image_source=registry\n' > "$CAPTURE_OUTPUT_DIR/environment/image-summary.txt"
-  else
-    printf 'Could not pull the fixed perf DB image.\n' \
-      > "$CAPTURE_OUTPUT_DIR/environment/image-error.txt"
-    exit 1
-  fi
+printf 'image_source=local-rebuild-from-fixed-source\nfixed_registry_image_used=false\nregistry_content_equivalence=unverified\n' \
+  > "$CAPTURE_OUTPUT_DIR/environment/image-summary.txt"
+if backend/scripts/build-perf-db-image.sh \
+  > "$CAPTURE_OUTPUT_DIR/environment/image-build.stdout" \
+  2> "$CAPTURE_OUTPUT_DIR/environment/image-build.stderr"; then
+  :
 else
-  if grep -Eq 'no such manifest|manifest unknown|404 Not Found' \
-    "$CAPTURE_OUTPUT_DIR/environment/image-manifest.stderr" \
-    "$CAPTURE_OUTPUT_DIR/environment/image-manifest.json"; then
-    printf 'image_source=local-build\n' > "$CAPTURE_OUTPUT_DIR/environment/image-summary.txt"
-    if backend/scripts/build-perf-db-image.sh \
-      > "$CAPTURE_OUTPUT_DIR/environment/image-build.stdout" \
-      2> "$CAPTURE_OUTPUT_DIR/environment/image-build.stderr"; then
-      :
-    else
-      build_status=$?
-      printf 'build_exit_code=%s\n' "$build_status" \
-        > "$CAPTURE_OUTPUT_DIR/environment/image-error.txt"
-      exit 1
-    fi
-  else
-    printf 'Registry inspection failed for the fixed perf DB image.\n' \
-      > "$CAPTURE_OUTPUT_DIR/environment/image-error.txt"
-    exit 1
-  fi
+  build_status=$?
+  printf 'build_exit_code=%s\n' "$build_status" \
+    > "$CAPTURE_OUTPUT_DIR/environment/image-error.txt"
+  exit 1
 fi
 
-docker image inspect --format '{{.Id}}' "$EXPECTED_IMAGE_REF" \
+if docker image tag "$computed_image_ref" "$LOCAL_REBUILT_IMAGE_REF" \
+  > "$CAPTURE_OUTPUT_DIR/environment/image-tag.stdout" \
+  2> "$CAPTURE_OUTPUT_DIR/environment/image-tag.stderr"; then
+  :
+else
+  printf 'Could not tag the local fixed-source image for the diagnostic run.\n' \
+    > "$CAPTURE_OUTPUT_DIR/environment/image-tag.error.txt"
+  exit 1
+fi
+
+docker image inspect --format '{{.Id}}' "$LOCAL_REBUILT_IMAGE_REF" \
   > "$CAPTURE_OUTPUT_DIR/environment/image-id.txt"
-docker image inspect --format '{{json .RepoDigests}}' "$EXPECTED_IMAGE_REF" \
+docker image inspect --format '{{json .RepoDigests}}' "$LOCAL_REBUILT_IMAGE_REF" \
   > "$CAPTURE_OUTPUT_DIR/environment/image-digests.json"
-docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.source"}}' "$EXPECTED_IMAGE_REF" \
+docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.source"}}' "$LOCAL_REBUILT_IMAGE_REF" \
   > "$CAPTURE_OUTPUT_DIR/environment/image-source.txt"
 {
-  printf 'image_ref=%s\n' "$EXPECTED_IMAGE_REF"
+  printf 'fixed_registry_image_ref=%s\n' "$EXPECTED_IMAGE_REF"
+  printf 'local_build_reference=%s\n' "$computed_image_ref"
+  printf 'local_run_reference=%s\n' "$LOCAL_REBUILT_IMAGE_REF"
+  printf 'local_run_reference_differs_from_fixed_registry_reference=%s\n' \
+    "$([[ "$LOCAL_REBUILT_IMAGE_REF" != "$EXPECTED_IMAGE_REF" ]] && printf true || printf false)"
   printf 'image_id=%s\n' "$(< "$CAPTURE_OUTPUT_DIR/environment/image-id.txt")"
   printf 'repo_digests=%s\n' "$(jq -r 'join(",")' "$CAPTURE_OUTPUT_DIR/environment/image-digests.json")"
   printf 'source_label=%s\n' "$(< "$CAPTURE_OUTPUT_DIR/environment/image-source.txt")"
 } >> "$CAPTURE_OUTPUT_DIR/environment/image-summary.txt"
+jq -n \
+  --arg fixed_registry_image_ref "$EXPECTED_IMAGE_REF" \
+  --arg local_build_reference "$computed_image_ref" \
+  --arg local_run_reference "$LOCAL_REBUILT_IMAGE_REF" \
+  --arg image_id "$(< "$CAPTURE_OUTPUT_DIR/environment/image-id.txt")" \
+  '{fixed_registry_image_ref: $fixed_registry_image_ref, fixed_registry_image_used: false, local_build_reference: $local_build_reference, local_run_reference: $local_run_reference, local_run_reference_differs_from_fixed_registry_reference: ($local_run_reference != $fixed_registry_image_ref), actual_image_id: $image_id, registry_content_equivalence: "unverified"}' \
+  > "$CAPTURE_OUTPUT_DIR/environment/image-identity.json"
 
 if docker run \
   --detach \
@@ -203,7 +205,7 @@ if docker run \
   --memory=6g \
   --memory-swap=6g \
   --publish 127.0.0.1:5432:5432 \
-  "$EXPECTED_IMAGE_REF" \
+  "$LOCAL_REBUILT_IMAGE_REF" \
   > "$CAPTURE_OUTPUT_DIR/environment/container-start.stdout" \
   2> "$CAPTURE_OUTPUT_DIR/environment/container-start.stderr"; then
   container_started=true
@@ -232,6 +234,8 @@ fi
 
 docker inspect --format 'memory_bytes={{.HostConfig.Memory}} memory_swap_bytes={{.HostConfig.MemorySwap}} command={{json .Config.Cmd}}' "$DB_CONTAINER" \
   > "$CAPTURE_OUTPUT_DIR/environment/container-runtime.txt"
+docker inspect --format '{{.Image}}' "$DB_CONTAINER" \
+  > "$CAPTURE_OUTPUT_DIR/environment/container-image-id.txt"
 docker stats --no-stream --format 'cpu={{.CPUPerc}} memory={{.MemUsage}} memory_percent={{.MemPerc}}' "$DB_CONTAINER" \
   > "$CAPTURE_OUTPUT_DIR/environment/container-stats.txt"
 
@@ -274,17 +278,55 @@ if [[ ! "$reference_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ||
     > "$CAPTURE_OUTPUT_DIR/profile/date-error.txt"
   exit 1
 fi
-if [[ "$target_date" != "$EXPECTED_REPLAY_TARGET_DATE" ]]; then
-  printf 'Expected target date %s, found %s.\n' "$EXPECTED_REPLAY_TARGET_DATE" "$target_date" \
-    > "$CAPTURE_OUTPUT_DIR/profile/target-date-mismatch.txt"
-  exit 1
-fi
 reference_date_epoch=$(date -u -d "$reference_date 00:00:00" +%s)
 target_date_epoch=$(date -u -d "$target_date 00:00:00" +%s)
 reference_to_target_days=$(((target_date_epoch - reference_date_epoch) / 86400))
-printf 'reference_date=%s\nquery_target_date=%s\nreference_to_target_days=%s\n' \
-  "$reference_date" "$target_date" "$reference_to_target_days" \
+fixed_comparison_target_epoch=$(date -u -d "$FIXED_COMPARISON_TARGET_DATE 00:00:00" +%s)
+fixed_comparison_to_target_days=$(((target_date_epoch - fixed_comparison_target_epoch) / 86400))
+profile_target_matches_fixed_comparison=false
+if [[ "$target_date" == "$FIXED_COMPARISON_TARGET_DATE" ]]; then
+  profile_target_matches_fixed_comparison=true
+fi
+printf 'original_fixed_replay_target_date=%s\ncomparison_normalization_target_date=%s\nprofile_reference_date=%s\nprofile_latest_bar_target_date=%s\nprofile_target_matches_fixed_comparison=%s\nprofile_reference_to_latest_bar_days=%s\nfixed_comparison_to_profile_target_days=%s\n' \
+  "$FIXED_COMPARISON_TARGET_DATE" \
+  "$FIXED_COMPARISON_TARGET_DATE" "$reference_date" "$target_date" \
+  "$profile_target_matches_fixed_comparison" "$reference_to_target_days" \
+  "$fixed_comparison_to_target_days" \
   > "$CAPTURE_OUTPUT_DIR/profile/dates.txt"
+
+shift_status=0
+if cargo run --locked --manifest-path backend/scripts/query-perf-input-manifest/Cargo.toml -- \
+  reshift-group-binds \
+  --input "$INPUT_GROUP_BINDS_FILE" \
+  --target-date "$target_date" \
+  --output "$PROFILE_TARGET_GROUP_BINDS_FILE" \
+  > "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift.stdout" \
+  2> "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift.stderr"; then
+  shift_status=0
+else
+  shift_status=$?
+fi
+printf '%s\n' "$shift_status" > "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift.exit_code"
+if ((shift_status != 0)) || ! jq -e \
+  --slurpfile source "$INPUT_GROUP_BINDS_FILE" \
+  'length == 6 and all(.[]; .parameter_types == ["text", "date", "date", "numeric", "bigint"] and (.original_parameters | length) == 5 and (.shifted_parameters | length) == 5) and ($source[0] | map({parameter_types, original_parameters})) == map({parameter_types, original_parameters})' \
+  "$PROFILE_TARGET_GROUP_BINDS_FILE" \
+  > "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift-validation.stdout" \
+  2> "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift-validation.stderr"; then
+  printf 'Profile-target group binds could not be validated.\n' \
+    > "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift.error.txt"
+  exit 1
+fi
+profile_bind_sha256=$(sha256sum "$PROFILE_TARGET_GROUP_BINDS_FILE" | cut -d ' ' -f 1)
+jq -n \
+  --arg comparison_target_date "$FIXED_COMPARISON_TARGET_DATE" \
+  --arg profile_target_date "$target_date" \
+  --arg shift_function 'query-perf runner parameters::shift_parameters' \
+  --arg source_binds_file "$INPUT_GROUP_BINDS_FILE" \
+  --arg shifted_binds_file "$PROFILE_TARGET_GROUP_BINDS_FILE" \
+  --arg shifted_binds_sha256 "$profile_bind_sha256" \
+  '{comparison_target_date: $comparison_target_date, profile_target_date: $profile_target_date, shift_function: $shift_function, shift_source: "original_parameters and resolved parameter_types", source_binds_file: $source_binds_file, shifted_binds_file: $shifted_binds_file, shifted_binds_sha256: $shifted_binds_sha256}' \
+  > "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift.json"
 
 docker exec "$DB_CONTAINER" psql -X -q -U "$DB_USER" -d "$DB_NAME" \
   -c "SELECT name, setting, unit, source FROM pg_settings WHERE name IN ('server_version', 'shared_buffers', 'work_mem', 'max_parallel_workers', 'max_parallel_workers_per_gather', 'plan_cache_mode', 'statement_timeout', 'TimeZone', 'effective_cache_size', 'temp_buffers', 'jit', 'random_page_cost', 'effective_io_concurrency') OR name LIKE 'timescaledb.%' ORDER BY name" \
@@ -351,14 +393,16 @@ while IFS= read -r bind_json; do
   jq -n \
     --argjson bind "$bind_json" \
     --arg bind_id "$bind_id" \
+    --arg comparison_target_date "$FIXED_COMPARISON_TARGET_DATE" \
+    --arg profile_target_date "$target_date" \
     --argjson full_query_timed_out "$full_query_timed_out" \
     --slurpfile explain "$bind_plan_dir/full.explain/result.json" \
     --slurpfile analyze "$bind_plan_dir/full.analyze/result.json" \
     --slurpfile components "$bind_plan_dir/components/results.json" \
-    '{bind_id: $bind_id, replay_outcome: "not-performed", parameter_types: $bind.parameter_types, original_parameters: $bind.original_parameters, shifted_parameters: $bind.shifted_parameters, full_query_timed_out: $full_query_timed_out, full_query: {explain: $explain[0], analyze: $analyze[0]}, component_observations: $components[0]}' \
+    '{bind_id: $bind_id, replay_outcome: "not-performed", comparison_target_date: $comparison_target_date, profile_target_date: $profile_target_date, parameter_types: $bind.parameter_types, original_parameters: $bind.original_parameters, shifted_parameters: $bind.shifted_parameters, full_query_timed_out: $full_query_timed_out, full_query: {explain: $explain[0], analyze: $analyze[0]}, component_observations: $components[0]}' \
     > "$bind_plan_dir/summary.json"
   cp "$bind_plan_dir/summary.json" "$CAPTURE_OUTPUT_DIR/binds/$bind_id.json"
-done < <(jq -c '.[]' "$INPUT_GROUP_BINDS_FILE")
+done < <(jq -c '.[]' "$PROFILE_TARGET_GROUP_BINDS_FILE")
 
 if ((bind_index != EXPECTED_GROUP_BIND_COUNT)); then
   printf 'Expected %s bind observations, recorded %s.\n' \

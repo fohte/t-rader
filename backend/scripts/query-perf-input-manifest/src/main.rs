@@ -73,5 +73,10 @@ async fn run() -> Result<(), String> {
             exclusions_file,
             output,
         } => verify_replay_exclusions(stdout, exclusions_file, output),
+        Command::ReshiftGroupBinds {
+            input,
+            target_date,
+            output,
+        } => runner::write_profile_target_group_binds(&input, &target_date, &output),
     }
 }

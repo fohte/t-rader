@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly EXPECTED_REPLAY_TARGET_DATE='2026-10-22'
+readonly EXPECTED_COMPARISON_TARGET_DATE='2026-10-22'
 readonly EXPECTED_GROUP_BIND_COUNT=6
 readonly SOURCE_CHECKOUT_SHA='d24a3e71dac02684f1d752c4d37aeb6462ca5c91'
 readonly REFERENCE_MANIFEST_FILE='backend/scripts/query-perf-input-manifest/reference-manifest.json'
@@ -34,7 +34,7 @@ fi
 manifest_matches=false
 if jq -e \
   --arg source_checkout_sha "$SOURCE_CHECKOUT_SHA" \
-  --arg target_date "$EXPECTED_REPLAY_TARGET_DATE" \
+  --arg target_date "$EXPECTED_COMPARISON_TARGET_DATE" \
   --slurpfile reference "$REFERENCE_MANIFEST_FILE" \
   '.provenance.input_kind == "ci-regenerated" and
    .provenance.source_checkout_sha == $source_checkout_sha and
@@ -83,7 +83,7 @@ jq -n \
      parameter_types_match: ($expected_parameter_types_sha256 == $actual_parameter_types_sha256 and $expected_parameter_types_set_sha256 == $actual_parameter_types_set_sha256),
      all_six_typed_binds_match: ($expected_bind_count == $actual_bind_count and $expected_typed_bind_set_sha256 == $actual_typed_bind_set_sha256 and $binds_match == true),
      bind_count: $actual_bind_count,
-     target_date: "2026-10-22",
+     comparison_target_date: "2026-10-22",
      expected_sql_sha256: $expected_sql_sha256,
      actual_sql_sha256: $actual_sql_sha256,
      expected_parameter_types_sha256: $expected_parameter_types_sha256,

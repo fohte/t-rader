@@ -17,14 +17,18 @@ pub mod execution {
     ));
 }
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::PathBuf,
+};
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use sqlx::{Connection, PgConnection};
 
 use crate::{
-    EXPECTED_SPECIFIED_GROUP_BIND_HASHES, hash_serialized,
+    EXPECTED_GROUP_BIND_COUNT, EXPECTED_SPECIFIED_GROUP_BIND_HASHES, hash_serialized,
     query_log::{ExcludedStatement, Exclusion, ParsedLog},
     sha256,
 };
@@ -70,6 +74,57 @@ pub struct RawGroupBind {
     pub parameter_types: Vec<String>,
     pub original_parameters: Vec<Option<String>>,
     pub shifted_parameters: Vec<Option<String>>,
+}
+
+pub(crate) fn write_profile_target_group_binds(
+    input_path: &PathBuf,
+    target_date_text: &str,
+    output_path: &PathBuf,
+) -> Result<(), String> {
+    let input = fs::read(input_path).map_err(|_| {
+        "group bind input could not be read for profile-target shifting".to_string()
+    })?;
+    let group_binds: Vec<RawGroupBind> = serde_json::from_slice(&input).map_err(|_| {
+        "group bind input could not be parsed for profile-target shifting".to_string()
+    })?;
+    let target_date = NaiveDate::parse_from_str(target_date_text, "%Y-%m-%d")
+        .map_err(|_| "profile target date is invalid".to_string())?;
+    let shifted_group_binds = reshift_group_binds(&group_binds, target_date)?;
+    crate::write_json(output_path, &shifted_group_binds)
+}
+
+fn reshift_group_binds(
+    group_binds: &[RawGroupBind],
+    target_date: NaiveDate,
+) -> Result<Vec<RawGroupBind>, String> {
+    if group_binds.len() != EXPECTED_GROUP_BIND_COUNT {
+        return Err("profile-target shifting requires all six group binds".to_string());
+    }
+
+    let expected_parameter_types =
+        ["text", "date", "date", "numeric", "bigint"].map(str::to_string);
+    group_binds
+        .iter()
+        .map(|bind| {
+            if bind.parameter_types != expected_parameter_types
+                || bind.original_parameters.len() != expected_parameter_types.len()
+            {
+                return Err(
+                    "group bind structure does not match the resolved query types".to_string(),
+                );
+            }
+            let shifted_parameters = parameters::shift_parameters(
+                &bind.original_parameters,
+                &bind.parameter_types,
+                target_date,
+            )
+            .map_err(|_| "profile-target group bind shifting failed".to_string())?;
+            Ok(RawGroupBind {
+                shifted_parameters,
+                ..bind.clone()
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -417,9 +472,10 @@ fn prepare_failure_detail(sql_sha256: &str, sqlstate: Option<&str>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
 
-    use super::prepare_failure_detail;
+    use super::{RawGroupBind, prepare_failure_detail, reshift_group_binds};
+    use chrono::NaiveDate;
 
     #[rstest]
     #[case::valid_sqlstate(Some("42P01"), "42P01")]
@@ -437,6 +493,78 @@ mod tests {
                 "parameter type resolution failed for SQL {sql_sha256}: phase=prepare_statement sqlstate={expected_sqlstate}"
             ),
         );
+    }
+
+    #[fixture]
+    fn profile_group_bind() -> RawGroupBind {
+        RawGroupBind {
+            parameter_types: ["text", "date", "date", "numeric", "bigint"]
+                .map(str::to_string)
+                .to_vec(),
+            original_parameters: [
+                Some("demo-axis".to_string()),
+                Some("2000-01-03".to_string()),
+                Some("2000-01-10".to_string()),
+                Some("1.25".to_string()),
+                Some("5".to_string()),
+            ]
+            .to_vec(),
+            shifted_parameters: [
+                Some("demo-axis".to_string()),
+                Some("2001-01-13".to_string()),
+                Some("2001-01-20".to_string()),
+                Some("1.25".to_string()),
+                Some("5".to_string()),
+            ]
+            .to_vec(),
+        }
+    }
+
+    #[rstest]
+    #[case::comparison_date("2001-01-20", "2001-01-13", "2001-01-20")]
+    #[case::later_profile_date("2002-02-03", "2002-01-27", "2002-02-03")]
+    fn profile_target_binds_are_shifted_from_original_parameters(
+        profile_group_bind: RawGroupBind,
+        #[case] target_date_text: &str,
+        #[case] expected_from_date: &str,
+        #[case] expected_to_date: &str,
+    ) -> Result<(), String> {
+        let target_date = NaiveDate::parse_from_str(target_date_text, "%Y-%m-%d")
+            .map_err(|error| error.to_string())?;
+        let group_binds = vec![profile_group_bind.clone(); crate::EXPECTED_GROUP_BIND_COUNT];
+        let expected_bind = RawGroupBind {
+            shifted_parameters: [
+                Some("demo-axis".to_string()),
+                Some(expected_from_date.to_string()),
+                Some(expected_to_date.to_string()),
+                Some("1.25".to_string()),
+                Some("5".to_string()),
+            ]
+            .to_vec(),
+            ..profile_group_bind
+        };
+        let expected = vec![expected_bind; crate::EXPECTED_GROUP_BIND_COUNT];
+
+        assert_eq!(reshift_group_binds(&group_binds, target_date), Ok(expected));
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::too_few(5)]
+    #[case::too_many(7)]
+    fn profile_target_shift_requires_all_six_binds(
+        profile_group_bind: RawGroupBind,
+        #[case] bind_count: usize,
+    ) -> Result<(), String> {
+        let target_date = NaiveDate::parse_from_str("2002-02-03", "%Y-%m-%d")
+            .map_err(|error| error.to_string())?;
+        let group_binds = vec![profile_group_bind; bind_count];
+
+        assert_eq!(
+            reshift_group_binds(&group_binds, target_date),
+            Err("profile-target shifting requires all six group binds".to_string()),
+        );
+        Ok(())
     }
 }
 

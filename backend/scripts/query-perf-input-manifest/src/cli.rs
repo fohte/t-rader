@@ -49,6 +49,14 @@ pub(crate) enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    ReshiftGroupBinds {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        target_date: String,
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 pub(crate) struct BuildOptions {

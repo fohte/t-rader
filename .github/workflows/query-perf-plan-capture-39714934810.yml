@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
   actions: read
-  packages: read
 
 jobs:
   capture-query-plans:
@@ -17,7 +16,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      packages: read
     env:
       CARGO_INCREMENTAL: '0'
       SCCACHE_GHA_ENABLED: 'true'
@@ -143,27 +141,13 @@ jobs:
           set -euo pipefail
           docker stop "$DB_CONTAINER_ID" "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
 
-      - name: Log in to GHCR
-        id: ghcr-login
-        if: >-
-          steps.backend-tests.outcome == 'success' &&
-          steps.capture-query-log.outcome == 'success' &&
-          steps.upload-regenerated-log.outcome == 'success' &&
-          steps.input-comparison.outputs.group_matches == 'true'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
       - name: Capture group query plans without replay
         id: capture-plans
         if: >-
           steps.backend-tests.outcome == 'success' &&
           steps.capture-query-log.outcome == 'success' &&
           steps.upload-regenerated-log.outcome == 'success' &&
-          steps.input-comparison.outputs.group_matches == 'true' &&
-          steps.ghcr-login.outcome == 'success'
+          steps.input-comparison.outputs.group_matches == 'true'
         env:
           QUERY_LOG_FILE: ${{ runner.temp }}/backend-query-log-regenerated/postgresql.json
           INPUT_ARTIFACT_NAME: backend-query-log-regenerated-${{ github.run_id }}
@@ -190,7 +174,6 @@ jobs:
           INPUT_COMPARISON_OUTCOME: ${{ steps.input-comparison.outcome }}
           INPUT_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.matches }}
           GROUP_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.group_matches }}
-          GHCR_LOGIN_OUTCOME: ${{ steps.ghcr-login.outcome }}
           PLAN_CAPTURE_OUTCOME: ${{ steps.capture-plans.outcome }}
         run: bash backend/scripts/query-perf-plan-capture-record-prerequisites.sh
 
@@ -203,7 +186,6 @@ jobs:
           INPUT_COMPARISON_OUTCOME: ${{ steps.input-comparison.outcome }}
           INPUT_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.matches }}
           GROUP_COMPARISON_MATCHES: ${{ steps.input-comparison.outputs.group_matches }}
-          GHCR_LOGIN_OUTCOME: ${{ steps.ghcr-login.outcome }}
           PLAN_CAPTURE_OUTCOME: ${{ steps.capture-plans.outcome }}
         run: bash backend/scripts/query-perf-plan-capture-check-results.sh
 
