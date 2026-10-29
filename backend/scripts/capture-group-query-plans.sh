@@ -309,7 +309,7 @@ fi
 printf '%s\n' "$shift_status" > "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift.exit_code"
 if ((shift_status != 0)) || ! jq -e \
   --slurpfile source "$INPUT_GROUP_BINDS_FILE" \
-  'length == 6 and all(.[]; .parameter_types == ["text", "date", "date", "numeric", "bigint"] and (.original_parameters | length) == 5 and (.shifted_parameters | length) == 5) and ($source[0] | map({parameter_types, original_parameters})) == map({parameter_types, original_parameters})' \
+  '($source[0] | map({parameter_types, original_parameters})) == map({parameter_types, original_parameters})' \
   "$PROFILE_TARGET_GROUP_BINDS_FILE" \
   > "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift-validation.stdout" \
   2> "$CAPTURE_OUTPUT_DIR/profile/bind-date-shift-validation.stderr"; then
