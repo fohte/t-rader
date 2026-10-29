@@ -1559,7 +1559,7 @@ describe('runAgentGraph', () => {
     const feedback = [
       '前回の試行は却下されました (理由: required tool(s) did not complete successfully: demo_tool_a)。',
       '未成功の必須 tool を実行してから、構造化出力を提出し直してください: demo_tool_a',
-      '成功済みの他の書き込み系 tool は重複して実行しないでください。',
+      '未成功の必須 tool 以外の書き込み系 tool は前回の試行で実行済みの可能性があるため、同じ内容を重複して実行しないでください。',
     ].join('\n')
     expect(actual).toEqual([
       {
@@ -1821,7 +1821,7 @@ describe('runAgentGraph', () => {
     const feedback = [
       '前回の試行は却下されました (理由: agent did not return a structured response)。',
       '構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。',
-      '前回の試行で成功した書き込み系 tool と同じ内容を重複して実行しないでください。',
+      'write_note・create_annotation などの書き込み系 tool は前回の試行で既に実行済みの可能性があります。同じ内容を重複して実行しないでください。',
     ].join('\n')
     expect(calls.map((call) => call.messageText)).toEqual([
       basePrompt,
@@ -1910,7 +1910,7 @@ describe('runAgentGraph', () => {
         basePrompt,
         [
           basePrompt,
-          `前回の試行は却下されました (理由: ${reasonText})。\n構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。\n前回の試行で成功した書き込み系 tool と同じ内容を重複して実行しないでください。`,
+          `前回の試行は却下されました (理由: ${reasonText})。\n構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。\nwrite_note・create_annotation などの書き込み系 tool は前回の試行で既に実行済みの可能性があります。同じ内容を重複して実行しないでください。`,
         ].join('\n'),
       ])
       expect(warnCalls).toEqual([
