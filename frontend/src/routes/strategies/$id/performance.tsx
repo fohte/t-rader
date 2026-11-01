@@ -171,7 +171,7 @@ function StrategyPerformancePage() {
           to="/trades"
           className="font-mono text-sm text-primary hover:underline"
         >
-          取引履歴で編集する →
+          取引で編集する →
         </Link>
       </div>
 
