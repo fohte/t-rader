@@ -271,6 +271,9 @@ mod tests {
     #[case::english_price_context_before_year_prefixed_word("close 3500 年末", vec![
         price_warning("3500"),
     ])]
+    #[case::currency_prefix_before_year_prefixed_word("¥9876 年末", vec![
+        price_warning("¥9876"),
+    ])]
     #[case::year_marker_on_next_line_is_not_a_date("9876\n年末", vec![
         price_warning("9876"),
     ])]
