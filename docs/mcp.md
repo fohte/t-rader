@@ -34,7 +34,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 `preview_dashboard` は `title` と `widgets[]` を含む YAML を受け取り、各 widget を既存の定義型で検証する。入力 YAML や widget 定義が不正なら path と理由の一覧を返す。設定が有効なら、計算結果、widget ごとのエラー、および YAML を URL-safe Base64 でエンコードした `/dashboards/preview#...` を返す。preview URL は frontend origin から開く相対パスで、後続の画面から利用する。データがない widget は `errors` に記録し、他の widget の計算を続ける。データベースエラーは MCP エラーとして返す。ダッシュボードは保存しない。
 
-`list_recent_notes` はノート一覧と同じ集計を使い、更新日時の新しい順にノートを返す。現行バージョンがあるノートは現行版を代表にし、現行版が無いノートは状態を問わず最新バージョンを代表にする。`status` は代表バージョンの状態、`is_current` は代表バージョンが現行かどうか、`unread_version_count` はそのノートの未レビュー版数を示す。本文は返さない。
+`list_recent_notes` はノート一覧と同じ集計を使い、更新日時の新しい順にノートを返す。現行バージョンがあるノートは現行バージョンを代表にし、現行バージョンが無いノートは状態を問わず最新バージョンを代表にする。`status` は代表バージョンの状態、`is_current` は代表バージョンが現行かどうか、`unread_version_count` はそのノートの未レビューのバージョン数を示す。本文は返さない。
 
 戦略設定を変更する HTTP API は Terraform provider が利用するため維持している。管理 MCP には設定を書き込む tool を登録しない。
 

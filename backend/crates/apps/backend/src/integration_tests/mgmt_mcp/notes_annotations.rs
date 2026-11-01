@@ -89,16 +89,70 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_recent_notes_caps_by_limit(db: gateway_postgres::DatabaseHandle) {
-        for i in 0..5 {
-            insert_test_note(&db, &format!("note-{i}"), "body").await;
+    async fn list_recent_notes_returns_newest_notes_up_to_limit(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let test_notes = [
+            ("Sample note 0", test_timestamp("2026-07-01T00:00:00Z")),
+            ("Sample note 1", test_timestamp("2026-07-02T00:00:00Z")),
+            ("Sample note 2", test_timestamp("2026-07-03T00:00:00Z")),
+            ("Sample note 3", test_timestamp("2026-07-04T00:00:00Z")),
+            ("Sample note 4", test_timestamp("2026-07-05T00:00:00Z")),
+        ];
+        let mut note_ids = Vec::new();
+        for (title, updated_at) in test_notes {
+            let note_id = insert_test_note(&db, title, "sample body").await;
+            note::ActiveModel {
+                id: Set(note_id),
+                updated_at: Set(updated_at),
+                ..Default::default()
+            }
+            .update(&db)
+            .await
+            .expect("set note update time");
+            note_ids.push(note_id);
         }
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let Json(result) = server
             .list_recent_notes(Parameters(ListRecentParams { limit: Some(3) }))
             .await
-            .expect("ok");
-        assert_eq!(result.notes.len(), 3);
+            .expect("list recent notes");
+
+        assert_eq!(
+            serde_json::to_value(result).expect("serialize result"),
+            serde_json::to_value(ListRecentNotesResult {
+                notes: vec![
+                    NoteMeta {
+                        note_id: note_ids[4],
+                        title: "Sample note 4".into(),
+                        status: "approved".into(),
+                        created_by_kind: "human".into(),
+                        updated_at: test_timestamp("2026-07-05T00:00:00Z"),
+                        is_current: true,
+                        unread_version_count: 0,
+                    },
+                    NoteMeta {
+                        note_id: note_ids[3],
+                        title: "Sample note 3".into(),
+                        status: "approved".into(),
+                        created_by_kind: "human".into(),
+                        updated_at: test_timestamp("2026-07-04T00:00:00Z"),
+                        is_current: true,
+                        unread_version_count: 0,
+                    },
+                    NoteMeta {
+                        note_id: note_ids[2],
+                        title: "Sample note 2".into(),
+                        status: "approved".into(),
+                        created_by_kind: "human".into(),
+                        updated_at: test_timestamp("2026-07-03T00:00:00Z"),
+                        is_current: true,
+                        unread_version_count: 0,
+                    },
+                ],
+            })
+            .expect("serialize expected result"),
+        );
     }
 
     #[backend_test_macros::database_test]
