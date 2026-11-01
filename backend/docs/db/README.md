@@ -40,7 +40,6 @@
 | [public.valuation](public.valuation.md)                                                         | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                                                                                         | BASE TABLE        |
 | [public.valuation_ingested_date](public.valuation_ingested_date.md)                             | 1       | 株価評価指標データの取り込み済み日付を記録する。                                                                                                   | BASE TABLE        |
 | [public.note_kind](public.note_kind.md)                                                         | 5       | ノートの分類と、その分類に適用するレビュー設定を定義する。                                                                                         | BASE TABLE        |
-| [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
 | [public.note_version](public.note_version.md)                                                   | 16      | ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。                                                                                 | BASE TABLE        |
 | [public.note_link](public.note_link.md)                                                         | 3       | ノートバージョン本文から別のノートへのリンクを保持する。                                                                                           | BASE TABLE        |
 | [public.financial_summary](public.financial_summary.md)                                         | 37      | 銘柄ごとの決算開示内容と業績予想を保持する。                                                                                                       | BASE TABLE        |
@@ -82,6 +81,7 @@
 | [public.calendar_event_sec_filing_check](public.calendar_event_sec_filing_check.md)             | 2       | SEC の資料を照合した最終日時をカレンダーイベントごとに保持する。                                                                                   | BASE TABLE        |
 | [public.calendar_event_macro_reference_check](public.calendar_event_macro_reference_check.md)   | 2       | 経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。                                                   | BASE TABLE        |
 | [public.us_stock_minute_bar_downsample_cursor](public.us_stock_minute_bar_downsample_cursor.md) | 2       | 米国株の 1 分足 downsample の再開位置を保持する。                                                                                                  | BASE TABLE        |
+| [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -634,11 +634,6 @@ erDiagram
   text description
   integer sort_order
 }
-"public.note_tag" {
-  text key
-  text display_name
-  text description
-}
 "public.note_version" {
   uuid id
   uuid note_id FK
@@ -1041,6 +1036,11 @@ erDiagram
 "public.us_stock_minute_bar_downsample_cursor" {
   smallint singleton_key
   timestamp_with_time_zone cursor_timestamp
+}
+"public.note_tag" {
+  text key
+  text display_name
+  text description
 }
 ```
 
