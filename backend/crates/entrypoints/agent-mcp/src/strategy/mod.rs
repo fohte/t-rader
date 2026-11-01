@@ -67,6 +67,8 @@ pub use dependencies::StrategyServerDependencies;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
+const READ_PAGE_COMPLETION_LIMIT_MCP_ERROR_CODE: i32 = -32052;
+const LLM_TIMEOUT_MCP_ERROR_CODE: i32 = -32053;
 
 /// 戦略 Agent からの書き込み時に記録する actor 種別。
 /// DB の CHECK 制約で `"human"` / `"llm"` のみ許容されているため `"llm"` を用いる。
@@ -137,7 +139,14 @@ pub(super) fn kata_exec_to_mcp_err(err: KataExecError) -> McpError {
 pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
     match err {
         LiteLlmError::Network(msg) => internal_error(format!("litellm network error: {msg}")),
-        LiteLlmError::Timeout(msg) => internal_error(format!("litellm request timed out: {msg}")),
+        LiteLlmError::Timeout(msg) => McpError::new(
+            ErrorCode(LLM_TIMEOUT_MCP_ERROR_CODE),
+            "LLM の応答が制限時間内に返りませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
+            Some(serde_json::json!({
+                "reason": "timeout",
+                "detail": msg,
+            })),
+        ),
         LiteLlmError::Api { status, message } => {
             internal_error(format!("litellm api error (status {status}): {message}"))
         }
@@ -374,7 +383,7 @@ pub(super) fn read_page_completion_limit_to_mcp(
     finish_reason: Option<String>,
 ) -> McpError {
     McpError::new(
-        ErrorCode(-32052),
+        ErrorCode(READ_PAGE_COMPLETION_LIMIT_MCP_ERROR_CODE),
         "読解用 LLM が上限内に答えられませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
         Some(serde_json::json!({
             "completion_tokens": completion_tokens,
@@ -563,21 +572,24 @@ mod tests {
     #[rstest]
     #[case::network(
         LiteLlmError::Network("connection refused".into()),
-        "litellm network error: connection refused"
+        McpError::internal_error("litellm network error: connection refused", None)
     )]
     #[case::timeout(
         LiteLlmError::Timeout("request deadline elapsed".into()),
-        "litellm request timed out: request deadline elapsed"
+        McpError::new(
+            ErrorCode(LLM_TIMEOUT_MCP_ERROR_CODE),
+            "LLM の応答が制限時間内に返りませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
+            Some(serde_json::json!({
+                "reason": "timeout",
+                "detail": "request deadline elapsed",
+            })),
+        )
     )]
-    fn litellm_error_to_mcp_keeps_network_and_timeout_distinct(
+    fn litellm_error_to_mcp_keeps_network_internal_and_timeout_recoverable(
         #[case] error: LiteLlmError,
-        #[case] expected_message: &str,
+        #[case] expected: McpError,
     ) {
-        let mapped = litellm_error_to_mcp(error);
-        assert_eq!(
-            (mapped.code, mapped.message.as_ref()),
-            (ErrorCode::INTERNAL_ERROR, expected_message),
-        );
+        assert_eq!(litellm_error_to_mcp(error), expected);
     }
 
     #[rstest]

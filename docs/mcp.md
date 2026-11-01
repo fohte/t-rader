@@ -69,7 +69,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 `query_youtube` と `read_page` の呼び出しでは、`x-tool-models` ヘッダに `agent_graph.tool_models` の JSON map が必要。各 tool は自分の名前をキーにモデルを取得し、ヘッダまたは対象キーが無い場合はエラーを返す。
 
-`read_page` は `agent_graph.tool_reasoning_efforts.read_page` が設定されている場合に限り、`x-tool-reasoning-efforts` ヘッダの JSON map を通じて `reasoning_effort` を LiteLLM に渡す。未設定の旧 agent からの呼び出しは effort 指定なしとして扱う。`read_page` の completion request は `max_completion_tokens: 8192` を指定し、応答が `finish_reason: length` または空の場合は MCP error `-32052` を返す。同じ質問での再試行を避け、質問を絞るか手元の情報で続けるよう agent に指示する。`query_youtube` の request には上限と effort を付けない。
+`read_page` は `agent_graph.tool_reasoning_efforts.read_page` が設定されている場合に限り、`x-tool-reasoning-efforts` ヘッダの JSON map を通じて `reasoning_effort` を LiteLLM に渡す。空文字列と空白だけの effort 値は `put_agent_graph` で拒否する。未設定の旧 agent からの呼び出しは effort 指定なしとして扱う。`read_page` の completion request は `max_completion_tokens: 8192` を指定し、応答が `finish_reason: length` または空の場合は MCP error `-32052` を返す。LLM request の timeout は `-32053` を返し、接続障害は従来どおり `-32603` を返す。`-32052` と `-32053` では同じ質問での再試行を避け、質問を絞るか手元の情報で続けるよう agent に指示する。`query_youtube` の request には上限と effort を付けない。
 
 `search_web` と `read_page` は task 実行単位で呼び出し回数を数える。各 tool の上限は `agent_graph.tool_limits` で変更でき、未設定時は 20 回。子実行では `x-subagent-execution-id` と `x-subagent-definition-key` の両方を指定する。子定義の `tool_limits` に対象 tool があれば、子実行単位と task 全体の両方で数え、どちらかの上限を超えると拒否する。対象 tool が子定義の `tool_limits` に無い場合は子単位では数えず、task 全体の上限だけを適用する。
 

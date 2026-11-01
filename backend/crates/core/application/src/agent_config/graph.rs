@@ -136,6 +136,8 @@ pub enum AgentGraphError {
     InvalidYaml(String),
     #[error("phase key {0:?} is duplicated")]
     DuplicatePhaseKey(String),
+    #[error("tool_reasoning_efforts entry for {tool:?} must not be empty")]
+    EmptyToolReasoningEffort { tool: String },
     #[error("phase {phase:?}: max_subagent_runs must be set when subagents are configured")]
     MissingMaxSubagentRuns { phase: String },
     #[error("phase {phase:?}: required tool {tool:?} is not included in tools")]
@@ -209,6 +211,13 @@ pub fn parse_agent_graph(yaml: &str) -> Result<Option<AgentGraphConfig>, AgentGr
 fn validate(config: &AgentGraphConfig) -> Result<(), AgentGraphError> {
     if let Some(timeout_minutes) = config.timeout_minutes {
         validate_timeout_minutes("agent_graph", timeout_minutes)?;
+    }
+    if let Some((tool, _)) = config
+        .tool_reasoning_efforts
+        .iter()
+        .find(|(_, effort)| effort.trim().is_empty())
+    {
+        return Err(AgentGraphError::EmptyToolReasoningEffort { tool: tool.clone() });
     }
     let mut seen = BTreeSet::new();
     for (i, phase) in config.phases.iter().enumerate() {
@@ -503,6 +512,31 @@ mod tests {
                     },
                 ],
             })),
+        );
+    }
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::whitespace_only("  ")]
+    fn parse_rejects_empty_tool_reasoning_effort(#[case] effort: &str) {
+        let yaml = format!(
+            indoc! {"
+                tool_reasoning_efforts:
+                  read_page: '{}'
+                phases:
+                  - key: plan
+                    label: Plan
+                    model: example-model-plan
+                    prompt: Make a plan
+            "},
+            effort,
+        );
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Err(AgentGraphError::EmptyToolReasoningEffort {
+                tool: "read_page".to_string(),
+            }),
         );
     }
 
