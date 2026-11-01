@@ -256,6 +256,7 @@ afterEach(() => {
   closeFloatingChat()
   window.localStorage.clear()
   apiMock.request.mockReset()
+  vi.restoreAllMocks()
 })
 
 describe('FloatingChat', () => {
