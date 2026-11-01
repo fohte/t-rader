@@ -318,7 +318,7 @@ export const MissingMarketValue: Story = {
 }
 
 export const Loading: Story = {
-  name: 'shows loading placeholders while dashboard data is fetched.',
+  name: 'shows loading placeholders while home data is fetched.',
   args: {
     ...args,
     stats: null,

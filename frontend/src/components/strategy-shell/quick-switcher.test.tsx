@@ -217,6 +217,16 @@ function getNavigationOutput(router: ReturnType<typeof createStoryRouter>) {
   }
 }
 
+function getScreenNavigationOutput(
+  matchingResults: string[],
+  router: ReturnType<typeof createStoryRouter>,
+) {
+  return {
+    matchingResults,
+    navigation: getNavigationOutput(router),
+  }
+}
+
 function getStrategyFilteringOutput(
   matchingResults: string[],
   router: ReturnType<typeof createStoryRouter>,
@@ -507,12 +517,17 @@ describe('QuickSwitcher', () => {
       })
       await user.click(input)
       await user.paste(query)
-      await user.click(await screen.findByText(label))
+      await screen.findByText(label)
+      const matchingResults = getPaletteResultLabels()
+      await user.click(screen.getByText(label))
       await screen.findByText(page)
 
-      expect(getNavigationOutput(router)).toEqual({
-        location: { pathname, search },
-        closed: true,
+      expect(getScreenNavigationOutput(matchingResults, router)).toEqual({
+        matchingResults: [label],
+        navigation: {
+          location: { pathname, search },
+          closed: true,
+        },
       })
     },
   )
