@@ -15,6 +15,7 @@ use utoipa::OpenApi;
         (name = "refs", description = "一級参照型 (stock / indicator / group)"),
         (name = "notes", description = "ノート"),
         (name = "note_kinds", description = "ノート種別"),
+        (name = "note_tags", description = "ノートタグ語彙"),
         (name = "annotations", description = "アノテーション"),
         (name = "comments", description = "コメントスレッド"),
         (name = "history", description = "変更履歴"),

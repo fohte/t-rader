@@ -43,6 +43,7 @@ pub mod news_content;
 pub mod note;
 pub mod note_kind;
 pub mod note_status_change_aggregate;
+pub mod note_tag;
 pub mod paper_trade;
 pub mod persistence;
 pub mod portfolio_history;

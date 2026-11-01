@@ -19,6 +19,7 @@ pub mod margin;
 pub mod note;
 pub mod note_kind;
 pub mod note_overview;
+pub mod note_tag;
 pub mod note_version;
 pub mod paper_account;
 pub mod portfolio_history;
@@ -68,6 +69,7 @@ pub use ingest_status::IngestStatusResponse;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use note_kind::NoteKindResponse;
 pub use note_overview::NoteOverviewResponse;
+pub use note_tag::NoteTagResponse;
 pub use note_version::{
     ApproveNoteVersionRequest, NoteVersionResponse, PendingNoteVersionResponse,
 };

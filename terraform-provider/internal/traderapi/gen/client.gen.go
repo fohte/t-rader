@@ -165,6 +165,13 @@ type CreateNoteKindRequest struct {
 	SortOrder        nullable.Nullable[int32]  `json:"sort_order,omitempty"`
 }
 
+// CreateNoteTagRequest defines model for CreateNoteTagRequest.
+type CreateNoteTagRequest struct {
+	Description nullable.Nullable[string] `json:"description,omitempty"`
+	DisplayName string                    `json:"display_name"`
+	Key         string                    `json:"key"`
+}
+
 // CreatePaperAccountRequest defines model for CreatePaperAccountRequest.
 type CreatePaperAccountRequest struct {
 	BenchmarkStockId nullable.Nullable[string] `json:"benchmark_stock_id,omitempty"`
@@ -498,6 +505,13 @@ type NoteKind struct {
 	SortOrder        int32                     `json:"sort_order"`
 }
 
+// NoteTag defines model for NoteTag.
+type NoteTag struct {
+	Description nullable.Nullable[string] `json:"description,omitempty"`
+	DisplayName string                    `json:"display_name"`
+	Key         string                    `json:"key"`
+}
+
 // PaperAccount defines model for PaperAccount.
 type PaperAccount struct {
 	BenchmarkStockId nullable.Nullable[string] `json:"benchmark_stock_id,omitempty"`
@@ -828,6 +842,12 @@ type UpdateNoteKindRequest struct {
 	SortOrder        nullable.Nullable[int32]  `json:"sort_order,omitempty"`
 }
 
+// UpdateNoteTagRequest defines model for UpdateNoteTagRequest.
+type UpdateNoteTagRequest struct {
+	Description nullable.Nullable[string] `json:"description,omitempty"`
+	DisplayName nullable.Nullable[string] `json:"display_name,omitempty"`
+}
+
 // UpdateRssFeedRequest defines model for UpdateRssFeedRequest.
 type UpdateRssFeedRequest struct {
 	// ContentSource 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。
@@ -1003,6 +1023,12 @@ type CreateNoteKindJSONRequestBody = CreateNoteKindRequest
 
 // UpdateNoteKindJSONRequestBody defines body for UpdateNoteKind for application/json ContentType.
 type UpdateNoteKindJSONRequestBody = UpdateNoteKindRequest
+
+// CreateNoteTagJSONRequestBody defines body for CreateNoteTag for application/json ContentType.
+type CreateNoteTagJSONRequestBody = CreateNoteTagRequest
+
+// UpdateNoteTagJSONRequestBody defines body for UpdateNoteTag for application/json ContentType.
+type UpdateNoteTagJSONRequestBody = UpdateNoteTagRequest
 
 // CreatePaperAccountJSONRequestBody defines body for CreatePaperAccount for application/json ContentType.
 type CreatePaperAccountJSONRequestBody = CreatePaperAccountRequest
@@ -1470,6 +1496,44 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
 	UpdateNoteKind(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListNoteTags ノートタグ一覧
+	//
+	// Corresponds with GET /api/note-tags (the `ListNoteTags` operationId).
+	ListNoteTags(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNoteTagWithBody ノートタグを作成
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+	CreateNoteTagWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNoteTag ノートタグを作成
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+	CreateNoteTag(ctx context.Context, body CreateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteNoteTag ノートタグを削除
+	//
+	// Corresponds with DELETE /api/note-tags/{key} (the `DeleteNoteTag` operationId).
+	DeleteNoteTag(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNoteTagWithBody ノートタグを部分更新する (key は変更不可)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+	UpdateNoteTagWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNoteTag ノートタグを部分更新する (key は変更不可)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+	UpdateNoteTag(ctx context.Context, key string, body UpdateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListPaperAccounts ペーパートレード口座一覧
 	//
@@ -2721,6 +2785,104 @@ func (c *OpenAPIClient) UpdateNoteKindWithBody(ctx context.Context, key string, 
 // Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
 func (c *OpenAPIClient) UpdateNoteKind(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateNoteKindRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListNoteTags ノートタグ一覧
+//
+// Corresponds with GET /api/note-tags (the `ListNoteTags` operationId).
+func (c *OpenAPIClient) ListNoteTags(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNoteTagsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNoteTagWithBody ノートタグを作成
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+func (c *OpenAPIClient) CreateNoteTagWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNoteTagRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNoteTag ノートタグを作成
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+func (c *OpenAPIClient) CreateNoteTag(ctx context.Context, body CreateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNoteTagRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteNoteTag ノートタグを削除
+//
+// Corresponds with DELETE /api/note-tags/{key} (the `DeleteNoteTag` operationId).
+func (c *OpenAPIClient) DeleteNoteTag(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteNoteTagRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNoteTagWithBody ノートタグを部分更新する (key は変更不可)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+func (c *OpenAPIClient) UpdateNoteTagWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNoteTagRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNoteTag ノートタグを部分更新する (key は変更不可)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+func (c *OpenAPIClient) UpdateNoteTag(ctx context.Context, key string, body UpdateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNoteTagRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5086,6 +5248,154 @@ func NewUpdateNoteKindRequestWithBody(server string, key string, contentType str
 	}
 
 	operationPath := fmt.Sprintf("/api/note-kinds/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListNoteTagsRequest constructs an http.Request for the ListNoteTags method
+func NewListNoteTagsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-tags")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateNoteTagRequest calls the generic CreateNoteTag builder with application/json body
+func NewCreateNoteTagRequest(server string, body CreateNoteTagJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateNoteTagRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateNoteTagRequestWithBody constructs an http.Request for the CreateNoteTag method, with any body, and a specified content type
+func NewCreateNoteTagRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-tags")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteNoteTagRequest constructs an http.Request for the DeleteNoteTag method
+func NewDeleteNoteTagRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-tags/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateNoteTagRequest calls the generic UpdateNoteTag builder with application/json body
+func NewUpdateNoteTagRequest(server string, key string, body UpdateNoteTagJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateNoteTagRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewUpdateNoteTagRequestWithBody constructs an http.Request for the UpdateNoteTag method, with any body, and a specified content type
+func NewUpdateNoteTagRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-tags/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -7579,6 +7889,48 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
 	UpdateNoteKindWithResponse(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNoteKindResult, error)
+
+	// ListNoteTagsWithResponse ノートタグ一覧
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/note-tags (the `ListNoteTags` operationId).
+	ListNoteTagsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNoteTagsResult, error)
+
+	// CreateNoteTagWithBodyWithResponse ノートタグを作成
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+	CreateNoteTagWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNoteTagResult, error)
+
+	// CreateNoteTagWithResponse ノートタグを作成
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+	CreateNoteTagWithResponse(ctx context.Context, body CreateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNoteTagResult, error)
+
+	// DeleteNoteTagWithResponse ノートタグを削除
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/note-tags/{key} (the `DeleteNoteTag` operationId).
+	DeleteNoteTagWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteNoteTagResult, error)
+
+	// UpdateNoteTagWithBodyWithResponse ノートタグを部分更新する (key は変更不可)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+	UpdateNoteTagWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNoteTagResult, error)
+
+	// UpdateNoteTagWithResponse ノートタグを部分更新する (key は変更不可)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+	UpdateNoteTagWithResponse(ctx context.Context, key string, body UpdateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNoteTagResult, error)
 
 	// ListPaperAccountsWithResponse ペーパートレード口座一覧
 	//
@@ -10387,6 +10739,254 @@ func (r UpdateNoteKindResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateNoteKindResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListNoteTagsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]NoteTag
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNoteTagsResult) GetJSON200() *[]NoteTag {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListNoteTagsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNoteTagsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNoteTagsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNoteTagsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNoteTagsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateNoteTagResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *NoteTag
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateNoteTagResult) GetJSON201() *NoteTag {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateNoteTagResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateNoteTagResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r CreateNoteTagResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateNoteTagResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateNoteTagResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateNoteTagResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateNoteTagResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateNoteTagResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateNoteTagResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteNoteTagResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteNoteTagResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteNoteTagResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteNoteTagResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteNoteTagResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteNoteTagResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteNoteTagResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateNoteTagResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NoteTag
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateNoteTagResult) GetJSON200() *NoteTag {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateNoteTagResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateNoteTagResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r UpdateNoteTagResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateNoteTagResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UpdateNoteTagResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateNoteTagResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateNoteTagResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateNoteTagResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateNoteTagResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14027,6 +14627,84 @@ func (c *ClientWithResponses) UpdateNoteKindWithResponse(ctx context.Context, ke
 	return ParseUpdateNoteKindResult(rsp)
 }
 
+// ListNoteTagsWithResponse ノートタグ一覧
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/note-tags (the `ListNoteTags` operationId).
+func (c *ClientWithResponses) ListNoteTagsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNoteTagsResult, error) {
+	rsp, err := c.ListNoteTags(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNoteTagsResult(rsp)
+}
+
+// CreateNoteTagWithBodyWithResponse ノートタグを作成
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+func (c *ClientWithResponses) CreateNoteTagWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNoteTagResult, error) {
+	rsp, err := c.CreateNoteTagWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNoteTagResult(rsp)
+}
+
+// CreateNoteTagWithResponse ノートタグを作成
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/note-tags (the `CreateNoteTag` operationId).
+func (c *ClientWithResponses) CreateNoteTagWithResponse(ctx context.Context, body CreateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNoteTagResult, error) {
+	rsp, err := c.CreateNoteTag(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNoteTagResult(rsp)
+}
+
+// DeleteNoteTagWithResponse ノートタグを削除
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/note-tags/{key} (the `DeleteNoteTag` operationId).
+func (c *ClientWithResponses) DeleteNoteTagWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteNoteTagResult, error) {
+	rsp, err := c.DeleteNoteTag(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteNoteTagResult(rsp)
+}
+
+// UpdateNoteTagWithBodyWithResponse ノートタグを部分更新する (key は変更不可)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+func (c *ClientWithResponses) UpdateNoteTagWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNoteTagResult, error) {
+	rsp, err := c.UpdateNoteTagWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNoteTagResult(rsp)
+}
+
+// UpdateNoteTagWithResponse ノートタグを部分更新する (key は変更不可)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/note-tags/{key} (the `UpdateNoteTag` operationId).
+func (c *ClientWithResponses) UpdateNoteTagWithResponse(ctx context.Context, key string, body UpdateNoteTagJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNoteTagResult, error) {
+	rsp, err := c.UpdateNoteTag(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNoteTagResult(rsp)
+}
+
 // ListPaperAccountsWithResponse ペーパートレード口座一覧
 //
 // Returns a wrapper object for the known response body format(s).
@@ -16599,6 +17277,197 @@ func ParseUpdateNoteKindResult(rsp *http.Response) (*UpdateNoteKindResult, error
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest NoteKind
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListNoteTagsResult parses an HTTP response from a ListNoteTagsWithResponse call
+func ParseListNoteTagsResult(rsp *http.Response) (*ListNoteTagsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNoteTagsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []NoteTag
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateNoteTagResult parses an HTTP response from a CreateNoteTagWithResponse call
+func ParseCreateNoteTagResult(rsp *http.Response) (*CreateNoteTagResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateNoteTagResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest NoteTag
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteNoteTagResult parses an HTTP response from a DeleteNoteTagWithResponse call
+func ParseDeleteNoteTagResult(rsp *http.Response) (*DeleteNoteTagResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteNoteTagResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateNoteTagResult parses an HTTP response from a UpdateNoteTagWithResponse call
+func ParseUpdateNoteTagResult(rsp *http.Response) (*UpdateNoteTagResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateNoteTagResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NoteTag
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
