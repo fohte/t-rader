@@ -210,9 +210,7 @@ fn starts_with_ascii_word_character_before(text: &str, start: usize) -> bool {
 }
 
 fn is_price_candidate(text: &str, number: &NumberRange) -> bool {
-    if is_date_year(text, &number.range, number.digits)
-        || has_non_price_scaled_counter(text, number.range.end)
-    {
+    if is_date_year(text, number) || has_non_price_scaled_counter(text, number.range.end) {
         return false;
     }
     number.digits >= 4
@@ -264,22 +262,27 @@ fn has_non_price_scaled_counter(text: &str, number_end: usize) -> bool {
     unit.chars().count() > 1 || !rest.chars().next().is_some_and(is_cjk_ideograph)
 }
 
-fn is_date_year(text: &str, range: &Range<usize>, digits: usize) -> bool {
-    if digits != 4 {
+fn is_date_year(text: &str, number: &NumberRange) -> bool {
+    if number.digits != 4 {
         return false;
     }
-    let after = &text[range.end..];
-    after.starts_with('年') || has_numeric_date_suffix(after)
+    let after = &text[number.range.end..];
+    let same_line_after = after.split(['\r', '\n']).next().unwrap_or_default();
+    let is_unseparated_integer = text[number.number_start..number.range.end]
+        .bytes()
+        .all(|byte| byte.is_ascii_digit());
+    let has_spaced_year_suffix = is_unseparated_integer
+        && !after.starts_with('年')
+        && same_line_after.trim_start().starts_with('年')
+        && !has_price_context(text, number.number_start)
+        && !has_currency_prefix(text, number.number_start);
+    after.starts_with('年') || has_spaced_year_suffix || has_numeric_date_suffix(after)
 }
 
 fn has_numeric_date_suffix(after: &str) -> bool {
-    let Some((separator_start, separator)) = after.char_indices().next() else {
+    let Some((separator_start, separator)) = numeric_date_separator(after) else {
         return false;
     };
-    if !matches!(separator, '-' | '/' | '.') {
-        return false;
-    }
-
     let month_start = separator_start + separator.len_utf8();
     let month_len = after[month_start..]
         .chars()
@@ -289,16 +292,33 @@ fn has_numeric_date_suffix(after: &str) -> bool {
         return false;
     }
     let day_separator_start = month_start + month_len;
-    if !after[day_separator_start..].starts_with(separator) {
+    let Some((day_separator_offset, day_separator)) =
+        numeric_date_separator(&after[day_separator_start..])
+    else {
+        return false;
+    };
+    if day_separator != separator {
         return false;
     }
-    let day_start = day_separator_start + separator.len_utf8();
+    let day_start = day_separator_start + day_separator_offset + separator.len_utf8();
     (1..=2).contains(
         &after[day_start..]
             .chars()
             .take_while(|character| character.is_ascii_digit())
             .count(),
     )
+}
+
+fn numeric_date_separator(after: &str) -> Option<(usize, char)> {
+    let (separator_start, separator) = after.char_indices().next()?;
+    let (separator_start, separator) = if separator == '\\' {
+        // Markdown では `\-` が `-` と表示される。
+        let (offset, escaped_separator) = after[separator.len_utf8()..].char_indices().next()?;
+        (separator.len_utf8() + offset, escaped_separator)
+    } else {
+        (separator_start, separator)
+    };
+    matches!(separator, '-' | '/' | '.').then_some((separator_start, separator))
 }
 
 fn has_currency_prefix(text: &str, number_start: usize) -> bool {
