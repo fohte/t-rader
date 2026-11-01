@@ -42,6 +42,8 @@ mod note_read_query;
 mod note_status_change_aggregate;
 mod note_tag;
 mod paper_trade;
+#[cfg(feature = "performance-workload")]
+pub mod performance_workload_sql;
 mod persistence;
 mod prediction;
 mod refs;

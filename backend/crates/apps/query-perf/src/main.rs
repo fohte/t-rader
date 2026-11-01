@@ -1,4 +1,5 @@
 mod log;
+mod required_workload;
 mod runner;
 
 use std::{
@@ -13,15 +14,25 @@ use std::{
 use clap::Parser;
 use indoc::indoc;
 use log::Exclusion;
+use required_workload::{
+    WorkloadFailureKind, parse_workload_report, sql_fingerprint, verify_required_workload,
+};
 use runner::PerfReport;
 
 const EXCLUSIONS: &str = include_str!("../exclusions.json");
+const EXPECTED_REQUIRED_CASE_COUNT: usize = 300;
 
 #[derive(Debug, Parser)]
-#[command(about = "Replays backend test SELECT statements against the performance database")]
+#[command(
+    about = "Replays backend test SELECT statements and verifies required workload observations"
+)]
 struct Args {
     #[arg(long)]
     log_file: PathBuf,
+    #[arg(long)]
+    workload_log: PathBuf,
+    #[arg(long)]
+    workload_report: PathBuf,
 }
 
 #[tokio::main]
@@ -39,33 +50,80 @@ async fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
     let args = Args::parse();
     let database_url = env::var("DATABASE_URL")?;
     let log_contents = fs::read_to_string(args.log_file)?;
+    let workload_log = fs::read_to_string(args.workload_log)?;
+    let workload_report = fs::read_to_string(args.workload_report)?;
     let exclusions: Vec<Exclusion> = serde_json::from_str(EXCLUSIONS)?;
     validate_exclusions(&exclusions)?;
 
-    let parsed_log = log::parse_json_log(&log_contents, &exclusions).map_err(io::Error::other)?;
-    let report = runner::replay(&database_url, parsed_log, exclusions).await?;
+    let parsed_log = log::parse_json_log(&log_contents, &exclusions)
+        .map_err(|_| io::Error::other("query-perf could not parse the backend SQL log"))?;
+    let workload_report =
+        parse_workload_report(&workload_report).map_err(workload_failure_error)?;
+    let excluded_fingerprints = exclusions
+        .iter()
+        .map(|exclusion| sql_fingerprint(&exclusion.sql))
+        .collect();
+    let workload_verification =
+        verify_required_workload(&workload_report, &workload_log, &excluded_fingerprints)
+            .map_err(workload_failure_error)?;
+    if workload_verification.case_count != EXPECTED_REQUIRED_CASE_COUNT {
+        return Err(io::Error::other(format!(
+            "required workload failed: expected {EXPECTED_REQUIRED_CASE_COUNT} cases, observed {}",
+            workload_verification.case_count
+        ))
+        .into());
+    }
+    let report = runner::replay(&database_url, parsed_log, exclusions)
+        .await
+        .map_err(|_| io::Error::other("query-perf could not replay the backend SQL log"))?;
     print_report(&report);
+    println!(
+        "Verified required workload: cases={} expected SQL statements={}",
+        workload_verification.case_count, workload_verification.observed_sql_count
+    );
     append_step_summary(&report)?;
 
-    if report.failures.is_empty() {
+    if report.failures.is_empty() && !report.statements.is_empty() {
         Ok(())
     } else {
         Err(io::Error::other(format!(
-            "query-perf found {} failing SQL statement(s)",
-            report.failures.len()
+            "query-perf replay failed: failures={}, replayed statements={}",
+            report.failures.len(),
+            report.statements.len()
         ))
         .into())
     }
 }
 
+fn workload_failure_error(kind: WorkloadFailureKind) -> io::Error {
+    let reason = match kind {
+        WorkloadFailureKind::InvalidReport => "invalid workload report",
+        WorkloadFailureKind::InvalidSqlLog => "invalid workload SQL log",
+        WorkloadFailureKind::DuplicateCaseId => "duplicate workload case ID",
+        WorkloadFailureKind::MissingCase => "required workload case did not complete",
+        WorkloadFailureKind::UnexpectedCompletedCase => "unexpected workload case completed",
+        WorkloadFailureKind::MissingExpectation => "workload case has no expected SQL",
+        WorkloadFailureKind::UnexpectedExpectation => {
+            "workload report has an unexpected SQL expectation"
+        }
+        WorkloadFailureKind::DuplicateExpectation => "workload SQL expectation is duplicated",
+        WorkloadFailureKind::MissingObservation => "expected workload SQL was not observed",
+        WorkloadFailureKind::UnexpectedObservedCase => {
+            "unexpected workload case appeared in SQL log"
+        }
+        WorkloadFailureKind::ExcludedOnly => "required workload SQL was handled only by exclusions",
+    };
+    io::Error::other(format!("required workload failed: {reason}"))
+}
+
 fn validate_exclusions(exclusions: &[Exclusion]) -> io::Result<()> {
-    if let Some(exclusion) = exclusions
+    if exclusions
         .iter()
-        .find(|exclusion| exclusion.sql.trim().is_empty() || exclusion.reason.trim().is_empty())
+        .any(|exclusion| exclusion.sql.trim().is_empty() || exclusion.reason.trim().is_empty())
     {
-        return Err(io::Error::other(format!(
-            "query-perf exclusions require a SQL statement and reason: {exclusion:?}"
-        )));
+        return Err(io::Error::other(
+            "query-perf exclusions require a SQL statement and reason",
+        ));
     }
 
     Ok(())
@@ -79,37 +137,36 @@ fn print_report(report: &PerfReport) {
     );
     for statement in &report.statements {
         println!(
-            "{} max={}ms runs={} SQL={} Replay SQL={}",
+            "{} max={}ms runs={} SQL fingerprint={} replay fingerprint={}",
             if statement.succeeded { "PASS" } else { "FAIL" },
             statement.max_duration.as_secs_f64() * 1_000.0,
             statement.runs,
-            statement.sql.replace('\n', " "),
-            replay_sql_description(&statement.sql, &statement.replay_sql).replace('\n', " ")
+            sql_fingerprint(&statement.sql),
+            sql_fingerprint(&statement.replay_sql)
         );
     }
     for excluded in &report.excluded {
-        println!("EXCLUDED reason={} SQL={}", excluded.reason, excluded.sql);
+        println!(
+            "EXCLUDED reason={} SQL fingerprint={}",
+            excluded.reason,
+            sql_fingerprint(&excluded.sql)
+        );
     }
     for failure in &report.failures {
+        let category = if failure.message.to_ascii_lowercase().contains("timeout") {
+            "timeout"
+        } else {
+            "execution"
+        };
         eprintln!(
-            indoc! {"
-                FAIL {} after {}ms
-                Original SQL: {}
-                Replay SQL: {}
-                {}: {}
-                {}
-            "},
+            "FAIL {} category={} after {}ms SQL fingerprint={} replay fingerprint={} shifted_parameters={} has_parameters={}",
             failure.kind,
+            category,
             failure.duration.as_secs_f64() * 1_000.0,
-            failure.sql,
-            replay_sql_description(&failure.sql, &failure.replay_sql),
-            if failure.shifted_parameters {
-                "Shifted parameters"
-            } else {
-                "Original parameters"
-            },
-            failure.parameters,
-            failure.message
+            sql_fingerprint(&failure.sql),
+            sql_fingerprint(&failure.replay_sql),
+            failure.shifted_parameters,
+            !failure.parameters.is_empty()
         );
     }
 }
@@ -127,7 +184,7 @@ fn append_step_summary(report: &PerfReport) -> io::Result<()> {
 
             Target date: `{}`
 
-            | Result | Maximum | Runs | Original SQL | Replay SQL |
+            | Result | Maximum | Runs | SQL fingerprint | Replay fingerprint |
             | --- | ---: | ---: | --- | --- |
         "},
         report.target_date
@@ -139,17 +196,15 @@ fn append_step_summary(report: &PerfReport) -> io::Result<()> {
             if statement.succeeded { "PASS" } else { "FAIL" },
             statement.max_duration.as_secs_f64() * 1_000.0,
             statement.runs,
-            statement.sql.replace('|', "\\|").replace('\n', " "),
-            replay_sql_description(&statement.sql, &statement.replay_sql)
-                .replace('|', "\\|")
-                .replace('\n', " ")
+            sql_fingerprint(&statement.sql),
+            sql_fingerprint(&statement.replay_sql)
         )?;
     }
     for excluded in &report.excluded {
         writeln!(
             file,
-            "\nExcluded `{}`: {}",
-            excluded.sql.replace('`', "\\`").replace('\n', " "),
+            "\nExcluded SQL fingerprint `{}`: {}",
+            sql_fingerprint(&excluded.sql),
             excluded.reason
         )?;
     }
@@ -158,49 +213,19 @@ fn append_step_summary(report: &PerfReport) -> io::Result<()> {
         writeln!(
             file,
             indoc! {"
-                ### Failed SQL ({})
+                ### Failed SQL
 
+                Kind: `{}`
                 Elapsed: {:.3} ms
-
-                Original SQL:
-
-                ```sql
-                {}
-                ```
-
-                Replay SQL:
-
-                ```sql
-                {}
-                ```
-
-                {}: `{}`
-
-                {}
+                Fingerprint: `{}`
             "},
             failure.kind,
             failure.duration.as_secs_f64() * 1_000.0,
-            failure.sql,
-            replay_sql_description(&failure.sql, &failure.replay_sql),
-            if failure.shifted_parameters {
-                "Shifted parameters"
-            } else {
-                "Original parameters"
-            },
-            failure.parameters.replace('`', "\\`"),
-            failure.message
+            sql_fingerprint(&failure.sql)
         )?;
     }
 
     Ok(())
-}
-
-fn replay_sql_description<'a>(original: &'a str, replay: &'a str) -> &'a str {
-    if original == replay {
-        "(same as original)"
-    } else {
-        replay
-    }
 }
 
 #[cfg(test)]
@@ -216,7 +241,7 @@ mod tests {
                 reason: String::new(),
             }])
             .map_err(|error| error.to_string()),
-            Err("query-perf exclusions require a SQL statement and reason: Exclusion { sql: \"SELECT 1\", reason: \"\" }".to_string())
+            Err("query-perf exclusions require a SQL statement and reason".to_string())
         );
     }
 }

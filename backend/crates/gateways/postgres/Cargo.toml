@@ -5,6 +5,7 @@ edition = "2024"
 
 [features]
 test-support = ["dep:migration", "sqlx/migrate"]
+performance-workload = []
 
 [dependencies]
 async-trait = { workspace = true }

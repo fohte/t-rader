@@ -54,6 +54,17 @@ const QUERY_INDICATOR_SQL: &str = r#"
     WHERE indicator.id = $1::text
 "#;
 
+#[cfg(feature = "performance-workload")]
+pub(super) fn performance_workload_sql() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("widget.resolve.latest", RESOLVE_AS_OF_SQL),
+        ("widget.resolve.requested", RESOLVE_REQUESTED_AS_OF_SQL),
+        ("widget.resolve.indicator", RESOLVE_INDICATOR_AS_OF_SQL),
+        ("widget.query.indicator", QUERY_INDICATOR_SQL),
+        ("widget.query", QUERY_WIDGET_SQL.as_str()),
+    ]
+}
+
 static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
     with_shared_market_ctes(
         r#"

@@ -129,6 +129,14 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+#[cfg(feature = "performance-workload")]
+pub(super) fn performance_workload_sql() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("group-movers.axis-exists", GROUP_AXIS_EXISTS_SQL),
+        ("group-movers.list", LIST_GROUP_MOVERS_SQL.as_str()),
+    ]
+}
+
 #[derive(Debug, FromQueryResult)]
 struct GroupMoverRow {
     group_key: String,

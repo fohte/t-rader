@@ -48,17 +48,17 @@ backend/crates/
 
 ## crate の責務
 
-| crate                | 責務                                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------------ |
-| `core/domain`        | 値、エンティティ、ドメインルールを定義する。                                               |
-| `core/application`   | ユースケースと port を定義する。port は application が必要とする機能を表す。               |
-| `entrypoints/*`      | HTTP、MCP、webhook、単発ジョブなどの入力を受け取り、application のユースケースを呼び出す。 |
-| `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                               |
-| `apps/backend`       | 各 crate を組み立て、アプリケーションを起動する。                                          |
-| `apps/query-perf`    | backend test の JSON SQL log を perf-db で再実行する CI 専用 CLI。                         |
-| `libs/rate-limit`    | Redis を使って process 間で共有する rate limit と cooldown を提供する。                    |
-| `libs/test-macros`   | DB test 用 proc macro を提供する。                                                         |
-| `backend/migration/` | SeaORM migration を管理する。                                                              |
+| crate                | 責務                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `core/domain`        | 値、エンティティ、ドメインルールを定義する。                                                             |
+| `core/application`   | ユースケースと port を定義する。port は application が必要とする機能を表す。                             |
+| `entrypoints/*`      | HTTP、MCP、webhook、単発ジョブなどの入力を受け取り、application のユースケースを呼び出す。               |
+| `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                                             |
+| `apps/backend`       | 各 crate を組み立て、アプリケーションを起動する。                                                        |
+| `apps/query-perf`    | backend test の SQL を perf-db で再実行し、必須 workload のケース ID と SQL 観測も照合する CI 専用 CLI。 |
+| `libs/rate-limit`    | Redis を使って process 間で共有する rate limit と cooldown を提供する。                                  |
+| `libs/test-macros`   | DB test 用 proc macro を提供する。                                                                       |
+| `backend/migration/` | SeaORM migration を管理する。                                                                            |
 
 composition root は `backend/crates/apps/backend/` にある。`src/main.rs` が外部接続、依存の組み立て、起動モードを管理し、`src/lib.rs` と `src/mcp/` が HTTP router、MCP の session 管理、allowed hosts、access log など複数の entrypoint を組み合わせる。`src/services/use_cases/` は gateway 実装から application のユースケースを組み立てる。
 

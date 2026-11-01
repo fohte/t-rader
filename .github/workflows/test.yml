@@ -629,6 +629,10 @@ jobs:
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
     env:
       CARGO_INCREMENTAL: '0'
       SCCACHE_GHA_ENABLED: 'true'
@@ -692,15 +696,8 @@ jobs:
           }
 
           dump_db_logs() {
-            echo "::group::PostgreSQL service logs"
-            docker logs "$DB_CONTAINER_ID" || true
-            docker exec "$DB_CONTAINER_ID" sh -c '
-              for log_file in "$PGDATA"/log/*.json; do
-                [ -f "$log_file" ] || continue
-                cat "$log_file"
-              done
-            ' || true
-            echo "::endgroup::"
+            echo "PostgreSQL service is not ready; raw SQL logs remain local."
+            docker exec "$DB_CONTAINER_ID" pg_isready --username=t_rader || true
           }
 
           db_psql \
@@ -784,8 +781,8 @@ jobs:
           REDIS_URL: redis://rate-limit-test:test-password@localhost:6379/
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
-      - name: Capture PostgreSQL query log
-        if: always()
+      - name: Capture PostgreSQL query log locally
+        if: success()
         env:
           DB_CONTAINER_ID: ${{ job.services.db.id }}
           QUERY_LOG_PATH: ${{ runner.temp }}/backend-query-log/postgresql.json
@@ -803,21 +800,11 @@ jobs:
           log_path=$(db_psql --command="SELECT current_setting('data_directory') || '/' || pg_current_logfile('jsonlog')")
           if [[ -z "$log_path" ]]; then
             echo "PostgreSQL did not report an active JSON log file" >&2
-            docker logs "$DB_CONTAINER_ID"
             exit 1
           fi
 
           mkdir -p "$(dirname "$QUERY_LOG_PATH")"
           docker cp "$DB_CONTAINER_ID:$log_path" "$QUERY_LOG_PATH"
-
-      - name: Upload PostgreSQL query log
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: backend-query-log
-          path: ${{ runner.temp }}/backend-query-log/postgresql.json
-          if-no-files-found: error
-          retention-days: 1
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
@@ -827,33 +814,6 @@ jobs:
           flags: backend
           fail_ci_if_error: false
 
-  query-perf:
-    needs: unit-test-backend
-    if: needs.unit-test-backend.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    permissions:
-      contents: read
-      packages: read
-    env:
-      CARGO_INCREMENTAL: '0'
-      SCCACHE_GHA_ENABLED: 'true'
-      RUSTC_WRAPPER: 'sccache'
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - run: rustup show
-
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-
-      - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
-        with:
-          version: 2026.9.11
-
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -861,16 +821,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download backend query log
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: backend-query-log
-          path: backend-query-log
-
       - name: Build query performance runner
-        run: cargo build --manifest-path backend/Cargo.toml -p query-perf
+        run: cargo build --manifest-path backend/Cargo.toml -p query-perf -p backend --features backend/performance-workload
 
-      - name: Pull or build perf DB image
+      - name: Test required workload case definitions
+        run: cargo test --manifest-path backend/Cargo.toml -p backend --features performance-workload --bin perf-workload
+
+      - name: Pull or build performance database image
         id: perf-db-image
         run: |
           image_ref=$(backend/scripts/build-perf-db-image.sh --image-ref)
@@ -883,25 +840,67 @@ jobs:
                 backend/scripts/build-perf-db-image.sh
                 ;;
               *)
-                printf 'Failed to inspect perf DB image %s:\n%s\n' "$image_ref" "$manifest_output" >&2
+                printf 'Failed to inspect performance DB image %s.\n' "$image_ref" >&2
                 exit 1
                 ;;
             esac
           fi
           echo "image_ref=$image_ref" >> "$GITHUB_OUTPUT"
 
-      - name: Start memory-limited perf DB
+      - name: Start performance database for the old SQL control
+        run: |
+          docker run \
+            --detach \
+            --name query-perf-control-db \
+            --memory=6g \
+            --memory-swap=6g \
+            --publish 127.0.0.1:5433:5432 \
+            "${{ steps.perf-db-image.outputs.image_ref }}"
+
+      - name: Wait for performance control database
+        run: |
+          ready=false
+          for _ in {1..120}; do
+            if docker exec query-perf-control-db pg_isready --username=t_rader --dbname=t_rader; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            echo "Performance control database did not become ready." >&2
+            exit 1
+          fi
+
+      - name: Verify performance control database profile
+        run: |
+          docker exec -i query-perf-control-db psql \
+            -X -q -U t_rader -d t_rader -v ON_ERROR_STOP=1 -v record_profile=false \
+            < backend/perf-db/verify-profile.sql
+
+      - name: Verify old group movers SQL fails within the same limit
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@127.0.0.1:5433/t_rader
+        run: cargo run --manifest-path backend/Cargo.toml -p backend --features performance-workload --bin perf-workload -- --baseline-only
+
+      - name: Remove performance control database
+        if: always()
+        run: |
+          if docker ps -a --format '{{.Names}}' | rg -x 'query-perf-control-db'; then
+            docker rm --force query-perf-control-db
+          fi
+
+      - name: Start memory-limited performance database
         run: |
           docker run \
             --detach \
             --name query-perf-db \
-            --restart=on-failure:5 \
             --memory=6g \
             --memory-swap=6g \
-            --publish 127.0.0.1:5432:5432 \
+            --publish 127.0.0.1:5433:5432 \
             "${{ steps.perf-db-image.outputs.image_ref }}"
 
-      - name: Wait for perf DB
+      - name: Wait for performance database
         run: |
           ready=false
           for _ in {1..120}; do
@@ -912,36 +911,110 @@ jobs:
             sleep 1
           done
           if [[ "$ready" != true ]]; then
-            docker logs query-perf-db
+            echo "Performance database did not become ready." >&2
             exit 1
           fi
 
-      - name: Verify perf DB profile
+      - name: Configure private SQL observation log
         run: |
-          docker exec -i query-perf-db psql \
+          docker exec query-perf-db psql \
             -X \
             -q \
             -U t_rader \
             -d t_rader \
             -v ON_ERROR_STOP=1 \
-            -v record_profile=false \
+            -c "ALTER SYSTEM SET logging_collector = on" \
+            -c "ALTER SYSTEM SET log_destination = 'jsonlog'" \
+            -c "ALTER SYSTEM SET log_statement = 'all'" \
+            -c "ALTER SYSTEM SET log_parameter_max_length = 0" \
+            -c "ALTER SYSTEM SET log_rotation_age = 0" \
+            -c "ALTER SYSTEM SET log_rotation_size = 0"
+          docker restart query-perf-db
+          ready=false
+          for _ in {1..120}; do
+            if docker exec query-perf-db pg_isready --username=t_rader --dbname=t_rader; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            echo "Performance database did not restart with private query logging." >&2
+            exit 1
+          fi
+          settings=$(docker exec query-perf-db psql \
+            -X -q -U t_rader -d t_rader -v ON_ERROR_STOP=1 -At \
+            -c "SHOW logging_collector" \
+            -c "SHOW log_destination" \
+            -c "SHOW log_statement" \
+            -c "SHOW log_parameter_max_length" \
+            -c "SHOW log_rotation_age" \
+            -c "SHOW log_rotation_size")
+          if [[ "$settings" != $'on\njsonlog\nall\n0\n0\n0' ]]; then
+            echo "Performance SQL logging settings did not match expectations." >&2
+            exit 1
+          fi
+
+      - name: Verify performance DB profile
+        run: |
+          docker exec -i query-perf-db psql \
+            -X -q -U t_rader -d t_rader -v ON_ERROR_STOP=1 -v record_profile=false \
             < backend/perf-db/verify-profile.sql
 
-      - name: Replay backend SELECT queries
+      - name: Verify an incomplete profile fails
+        run: |
+          profile_probe_status=0
+          {
+            printf '%s\n' "BEGIN;" "UPDATE query_perf_profile_validation SET build_metrics = jsonb_set(build_metrics, '{valuation_row_count}', '0'::jsonb) WHERE profile_id = 'synthetic-market-v1';"
+            cat backend/perf-db/verify-profile.sql
+            printf '%s\n' "ROLLBACK;"
+          } | docker exec -i query-perf-db psql \
+            -X -q -U t_rader -d t_rader -v ON_ERROR_STOP=1 -v record_profile=false || profile_probe_status=$?
+          if [[ "$profile_probe_status" == "0" ]]; then
+            echo "Performance profile verification accepted an incomplete saved profile." >&2
+            exit 1
+          fi
+          echo "Verified incomplete performance profile data is rejected."
+
+      - name: Run required application workload
         env:
-          DATABASE_URL: postgres://t_rader:t_rader@127.0.0.1:5432/t_rader
+          DATABASE_URL: postgres://t_rader:t_rader@127.0.0.1:5433/t_rader
+          WORKLOAD_REPORT: ${{ runner.temp }}/perf-workload-report.json
+        run: cargo run --manifest-path backend/Cargo.toml -p backend --features performance-workload --bin perf-workload -- --report-file "$WORKLOAD_REPORT"
+
+      - name: Capture performance SQL observations locally
+        env:
+          PERF_LOG_PATH: ${{ runner.temp }}/perf-workload-log/postgresql.json
+        run: |
+          log_path=$(docker exec query-perf-db psql \
+            -X -q -U t_rader -d t_rader -v ON_ERROR_STOP=1 -At \
+            -c "SELECT current_setting('data_directory') || '/' || pg_current_logfile('jsonlog')")
+          if [[ -z "$log_path" ]]; then
+            echo "Performance PostgreSQL did not report an active JSON log file." >&2
+            exit 1
+          fi
+          mkdir -p "$(dirname "$PERF_LOG_PATH")"
+          docker cp "query-perf-db:$log_path" "$PERF_LOG_PATH"
+
+      - name: Replay backend SQL and verify workload observations
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@127.0.0.1:5433/t_rader
+          BACKEND_QUERY_LOG: ${{ runner.temp }}/backend-query-log/postgresql.json
+          WORKLOAD_REPORT: ${{ runner.temp }}/perf-workload-report.json
+          WORKLOAD_LOG: ${{ runner.temp }}/perf-workload-log/postgresql.json
         run: |
           replay_started_seconds=$SECONDS
-          replay_status=0
-          cargo run --manifest-path backend/Cargo.toml -p query-perf -- --log-file backend-query-log/postgresql.json || replay_status=$?
+          cargo run --manifest-path backend/Cargo.toml -p query-perf -- \
+            --log-file "$BACKEND_QUERY_LOG" \
+            --workload-log "$WORKLOAD_LOG" \
+            --workload-report "$WORKLOAD_REPORT"
           replay_elapsed_seconds=$((SECONDS - replay_started_seconds))
-          printf 'Existing SQL replay elapsed: %s seconds.\n' "$replay_elapsed_seconds"
+          printf 'SQL replay and required workload verification elapsed: %s seconds.\n' "$replay_elapsed_seconds"
           if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-            printf '\nExisting SQL replay elapsed: %s seconds\n' "$replay_elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"
+            printf '\nSQL replay and required workload verification elapsed: %s seconds\n' "$replay_elapsed_seconds" >> "$GITHUB_STEP_SUMMARY"
           fi
-          exit "$replay_status"
 
-      - name: Remove perf DB container
+      - name: Remove performance database
         if: always()
         run: |
           if docker ps -a --format '{{.Names}}' | rg -x 'query-perf-db'; then
@@ -1044,7 +1117,6 @@ jobs:
       - terraform-provider
       - unit-test-frontend
       - unit-test-backend
-      - query-perf
       - unit-test-agent
       - knip
     if: failure()
