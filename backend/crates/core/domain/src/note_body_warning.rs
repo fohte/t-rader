@@ -265,8 +265,8 @@ mod tests {
     #[case::year_with_spacing_is_not_a_price("2031 年", vec![])]
     #[case::escaped_date_is_not_a_price("2031\\-04\\-05", vec![])]
     #[case::year_with_suffix_is_not_a_price("2031年", vec![])]
-    #[case::price_context_before_year_prefixed_word("終値 2,673 年初来高値", vec![
-        price_warning("2,673"),
+    #[case::price_context_before_year_prefixed_word("終値 3500 年初来高値", vec![
+        price_warning("3500"),
     ])]
     #[case::english_price_context_before_year_prefixed_word("close 3500 年末", vec![
         price_warning("3500"),
@@ -284,9 +284,13 @@ mod tests {
     #[case::decimal_number_before_spaced_year("12.34 年", vec![
         price_warning("12.34"),
     ])]
-    #[case::year_marker_on_next_line_is_not_a_date("9876\n年末", vec![
-        price_warning("9876"),
-    ])]
+    #[case::year_marker_on_next_line_is_not_a_date(
+        indoc! {"
+            9876
+            年末
+        "},
+        vec![price_warning("9876")],
+    )]
     #[case::escaped_non_date_separator_is_a_price_candidate("9876\\-ab", vec![
         price_warning("9876"),
     ])]

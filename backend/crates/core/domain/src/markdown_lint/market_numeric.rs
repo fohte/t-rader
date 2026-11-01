@@ -312,7 +312,7 @@ fn has_numeric_date_suffix(after: &str) -> bool {
 fn numeric_date_separator(after: &str) -> Option<(usize, char)> {
     let (separator_start, separator) = after.char_indices().next()?;
     let (separator_start, separator) = if separator == '\\' {
-        // Markdown では `\-` が `-` と表示されます。
+        // Markdown では `\-` が `-` と表示される。
         let (offset, escaped_separator) = after[separator.len_utf8()..].char_indices().next()?;
         (separator.len_utf8() + offset, escaped_separator)
     } else {
