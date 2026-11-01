@@ -269,17 +269,13 @@ fn is_date_year(text: &str, range: &Range<usize>, digits: usize) -> bool {
         return false;
     }
     let after = &text[range.end..];
-    after.starts_with('年') || has_numeric_date_suffix(after)
+    after.trim_start().starts_with('年') || has_numeric_date_suffix(after)
 }
 
 fn has_numeric_date_suffix(after: &str) -> bool {
-    let Some((separator_start, separator)) = after.char_indices().next() else {
+    let Some((separator_start, separator)) = numeric_date_separator(after) else {
         return false;
     };
-    if !matches!(separator, '-' | '/' | '.') {
-        return false;
-    }
-
     let month_start = separator_start + separator.len_utf8();
     let month_len = after[month_start..]
         .chars()
@@ -289,16 +285,32 @@ fn has_numeric_date_suffix(after: &str) -> bool {
         return false;
     }
     let day_separator_start = month_start + month_len;
-    if !after[day_separator_start..].starts_with(separator) {
+    let Some((day_separator_offset, day_separator)) =
+        numeric_date_separator(&after[day_separator_start..])
+    else {
+        return false;
+    };
+    if day_separator != separator {
         return false;
     }
-    let day_start = day_separator_start + separator.len_utf8();
+    let day_start = day_separator_start + day_separator_offset + separator.len_utf8();
     (1..=2).contains(
         &after[day_start..]
             .chars()
             .take_while(|character| character.is_ascii_digit())
             .count(),
     )
+}
+
+fn numeric_date_separator(after: &str) -> Option<(usize, char)> {
+    let (separator_start, separator) = after.char_indices().next()?;
+    let (separator_start, separator) = if separator == '\\' {
+        let (offset, escaped_separator) = after[separator.len_utf8()..].char_indices().next()?;
+        (separator.len_utf8() + offset, escaped_separator)
+    } else {
+        (separator_start, separator)
+    };
+    matches!(separator, '-' | '/' | '.').then_some((separator_start, separator))
 }
 
 fn has_currency_prefix(text: &str, number_start: usize) -> bool {

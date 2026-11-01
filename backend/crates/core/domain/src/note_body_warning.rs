@@ -202,6 +202,12 @@ mod tests {
     #[case::small_price_with_spacing("for 950 円", vec![
         price_warning("950 円"),
     ])]
+    #[case::four_digit_price_with_spacing("9876 円", vec![
+        price_warning("9876 円"),
+    ])]
+    #[case::four_digit_price_with_currency_unit("9876円", vec![
+        price_warning("9876円"),
+    ])]
     #[case::bare_four_digit_price_candidate("9876", vec![
         price_warning("9876"),
     ])]
@@ -255,6 +261,9 @@ mod tests {
         relative_warning("2-3%"),
     ])]
     #[case::ordinary_date_is_not_a_price("2030-01-02", vec![])]
+    #[case::year_with_spacing_is_not_a_price("2031 年", vec![])]
+    #[case::escaped_date_is_not_a_price("2031\\-04\\-05", vec![])]
+    #[case::year_with_suffix_is_not_a_price("2031年", vec![])]
     #[case::price_followed_by_honjitsu(
         "終値 2,673 本日は反落",
         vec![
