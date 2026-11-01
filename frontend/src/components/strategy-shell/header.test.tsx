@@ -182,14 +182,19 @@ describe('Header', () => {
     const user = userEvent.setup()
     const router = renderHeader()
 
-    const logo = await screen.findByRole('link', { name: 'ホームへ' })
-    await user.click(logo)
+    await user.click(await screen.findByRole('link', { name: 'ホームへ' }))
 
     await waitFor(() => {
-      expect(
-        `${logo.getAttribute('aria-label') ?? ''}|${logo.getAttribute('title') ?? ''}|${router.state.location.pathname}`,
-      ).toEqual('ホームへ|ホームへ|/')
+      expect(router.state.location.pathname).toEqual('/')
     })
+  })
+
+  it('ロゴの title はホームへの導線を示す', async () => {
+    renderHeader()
+
+    const logo = await screen.findByRole('link', { name: 'ホームへ' })
+
+    expect(logo.getAttribute('title')).toEqual('ホームへ')
   })
 
   it.each(['/portfolio', '/trades'])(
