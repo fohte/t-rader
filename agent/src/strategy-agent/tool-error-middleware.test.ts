@@ -163,6 +163,30 @@ describe('createStrategyToolErrorMiddleware', () => {
     })
   })
 
+  it.each([
+    {
+      name: 'MCP completion limit errors',
+      message:
+        'Error calling tool demo_lookup: MCP error -32052: completion limit reached',
+    },
+    {
+      name: 'MCP request timeouts',
+      message:
+        'Error calling tool demo_lookup: MCP error -32053: request timed out',
+    },
+  ])('does not capture $name', async ({ message }) => {
+    captureWithFingerprintMock.mockClear()
+    const toolError = new Error(message)
+    toolError.name = 'ToolException'
+
+    const result = await runFailingTool({ toolError })
+
+    expect(result).toEqual({
+      toolMessages: [`ToolException: ${message}\n Please fix your mistakes.`],
+      captures: [],
+    })
+  })
+
   it('does not capture tool input validation failures', async () => {
     captureWithFingerprintMock.mockClear()
 

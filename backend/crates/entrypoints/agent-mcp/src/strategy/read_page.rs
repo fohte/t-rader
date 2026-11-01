@@ -1,7 +1,7 @@
 //! `read_page` tool の inner method 実装。
 
 use axum::http::Uri;
-use core_application::llm_client::{ChatMessage, ContentPart};
+use core_application::llm_client::{ChatCompletionOptions, ChatMessage, ContentPart};
 use core_application::strategy_scope::StrategyScope;
 use core_application::tavily_credit_budget::{
     TavilyCreditBudgetDenial, TavilyCreditBudgetReason, TavilyCreditBudgetScope,
@@ -11,18 +11,43 @@ use rmcp::ErrorData as McpError;
 use super::dto::{ReadPageParams, ReadPageResult};
 use super::{
     StrategyServer, internal_error, invalid_params, litellm_error_to_mcp,
-    tavily_credit_budget_denial_to_mcp, tavily_credit_budget_error_to_mcp,
+    read_page_completion_limit_to_mcp, string_map_from_header, tavily_credit_budget_denial_to_mcp,
+    tavily_credit_budget_error_to_mcp,
 };
 
 pub(super) const TOOL_NAME: &str = "read_page";
 pub(super) const READ_PAGE_MAX_CALLS_PER_TASK: u32 = 20;
 const MAX_PAGE_CONTENT_CHARS: usize = 100_000;
+const READ_PAGE_MAX_COMPLETION_TOKENS: u32 = 8_192;
+const TOOL_REASONING_EFFORTS_HEADER: &str = "x-tool-reasoning-efforts";
+
+fn tool_reasoning_effort_from_headers(
+    headers: &axum::http::HeaderMap,
+    tool_name: &str,
+) -> Result<Option<String>, McpError> {
+    let Some(efforts) = string_map_from_header(headers, TOOL_REASONING_EFFORTS_HEADER)? else {
+        return Ok(None);
+    };
+    Ok(efforts.get(tool_name).cloned())
+}
+
+pub(super) fn tool_reasoning_effort_from_ctx(
+    ctx: &rmcp::service::RequestContext<rmcp::service::RoleServer>,
+    tool_name: &str,
+) -> Result<Option<String>, McpError> {
+    let parts = ctx
+        .extensions
+        .get::<axum::http::request::Parts>()
+        .ok_or_else(|| super::internal_error("missing http parts in mcp request context"))?;
+    tool_reasoning_effort_from_headers(&parts.headers, tool_name)
+}
 
 impl StrategyServer {
     pub(super) async fn read_page_inner(
         &self,
         scope: impl Into<StrategyScope>,
         model: String,
+        reasoning_effort: Option<String>,
         params: ReadPageParams,
         call_id: String,
         request_fingerprint: String,
@@ -100,8 +125,18 @@ impl StrategyServer {
             },
         ];
 
-        let text = match llm_client.chat_completion(&model, messages).await {
-            Ok(text) => text,
+        let completion = match llm_client
+            .chat_completion_with_options(
+                &model,
+                messages,
+                ChatCompletionOptions {
+                    max_completion_tokens: Some(READ_PAGE_MAX_COMPLETION_TOKENS),
+                    reasoning_effort,
+                },
+            )
+            .await
+        {
+            Ok(completion) => completion,
             Err(error) => {
                 tracing::warn!(
                     strategy_id = %strategy_id,
@@ -114,6 +149,23 @@ impl StrategyServer {
                 return Err(litellm_error_to_mcp(error));
             }
         };
+
+        tracing::info!(
+            strategy_id = %strategy_id,
+            model,
+            url,
+            completion_tokens = ?completion.completion_tokens,
+            finish_reason = ?completion.finish_reason,
+            "read_page: chat completion finished"
+        );
+
+        let text = completion.content.unwrap_or_default();
+        if completion.finish_reason.as_deref() == Some("length") || text.trim().is_empty() {
+            return Err(read_page_completion_limit_to_mcp(
+                completion.completion_tokens,
+                completion.finish_reason,
+            ));
+        }
 
         Ok(ReadPageResult {
             url,
@@ -135,4 +187,54 @@ fn validate_page_url(url: &str) -> Result<(), McpError> {
         return Err(invalid_params("url must be a valid HTTP or HTTPS URL"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::missing(None, None)]
+    #[case::tool_not_configured(Some(br#"{}"#.as_slice()), None)]
+    #[case::configured(Some(br#"{"read_page":"low"}"#.as_slice()), Some("low"))]
+    fn tool_reasoning_effort_from_headers_is_optional(
+        #[case] header: Option<&[u8]>,
+        #[case] expected: Option<&str>,
+    ) {
+        let mut headers = axum::http::HeaderMap::new();
+        if let Some(value) = header {
+            headers.insert(
+                TOOL_REASONING_EFFORTS_HEADER,
+                axum::http::HeaderValue::from_bytes(value).expect("header value"),
+            );
+        }
+        assert_eq!(
+            tool_reasoning_effort_from_headers(&headers, "read_page"),
+            Ok(expected.map(str::to_string)),
+        );
+    }
+
+    #[rstest]
+    #[case::invalid_ascii(Some(b"\xff".as_slice()), "x-tool-reasoning-efforts header is not valid ASCII")]
+    #[case::invalid_json(Some(b"not-json".as_slice()), "x-tool-reasoning-efforts header is not valid JSON")]
+    fn tool_reasoning_effort_from_headers_rejects_invalid_values(
+        #[case] header: Option<&[u8]>,
+        #[case] expected_message: &str,
+    ) {
+        let mut headers = axum::http::HeaderMap::new();
+        if let Some(value) = header {
+            headers.insert(
+                TOOL_REASONING_EFFORTS_HEADER,
+                axum::http::HeaderValue::from_bytes(value).expect("header value"),
+            );
+        }
+        let actual = tool_reasoning_effort_from_headers(&headers, "read_page")
+            .expect_err("expected invalid header error");
+        assert_eq!(
+            (actual.code, actual.message.as_ref()),
+            (rmcp::model::ErrorCode::INVALID_PARAMS, expected_message,),
+        );
+    }
 }

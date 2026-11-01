@@ -9,13 +9,34 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use core_application::llm_client::{
-    ChatMessage, ContentPart, FilePart, LlmClient, LlmClientError, LlmModel,
+    ChatCompletionOptions, ChatCompletionOutput, ChatMessage, ContentPart, FilePart, LlmClient,
+    LlmClientError, LlmModel,
 };
 use serde::{Deserialize, Serialize};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 /// chat completion はマルチモーダル入力の解析を伴い得るため、admin API より長い上限を使う。
 const CHAT_COMPLETION_TIMEOUT: Duration = Duration::from_secs(120);
+
+fn classify_reqwest_error(
+    error: reqwest::Error,
+    non_timeout: fn(String) -> LlmClientError,
+) -> LlmClientError {
+    let message = error.to_string();
+    if error.is_timeout() {
+        LlmClientError::Timeout(message)
+    } else {
+        non_timeout(message)
+    }
+}
+
+fn reqwest_error(error: reqwest::Error) -> LlmClientError {
+    classify_reqwest_error(error, LlmClientError::Network)
+}
+
+fn response_error(error: reqwest::Error) -> LlmClientError {
+    classify_reqwest_error(error, LlmClientError::Parse)
+}
 
 #[derive(Debug, Deserialize)]
 struct ModelGroupInfoResponse {
@@ -101,23 +122,39 @@ impl From<FilePart> for WireFilePart {
 struct ChatCompletionRequest<'a> {
     model: &'a str,
     messages: &'a [WireChatMessage],
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatCompletionResponse {
-    #[serde(default)]
-    choices: Vec<ChatCompletionChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allowed_openai_params: Option<Vec<&'static str>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChatCompletionChoice {
     message: ChatCompletionResponseMessage,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChatCompletionResponseMessage {
     #[serde(default)]
     content: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ChatCompletionUsage {
+    #[serde(default)]
+    completion_tokens: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionResponse {
+    #[serde(default)]
+    choices: Vec<ChatCompletionChoice>,
+    #[serde(default)]
+    usage: ChatCompletionUsage,
 }
 
 /// LiteLLM Proxy client。`LLM_BASE_URL` 未設定時は `from_env` が `None` を返す。
@@ -171,18 +208,59 @@ impl LiteLlmClient {
 
         Ok(Self { http, base_url })
     }
+
+    async fn send_chat_completion(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        options: ChatCompletionOptions,
+    ) -> Result<ChatCompletionOutput, LlmClientError> {
+        let messages = messages.into_iter().map(Into::into).collect::<Vec<_>>();
+        let url = format!("{}/v1/chat/completions", self.base_url);
+        let response = self
+            .http
+            .post(url)
+            .timeout(CHAT_COMPLETION_TIMEOUT)
+            .json(&ChatCompletionRequest {
+                model,
+                messages: &messages,
+                max_completion_tokens: options.max_completion_tokens,
+                reasoning_effort: options.reasoning_effort.as_deref(),
+                allowed_openai_params: options
+                    .reasoning_effort
+                    .as_ref()
+                    .map(|_| vec!["reasoning_effort"]),
+            })
+            .send()
+            .await
+            .map_err(reqwest_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let message = response.text().await.map_err(reqwest_error)?;
+            return Err(LlmClientError::Api {
+                status: status.as_u16(),
+                message,
+            });
+        }
+
+        let body: ChatCompletionResponse = response.json().await.map_err(response_error)?;
+        let choice = body.choices.into_iter().next();
+        Ok(ChatCompletionOutput {
+            content: choice
+                .as_ref()
+                .and_then(|choice| choice.message.content.clone()),
+            finish_reason: choice.and_then(|choice| choice.finish_reason),
+            completion_tokens: body.usage.completion_tokens,
+        })
+    }
 }
 
 #[async_trait]
 impl LlmClient for LiteLlmClient {
     async fn list_models(&self) -> Result<Vec<LlmModel>, LlmClientError> {
         let url = format!("{}/model_group/info", self.base_url);
-        let response = self
-            .http
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| LlmClientError::Network(e.to_string()))?;
+        let response = self.http.get(url).send().await.map_err(reqwest_error)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -206,41 +284,21 @@ impl LlmClient for LiteLlmClient {
         model: &str,
         messages: Vec<ChatMessage>,
     ) -> Result<String, LlmClientError> {
-        let messages = messages.into_iter().map(Into::into).collect::<Vec<_>>();
-        let url = format!("{}/v1/chat/completions", self.base_url);
-        let response = self
-            .http
-            .post(url)
-            .timeout(CHAT_COMPLETION_TIMEOUT)
-            .json(&ChatCompletionRequest {
-                model,
-                messages: &messages,
-            })
-            .send()
-            .await
-            .map_err(|e| LlmClientError::Network(e.to_string()))?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let message = response.text().await.unwrap_or_default();
-            return Err(LlmClientError::Api {
-                status: status.as_u16(),
-                message,
-            });
-        }
-
-        let body: ChatCompletionResponse = response
-            .json()
-            .await
-            .map_err(|e| LlmClientError::Parse(e.to_string()))?;
-
-        body.choices
-            .into_iter()
-            .next()
-            .and_then(|c| c.message.content)
+        self.send_chat_completion(model, messages, ChatCompletionOptions::default())
+            .await?
+            .content
             .ok_or_else(|| {
                 LlmClientError::Parse("chat completion response has no message content".into())
             })
+    }
+
+    async fn chat_completion_with_options(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        options: ChatCompletionOptions,
+    ) -> Result<ChatCompletionOutput, LlmClientError> {
+        self.send_chat_completion(model, messages, options).await
     }
 }
 
@@ -353,6 +411,85 @@ mod tests {
             .await
             .expect("chat completion ok");
         assert_eq!(text, "video summary");
+    }
+
+    #[tokio::test]
+    async fn chat_completion_with_options_serializes_limits_and_returns_usage_metadata() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {"content": ""},
+                    "finish_reason": "length",
+                }],
+                "usage": {"completion_tokens": 8192},
+            })))
+            .mount(&server)
+            .await;
+
+        let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
+        let completion = client
+            .chat_completion_with_options(
+                "sample-chat-model",
+                vec![],
+                ChatCompletionOptions {
+                    max_completion_tokens: Some(8_192),
+                    reasoning_effort: Some("low".into()),
+                },
+            )
+            .await
+            .expect("chat completion ok");
+        let request = server
+            .received_requests()
+            .await
+            .expect("request should be recorded")
+            .into_iter()
+            .next()
+            .expect("chat completion request should be recorded");
+
+        assert_eq!(
+            (
+                completion,
+                serde_json::from_slice::<serde_json::Value>(&request.body)
+                    .expect("request body should be valid JSON"),
+            ),
+            (
+                ChatCompletionOutput {
+                    content: Some(String::new()),
+                    finish_reason: Some("length".into()),
+                    completion_tokens: Some(8_192),
+                },
+                json!({
+                    "model": "sample-chat-model",
+                    "messages": [],
+                    "max_completion_tokens": 8192,
+                    "reasoning_effort": "low",
+                    "allowed_openai_params": ["reasoning_effort"],
+                }),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn reqwest_timeout_is_classified_separately_from_network_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(100)))
+            .mount(&server)
+            .await;
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_millis(1))
+            .build()
+            .expect("build client");
+
+        let error = http
+            .get(server.uri())
+            .send()
+            .await
+            .expect_err("delayed response should time out");
+
+        assert!(matches!(reqwest_error(error), LlmClientError::Timeout(_)));
     }
 
     #[tokio::test]

@@ -24,6 +24,7 @@ const EXECUTION_ID_HEADER = 'x-execution-id'
 const SUBAGENT_EXECUTION_ID_HEADER = 'x-subagent-execution-id'
 const SUBAGENT_DEFINITION_KEY_HEADER = 'x-subagent-definition-key'
 const TOOL_MODELS_HEADER = 'x-tool-models'
+const TOOL_REASONING_EFFORTS_HEADER = 'x-tool-reasoning-efforts'
 const MCP_TOOL_TIMEOUT_MS = 150_000
 
 type ReasoningEffort = NonNullable<
@@ -42,6 +43,7 @@ export const createStrategyAgentDeps = (
     executionId,
     toolModels,
     subagentExecution,
+    toolReasoningEfforts = {},
   ) => {
     const client = new MultiServerMCPClient({
       defaultToolTimeout: MCP_TOOL_TIMEOUT_MS,
@@ -53,6 +55,12 @@ export const createStrategyAgentDeps = (
             [STRATEGY_TASK_ID_HEADER]: strategyTaskId,
             [EXECUTION_ID_HEADER]: executionId,
             [TOOL_MODELS_HEADER]: JSON.stringify(toolModels),
+            ...(Object.keys(toolReasoningEfforts).length > 0
+              ? {
+                  [TOOL_REASONING_EFFORTS_HEADER]:
+                    JSON.stringify(toolReasoningEfforts),
+                }
+              : {}),
             ...(subagentExecution !== undefined
               ? {
                   [SUBAGENT_EXECUTION_ID_HEADER]: subagentExecution.executionId,

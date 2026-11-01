@@ -20,6 +20,8 @@ pub struct AgentGraphConfig {
     pub tool_limits: BTreeMap<String, u32>,
     #[serde(default)]
     pub tool_models: BTreeMap<String, String>,
+    #[serde(default)]
+    pub tool_reasoning_efforts: BTreeMap<String, String>,
     pub phases: Vec<AgentGraphPhase>,
 }
 
@@ -134,6 +136,8 @@ pub enum AgentGraphError {
     InvalidYaml(String),
     #[error("phase key {0:?} is duplicated")]
     DuplicatePhaseKey(String),
+    #[error("tool_reasoning_efforts entry for {tool:?} must not be empty")]
+    EmptyToolReasoningEffort { tool: String },
     #[error("phase {phase:?}: max_subagent_runs must be set when subagents are configured")]
     MissingMaxSubagentRuns { phase: String },
     #[error("phase {phase:?}: required tool {tool:?} is not included in tools")]
@@ -207,6 +211,13 @@ pub fn parse_agent_graph(yaml: &str) -> Result<Option<AgentGraphConfig>, AgentGr
 fn validate(config: &AgentGraphConfig) -> Result<(), AgentGraphError> {
     if let Some(timeout_minutes) = config.timeout_minutes {
         validate_timeout_minutes("agent_graph", timeout_minutes)?;
+    }
+    if let Some((tool, _)) = config
+        .tool_reasoning_efforts
+        .iter()
+        .find(|(_, effort)| effort.trim().is_empty())
+    {
+        return Err(AgentGraphError::EmptyToolReasoningEffort { tool: tool.clone() });
     }
     let mut seen = BTreeSet::new();
     for (i, phase) in config.phases.iter().enumerate() {
@@ -407,6 +418,8 @@ mod tests {
               search_web: 4
             tool_models:
               query_youtube: example-model-youtube
+            tool_reasoning_efforts:
+              read_page: low
             phases:
               - key: plan
                 label: 調査計画
@@ -441,6 +454,10 @@ mod tests {
                     "query_youtube".to_string(),
                     "example-model-youtube".to_string()
                 ),]),
+                tool_reasoning_efforts: BTreeMap::from([(
+                    "read_page".to_string(),
+                    "low".to_string()
+                )]),
                 phases: vec![
                     AgentGraphPhase {
                         key: "plan".to_string(),
@@ -499,6 +516,31 @@ mod tests {
     }
 
     #[rstest]
+    #[case::empty("")]
+    #[case::whitespace_only("  ")]
+    fn parse_rejects_empty_tool_reasoning_effort(#[case] effort: &str) {
+        let yaml = format!(
+            indoc! {"
+                tool_reasoning_efforts:
+                  read_page: '{}'
+                phases:
+                  - key: plan
+                    label: Plan
+                    model: example-model-plan
+                    prompt: Make a plan
+            "},
+            effort,
+        );
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Err(AgentGraphError::EmptyToolReasoningEffort {
+                tool: "read_page".to_string(),
+            }),
+        );
+    }
+
+    #[rstest]
     fn parse_graph_defaults_tool_models_when_omitted() {
         let yaml = indoc! {"
             phases:
@@ -515,6 +557,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
                     label: "Plan".to_string(),
@@ -567,6 +610,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "run".to_string(),
                     label: "Run".to_string(),
@@ -642,6 +686,7 @@ mod tests {
                 }),
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
                     label: "Plan".to_string(),
@@ -709,6 +754,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![
                     AgentGraphPhase {
                         key: "prepare".to_string(),
@@ -1000,6 +1046,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
                     label: "Plan".to_string(),

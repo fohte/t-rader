@@ -43,7 +43,7 @@ use super::dto::{
     WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
-use super::read_page::TOOL_NAME as READ_PAGE_TOOL_NAME;
+use super::read_page::{TOOL_NAME as READ_PAGE_TOOL_NAME, tool_reasoning_effort_from_ctx};
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
@@ -242,7 +242,7 @@ impl StrategyServer {
     /// YouTube 動画について複数の質問にまとめて回答する
     #[tool(
         name = "query_youtube",
-        description = "Answer one or more questions about a YouTube video in a single model call. Pass all questions about the same video together because each call rereads the entire video. Include an MM:SS timestamp for every numerical value and every statement attributed to the video. Returns free-form text using the model configured for this tool in agent_graph.tool_models.",
+        description = "Answer one or more questions about a YouTube video in a single model call. Pass all questions about the same video together because each call rereads the entire video. Include an MM:SS timestamp for every numerical value and every statement attributed to the video. Returns free-form text using the model configured for this tool in agent_graph.tool_models. If the model request times out, the tool returns error -32053. Do not retry the same query; narrow the questions or continue with available context.",
         annotations(read_only_hint = true)
     )]
     async fn query_youtube(
@@ -260,7 +260,7 @@ impl StrategyServer {
     /// URL のページ本文をモデルに読ませ、質問への回答を返す
     #[tool(
         name = "read_page",
-        description = "Read a web page by URL and answer a prompt using the model configured for this tool in agent_graph.tool_models. Use search_web to find URLs, then use read_page to read an article. The answer must use only information in the page, preserve original numbers, dates, names, and quotes, and say when the answer is absent or the content is inaccessible. Calls are limited per strategy task execution (default 20); agent_graph.tool_limits can override this limit. When both x-subagent-execution-id and x-subagent-definition-key are provided, the matching subagent definition's tool_limits entry adds a per-subagent execution limit; when the tool has no entry, only the task limit applies.",
+        description = "Read a web page by URL and answer a prompt using the model configured for this tool in agent_graph.tool_models. agent_graph.tool_reasoning_efforts.read_page optionally configures reasoning effort. Use search_web to find URLs, then use read_page to read an article. The answer must use only information in the page, preserve original numbers, dates, names, and quotes, and say when the answer is absent or the content is inaccessible. The answer is limited to 8192 completion tokens. If generation reaches this limit or returns an empty answer, read_page returns error -32052. If the LLM request times out, it returns error -32053. Do not retry the same prompt for either error; narrow the question or continue with available context. Calls are limited per strategy task execution (default 20); agent_graph.tool_limits can override this limit. When both x-subagent-execution-id and x-subagent-definition-key are provided, the matching subagent definition's tool_limits entry adds a per-subagent execution limit; when the tool has no entry, only the task limit applies.",
         annotations(read_only_hint = true)
     )]
     async fn read_page(
@@ -270,12 +270,13 @@ impl StrategyServer {
     ) -> Result<Json<ReadPageResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let model = tool_model_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
+        let reasoning_effort = tool_reasoning_effort_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
         let arguments = serde_json::to_value(&params).map_err(|error| {
             internal_error(format!("failed to encode read_page request: {error}"))
         })?;
         let (call_id, fingerprint) =
             tavily_call_identity(&ctx, scope.id(), READ_PAGE_TOOL_NAME, arguments)?;
-        self.read_page_inner(scope, model, params, call_id, fingerprint)
+        self.read_page_inner(scope, model, reasoning_effort, params, call_id, fingerprint)
             .await
             .map(Json)
     }

@@ -162,6 +162,7 @@ const agentGraphConfigSchema = z
       .record(z.string(), z.number().int().min(0).max(4_294_967_295))
       .optional(),
     tool_models: z.record(z.string(), z.string()).optional(),
+    tool_reasoning_efforts: z.record(z.string(), z.string()).optional(),
     phases: z.array(agentGraphPhaseSchema),
   })
   .superRefine((config, context) => {
@@ -347,6 +348,9 @@ export const parseAgentGraph = (
         : {}),
       ...(validated.data.tool_models !== undefined
         ? { toolModels: validated.data.tool_models }
+        : {}),
+      ...(validated.data.tool_reasoning_efforts !== undefined
+        ? { toolReasoningEfforts: validated.data.tool_reasoning_efforts }
         : {}),
       phases: validated.data.phases.map(toAgentGraphPhase),
     })

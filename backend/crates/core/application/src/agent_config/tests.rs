@@ -974,6 +974,49 @@ async fn save_agent_graph_rejects_invalid_yaml_without_saving(fixture: Fixture) 
     );
 }
 
+#[rstest]
+#[tokio::test]
+async fn save_agent_graph_rejects_empty_tool_reasoning_effort_without_saving(fixture: Fixture) {
+    fixture
+        .use_cases
+        .create("example-purpose".to_string())
+        .await
+        .expect("create config");
+    let yaml = indoc::indoc! {"
+        tool_reasoning_efforts:
+          read_page: ''
+        phases:
+          - key: plan
+            label: Plan
+            model: example-model-plan
+            prompt: Make a plan
+    "};
+
+    let error = fixture
+        .use_cases
+        .save_agent_graph("example-purpose", yaml)
+        .await
+        .expect_err("empty tool reasoning effort should be rejected");
+
+    assert_eq!(
+        (
+            error.to_string(),
+            get_normalized(&fixture.use_cases, "example-purpose").await,
+            transaction_counts(&fixture.unit_of_work).await,
+        ),
+        (
+            "tool_reasoning_efforts entry for \"read_page\" must not be empty".to_string(),
+            Some(expected_config(
+                "example-purpose",
+                "",
+                serde_json::json!({}),
+                "",
+            )),
+            (1, 1),
+        ),
+    );
+}
+
 fn expected_config(
     purpose: &str,
     agents_md: &str,

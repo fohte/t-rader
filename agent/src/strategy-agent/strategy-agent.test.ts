@@ -194,7 +194,14 @@ interface Calls {
   mcpClientClosed: boolean
   // createMcpClient の呼び出しごとの 1 行。生成数と close タイミングの検証用。
   mcpClients: McpClientCall[]
-  mcpClientToolModels: Readonly<Record<string, string>>[]
+  mcpClientToolOptions: {
+    toolModels: Readonly<Record<string, string>>
+    toolReasoningEfforts: Readonly<Record<string, string>>
+    subagentExecution?: {
+      executionId: string
+      definitionKey: string
+    }
+  }[]
   capturedDeadlineSignal: AbortSignal | undefined
   capturedAgentSignal: AbortSignal | undefined
 }
@@ -209,7 +216,7 @@ const buildDeps = (
     executionToolRequests: [],
     mcpClientClosed: false,
     mcpClients: [],
-    mcpClientToolModels: [],
+    mcpClientToolOptions: [],
     capturedDeadlineSignal: undefined,
     capturedAgentSignal: undefined,
   }
@@ -236,8 +243,13 @@ const buildDeps = (
       executionId,
       toolModels,
       subagentExecution,
+      toolReasoningEfforts,
     ): McpToolsClient => {
-      calls.mcpClientToolModels.push(toolModels)
+      calls.mcpClientToolOptions.push({
+        toolModels,
+        toolReasoningEfforts: toolReasoningEfforts ?? {},
+        ...(subagentExecution !== undefined ? { subagentExecution } : {}),
+      })
       const client: McpClientCall = {
         executionId,
         executionToolRequests: [],
@@ -546,15 +558,33 @@ describe('runStrategyAgent', () => {
       name: 'omitted tool_models',
       agentGraph: AGENT_GRAPH,
       expectedToolModels: {},
+      expectedToolReasoningEfforts: {},
+    },
+    {
+      name: 'configured tool_reasoning_efforts',
+      agentGraph: `tool_reasoning_efforts:
+  read_page: low
+${AGENT_GRAPH}`,
+      expectedToolModels: {},
+      expectedToolReasoningEfforts: { read_page: 'low' },
     },
   ])(
     'passes $name to the MCP client',
-    async ({ agentGraph, expectedToolModels }) => {
+    async ({
+      agentGraph,
+      expectedToolModels,
+      expectedToolReasoningEfforts = {},
+    }) => {
       const { deps, calls } = buildDeps({ agentGraph })
 
       await runStrategyAgent(deps, buildRunInput())
 
-      expect(calls.mcpClientToolModels).toEqual([expectedToolModels])
+      expect(calls.mcpClientToolOptions).toEqual([
+        {
+          toolModels: expectedToolModels,
+          toolReasoningEfforts: expectedToolReasoningEfforts,
+        },
+      ])
     },
   )
 
@@ -960,6 +990,8 @@ describe('runStrategyAgent', () => {
       tools: [buildFakeTool('search_web')],
       fetchSubagentDefinition: () => okAsync(definition),
       agentGraph: [
+        'tool_reasoning_efforts:',
+        '  read_page: low',
         'phases:',
         '  - key: plan',
         '    label: Plan',
@@ -1015,6 +1047,9 @@ describe('runStrategyAgent', () => {
       calls.mcpClients.filter(
         (client) => client.subagentExecution !== undefined,
       ).length,
+      calls.mcpClientToolOptions
+        .filter((client) => client.subagentExecution !== undefined)
+        .map((client) => client.toolReasoningEfforts),
     )
 
     expect(actual).toEqual([
@@ -1028,6 +1063,12 @@ describe('runStrategyAgent', () => {
         [{ conclusion: 'Evidence found.' }, { conclusion: 'Evidence found.' }],
       ],
       4,
+      [
+        { read_page: 'low' },
+        { read_page: 'low' },
+        { read_page: 'low' },
+        { read_page: 'low' },
+      ],
     ])
   })
 
@@ -1067,6 +1108,8 @@ describe('createStrategyAgentDeps', () => {
       '22222222-2222-2222-2222-222222222222',
       'task-1:step-1',
       { search_web: 'example-model-search' },
+      undefined,
+      { read_page: 'low' },
     )
 
     expect(capturedMcpClientConfig).toEqual({
@@ -1079,6 +1122,7 @@ describe('createStrategyAgentDeps', () => {
             'x-strategy-task-id': '22222222-2222-2222-2222-222222222222',
             'x-execution-id': 'task-1:step-1',
             'x-tool-models': '{"search_web":"example-model-search"}',
+            'x-tool-reasoning-efforts': '{"read_page":"low"}',
           },
         },
       },
