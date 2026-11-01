@@ -18,20 +18,24 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 /// chat completion はマルチモーダル入力の解析を伴い得るため、admin API より長い上限を使う。
 const CHAT_COMPLETION_TIMEOUT: Duration = Duration::from_secs(120);
 
-fn reqwest_error(error: reqwest::Error) -> LlmClientError {
+fn classify_reqwest_error(
+    error: reqwest::Error,
+    non_timeout: fn(String) -> LlmClientError,
+) -> LlmClientError {
+    let message = error.to_string();
     if error.is_timeout() {
-        LlmClientError::Timeout(error.to_string())
+        LlmClientError::Timeout(message)
     } else {
-        LlmClientError::Network(error.to_string())
+        non_timeout(message)
     }
 }
 
+fn reqwest_error(error: reqwest::Error) -> LlmClientError {
+    classify_reqwest_error(error, LlmClientError::Network)
+}
+
 fn response_error(error: reqwest::Error) -> LlmClientError {
-    if error.is_timeout() {
-        LlmClientError::Timeout(error.to_string())
-    } else {
-        LlmClientError::Parse(error.to_string())
-    }
+    classify_reqwest_error(error, LlmClientError::Parse)
 }
 
 #[derive(Debug, Deserialize)]

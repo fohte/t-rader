@@ -197,6 +197,10 @@ interface Calls {
   mcpClientToolOptions: {
     toolModels: Readonly<Record<string, string>>
     toolReasoningEfforts: Readonly<Record<string, string>>
+    subagentExecution?: {
+      executionId: string
+      definitionKey: string
+    }
   }[]
   capturedDeadlineSignal: AbortSignal | undefined
   capturedAgentSignal: AbortSignal | undefined
@@ -244,6 +248,7 @@ const buildDeps = (
       calls.mcpClientToolOptions.push({
         toolModels,
         toolReasoningEfforts: toolReasoningEfforts ?? {},
+        ...(subagentExecution !== undefined ? { subagentExecution } : {}),
       })
       const client: McpClientCall = {
         executionId,
@@ -985,6 +990,8 @@ ${AGENT_GRAPH}`,
       tools: [buildFakeTool('search_web')],
       fetchSubagentDefinition: () => okAsync(definition),
       agentGraph: [
+        'tool_reasoning_efforts:',
+        '  read_page: low',
         'phases:',
         '  - key: plan',
         '    label: Plan',
@@ -1040,6 +1047,9 @@ ${AGENT_GRAPH}`,
       calls.mcpClients.filter(
         (client) => client.subagentExecution !== undefined,
       ).length,
+      calls.mcpClientToolOptions
+        .filter((client) => client.subagentExecution !== undefined)
+        .map((client) => client.toolReasoningEfforts),
     )
 
     expect(actual).toEqual([
@@ -1053,6 +1063,12 @@ ${AGENT_GRAPH}`,
         [{ conclusion: 'Evidence found.' }, { conclusion: 'Evidence found.' }],
       ],
       4,
+      [
+        { read_page: 'low' },
+        { read_page: 'low' },
+        { read_page: 'low' },
+        { read_page: 'low' },
+      ],
     ])
   })
 

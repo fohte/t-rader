@@ -1,7 +1,5 @@
 //! `read_page` tool の inner method 実装。
 
-use std::collections::BTreeMap;
-
 use axum::http::Uri;
 use core_application::llm_client::{ChatCompletionOptions, ChatMessage, ContentPart};
 use core_application::strategy_scope::StrategyScope;
@@ -13,31 +11,23 @@ use rmcp::ErrorData as McpError;
 use super::dto::{ReadPageParams, ReadPageResult};
 use super::{
     StrategyServer, internal_error, invalid_params, litellm_error_to_mcp,
-    tavily_credit_budget_denial_to_mcp, tavily_credit_budget_error_to_mcp,
+    read_page_completion_limit_to_mcp, string_map_from_header, tavily_credit_budget_denial_to_mcp,
+    tavily_credit_budget_error_to_mcp,
 };
 
 pub(super) const TOOL_NAME: &str = "read_page";
 pub(super) const READ_PAGE_MAX_CALLS_PER_TASK: u32 = 20;
 const MAX_PAGE_CONTENT_CHARS: usize = 100_000;
+const READ_PAGE_MAX_COMPLETION_TOKENS: u32 = 8_192;
 const TOOL_REASONING_EFFORTS_HEADER: &str = "x-tool-reasoning-efforts";
 
 fn tool_reasoning_effort_from_headers(
     headers: &axum::http::HeaderMap,
     tool_name: &str,
 ) -> Result<Option<String>, McpError> {
-    let Some(header) = headers.get(TOOL_REASONING_EFFORTS_HEADER) else {
+    let Some(efforts) = string_map_from_header(headers, TOOL_REASONING_EFFORTS_HEADER)? else {
         return Ok(None);
     };
-    let raw = header.to_str().map_err(|_| {
-        super::invalid_params(format!(
-            "{TOOL_REASONING_EFFORTS_HEADER} header is not valid ASCII"
-        ))
-    })?;
-    let efforts: BTreeMap<String, String> = serde_json::from_str(raw).map_err(|_| {
-        super::invalid_params(format!(
-            "{TOOL_REASONING_EFFORTS_HEADER} header is not valid JSON"
-        ))
-    })?;
     Ok(efforts.get(tool_name).cloned())
 }
 
@@ -140,7 +130,7 @@ impl StrategyServer {
                 &model,
                 messages,
                 ChatCompletionOptions {
-                    max_completion_tokens: Some(8_192),
+                    max_completion_tokens: Some(READ_PAGE_MAX_COMPLETION_TOKENS),
                     reasoning_effort,
                 },
             )
@@ -171,13 +161,9 @@ impl StrategyServer {
 
         let text = completion.content.unwrap_or_default();
         if completion.finish_reason.as_deref() == Some("length") || text.trim().is_empty() {
-            return Err(McpError::new(
-                rmcp::model::ErrorCode(-32052),
-                "読解用 LLM が上限内に答えられませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
-                Some(serde_json::json!({
-                    "completion_tokens": completion.completion_tokens,
-                    "finish_reason": completion.finish_reason,
-                })),
+            return Err(read_page_completion_limit_to_mcp(
+                completion.completion_tokens,
+                completion.finish_reason,
             ));
         }
 
@@ -227,6 +213,28 @@ mod tests {
         assert_eq!(
             tool_reasoning_effort_from_headers(&headers, "read_page"),
             Ok(expected.map(str::to_string)),
+        );
+    }
+
+    #[rstest]
+    #[case::invalid_ascii(Some(b"\xff".as_slice()), "x-tool-reasoning-efforts header is not valid ASCII")]
+    #[case::invalid_json(Some(b"not-json".as_slice()), "x-tool-reasoning-efforts header is not valid JSON")]
+    fn tool_reasoning_effort_from_headers_rejects_invalid_values(
+        #[case] header: Option<&[u8]>,
+        #[case] expected_message: &str,
+    ) {
+        let mut headers = axum::http::HeaderMap::new();
+        if let Some(value) = header {
+            headers.insert(
+                TOOL_REASONING_EFFORTS_HEADER,
+                axum::http::HeaderValue::from_bytes(value).expect("header value"),
+            );
+        }
+        let actual = tool_reasoning_effort_from_headers(&headers, "read_page")
+            .expect_err("expected invalid header error");
+        assert_eq!(
+            (actual.code, actual.message.as_ref()),
+            (rmcp::model::ErrorCode::INVALID_PARAMS, expected_message,),
         );
     }
 }

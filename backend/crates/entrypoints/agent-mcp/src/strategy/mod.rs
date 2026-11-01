@@ -369,6 +369,20 @@ pub(super) fn tavily_credit_budget_denial_to_mcp(denial: TavilyCreditBudgetDenia
     )
 }
 
+pub(super) fn read_page_completion_limit_to_mcp(
+    completion_tokens: Option<u64>,
+    finish_reason: Option<String>,
+) -> McpError {
+    McpError::new(
+        ErrorCode(-32052),
+        "読解用 LLM が上限内に答えられませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
+        Some(serde_json::json!({
+            "completion_tokens": completion_tokens,
+            "finish_reason": finish_reason,
+        })),
+    )
+}
+
 fn strategy_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Option<Uuid>, McpError> {
     let Some(parts) = ctx.extensions.get::<axum::http::request::Parts>() else {
         return Ok(None);
@@ -388,18 +402,27 @@ fn strategy_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Option<
     })
 }
 
+pub(super) fn string_map_from_header(
+    headers: &axum::http::HeaderMap,
+    header_name: &str,
+) -> Result<Option<BTreeMap<String, String>>, McpError> {
+    let Some(header) = headers.get(header_name) else {
+        return Ok(None);
+    };
+    let raw = header
+        .to_str()
+        .map_err(|_| invalid_params(format!("{header_name} header is not valid ASCII")))?;
+    serde_json::from_str(raw)
+        .map(Some)
+        .map_err(|_| invalid_params(format!("{header_name} header is not valid JSON")))
+}
+
 fn tool_model_from_headers(
     headers: &axum::http::HeaderMap,
     tool_name: &str,
 ) -> Result<String, McpError> {
-    let header = headers
-        .get(TOOL_MODELS_HEADER)
+    let tool_models = string_map_from_header(headers, TOOL_MODELS_HEADER)?
         .ok_or_else(|| internal_error(format!("missing {TOOL_MODELS_HEADER} header")))?;
-    let raw = header
-        .to_str()
-        .map_err(|_| invalid_params(format!("{TOOL_MODELS_HEADER} header is not valid ASCII")))?;
-    let tool_models: BTreeMap<String, String> = serde_json::from_str(raw)
-        .map_err(|_| invalid_params(format!("{TOOL_MODELS_HEADER} header is not valid JSON")))?;
     tool_models
         .get(tool_name)
         .cloned()
