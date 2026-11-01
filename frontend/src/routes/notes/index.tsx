@@ -103,20 +103,13 @@ function NotesPage() {
   } = $api.useQuery('get', '/api/note-kinds', undefined, {
     enabled: showingNotes,
   })
-  const { data: allTagOverviews, isError: allTagOverviewsError } =
-    $api.useQuery(
-      'get',
-      '/api/notes/overview',
-      { params: { query: { view: 'all' } } },
-      { enabled: showingNotes },
-    )
-  const { data: pendingTagOverviews, isError: pendingTagOverviewsError } =
-    $api.useQuery(
-      'get',
-      '/api/notes/overview',
-      { params: { query: { view: 'pending' } } },
-      { enabled: showingNotes },
-    )
+  const {
+    data: noteTags,
+    isPending: noteTagsPending,
+    isError: noteTagsError,
+  } = $api.useQuery('get', '/api/note-tags', undefined, {
+    enabled: showingNotes,
+  })
   const {
     data: overviews,
     isPending: overviewsPending,
@@ -160,15 +153,6 @@ function NotesPage() {
   ] = useState<string[]>([])
   const confirmedWarningVersionIds = new Set(
     confirmedWarningDispositionVersionIds,
-  )
-  const tagSet = new Set(
-    [...(allTagOverviews ?? []), ...(pendingTagOverviews ?? [])].flatMap(
-      (overview) => overview.representative.tags,
-    ),
-  )
-  if (tag != null) tagSet.add(tag)
-  const tags = [...tagSet].sort((left, right) =>
-    left.localeCompare(right, 'ja'),
   )
   const reviewData = showingNotes
     ? createReviewData(overviews)
@@ -309,14 +293,17 @@ function NotesPage() {
       {showingNotes && (
         <NotesFilters
           noteKinds={noteKinds ?? []}
+          noteTags={noteTags ?? []}
           catalogState={
             noteKindsPending ? 'loading' : noteKindsError ? 'error' : 'loaded'
           }
+          tagCatalogState={
+            noteTagsPending ? 'loading' : noteTagsError ? 'error' : 'loaded'
+          }
           kind={kind}
-          tags={tags}
           tag={tag}
           view={view}
-          tagCandidatesError={allTagOverviewsError || pendingTagOverviewsError}
+          tagCatalogError={noteTagsError}
           onViewChange={(value) => {
             void navigate({
               search: (previous) => ({ ...previous, view: value }),
@@ -358,6 +345,7 @@ function NotesPage() {
               overviewsPending ? 'loading' : overviewsError ? 'error' : 'loaded'
             }
             noteKinds={noteKinds ?? []}
+            noteTags={noteTags ?? []}
             noteKindCatalogState={
               noteKindsPending ? 'loading' : noteKindsError ? 'error' : 'loaded'
             }

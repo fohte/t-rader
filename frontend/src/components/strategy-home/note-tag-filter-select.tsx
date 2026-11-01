@@ -10,13 +10,18 @@ import {
   decodePrefixedSelectValue,
   encodePrefixedSelectValue,
 } from '#components/strategy-home/prefixed-select-value'
+import type { components } from '#lib/api/schema.gen'
+
+type NoteTag = components['schemas']['NoteTag']
+type NoteTagCatalogState = 'loading' | 'error' | 'loaded'
 
 const ALL_TAGS_VALUE = '__all-tags__'
 const TAG_VALUE_PREFIX = 'tag:'
 const ALL_TAGS_LABEL = 'すべてのタグ'
 
 interface NoteTagFilterSelectProps {
-  tags: string[]
+  noteTags: readonly NoteTag[]
+  catalogState: NoteTagCatalogState
   value: string | undefined
   defaultOpen?: boolean
   className?: string
@@ -24,14 +29,22 @@ interface NoteTagFilterSelectProps {
 }
 
 export function NoteTagFilterSelect({
-  tags,
+  noteTags,
+  catalogState,
   value,
   defaultOpen,
   className,
   onChange,
 }: NoteTagFilterSelectProps) {
+  const selectedNoteTag = noteTags.find((noteTag) => noteTag.key === value)
   const selectedTagLabel =
-    value == null || value === '' ? ALL_TAGS_LABEL : value
+    value == null || value === ''
+      ? ALL_TAGS_LABEL
+      : catalogState === 'loading'
+        ? 'タグを読み込み中'
+        : catalogState === 'error'
+          ? 'タグを取得できません'
+          : (selectedNoteTag?.display_name ?? '未登録のタグ')
 
   return (
     <Select
@@ -50,16 +63,16 @@ export function NoteTagFilterSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={ALL_TAGS_VALUE}>{ALL_TAGS_LABEL}</SelectItem>
-        {tags.map((tag) => (
+        {noteTags.map((noteTag) => (
           <SelectItem
-            key={tag}
+            key={noteTag.key}
             value={encodePrefixedSelectValue(
-              tag,
+              noteTag.key,
               TAG_VALUE_PREFIX,
               ALL_TAGS_VALUE,
             )}
           >
-            {tag}
+            {noteTag.display_name}
           </SelectItem>
         ))}
       </SelectContent>

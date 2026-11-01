@@ -8,14 +8,16 @@ import type { components } from '#lib/api/schema.gen'
 import type { NoteKindCatalogState } from '#lib/note-kind-label'
 
 type NoteKind = components['schemas']['NoteKind']
+type NoteTag = components['schemas']['NoteTag']
 
 interface NotesFiltersProps {
   noteKinds: readonly NoteKind[]
+  noteTags: readonly NoteTag[]
   catalogState: NoteKindCatalogState
+  tagCatalogState: 'loading' | 'error' | 'loaded'
   kind: string | undefined
-  tags: string[]
   tag: string | undefined
-  tagCandidatesError?: boolean
+  tagCatalogError?: boolean
   view: NoteOverviewView
   onViewChange: (view: NoteOverviewView) => void
   onKindChange: (value: string | undefined) => void
@@ -25,11 +27,12 @@ interface NotesFiltersProps {
 
 export function NotesFilters({
   noteKinds,
+  noteTags,
   catalogState,
+  tagCatalogState,
   kind,
-  tags,
   tag,
-  tagCandidatesError = false,
+  tagCatalogError = false,
   view,
   onViewChange,
   onKindChange,
@@ -56,14 +59,15 @@ export function NotesFilters({
         onChange={onKindChange}
       />
       <NoteTagFilterSelect
-        tags={tags}
+        noteTags={noteTags}
+        catalogState={tagCatalogState}
         value={tag}
         onChange={onTagChange}
         className="h-auto min-h-11 w-full min-w-0"
       />
-      {tagCandidatesError && (
+      {tagCatalogError && (
         <p role="alert" className="text-xs text-destructive sm:col-span-2">
-          一部のタグ候補を読み込めませんでした。
+          タグ候補を読み込めませんでした。
         </p>
       )}
       <Button

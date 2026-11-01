@@ -22,6 +22,7 @@ import type { NoteKindCatalogState } from '#lib/note-kind-label'
 import { formatRelative } from '#lib/note-utils'
 
 type NoteKind = components['schemas']['NoteKind']
+type NoteTag = components['schemas']['NoteTag']
 
 export interface NotesListProps {
   overviews: NoteOverview[]
@@ -30,6 +31,7 @@ export interface NotesListProps {
   tag?: string
   state: 'loading' | 'error' | 'loaded'
   noteKinds: readonly NoteKind[]
+  noteTags: readonly NoteTag[]
   noteKindCatalogState: NoteKindCatalogState
   selectedItemIds: string[]
   selectedItems: ReviewQueueItem[]
@@ -64,6 +66,7 @@ export function NotesList({
   tag,
   state,
   noteKinds,
+  noteTags,
   noteKindCatalogState,
   selectedItemIds,
   selectedItems,
@@ -80,6 +83,9 @@ export function NotesList({
     view,
   )
   const selectedCount = selectedItemIds.length
+  const noteTagByKey = new Map(
+    noteTags.map((noteTag) => [noteTag.key, noteTag]),
+  )
   const confirmedWarningVersionIds = new Set(
     confirmedWarningDispositionVersionIds,
   )
@@ -260,9 +266,12 @@ export function NotesList({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 font-mono text-2xs">
-                      {note.tags.map((noteTag) => (
-                        <Chip key={noteTag}>{noteTag}</Chip>
-                      ))}
+                      {note.tags.flatMap((tagKey) => {
+                        const noteTag = noteTagByKey.get(tagKey)
+                        return noteTag == null
+                          ? []
+                          : [<Chip key={tagKey}>{noteTag.display_name}</Chip>]
+                      })}
                       <span className="ml-auto text-muted-foreground">
                         {formatRelative(note.updated_at)}
                       </span>

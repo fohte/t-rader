@@ -6,7 +6,11 @@ const meta = {
   title: 'StrategyHome/NoteTagFilterSelect',
   component: NoteTagFilterSelect,
   args: {
-    tags: ['架空タグ', '仮の分類'],
+    noteTags: [
+      { key: 'theme-x', display_name: 'テーマX' },
+      { key: 'category-y', display_name: '分類Y' },
+    ],
+    catalogState: 'loaded',
     onChange: () => {},
   },
 } satisfies Meta<typeof NoteTagFilterSelect>
@@ -21,10 +25,10 @@ export const AllTags: Story = {
 
 export const SelectedTag: Story = {
   name: 'The selector has one tag selected.',
-  args: { value: '架空タグ' },
+  args: { value: 'theme-x' },
 }
 
 export const OptionsOpen: Story = {
-  name: 'shows the available tags in the selector.',
+  name: 'The selector shows registered tags by display name.',
   args: { value: undefined, defaultOpen: true },
 }

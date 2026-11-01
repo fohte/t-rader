@@ -87,34 +87,6 @@ const warningOverview: NoteOverview = {
   unread_version_count: 2,
 }
 
-const pendingOnlyOverview: NoteOverview = {
-  ...overview,
-  representative: {
-    ...representative,
-    id: 'fake-note-pending',
-    version_id: unreadVersion.id,
-    version_no: unreadVersion.version_no,
-    is_current: false,
-    tags: ['pending-only-tag'],
-    status: 'unread',
-    created_by_kind: 'llm',
-    created_at: unreadVersion.created_at,
-  },
-  current: null,
-  latest_unread: { ...unreadVersion, note_id: 'fake-note-pending' },
-}
-
-function getPendingTagFilterOutput(search: unknown, tagOption: HTMLElement) {
-  return {
-    search,
-    emptyMessage: screen.getByText('未読・レビュー待ちのノートはありません。')
-      .textContent,
-    tagOption: tagOption.textContent,
-    selectedTag: screen.getByRole('combobox', { name: 'タグで絞り込み' })
-      .textContent,
-  }
-}
-
 function getTagCandidatesErrorOutput(alert: HTMLElement) {
   return { role: alert.getAttribute('role'), text: alert.textContent }
 }
@@ -151,6 +123,11 @@ describe('/notes overview route', () => {
               sort_order: 0,
             },
           ]),
+        )
+      }
+      if (url.pathname === '/api/note-tags') {
+        return Promise.resolve(
+          Response.json([{ key: 'sample-tag', display_name: '架空タグ' }]),
         )
       }
       if (url.pathname === '/api/annotations') {
@@ -202,28 +179,38 @@ describe('/notes overview route', () => {
           tag: 'sample-tag',
           view: 'pending',
         }),
-        JSON.stringify({ view: 'all' }),
-        JSON.stringify({ view: 'pending' }),
       ].sort(),
     )
   }, 30_000)
 
-  it('offers tags from pending representatives and keeps a selected tag with no results', async () => {
+  it('uses registered tag labels in API order and filters by key', async () => {
     const user = userEvent.setup()
+    const overviewRequests: Record<string, string | undefined>[] = []
+    const taggedOverview: NoteOverview = {
+      ...overview,
+      representative: {
+        ...representative,
+        tags: ['theme-x', 'unlisted-tag', 'category-y'],
+      },
+    }
     stubFetch((input, init) => {
       const request =
         input instanceof Request ? input : new Request(input, init)
       const url = new URL(request.url)
 
       if (url.pathname === '/api/notes/overview') {
-        const view = url.searchParams.get('view')
-        const isFiltered =
-          url.searchParams.has('kind') || url.searchParams.has('tag')
-        if (isFiltered) return Promise.resolve(Response.json([]))
+        overviewRequests.push({
+          tag: url.searchParams.get('tag') ?? undefined,
+          view: url.searchParams.get('view') ?? undefined,
+        })
+        return Promise.resolve(Response.json([taggedOverview]))
+      }
+      if (url.pathname === '/api/note-tags') {
         return Promise.resolve(
-          Response.json(
-            view === 'pending' ? [pendingOnlyOverview] : [overview],
-          ),
+          Response.json([
+            { key: 'category-y', display_name: '分類Y' },
+            { key: 'theme-x', display_name: 'テーマX' },
+          ]),
         )
       }
       if (url.pathname === '/api/note-kinds') {
@@ -251,43 +238,49 @@ describe('/notes overview route', () => {
       ),
     })
 
+    await screen.findByRole('heading', { name: 'ノート一覧' })
     await screen.findByRole('link', { name: '架空の確認ノート' })
-    await user.click(screen.getByRole('button', { name: '未読・レビュー待ち' }))
-    await screen.findByText('架空の確認ノート')
     await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
-    await user.click(
-      await screen.findByRole('option', { name: 'pending-only-tag' }),
-    )
-    const expectedSearch = { view: 'pending', tag: 'pending-only-tag' }
+    await screen.findByRole('option', { name: '分類Y' })
+    expect(
+      screen.getAllByRole('option').map((option) => option.textContent),
+    ).toEqual(['すべてのタグ', '分類Y', 'テーマX'])
+    await user.click(await screen.findByRole('option', { name: 'テーマX' }))
+    const expectedSearch = { tag: 'theme-x' }
     await waitFor(() => {
       expect(router.state.location.search).toEqual(expectedSearch)
     })
-    await screen.findByText('未読・レビュー待ちのノートはありません。')
-    await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
-    const tagOption = await screen.findByRole('option', {
-      name: 'pending-only-tag',
+    await waitFor(() => {
+      expect(overviewRequests).toEqual([
+        { tag: undefined, view: 'all' },
+        { tag: 'theme-x', view: 'all' },
+      ])
     })
 
     expect(
-      getPendingTagFilterOutput(router.state.location.search, tagOption),
-    ).toEqual({
-      search: expectedSearch,
-      emptyMessage: '未読・レビュー待ちのノートはありません。',
-      tagOption: 'pending-only-tag',
-      selectedTag: 'pending-only-tag',
-    })
+      Array.from(
+        screen.getByRole('listitem').querySelectorAll('[data-slot="chip"]'),
+      ).map((chip) => chip.textContent),
+    ).toEqual([
+      '未登録の種別',
+      '現行 v2',
+      '未読 1 バージョン',
+      'テーマX',
+      '分類Y',
+    ])
   }, 30_000)
 
-  it('shows when pending tag candidates could not be loaded', async () => {
+  it('shows when the tag vocabulary could not be loaded', async () => {
     stubFetch((input, init) => {
       const request =
         input instanceof Request ? input : new Request(input, init)
       const url = new URL(request.url)
 
       if (url.pathname === '/api/notes/overview') {
-        return url.searchParams.get('view') === 'pending'
-          ? Promise.resolve(Response.json({}, { status: 500 }))
-          : Promise.resolve(Response.json([overview]))
+        return Promise.resolve(Response.json([overview]))
+      }
+      if (url.pathname === '/api/note-tags') {
+        return Promise.resolve(Response.json({}, { status: 500 }))
       }
       if (url.pathname === '/api/note-kinds') {
         return Promise.resolve(Response.json([]))
@@ -318,7 +311,7 @@ describe('/notes overview route', () => {
 
     expect(getTagCandidatesErrorOutput(alert)).toEqual({
       role: 'alert',
-      text: '一部のタグ候補を読み込めませんでした。',
+      text: 'タグ候補を読み込めませんでした。',
     })
   }, 30_000)
 

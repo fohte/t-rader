@@ -4,6 +4,7 @@ import { NotesFilters } from '#components/strategy-home/notes-filters'
 import type { components } from '#lib/api/schema.gen'
 
 type NoteKind = components['schemas']['NoteKind']
+type NoteTag = components['schemas']['NoteTag']
 
 const noteKinds: NoteKind[] = [
   {
@@ -19,15 +20,20 @@ const noteKinds: NoteKind[] = [
     sort_order: 1,
   },
 ]
+const noteTags: NoteTag[] = [
+  { key: 'theme-x', display_name: 'テーマX' },
+  { key: 'category-y', display_name: '分類Y' },
+]
 
 const meta = {
   title: 'StrategyHome/NotesFilters',
   component: NotesFilters,
   args: {
     noteKinds,
+    noteTags,
     catalogState: 'loaded',
+    tagCatalogState: 'loaded',
     kind: undefined,
-    tags: ['架空タグ', '仮の分類'],
     tag: undefined,
     view: 'all',
     onViewChange: () => {},
@@ -53,7 +59,7 @@ export const Available: Story = {
 
 export const Combined: Story = {
   name: 'shows a kind and tag selected together.',
-  args: { kind: 'sample-kind', tag: '架空タグ' },
+  args: { kind: 'sample-kind', tag: 'theme-x' },
 }
 
 export const PendingNotes: Story = {
@@ -77,8 +83,8 @@ export const CatalogFailed: Story = {
 }
 
 export const TagCandidatesFailed: Story = {
-  name: 'shows when some tag candidates could not be loaded.',
-  args: { tagCandidatesError: true },
+  name: 'shows an error when the tag vocabulary cannot be loaded.',
+  args: { tagCatalogError: true, tagCatalogState: 'error' },
 }
 
 export const UnregisteredKind: Story = {
