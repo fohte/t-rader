@@ -7,6 +7,9 @@ pub enum LlmClientError {
     #[error("network error: {0}")]
     Network(String),
 
+    #[error("request timed out: {0}")]
+    Timeout(String),
+
     #[error("LLM API error (status {status}): {message}")]
     Api { status: u16, message: String },
 
@@ -34,6 +37,21 @@ pub struct ChatMessage {
     pub content: Vec<ContentPart>,
 }
 
+/// Chat completion に対する tool 固有の追加指定。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChatCompletionOptions {
+    pub max_completion_tokens: Option<u32>,
+    pub reasoning_effort: Option<String>,
+}
+
+/// Chat completion の本文と provider が返す実行情報。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatCompletionOutput {
+    pub content: Option<String>,
+    pub finish_reason: Option<String>,
+    pub completion_tokens: Option<u64>,
+}
+
 /// テキストまたは外部ファイルを含むメッセージ内容。
 #[derive(Debug, Clone)]
 pub enum ContentPart {
@@ -58,6 +76,22 @@ pub trait LlmClient: Send + Sync {
         model: &str,
         messages: Vec<ChatMessage>,
     ) -> Result<String, LlmClientError>;
+
+    /// 既存 client は従来の呼び出しに委譲でき、対応 client は追加 option を送信する。
+    async fn chat_completion_with_options(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        _options: ChatCompletionOptions,
+    ) -> Result<ChatCompletionOutput, LlmClientError> {
+        self.chat_completion(model, messages)
+            .await
+            .map(|content| ChatCompletionOutput {
+                content: Some(content),
+                finish_reason: None,
+                completion_tokens: None,
+            })
+    }
 }
 
 pub type SharedLlmClient = Arc<dyn LlmClient + Send + Sync>;

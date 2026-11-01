@@ -73,6 +73,7 @@ export interface StrategyAgentDeps {
     executionId: string,
     toolModels: Readonly<Record<string, string>>,
     subagentExecution?: SubagentExecutionIdentity,
+    toolReasoningEfforts?: Readonly<Record<string, string>>,
   ) => McpToolsClient
   readonly createChatModel: (
     model: string,
@@ -203,6 +204,8 @@ export const runStrategyAgent = async (
                     ? taskId
                     : `${taskId}:${executionStepId}`,
                   parsedGraph.value.toolModels ?? {},
+                  undefined,
+                  parsedGraph.value.toolReasoningEfforts ?? {},
                 ),
               createSubagentTool: (
                 phase,
@@ -224,6 +227,7 @@ export const runStrategyAgent = async (
                       `${taskId}:${executionStepId}`,
                       parsedGraph.value.toolModels ?? {},
                       { executionId: executionStepId, definitionKey },
+                      parsedGraph.value.toolReasoningEfforts ?? {},
                     ),
                   deps,
                   ...(phaseContext.deadlineSignal !== undefined

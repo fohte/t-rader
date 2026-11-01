@@ -58,5 +58,6 @@ export interface AgentGraphConfig {
   }
   readonly toolLimits?: Readonly<Record<string, number>>
   readonly toolModels?: Readonly<Record<string, string>>
+  readonly toolReasoningEfforts?: Readonly<Record<string, string>>
   readonly phases: readonly AgentGraphPhase[]
 }

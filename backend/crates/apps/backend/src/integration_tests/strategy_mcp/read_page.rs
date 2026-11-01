@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderValue};
 use core_application::llm_client::{
-    ChatMessage, ContentPart, LlmClient, LlmClientError, LlmModel, SharedLlmClient,
+    ChatCompletionOptions, ChatCompletionOutput, ChatMessage, ContentPart, LlmClient,
+    LlmClientError, LlmModel, SharedLlmClient,
 };
 use core_application::tavily_retrieval_cache::SharedTavilyRetrievalCacheRepository;
 use core_application::unit_of_work::SharedUnitOfWork;
@@ -45,12 +46,14 @@ struct PromptMessage {
 struct CompletionCall {
     model: String,
     messages: Vec<PromptMessage>,
+    options: ChatCompletionOptions,
 }
 
 #[derive(Default)]
 struct FakeLlmClient {
     calls: Mutex<Vec<CompletionCall>>,
     fail_completion: bool,
+    completion_output: Option<ChatCompletionOutput>,
 }
 
 #[async_trait]
@@ -64,6 +67,18 @@ impl LlmClient for FakeLlmClient {
         model: &str,
         messages: Vec<ChatMessage>,
     ) -> Result<String, LlmClientError> {
+        self.chat_completion_with_options(model, messages, ChatCompletionOptions::default())
+            .await?
+            .content
+            .ok_or_else(|| LlmClientError::Parse("missing test content".into()))
+    }
+
+    async fn chat_completion_with_options(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        options: ChatCompletionOptions,
+    ) -> Result<ChatCompletionOutput, LlmClientError> {
         self.calls
             .lock()
             .expect("record completion")
@@ -84,6 +99,7 @@ impl LlmClient for FakeLlmClient {
                             .join(""),
                     })
                     .collect(),
+                options,
             });
         if self.fail_completion {
             Err(LlmClientError::Api {
@@ -91,7 +107,14 @@ impl LlmClient for FakeLlmClient {
                 message: "upstream unavailable".into(),
             })
         } else {
-            Ok("page answer".into())
+            Ok(self
+                .completion_output
+                .clone()
+                .unwrap_or(ChatCompletionOutput {
+                    content: Some("page answer".into()),
+                    finish_reason: Some("stop".into()),
+                    completion_tokens: Some(17),
+                }))
         }
     }
 }
@@ -170,6 +193,14 @@ fn failing_web_search_client() -> SharedWebSearchClient {
 
 fn llm_client() -> (SharedLlmClient, Arc<FakeLlmClient>) {
     let client = Arc::new(FakeLlmClient::default());
+    (client.clone(), client)
+}
+
+fn llm_client_with_output(output: ChatCompletionOutput) -> (SharedLlmClient, Arc<FakeLlmClient>) {
+    let client = Arc::new(FakeLlmClient {
+        completion_output: Some(output),
+        ..FakeLlmClient::default()
+    });
     (client.clone(), client)
 }
 
@@ -254,6 +285,16 @@ fn headers_with_models(
     headers
 }
 
+fn headers_with_reasoning_effort(strategy_id: Uuid, effort: &str) -> HeaderMap {
+    let mut headers = headers(strategy_id, None);
+    headers.insert(
+        "x-tool-reasoning-efforts",
+        HeaderValue::from_str(&format!(r#"{{"read_page":"{effort}"}}"#))
+            .expect("valid reasoning efforts header"),
+    );
+    headers
+}
+
 fn params(url: &str, prompt: &str) -> ReadPageParams {
     ReadPageParams {
         url: url.to_string(),
@@ -316,6 +357,114 @@ async fn read_page_uses_tool_model_and_truncates_extracted_content_at_100000_cha
                             {expected_content}"},
                     },
                 ],
+                options: ChatCompletionOptions {
+                    max_completion_tokens: Some(8_192),
+                    reasoning_effort: None,
+                },
+            }],
+        ),
+    );
+}
+
+#[rstest]
+#[case::length_finish_reason(Some("partial"), Some("length"))]
+#[case::empty_answer(Some("  \n"), Some("stop"))]
+#[case::missing_content(None, None)]
+#[tokio::test]
+async fn read_page_returns_recoverable_error_when_answer_is_unusable(
+    #[case] content: Option<&str>,
+    #[case] finish_reason: Option<&str>,
+) {
+    let strategy_id = Uuid::new_v4();
+    let (web_search_client, _) = web_search_client("Synthetic page body");
+    let (llm_client, _) = llm_client_with_output(ChatCompletionOutput {
+        content: content.map(str::to_string),
+        finish_reason: finish_reason.map(str::to_string),
+        completion_tokens: Some(17),
+    });
+    let server = server(
+        mock_db_with_strategy(strategy_id),
+        Some(llm_client),
+        Some(web_search_client),
+    );
+
+    let result = call_tool_output_with_headers::<_, ReadPageResult>(
+        &server,
+        "read_page",
+        serde_json::to_value(params(PAGE_URL, "Summarize the example")).expect("serialize params"),
+        headers(strategy_id, None),
+    )
+    .await;
+
+    assert_eq!(
+        result,
+        Err(McpError::new(
+            rmcp::model::ErrorCode(-32052),
+            "読解用 LLM が上限内に答えられませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
+            Some(json!({
+                "completion_tokens": 17,
+                "finish_reason": finish_reason,
+            })),
+        )),
+    );
+}
+
+#[tokio::test]
+async fn read_page_passes_configured_reasoning_effort_to_the_llm_client() {
+    let strategy_id = Uuid::new_v4();
+    let (web_search_client, _) = web_search_client("Synthetic page body");
+    let (llm_client, llm) = llm_client();
+    let server = server(
+        mock_db_with_strategy(strategy_id),
+        Some(llm_client),
+        Some(web_search_client),
+    );
+
+    let result = call_tool_output_with_headers::<_, ReadPageResult>(
+        &server,
+        "read_page",
+        serde_json::to_value(params(PAGE_URL, "Summarize the example")).expect("serialize params"),
+        headers_with_reasoning_effort(strategy_id, "low"),
+    )
+    .await;
+
+    assert_eq!(
+        (
+            result,
+            llm.calls.lock().expect("read completion calls").clone(),
+        ),
+        (
+            Ok(ReadPageResult {
+                url: PAGE_URL.into(),
+                text: "page answer".into(),
+                retrieved_at: Some(
+                    chrono::DateTime::from_timestamp(1_767_225_600, 0)
+                        .expect("fixed test timestamp"),
+                ),
+            }),
+            vec![CompletionCall {
+                model: MODEL_NAME.into(),
+                messages: vec![
+                    PromptMessage {
+                        role: "system".into(),
+                        text: SYSTEM_PROMPT.into(),
+                    },
+                    PromptMessage {
+                        role: "user".into(),
+                        text: formatdoc! {"
+                            URL: {PAGE_URL}
+
+                            質問:
+                            Summarize the example
+
+                            ページ本文:
+                            Synthetic page body"},
+                    },
+                ],
+                options: ChatCompletionOptions {
+                    max_completion_tokens: Some(8_192),
+                    reasoning_effort: Some("low".into()),
+                },
             }],
         ),
     );
@@ -387,6 +536,10 @@ async fn read_page_reuses_extracted_body_but_runs_llm_for_each_prompt(
                                 Synthetic page body"},
                         },
                     ],
+                    options: ChatCompletionOptions {
+                        max_completion_tokens: Some(8_192),
+                        reasoning_effort: None,
+                    },
                 },
                 CompletionCall {
                     model: MODEL_NAME.into(),
@@ -407,6 +560,10 @@ async fn read_page_reuses_extracted_body_but_runs_llm_for_each_prompt(
                                 Synthetic page body"},
                         },
                     ],
+                    options: ChatCompletionOptions {
+                        max_completion_tokens: Some(8_192),
+                        reasoning_effort: None,
+                    },
                 },
             ],
         ),
@@ -724,6 +881,54 @@ async fn read_page_keeps_call_count_reservation_after_completion_failure(
                 .collect::<Vec<_>>(),
             READ_PAGE_TEST_CALL_LIMIT as usize,
             READ_PAGE_TEST_CALL_LIMIT as usize,
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn read_page_keeps_call_count_after_completion_limit_error(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution =
+        create_task_with_subagent_limits(&db, strategy_id, "reader", "read_page", 1, 20).await;
+    let (web_search_client, extracted_urls) = web_search_client("Synthetic page body");
+    let (llm_client, llm) = llm_client_with_output(ChatCompletionOutput {
+        content: Some("partial answer".into()),
+        finish_reason: Some("length".into()),
+        completion_tokens: Some(8_192),
+    });
+    let server = server(db, Some(llm_client), Some(web_search_client));
+    let subagent = Some(("22222222-2222-2222-2222-222222222222", "reader"));
+
+    let results = vec![
+        invoke_read_page(&server, strategy_id, &task_execution, subagent).await,
+        invoke_read_page(&server, strategy_id, &task_execution, subagent).await,
+    ];
+
+    assert_eq!(
+        (
+            results,
+            extracted_urls.lock().expect("read extracted URLs").len(),
+            llm.calls.lock().expect("read completion calls").len(),
+        ),
+        (
+            vec![
+                Err(McpError::new(
+                    rmcp::model::ErrorCode(-32052),
+                    "読解用 LLM が上限内に答えられませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
+                    Some(json!({
+                        "completion_tokens": 8_192,
+                        "finish_reason": "length",
+                    })),
+                )),
+                Err(McpError::invalid_params(
+                    "execution budget limit was exceeded for reader:read_page",
+                    None,
+                )),
+            ],
+            1,
+            1,
         ),
     );
 }

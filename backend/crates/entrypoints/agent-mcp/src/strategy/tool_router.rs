@@ -43,7 +43,7 @@ use super::dto::{
     WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
-use super::read_page::TOOL_NAME as READ_PAGE_TOOL_NAME;
+use super::read_page::{TOOL_NAME as READ_PAGE_TOOL_NAME, tool_reasoning_effort_from_ctx};
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
@@ -260,7 +260,7 @@ impl StrategyServer {
     /// URL のページ本文をモデルに読ませ、質問への回答を返す
     #[tool(
         name = "read_page",
-        description = "Read a web page by URL and answer a prompt using the model configured for this tool in agent_graph.tool_models. Use search_web to find URLs, then use read_page to read an article. The answer must use only information in the page, preserve original numbers, dates, names, and quotes, and say when the answer is absent or the content is inaccessible. Calls are limited per strategy task execution (default 20); agent_graph.tool_limits can override this limit. When both x-subagent-execution-id and x-subagent-definition-key are provided, the matching subagent definition's tool_limits entry adds a per-subagent execution limit; when the tool has no entry, only the task limit applies.",
+        description = "Read a web page by URL and answer a prompt using the model configured for this tool in agent_graph.tool_models. agent_graph.tool_reasoning_efforts.read_page optionally configures reasoning effort. Use search_web to find URLs, then use read_page to read an article. The answer must use only information in the page, preserve original numbers, dates, names, and quotes, and say when the answer is absent or the content is inaccessible. Calls are limited per strategy task execution (default 20); agent_graph.tool_limits can override this limit. When both x-subagent-execution-id and x-subagent-definition-key are provided, the matching subagent definition's tool_limits entry adds a per-subagent execution limit; when the tool has no entry, only the task limit applies.",
         annotations(read_only_hint = true)
     )]
     async fn read_page(
@@ -270,12 +270,13 @@ impl StrategyServer {
     ) -> Result<Json<ReadPageResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let model = tool_model_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
+        let reasoning_effort = tool_reasoning_effort_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
         let arguments = serde_json::to_value(&params).map_err(|error| {
             internal_error(format!("failed to encode read_page request: {error}"))
         })?;
         let (call_id, fingerprint) =
             tavily_call_identity(&ctx, scope.id(), READ_PAGE_TOOL_NAME, arguments)?;
-        self.read_page_inner(scope, model, params, call_id, fingerprint)
+        self.read_page_inner(scope, model, reasoning_effort, params, call_id, fingerprint)
             .await
             .map(Json)
     }

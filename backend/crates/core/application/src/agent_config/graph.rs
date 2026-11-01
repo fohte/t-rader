@@ -20,6 +20,8 @@ pub struct AgentGraphConfig {
     pub tool_limits: BTreeMap<String, u32>,
     #[serde(default)]
     pub tool_models: BTreeMap<String, String>,
+    #[serde(default)]
+    pub tool_reasoning_efforts: BTreeMap<String, String>,
     pub phases: Vec<AgentGraphPhase>,
 }
 
@@ -407,6 +409,8 @@ mod tests {
               search_web: 4
             tool_models:
               query_youtube: example-model-youtube
+            tool_reasoning_efforts:
+              read_page: low
             phases:
               - key: plan
                 label: 調査計画
@@ -441,6 +445,10 @@ mod tests {
                     "query_youtube".to_string(),
                     "example-model-youtube".to_string()
                 ),]),
+                tool_reasoning_efforts: BTreeMap::from([(
+                    "read_page".to_string(),
+                    "low".to_string()
+                )]),
                 phases: vec![
                     AgentGraphPhase {
                         key: "plan".to_string(),
@@ -515,6 +523,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
                     label: "Plan".to_string(),
@@ -567,6 +576,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "run".to_string(),
                     label: "Run".to_string(),
@@ -642,6 +652,7 @@ mod tests {
                 }),
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
                     label: "Plan".to_string(),
@@ -709,6 +720,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![
                     AgentGraphPhase {
                         key: "prepare".to_string(),
@@ -1000,6 +1012,7 @@ mod tests {
                 execution_limits: None,
                 tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
+                tool_reasoning_efforts: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
                     label: "Plan".to_string(),

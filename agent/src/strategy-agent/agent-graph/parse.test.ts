@@ -55,6 +55,8 @@ tool_limits:
 tool_models:
   tool_a: demo-model-tool-a
   tool_b: demo-model-tool-b
+tool_reasoning_efforts:
+  read_page: low
 phases:
   - key: stage_a
     label: 項目の作成
@@ -92,6 +94,7 @@ phases:
           tool_a: 'demo-model-tool-a',
           tool_b: 'demo-model-tool-b',
         },
+        toolReasoningEfforts: { read_page: 'low' },
         phases: [
           {
             key: 'stage_a',

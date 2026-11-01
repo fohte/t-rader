@@ -137,6 +137,7 @@ pub(super) fn kata_exec_to_mcp_err(err: KataExecError) -> McpError {
 pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
     match err {
         LiteLlmError::Network(msg) => internal_error(format!("litellm network error: {msg}")),
+        LiteLlmError::Timeout(msg) => internal_error(format!("litellm request timed out: {msg}")),
         LiteLlmError::Api { status, message } => {
             internal_error(format!("litellm api error (status {status}): {message}"))
         }
@@ -533,6 +534,26 @@ mod tests {
                 "query_youtube",
             ),
             Ok("example-model-youtube".to_string()),
+        );
+    }
+
+    #[rstest]
+    #[case::network(
+        LiteLlmError::Network("connection refused".into()),
+        "litellm network error: connection refused"
+    )]
+    #[case::timeout(
+        LiteLlmError::Timeout("request deadline elapsed".into()),
+        "litellm request timed out: request deadline elapsed"
+    )]
+    fn litellm_error_to_mcp_keeps_network_and_timeout_distinct(
+        #[case] error: LiteLlmError,
+        #[case] expected_message: &str,
+    ) {
+        let mapped = litellm_error_to_mcp(error);
+        assert_eq!(
+            (mapped.code, mapped.message.as_ref()),
+            (ErrorCode::INTERNAL_ERROR, expected_message),
         );
     }
 

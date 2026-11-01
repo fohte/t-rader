@@ -1,7 +1,9 @@
 //! `read_page` tool の inner method 実装。
 
+use std::collections::BTreeMap;
+
 use axum::http::Uri;
-use core_application::llm_client::{ChatMessage, ContentPart};
+use core_application::llm_client::{ChatCompletionOptions, ChatMessage, ContentPart};
 use core_application::strategy_scope::StrategyScope;
 use core_application::tavily_credit_budget::{
     TavilyCreditBudgetDenial, TavilyCreditBudgetReason, TavilyCreditBudgetScope,
@@ -17,12 +19,45 @@ use super::{
 pub(super) const TOOL_NAME: &str = "read_page";
 pub(super) const READ_PAGE_MAX_CALLS_PER_TASK: u32 = 20;
 const MAX_PAGE_CONTENT_CHARS: usize = 100_000;
+const TOOL_REASONING_EFFORTS_HEADER: &str = "x-tool-reasoning-efforts";
+
+fn tool_reasoning_effort_from_headers(
+    headers: &axum::http::HeaderMap,
+    tool_name: &str,
+) -> Result<Option<String>, McpError> {
+    let Some(header) = headers.get(TOOL_REASONING_EFFORTS_HEADER) else {
+        return Ok(None);
+    };
+    let raw = header.to_str().map_err(|_| {
+        super::invalid_params(format!(
+            "{TOOL_REASONING_EFFORTS_HEADER} header is not valid ASCII"
+        ))
+    })?;
+    let efforts: BTreeMap<String, String> = serde_json::from_str(raw).map_err(|_| {
+        super::invalid_params(format!(
+            "{TOOL_REASONING_EFFORTS_HEADER} header is not valid JSON"
+        ))
+    })?;
+    Ok(efforts.get(tool_name).cloned())
+}
+
+pub(super) fn tool_reasoning_effort_from_ctx(
+    ctx: &rmcp::service::RequestContext<rmcp::service::RoleServer>,
+    tool_name: &str,
+) -> Result<Option<String>, McpError> {
+    let parts = ctx
+        .extensions
+        .get::<axum::http::request::Parts>()
+        .ok_or_else(|| super::internal_error("missing http parts in mcp request context"))?;
+    tool_reasoning_effort_from_headers(&parts.headers, tool_name)
+}
 
 impl StrategyServer {
     pub(super) async fn read_page_inner(
         &self,
         scope: impl Into<StrategyScope>,
         model: String,
+        reasoning_effort: Option<String>,
         params: ReadPageParams,
         call_id: String,
         request_fingerprint: String,
@@ -100,8 +135,18 @@ impl StrategyServer {
             },
         ];
 
-        let text = match llm_client.chat_completion(&model, messages).await {
-            Ok(text) => text,
+        let completion = match llm_client
+            .chat_completion_with_options(
+                &model,
+                messages,
+                ChatCompletionOptions {
+                    max_completion_tokens: Some(8_192),
+                    reasoning_effort,
+                },
+            )
+            .await
+        {
+            Ok(completion) => completion,
             Err(error) => {
                 tracing::warn!(
                     strategy_id = %strategy_id,
@@ -114,6 +159,27 @@ impl StrategyServer {
                 return Err(litellm_error_to_mcp(error));
             }
         };
+
+        tracing::info!(
+            strategy_id = %strategy_id,
+            model,
+            url,
+            completion_tokens = ?completion.completion_tokens,
+            finish_reason = ?completion.finish_reason,
+            "read_page: chat completion finished"
+        );
+
+        let text = completion.content.unwrap_or_default();
+        if completion.finish_reason.as_deref() == Some("length") || text.trim().is_empty() {
+            return Err(McpError::new(
+                rmcp::model::ErrorCode(-32052),
+                "読解用 LLM が上限内に答えられませんでした。同じ質問で再試行せず、質問を絞るか、手元の情報で続けてください。",
+                Some(serde_json::json!({
+                    "completion_tokens": completion.completion_tokens,
+                    "finish_reason": completion.finish_reason,
+                })),
+            ));
+        }
 
         Ok(ReadPageResult {
             url,
@@ -135,4 +201,32 @@ fn validate_page_url(url: &str) -> Result<(), McpError> {
         return Err(invalid_params("url must be a valid HTTP or HTTPS URL"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::missing(None, None)]
+    #[case::tool_not_configured(Some(br#"{}"#.as_slice()), None)]
+    #[case::configured(Some(br#"{"read_page":"low"}"#.as_slice()), Some("low"))]
+    fn tool_reasoning_effort_from_headers_is_optional(
+        #[case] header: Option<&[u8]>,
+        #[case] expected: Option<&str>,
+    ) {
+        let mut headers = axum::http::HeaderMap::new();
+        if let Some(value) = header {
+            headers.insert(
+                TOOL_REASONING_EFFORTS_HEADER,
+                axum::http::HeaderValue::from_bytes(value).expect("header value"),
+            );
+        }
+        assert_eq!(
+            tool_reasoning_effort_from_headers(&headers, "read_page"),
+            Ok(expected.map(str::to_string)),
+        );
+    }
 }
