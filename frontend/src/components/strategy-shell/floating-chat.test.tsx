@@ -476,4 +476,32 @@ describe('FloatingChat', () => {
       ])
     })
   })
+
+  it('invalidates note queries when a task completes', async () => {
+    const requests: CapturedRequest[] = []
+    mockChatApi(requests)
+    const invalidateQueries = vi.spyOn(
+      QueryClient.prototype,
+      'invalidateQueries',
+    )
+    renderFloatingChat()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
+    )
+    fireEvent.change(await screen.findByLabelText('メッセージ入力'), {
+      target: { value: '架空の依頼' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '送信' }))
+    await screen.findByText('分析が完了しました。')
+
+    await waitFor(() => {
+      expect(
+        invalidateQueries.mock.calls.map(([filters]) => filters?.queryKey),
+      ).toEqual([
+        ['get', '/api/notes'],
+        ['get', '/api/notes/overview'],
+      ])
+    })
+  })
 })

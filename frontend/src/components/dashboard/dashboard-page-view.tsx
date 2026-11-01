@@ -13,7 +13,7 @@ import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
-type Note = components['schemas']['Note']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 type PositionSummary = components['schemas']['PositionSummary']
 type Stock = components['schemas']['Stock']
 type Strategy = components['schemas']['Strategy']
@@ -33,7 +33,7 @@ interface DashboardPageViewProps {
   isTradesError: boolean
   events: CalendarEvent[] | null
   isEventsError: boolean
-  notes: Note[] | null
+  notes: NoteOverview[] | null
   isNotesError: boolean
   tasks: Task[] | null
   isTasksError: boolean

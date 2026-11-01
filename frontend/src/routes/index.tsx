@@ -21,7 +21,9 @@ function DashboardRoute() {
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
   const tradesQuery = $api.useQuery('get', '/api/trades')
-  const notesQuery = $api.useQuery('get', '/api/notes')
+  const notesQuery = $api.useQuery('get', '/api/notes/overview', {
+    params: { query: { view: 'all' } },
+  })
   const taskQuery = $api.useQuery('get', '/api/tasks')
   const reviewQueue = useReviewQueue()
   const today = getTokyoDate()
