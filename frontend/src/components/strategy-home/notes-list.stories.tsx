@@ -14,6 +14,7 @@ import { createStoryRouter } from '#storybook/story-router'
 type Note = components['schemas']['Note']
 type NoteVersion = components['schemas']['NoteVersion']
 type NoteKind = components['schemas']['NoteKind']
+type NoteTag = components['schemas']['NoteTag']
 
 function makeNote(overrides: Partial<Note> = {}): Note {
   return {
@@ -26,7 +27,7 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     frontmatter_json: {},
     resolved_price_references_json: {},
     graphs_json: [],
-    tags: ['架空タグ'],
+    tags: ['sample-tag'],
     kind: 'sample-kind',
     status: 'approved',
     trigger: null,
@@ -98,6 +99,7 @@ const noteKinds: NoteKind[] = [
     sort_order: 1,
   },
 ]
+const noteTags: NoteTag[] = [{ key: 'sample-tag', display_name: '架空タグ' }]
 
 const currentUnreadNote = makeOverview(
   {
@@ -330,6 +332,7 @@ const meta = {
     view: 'all' as NoteOverviewView,
     state: 'loaded' as const,
     noteKinds,
+    noteTags,
     noteKindCatalogState: 'loaded' as const,
     selectedItemIds: [],
     selectedItems: [],
@@ -438,6 +441,13 @@ export const KindUnregistered: Story = {
   args: {
     overviews: [makeOverview({ kind: 'unlisted-kind', tags: [] })],
     noteKinds: [],
+  },
+}
+
+export const UnregisteredTagHidden: Story = {
+  name: 'shows the registered tag label and hides an unregistered tag.',
+  args: {
+    overviews: [makeOverview({ tags: ['sample-tag', 'unregistered-tag'] })],
   },
 }
 

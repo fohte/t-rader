@@ -16,6 +16,7 @@ import { createStoryRouter } from '#storybook/story-router'
 type Note = components['schemas']['Note']
 type NoteVersion = components['schemas']['NoteVersion']
 type NoteKind = components['schemas']['NoteKind']
+type NoteTag = components['schemas']['NoteTag']
 
 const noteKind: NoteKind = {
   key: 'sample-kind',
@@ -23,6 +24,7 @@ const noteKind: NoteKind = {
   requires_approval: true,
   sort_order: 0,
 }
+const noteTags: NoteTag[] = [{ key: 'sample-tag', display_name: '架空タグ' }]
 
 function makeNote(overrides: Partial<Note> = {}): Note {
   return {
@@ -35,7 +37,7 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     frontmatter_json: {},
     resolved_price_references_json: {},
     graphs_json: [],
-    tags: ['架空タグ'],
+    tags: ['sample-tag'],
     kind: 'sample-kind',
     status: 'approved',
     trigger: null,
@@ -230,6 +232,7 @@ async function renderList(
     view?: NoteOverviewView
     state?: 'loading' | 'error' | 'loaded'
     noteKinds?: NoteKind[]
+    noteTags?: NoteTag[]
     noteKindCatalogState?: 'loading' | 'error' | 'loaded'
     selectedItemIds?: string[]
     selectedItems?: ReviewQueueItem[]
@@ -253,6 +256,7 @@ async function renderList(
         tag="sample-tag"
         state={options.state ?? 'loaded'}
         noteKinds={options.noteKinds ?? [noteKind]}
+        noteTags={options.noteTags ?? noteTags}
         noteKindCatalogState={options.noteKindCatalogState ?? 'loaded'}
         selectedItemIds={options.selectedItemIds ?? []}
         selectedItems={options.selectedItems ?? []}
@@ -310,6 +314,16 @@ describe('NotesList', () => {
       kind: 'sample-kind',
       tag: 'sample-tag',
     })
+  })
+
+  it('shows registered tag names and hides unregistered tags', async () => {
+    await renderList([makeOverview({ tags: ['sample-tag', 'unlisted-tag'] })])
+
+    expect(
+      Array.from(
+        screen.getByRole('listitem').querySelectorAll('[data-slot="chip"]'),
+      ).map((chip) => chip.textContent),
+    ).toEqual(['架空の種別表示名', '現行 v2', '架空タグ'])
   })
 
   it('opens the unread version as the row target in the pending view', async () => {

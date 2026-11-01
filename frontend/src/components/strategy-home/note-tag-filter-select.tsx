@@ -10,28 +10,47 @@ import {
   decodePrefixedSelectValue,
   encodePrefixedSelectValue,
 } from '#components/strategy-home/prefixed-select-value'
+import type { components } from '#lib/api/schema.gen'
+import type { NoteKindCatalogState } from '#lib/note-kind-label'
+
+type NoteTag = components['schemas']['NoteTag']
 
 const ALL_TAGS_VALUE = '__all-tags__'
 const TAG_VALUE_PREFIX = 'tag:'
 const ALL_TAGS_LABEL = 'すべてのタグ'
 
 interface NoteTagFilterSelectProps {
-  tags: string[]
+  noteTags: readonly NoteTag[]
+  catalogState: NoteKindCatalogState
   value: string | undefined
   defaultOpen?: boolean
   className?: string
   onChange: (value: string | undefined) => void
 }
 
+function getSelectedTagLabel(
+  value: string | undefined,
+  noteTags: readonly NoteTag[],
+  catalogState: NoteKindCatalogState,
+): string {
+  if (value == null || value === '') return ALL_TAGS_LABEL
+  if (catalogState === 'loading') return 'タグを読み込み中'
+  if (catalogState === 'error') return 'タグを取得できません'
+  return (
+    noteTags.find((noteTag) => noteTag.key === value)?.display_name ??
+    '未登録のタグ'
+  )
+}
+
 export function NoteTagFilterSelect({
-  tags,
+  noteTags,
+  catalogState,
   value,
   defaultOpen,
   className,
   onChange,
 }: NoteTagFilterSelectProps) {
-  const selectedTagLabel =
-    value == null || value === '' ? ALL_TAGS_LABEL : value
+  const selectedTagLabel = getSelectedTagLabel(value, noteTags, catalogState)
 
   return (
     <Select
@@ -50,16 +69,16 @@ export function NoteTagFilterSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={ALL_TAGS_VALUE}>{ALL_TAGS_LABEL}</SelectItem>
-        {tags.map((tag) => (
+        {noteTags.map((noteTag) => (
           <SelectItem
-            key={tag}
+            key={noteTag.key}
             value={encodePrefixedSelectValue(
-              tag,
+              noteTag.key,
               TAG_VALUE_PREFIX,
               ALL_TAGS_VALUE,
             )}
           >
-            {tag}
+            {noteTag.display_name}
           </SelectItem>
         ))}
       </SelectContent>
