@@ -19,100 +19,246 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn note_tag_api_manages_unrestricted_keys_and_lists_by_display_name(
+    async fn create_preserves_an_arbitrary_key(
         #[future] note_tag_test_context: NoteTagTestContext,
     ) {
         let NoteTagTestContext { server } = note_tag_test_context.await;
-        let first = server
+        let response = server
             .post("/api/note-tags")
             .json(&json!({
                 "key": "Mixed/テーマ",
-                "display_name": "Zeta",
+                "display_name": "Sample label",
                 "description": "A synthetic label",
             }))
             .await;
-        let second = server
-            .post("/api/note-tags")
-            .json(&json!({
-                "key": "sample.tag+one",
-                "display_name": "Alpha",
-            }))
-            .await;
-        let updated = server
-            .patch("/api/note-tags/Mixed%2F%E3%83%86%E3%83%BC%E3%83%9E")
-            .json(&json!({
-                "display_name": "Beta",
-                "description": null,
-            }))
-            .await;
-        let listed = server.get("/api/note-tags").await;
-        let deleted = server
-            .delete("/api/note-tags/Mixed%2F%E3%83%86%E3%83%BC%E3%83%9E")
-            .await;
-        let repeated_delete = server
-            .delete("/api/note-tags/Mixed%2F%E3%83%86%E3%83%BC%E3%83%9E")
-            .await;
 
         assert_eq!(
-            (
-                first.status_code(),
-                first.json::<Value>(),
-                second.status_code(),
-                second.json::<Value>(),
-                updated.status_code(),
-                updated.json::<Value>(),
-                listed.status_code(),
-                listed.json::<Value>(),
-                deleted.status_code(),
-                repeated_delete.status_code(),
-            ),
+            (response.status_code(), response.json::<Value>()),
             (
                 StatusCode::CREATED,
                 json!({
                     "key": "Mixed/テーマ",
-                    "display_name": "Zeta",
+                    "display_name": "Sample label",
                     "description": "A synthetic label",
                 }),
-                StatusCode::CREATED,
-                json!({
-                    "key": "sample.tag+one",
-                    "display_name": "Alpha",
-                    "description": null,
-                }),
-                StatusCode::OK,
-                json!({
-                    "key": "Mixed/テーマ",
-                    "display_name": "Beta",
-                    "description": null,
-                }),
-                StatusCode::OK,
-                json!([
-                    {
-                        "key": "sample.tag+one",
-                        "display_name": "Alpha",
-                        "description": null,
-                    },
-                    {
-                        "key": "Mixed/テーマ",
-                        "display_name": "Beta",
-                        "description": null,
-                    },
-                ]),
-                StatusCode::NO_CONTENT,
-                StatusCode::NOT_FOUND,
             ),
         );
     }
 
     #[rstest]
-    #[case::blank_key("   ", "label", "key must not be empty")]
-    #[case::blank_display_name("sample-key", " \t ", "display_name must not be empty")]
     #[tokio::test]
-    async fn note_tag_api_rejects_blank_key_and_display_name(
+    async fn list_sorts_tags_by_display_name(#[future] note_tag_test_context: NoteTagTestContext) {
+        let NoteTagTestContext { server } = note_tag_test_context.await;
+        let first = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key-z",
+                "display_name": "Zeta",
+            }))
+            .await;
+        let second = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key-a",
+                "display_name": "Alpha",
+            }))
+            .await;
+        let listed = server.get("/api/note-tags").await;
+
+        assert_eq!(
+            (
+                first.status_code(),
+                second.status_code(),
+                listed.status_code(),
+                listed.json::<Value>(),
+            ),
+            (
+                StatusCode::CREATED,
+                StatusCode::CREATED,
+                StatusCode::OK,
+                json!([
+                    {
+                        "key": "sample-key-a",
+                        "display_name": "Alpha",
+                        "description": null,
+                    },
+                    {
+                        "key": "sample-key-z",
+                        "display_name": "Zeta",
+                        "description": null,
+                    },
+                ]),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn update_changes_display_name_and_clears_description(
+        #[future] note_tag_test_context: NoteTagTestContext,
+    ) {
+        let NoteTagTestContext { server } = note_tag_test_context.await;
+        let created = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "Mixed/テーマ",
+                "display_name": "Sample label",
+                "description": "A synthetic label",
+            }))
+            .await;
+        let updated = server
+            .patch("/api/note-tags/Mixed%2F%E3%83%86%E3%83%BC%E3%83%9E")
+            .json(&json!({
+                "display_name": "Updated label",
+                "description": null,
+            }))
+            .await;
+
+        assert_eq!(
+            (
+                created.status_code(),
+                updated.status_code(),
+                updated.json::<Value>()
+            ),
+            (
+                StatusCode::CREATED,
+                StatusCode::OK,
+                json!({
+                    "key": "Mixed/テーマ",
+                    "display_name": "Updated label",
+                    "description": null,
+                }),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::missing_tag(
+        "missing-key",
+        "Updated label",
+        StatusCode::NOT_FOUND,
+        "note tag missing-key not found"
+    )]
+    #[case::blank_display_name(
+        "sample-key",
+        " \t ",
+        StatusCode::BAD_REQUEST,
+        "display_name must not be empty"
+    )]
+    #[tokio::test]
+    async fn update_rejects_unknown_tag_and_blank_display_name(
         #[future] note_tag_test_context: NoteTagTestContext,
         #[case] key: &str,
         #[case] display_name: &str,
-        #[case] message: &str,
+        #[case] expected_status: StatusCode,
+        #[case] expected_error: &str,
+    ) {
+        let NoteTagTestContext { server } = note_tag_test_context.await;
+        let created = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key",
+                "display_name": "Sample label",
+            }))
+            .await;
+        let response = server
+            .patch(&format!("/api/note-tags/{key}"))
+            .json(&json!({ "display_name": display_name }))
+            .await;
+
+        assert_eq!(
+            (
+                created.status_code(),
+                response.status_code(),
+                response.json::<Value>()
+            ),
+            (
+                StatusCode::CREATED,
+                expected_status,
+                json!({ "error": expected_error }),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn update_without_fields_preserves_the_tag(
+        #[future] note_tag_test_context: NoteTagTestContext,
+    ) {
+        let NoteTagTestContext { server } = note_tag_test_context.await;
+        let created = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key",
+                "display_name": "Sample label",
+                "description": "A synthetic label",
+            }))
+            .await;
+        let updated = server
+            .patch("/api/note-tags/sample-key")
+            .json(&json!({}))
+            .await;
+
+        assert_eq!(
+            (
+                created.status_code(),
+                updated.status_code(),
+                updated.json::<Value>()
+            ),
+            (
+                StatusCode::CREATED,
+                StatusCode::OK,
+                json!({
+                    "key": "sample-key",
+                    "display_name": "Sample label",
+                    "description": "A synthetic label",
+                }),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn create_rejects_duplicate_keys(#[future] note_tag_test_context: NoteTagTestContext) {
+        let NoteTagTestContext { server } = note_tag_test_context.await;
+        let first = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key",
+                "display_name": "Sample label",
+            }))
+            .await;
+        let duplicate = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key",
+                "display_name": "Another label",
+            }))
+            .await;
+
+        assert_eq!(
+            (
+                first.status_code(),
+                duplicate.status_code(),
+                duplicate.json::<Value>()
+            ),
+            (
+                StatusCode::CREATED,
+                StatusCode::CONFLICT,
+                json!({ "error": "note tag sample-key already exists" }),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::blank_key("   ", "Sample label", "key must not be empty")]
+    #[case::blank_display_name("sample-key", " \t ", "display_name must not be empty")]
+    #[tokio::test]
+    async fn create_rejects_blank_key_and_display_name(
+        #[future] note_tag_test_context: NoteTagTestContext,
+        #[case] key: &str,
+        #[case] display_name: &str,
+        #[case] expected_error: &str,
     ) {
         let NoteTagTestContext { server } = note_tag_test_context.await;
         let response = server
@@ -122,7 +268,37 @@ mod tests {
 
         assert_eq!(
             (response.status_code(), response.json::<Value>()),
-            (StatusCode::BAD_REQUEST, json!({ "error": message }),),
+            (StatusCode::BAD_REQUEST, json!({ "error": expected_error }),),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn delete_removes_the_tag(#[future] note_tag_test_context: NoteTagTestContext) {
+        let NoteTagTestContext { server } = note_tag_test_context.await;
+        let created = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key",
+                "display_name": "Sample label",
+            }))
+            .await;
+        let deleted = server.delete("/api/note-tags/sample-key").await;
+        let listed = server.get("/api/note-tags").await;
+
+        assert_eq!(
+            (
+                created.status_code(),
+                deleted.status_code(),
+                listed.status_code(),
+                listed.json::<Value>(),
+            ),
+            (
+                StatusCode::CREATED,
+                StatusCode::NO_CONTENT,
+                StatusCode::OK,
+                json!([]),
+            ),
         );
     }
 }
