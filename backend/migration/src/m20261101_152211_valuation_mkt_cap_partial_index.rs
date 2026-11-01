@@ -1,12 +1,7 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261101_152211_valuation_mkt_cap_partial_index"
-    }
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
