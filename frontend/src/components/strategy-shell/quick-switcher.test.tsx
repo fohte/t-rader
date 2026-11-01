@@ -142,6 +142,11 @@ function renderQuickSwitcher(
     ),
     {
       paths: [
+        { path: '/', component: () => <p>ホーム画面</p> },
+        {
+          path: '/dashboards',
+          component: () => <p>保存ダッシュボード画面</p>,
+        },
         { path: '/portfolio', component: () => <p>保有画面</p> },
         { path: '/notes', component: () => <p>ノート画面</p> },
         { path: '/screener', component: () => <p>スクリーナー画面</p> },
@@ -296,7 +301,7 @@ describe('QuickSwitcher', () => {
       expect(getShortcutOutput(defaultOutput)).toEqual({
         defaultOutput: {
           groups: ['画面', '戦略'],
-          resultCount: 19,
+          resultCount: 20,
           shortcut: `探す ${label}`,
         },
         requestPaths: ['/api/strategies'],
@@ -455,6 +460,20 @@ describe('QuickSwitcher', () => {
   )
 
   it.each([
+    {
+      query: 'home',
+      label: 'ホーム',
+      page: 'ホーム画面',
+      pathname: '/',
+      search: {},
+    },
+    {
+      query: 'dashboard',
+      label: 'ダッシュボード',
+      page: '保存ダッシュボード画面',
+      pathname: '/dashboards',
+      search: {},
+    },
     {
       query: 'アノテーション',
       label: 'アノテーション',

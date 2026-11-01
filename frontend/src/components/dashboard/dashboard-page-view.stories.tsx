@@ -245,7 +245,7 @@ export const Populated: Story = {
 }
 
 export const Empty: Story = {
-  name: 'shows the dashboard when no portfolio activity exists.',
+  name: 'shows the home page when no portfolio activity exists.',
   args: {
     ...args,
     stats: [

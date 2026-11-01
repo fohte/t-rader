@@ -63,7 +63,7 @@ export function DashboardPageView({
     <div className="space-y-5 font-sans text-foreground">
       <header>
         <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-          ダッシュボード
+          ホーム
         </h1>
         <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
           資産と直近の売買、最近のノート、レビュー待ち。
