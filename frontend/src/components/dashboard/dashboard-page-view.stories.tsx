@@ -245,7 +245,7 @@ export const Populated: Story = {
 }
 
 export const Empty: Story = {
-  name: 'shows the dashboard when no portfolio activity exists.',
+  name: 'shows the home page when no portfolio activity exists.',
   args: {
     ...args,
     stats: [
@@ -318,7 +318,7 @@ export const MissingMarketValue: Story = {
 }
 
 export const Loading: Story = {
-  name: 'shows loading placeholders while dashboard data is fetched.',
+  name: 'shows loading placeholders while home data is fetched.',
   args: {
     ...args,
     stats: null,

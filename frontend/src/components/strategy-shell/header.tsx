@@ -184,8 +184,8 @@ export function Header({
         <Link
           to="/"
           className="inline-flex flex-shrink-0 items-baseline gap-2 font-mono"
-          title="ダッシュボードへ"
-          aria-label="ダッシュボードへ"
+          title="ホームへ"
+          aria-label="ホームへ"
         >
           <span className="text-xl font-bold text-foreground">&gt;</span>
           <span className="hidden text-lg font-medium tracking-tight text-foreground md:inline">

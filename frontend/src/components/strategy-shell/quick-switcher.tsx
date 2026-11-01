@@ -20,10 +20,16 @@ type AppRouter = ReturnType<typeof useRouter>
 
 const SCREEN_ITEMS = [
   {
-    id: 'dashboard',
-    label: 'ダッシュボード',
-    searchTerms: ['dashboard', 'home'],
+    id: 'home',
+    label: 'ホーム',
+    searchTerms: ['home'],
     to: '/',
+  },
+  {
+    id: 'dashboards',
+    label: 'ダッシュボード',
+    searchTerms: ['dashboard'],
+    to: '/dashboards',
   },
   {
     id: 'portfolio',

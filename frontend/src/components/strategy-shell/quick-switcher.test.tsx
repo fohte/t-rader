@@ -142,6 +142,11 @@ function renderQuickSwitcher(
     ),
     {
       paths: [
+        { path: '/', component: () => <p>ホーム画面</p> },
+        {
+          path: '/dashboards',
+          component: () => <p>保存ダッシュボード画面</p>,
+        },
         { path: '/portfolio', component: () => <p>保有画面</p> },
         { path: '/notes', component: () => <p>ノート画面</p> },
         { path: '/screener', component: () => <p>スクリーナー画面</p> },
@@ -209,6 +214,16 @@ function getNavigationOutput(router: ReturnType<typeof createStoryRouter>) {
       search: router.state.location.search,
     },
     closed: screen.queryByRole('dialog') == null,
+  }
+}
+
+function getScreenNavigationOutput(
+  matchingResults: string[],
+  router: ReturnType<typeof createStoryRouter>,
+) {
+  return {
+    matchingResults,
+    navigation: getNavigationOutput(router),
   }
 }
 
@@ -296,7 +311,7 @@ describe('QuickSwitcher', () => {
       expect(getShortcutOutput(defaultOutput)).toEqual({
         defaultOutput: {
           groups: ['画面', '戦略'],
-          resultCount: 19,
+          resultCount: 20,
           shortcut: `探す ${label}`,
         },
         requestPaths: ['/api/strategies'],
@@ -456,6 +471,20 @@ describe('QuickSwitcher', () => {
 
   it.each([
     {
+      query: 'home',
+      label: 'ホーム',
+      page: 'ホーム画面',
+      pathname: '/',
+      search: {},
+    },
+    {
+      query: 'dashboard',
+      label: 'ダッシュボード',
+      page: '保存ダッシュボード画面',
+      pathname: '/dashboards',
+      search: {},
+    },
+    {
       query: 'アノテーション',
       label: 'アノテーション',
       page: 'ノート画面',
@@ -488,12 +517,17 @@ describe('QuickSwitcher', () => {
       })
       await user.click(input)
       await user.paste(query)
-      await user.click(await screen.findByText(label))
+      await screen.findByText(label)
+      const matchingResults = getPaletteResultLabels()
+      await user.click(screen.getByText(label))
       await screen.findByText(page)
 
-      expect(getNavigationOutput(router)).toEqual({
-        location: { pathname, search },
-        closed: true,
+      expect(getScreenNavigationOutput(matchingResults, router)).toEqual({
+        matchingResults: [label],
+        navigation: {
+          location: { pathname, search },
+          closed: true,
+        },
       })
     },
   )
