@@ -15,6 +15,7 @@ type Note = components['schemas']['Note']
 type NoteVersion = components['schemas']['NoteVersion']
 type NoteOverview = components['schemas']['NoteOverviewResponse']
 type NoteKind = components['schemas']['NoteKind']
+type NoteTag = components['schemas']['NoteTag']
 type NoteRequest = {
   kind: string | null
   tag: string | null
@@ -30,6 +31,8 @@ const noteKinds: NoteKind[] = [
   },
 ]
 
+const noteTags: NoteTag[] = [{ key: 'sample-tag', display_name: '架空タグ' }]
+
 const allNote: Note = {
   id: 'fake-note-a',
   version_id: 'fake-version-a',
@@ -40,7 +43,7 @@ const allNote: Note = {
   frontmatter_json: {},
   resolved_price_references_json: {},
   graphs_json: [],
-  tags: ['架空タグ'],
+  tags: ['sample-tag'],
   kind: 'sample-kind',
   status: 'approved',
   trigger: null,
@@ -124,6 +127,9 @@ async function renderNotes(initialEntry: string) {
     if (url.pathname === '/api/note-kinds') {
       return Promise.resolve(Response.json(noteKinds))
     }
+    if (url.pathname === '/api/note-tags') {
+      return Promise.resolve(Response.json(noteTags))
+    }
     if (url.pathname === '/api/annotations') {
       return Promise.resolve(Response.json([]))
     }
@@ -151,7 +157,7 @@ describe('NotesPage', () => {
   it('loads both filters from the URL and sends them together to the API', async () => {
     const user = userEvent.setup()
     const { router, noteRequests } = await renderNotes(
-      '/notes?kind=sample-kind&tag=%E6%9E%B6%E7%A9%BA%E3%82%BF%E3%82%B0',
+      '/notes?kind=sample-kind&tag=sample-tag',
     )
     await screen.findByRole('heading', { level: 1, name: /> ノート/ })
     const kindSelect = screen.getByRole('combobox', {
@@ -167,19 +173,19 @@ describe('NotesPage', () => {
         noteRequests,
       ),
     ).toEqual({
-      search: { kind: 'sample-kind', tag: '架空タグ' },
+      search: { kind: 'sample-kind', tag: 'sample-tag' },
       selectedKind: '架空の種別表示名',
       selectedTag: '架空タグ',
       kindOptions: ['すべての種別', '架空の種別表示名'],
-      combinedQueries: [{ kind: 'sample-kind', tag: '架空タグ', view: 'all' }],
+      combinedQueries: [
+        { kind: 'sample-kind', tag: 'sample-tag', view: 'all' },
+      ],
     })
   }, 30_000)
 
   it('keeps the other filter when changing or clearing one filter', async () => {
     const user = userEvent.setup()
-    const { router } = await renderNotes(
-      '/notes?tag=%E6%9E%B6%E7%A9%BA%E3%82%BF%E3%82%B0',
-    )
+    const { router } = await renderNotes('/notes?tag=sample-tag')
 
     await user.click(screen.getByRole('combobox', { name: '種別で絞り込み' }))
     await user.click(
@@ -188,7 +194,7 @@ describe('NotesPage', () => {
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
         kind: 'sample-kind',
-        tag: '架空タグ',
+        tag: 'sample-tag',
       })
     })
 
@@ -197,14 +203,14 @@ describe('NotesPage', () => {
       await screen.findByRole('option', { name: 'すべての種別' }),
     )
     await waitFor(() => {
-      expect(router.state.location.search).toEqual({ tag: '架空タグ' })
+      expect(router.state.location.search).toEqual({ tag: 'sample-tag' })
     })
   }, 30_000)
 
   it('clears both filters with the clear action', async () => {
     const user = userEvent.setup()
     const { router } = await renderNotes(
-      '/notes?kind=sample-kind&tag=%E6%9E%B6%E7%A9%BA%E3%82%BF%E3%82%B0',
+      '/notes?kind=sample-kind&tag=sample-tag',
     )
 
     await user.click(screen.getByRole('button', { name: '条件を解除' }))
@@ -222,7 +228,7 @@ describe('NotesPage', () => {
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
         kind: 'sample-kind',
-        tag: '架空タグ',
+        tag: 'sample-tag',
       })
     })
   }, 30_000)
@@ -230,14 +236,14 @@ describe('NotesPage', () => {
   it('keeps both filters while switching tabs', async () => {
     const user = userEvent.setup()
     const { router } = await renderNotes(
-      '/notes?kind=sample-kind&tag=%E6%9E%B6%E7%A9%BA%E3%82%BF%E3%82%B0',
+      '/notes?kind=sample-kind&tag=sample-tag',
     )
 
     await user.click(screen.getByRole('tab', { name: /アノテーション/ }))
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
         kind: 'sample-kind',
-        tag: '架空タグ',
+        tag: 'sample-tag',
         tab: 'annotations',
       })
     })
@@ -246,7 +252,7 @@ describe('NotesPage', () => {
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
         kind: 'sample-kind',
-        tag: '架空タグ',
+        tag: 'sample-tag',
       })
     })
   }, 30_000)
