@@ -9,6 +9,7 @@ use core_application::group_axis::{GroupAxisRepositoryError, GroupAxisUseCaseErr
 use core_application::market_daily_bar_source::MarketDailyBarSourceError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
+use core_application::note_tag::{NoteTagRepositoryError, NoteTagUseCaseError};
 use core_application::persistence::PersistenceError;
 use core_application::portfolio_history::PortfolioHistoryUseCaseError;
 use core_application::stock_group::{StockGroupRepositoryError, StockGroupUseCaseError};
@@ -118,6 +119,21 @@ impl From<NoteKindUseCaseError> for AppError {
             | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
             | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
             NoteKindUseCaseError::Note(error) => map_note_use_case_error(error),
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
+impl From<NoteTagUseCaseError> for AppError {
+    fn from(error: NoteTagUseCaseError) -> Self {
+        match error {
+            NoteTagUseCaseError::Validation(message) => Self::Validation(message),
+            NoteTagUseCaseError::NotFound(message) => Self::NotFound(message),
+            NoteTagUseCaseError::Conflict(message) => Self::Conflict(message),
+            NoteTagUseCaseError::Repository(NoteTagRepositoryError::Database(error))
+            | NoteTagUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+            | NoteTagUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+            | NoteTagUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
             other => Self::Internal(other.to_string()),
         }
     }

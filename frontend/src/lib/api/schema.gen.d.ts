@@ -691,6 +691,42 @@ export interface paths {
     patch: operations['update_note_kind']
     trace?: never
   }
+  '/api/note-tags': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートタグ一覧 */
+    get: operations['list_note_tags']
+    put?: never
+    /** ノートタグを作成 */
+    post: operations['create_note_tag']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/note-tags/{key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** ノートタグを削除 */
+    delete: operations['delete_note_tag']
+    options?: never
+    head?: never
+    /** ノートタグを部分更新する (key は変更不可) */
+    patch: operations['update_note_tag']
+    trace?: never
+  }
   '/api/note-versions/pending': {
     parameters: {
       query?: never
@@ -2034,6 +2070,11 @@ export interface components {
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
     }
+    CreateNoteTagRequest: {
+      description?: string | null
+      display_name: string
+      key: string
+    }
     CreatePaperAccountRequest: {
       benchmark_stock_id?: string | null
       /** Format: double */
@@ -2458,6 +2499,11 @@ export interface components {
       representative: components['schemas']['Note']
       /** Format: int64 */
       unread_version_count: number
+    }
+    NoteTag: {
+      description?: string | null
+      display_name: string
+      key: string
     }
     /**
      * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
@@ -3283,6 +3329,10 @@ export interface components {
       title?: string | null
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
+    }
+    UpdateNoteTagRequest: {
+      description?: string | null
+      display_name?: string | null
     }
     UpdateRssFeedRequest: {
       /** @description 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。 */
@@ -6439,6 +6489,203 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['NoteKind']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_note_tags: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteTag'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_note_tag: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateNoteTagRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteTag']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description key が既存と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_note_tag: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノートタグ key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_note_tag: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノートタグ key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateNoteTagRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteTag']
         }
       }
       400: {

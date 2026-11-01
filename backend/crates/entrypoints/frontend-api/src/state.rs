@@ -22,6 +22,7 @@ use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
 use core_application::note_kind::NoteKindUseCases;
+use core_application::note_tag::NoteTagUseCases;
 use core_application::paper_trade::PaperTradeUseCases;
 use core_application::portfolio_history::PortfolioHistoryUseCases;
 use core_application::prediction::PredictionUseCases;
@@ -60,6 +61,7 @@ pub struct FrontendApiState {
     pub indicator_observation_use_cases: IndicatorObservationUseCases,
     pub ingest_status_use_case: Arc<IngestStatusUseCase>,
     pub note_kind_use_cases: NoteKindUseCases,
+    pub note_tag_use_cases: NoteTagUseCases,
     pub note_read_use_cases: NoteReadUseCases,
     pub note_use_cases: NoteUseCases,
     pub paper_trade_use_cases: PaperTradeUseCases,

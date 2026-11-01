@@ -40,6 +40,7 @@ pub mod note;
 pub mod note_kind;
 pub mod note_link;
 pub mod note_ref;
+pub mod note_tag;
 pub mod note_version;
 pub mod paper_account;
 pub mod paper_order;
