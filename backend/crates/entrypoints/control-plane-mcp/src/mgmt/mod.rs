@@ -250,7 +250,7 @@ impl MgmtServer {
     /// 最新ノートメタを返す
     #[tool(
         name = "list_recent_notes",
-        description = "Return the most recent notes across all strategies (id / title / status / created_by_kind).",
+        description = "Return the most recently updated notes across all strategies, including notes with only pending versions. Each result reports the representative version's status, whether it is current, and the number of unread versions; note bodies are omitted.",
         annotations(read_only_hint = true)
     )]
     async fn list_recent_notes(

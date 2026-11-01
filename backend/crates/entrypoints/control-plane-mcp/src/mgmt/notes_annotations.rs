@@ -3,7 +3,7 @@
 use rmcp::ErrorData as McpError;
 
 use core_application::annotation::{AnnotationReadQueryError, AnnotationReadUseCaseError};
-use core_application::note::{NoteListQuery, NoteReadQueryError, NoteReadUseCaseError};
+use core_application::note::{NoteOverviewQuery, NoteReadQueryError, NoteReadUseCaseError};
 
 use super::MgmtServer;
 use super::dto::{
@@ -44,28 +44,30 @@ impl MgmtServer {
         params: ListRecentParams,
     ) -> Result<ListRecentNotesResult, McpError> {
         let limit = clamp_limit(params.limit);
-        let page = self
+        let overviews = self
             .dependencies
             .note_reads
-            .list_notes(NoteListQuery {
-                limit: Some(limit),
-                ..NoteListQuery::default()
-            })
+            .list_note_overviews(NoteOverviewQuery::default())
             .await
             .map_err(note_read_error_to_mcp)?;
-        let notes = page
-            .notes
+        let notes = overviews
             .into_iter()
+            .take(limit as usize)
             .map(|snapshot| {
-                Ok(NoteMeta {
-                    note_id: snapshot.note.id,
-                    title: snapshot.version.title,
-                    status: snapshot.version.status,
-                    created_by_kind: snapshot.created_by_kind,
-                    updated_at: snapshot.note.updated_at,
-                })
+                let representative = snapshot.representative;
+                NoteMeta {
+                    note_id: representative.note.id,
+                    title: representative.version.title,
+                    status: representative.version.status,
+                    created_by_kind: representative.created_by_kind,
+                    updated_at: representative.note.updated_at,
+                    is_current: snapshot
+                        .current
+                        .is_some_and(|current| current.id == representative.version.id),
+                    unread_version_count: snapshot.unread_version_count,
+                }
             })
-            .collect::<Result<Vec<_>, McpError>>()?;
+            .collect();
         Ok(ListRecentNotesResult { notes })
     }
 
