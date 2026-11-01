@@ -56,6 +56,7 @@ use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
 use core_application::tavily_credit_budget::{
     SharedTavilyCreditBudgetUseCases, TavilyCreditBudgetDenial, TavilyCreditBudgetUseCasesError,
 };
+use core_application::web_search::WebSearchError;
 use rmcp::ErrorData as McpError;
 use rmcp::model::ErrorCode;
 use rmcp::service::{RequestContext, RoleServer};
@@ -346,6 +347,13 @@ pub(super) fn tavily_credit_budget_error_to_mcp(
         TavilyCreditBudgetUseCasesError::Denied(denial) => {
             tavily_credit_budget_denial_to_mcp(denial)
         }
+        TavilyCreditBudgetUseCasesError::Provider(WebSearchError::ExtractionFailed { .. }) => {
+            McpError::new(
+                ErrorCode(-32051),
+                "このページは読み取れません。同じ URL で再試行せず、別の情報源を探してください。",
+                None,
+            )
+        }
         TavilyCreditBudgetUseCasesError::Provider(error) => {
             internal_error(format!("Tavily request failed: {error}"))
         }
@@ -491,7 +499,59 @@ pub(super) fn unused_investable_amount(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core_application::tavily_credit_budget::{
+        TavilyCreditBudgetReason, TavilyCreditBudgetScope,
+    };
     use rstest::rstest;
+
+    #[rstest]
+    #[case::unreadable_page(
+        TavilyCreditBudgetUseCasesError::Provider(WebSearchError::ExtractionFailed {
+            url: "https://example.invalid/page".to_string(),
+            message: "synthetic unavailable response".to_string(),
+        }),
+        McpError::new(
+            ErrorCode(-32051),
+            "このページは読み取れません。同じ URL で再試行せず、別の情報源を探してください。",
+            None,
+        ),
+    )]
+    #[case::other_provider_failure(
+        TavilyCreditBudgetUseCasesError::Provider(WebSearchError::Network(
+            "synthetic timeout".to_string(),
+        )),
+        McpError::internal_error(
+            "Tavily request failed: network error: synthetic timeout",
+            None,
+        ),
+    )]
+    #[case::retrieval_cache_failure(
+        TavilyCreditBudgetUseCasesError::RetrievalCache,
+        McpError::internal_error("Tavily retrieval cache is unavailable", None)
+    )]
+    #[case::tavily_denial(
+        TavilyCreditBudgetUseCasesError::Denied(TavilyCreditBudgetDenial::new(
+            TavilyCreditBudgetReason::ConfigurationUnavailable,
+            TavilyCreditBudgetScope::Account,
+            None,
+        )),
+        McpError::new(
+            ErrorCode(-32050),
+            "Tavily request stopped: reason=configuration_unavailable, scope=account, next_reset=null. Do not retry during this execution. Continue with information already available and state what could not be verified.",
+            Some(serde_json::json!({
+                "reason": "configuration_unavailable",
+                "scope": "account",
+                "next_reset": null,
+                "provider_status": null,
+            })),
+        ),
+    )]
+    fn tavily_credit_budget_error_to_mcp_maps_errors(
+        #[case] error: TavilyCreditBudgetUseCasesError,
+        #[case] expected: McpError,
+    ) {
+        assert_eq!(tavily_credit_budget_error_to_mcp(error), expected);
+    }
 
     #[rstest]
     #[case::default(None, 50)]
