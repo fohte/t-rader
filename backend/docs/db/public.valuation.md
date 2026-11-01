@@ -30,10 +30,11 @@
 
 ## Indexes
 
-| Name                           | Definition                                                                                                       |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| valuation_pkey                 | CREATE UNIQUE INDEX valuation_pkey ON public.valuation USING btree (code, date)                                  |
-| idx_valuation_code_prefix_date | CREATE INDEX idx_valuation_code_prefix_date ON public.valuation USING btree ("left"((code)::text, 4), date DESC) |
+| Name                                   | Definition                                                                                                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| valuation_pkey                         | CREATE UNIQUE INDEX valuation_pkey ON public.valuation USING btree (code, date)                                                                      |
+| idx_valuation_code_prefix_date         | CREATE INDEX idx_valuation_code_prefix_date ON public.valuation USING btree ("left"((code)::text, 4), date DESC)                                     |
+| idx_valuation_code_prefix_mkt_cap_date | CREATE INDEX idx_valuation_code_prefix_mkt_cap_date ON public.valuation USING btree ("left"((code)::text, 4), date DESC) WHERE (mkt_cap IS NOT NULL) |
 
 ## Relations
 
