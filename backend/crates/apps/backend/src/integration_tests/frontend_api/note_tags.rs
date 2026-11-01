@@ -94,6 +94,55 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
+    async fn list_sorts_tags_by_key_when_display_names_match(
+        #[future] note_tag_test_context: NoteTagTestContext,
+    ) {
+        let NoteTagTestContext { server } = note_tag_test_context.await;
+        let second_by_key = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key-z",
+                "display_name": "Shared label",
+            }))
+            .await;
+        let first_by_key = server
+            .post("/api/note-tags")
+            .json(&json!({
+                "key": "sample-key-a",
+                "display_name": "Shared label",
+            }))
+            .await;
+        let listed = server.get("/api/note-tags").await;
+
+        assert_eq!(
+            (
+                second_by_key.status_code(),
+                first_by_key.status_code(),
+                listed.status_code(),
+                listed.json::<Value>(),
+            ),
+            (
+                StatusCode::CREATED,
+                StatusCode::CREATED,
+                StatusCode::OK,
+                json!([
+                    {
+                        "key": "sample-key-a",
+                        "display_name": "Shared label",
+                        "description": null,
+                    },
+                    {
+                        "key": "sample-key-z",
+                        "display_name": "Shared label",
+                        "description": null,
+                    },
+                ]),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
     async fn update_changes_display_name_and_clears_description(
         #[future] note_tag_test_context: NoteTagTestContext,
     ) {

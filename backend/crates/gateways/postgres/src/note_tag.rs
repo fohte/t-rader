@@ -25,6 +25,7 @@ impl NoteTagRepository for PostgresNoteTagRepository {
     async fn list(&self) -> Result<Vec<NoteTag>, NoteTagRepositoryError> {
         note_tag::Entity::find()
             .order_by_asc(note_tag::Column::DisplayName)
+            .order_by_asc(note_tag::Column::Key)
             .all(&self.db)
             .await
             .map(|rows| rows.into_iter().map(to_note_tag).collect())
