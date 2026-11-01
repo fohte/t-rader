@@ -14,10 +14,9 @@ interface NotesFiltersProps {
   noteKinds: readonly NoteKind[]
   noteTags: readonly NoteTag[]
   catalogState: NoteKindCatalogState
-  tagCatalogState: 'loading' | 'error' | 'loaded'
+  tagCatalogState: NoteKindCatalogState
   kind: string | undefined
   tag: string | undefined
-  tagCatalogError?: boolean
   view: NoteOverviewView
   onViewChange: (view: NoteOverviewView) => void
   onKindChange: (value: string | undefined) => void
@@ -32,7 +31,6 @@ export function NotesFilters({
   tagCatalogState,
   kind,
   tag,
-  tagCatalogError = false,
   view,
   onViewChange,
   onKindChange,
@@ -65,7 +63,7 @@ export function NotesFilters({
         onChange={onTagChange}
         className="h-auto min-h-11 w-full min-w-0"
       />
-      {tagCatalogError && (
+      {tagCatalogState === 'error' && (
         <p role="alert" className="text-xs text-destructive sm:col-span-2">
           タグ候補を読み込めませんでした。
         </p>

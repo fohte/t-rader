@@ -28,6 +28,21 @@ export const SelectedTag: Story = {
   args: { value: 'theme-x' },
 }
 
+export const CatalogLoading: Story = {
+  name: 'The selector shows a loading label while the tag vocabulary loads.',
+  args: { value: 'theme-x', catalogState: 'loading' },
+}
+
+export const CatalogFailed: Story = {
+  name: 'The selector shows an error label when the vocabulary cannot load.',
+  args: { value: 'theme-x', catalogState: 'error' },
+}
+
+export const UnregisteredTag: Story = {
+  name: 'The selector hides the key of an unregistered selected tag.',
+  args: { value: 'unlisted-tag' },
+}
+
 export const OptionsOpen: Story = {
   name: 'The selector shows registered tags by display name.',
   args: { value: undefined, defaultOpen: true },

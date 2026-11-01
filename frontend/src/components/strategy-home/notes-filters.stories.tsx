@@ -84,7 +84,7 @@ export const CatalogFailed: Story = {
 
 export const TagCandidatesFailed: Story = {
   name: 'shows an error when the tag vocabulary cannot be loaded.',
-  args: { tagCatalogError: true, tagCatalogState: 'error' },
+  args: { tagCatalogState: 'error' },
 }
 
 export const UnregisteredKind: Story = {

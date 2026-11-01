@@ -303,7 +303,6 @@ function NotesPage() {
           kind={kind}
           tag={tag}
           view={view}
-          tagCatalogError={noteTagsError}
           onViewChange={(value) => {
             void navigate({
               search: (previous) => ({ ...previous, view: value }),

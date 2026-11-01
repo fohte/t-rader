@@ -10,15 +10,25 @@ afterEach(cleanup)
 
 describe('NoteTagFilterSelect', () => {
   it.each([
-    { value: undefined, expected: 'すべてのタグ' },
-    { value: 'theme-x', expected: 'テーマX' },
-  ])(
+    { catalogState: 'loaded', value: undefined, expected: 'すべてのタグ' },
+    { catalogState: 'loaded', value: 'theme-x', expected: 'テーマX' },
+    {
+      catalogState: 'loading',
+      value: 'theme-x',
+      expected: 'タグを読み込み中',
+    },
+    {
+      catalogState: 'error',
+      value: 'theme-x',
+      expected: 'タグを取得できません',
+    },
+  ] as const)(
     '閉じた selector に選択ラベルを表示する: $value',
-    ({ value, expected }) => {
+    ({ catalogState, value, expected }) => {
       render(
         <NoteTagFilterSelect
           noteTags={noteTags}
-          catalogState="loaded"
+          catalogState={catalogState}
           value={value}
           onChange={() => {}}
         />,

@@ -11,9 +11,9 @@ import {
   encodePrefixedSelectValue,
 } from '#components/strategy-home/prefixed-select-value'
 import type { components } from '#lib/api/schema.gen'
+import type { NoteKindCatalogState } from '#lib/note-kind-label'
 
 type NoteTag = components['schemas']['NoteTag']
-type NoteTagCatalogState = 'loading' | 'error' | 'loaded'
 
 const ALL_TAGS_VALUE = '__all-tags__'
 const TAG_VALUE_PREFIX = 'tag:'
@@ -21,11 +21,25 @@ const ALL_TAGS_LABEL = 'すべてのタグ'
 
 interface NoteTagFilterSelectProps {
   noteTags: readonly NoteTag[]
-  catalogState: NoteTagCatalogState
+  catalogState: NoteKindCatalogState
   value: string | undefined
   defaultOpen?: boolean
   className?: string
   onChange: (value: string | undefined) => void
+}
+
+function getSelectedTagLabel(
+  value: string | undefined,
+  noteTags: readonly NoteTag[],
+  catalogState: NoteKindCatalogState,
+): string {
+  if (value == null || value === '') return ALL_TAGS_LABEL
+  if (catalogState === 'loading') return 'タグを読み込み中'
+  if (catalogState === 'error') return 'タグを取得できません'
+  return (
+    noteTags.find((noteTag) => noteTag.key === value)?.display_name ??
+    '未登録のタグ'
+  )
 }
 
 export function NoteTagFilterSelect({
@@ -36,15 +50,7 @@ export function NoteTagFilterSelect({
   className,
   onChange,
 }: NoteTagFilterSelectProps) {
-  const selectedNoteTag = noteTags.find((noteTag) => noteTag.key === value)
-  const selectedTagLabel =
-    value == null || value === ''
-      ? ALL_TAGS_LABEL
-      : catalogState === 'loading'
-        ? 'タグを読み込み中'
-        : catalogState === 'error'
-          ? 'タグを取得できません'
-          : (selectedNoteTag?.display_name ?? '未登録のタグ')
+  const selectedTagLabel = getSelectedTagLabel(value, noteTags, catalogState)
 
   return (
     <Select

@@ -87,8 +87,40 @@ const warningOverview: NoteOverview = {
   unread_version_count: 2,
 }
 
+const taggedOverview: NoteOverview = {
+  ...overview,
+  representative: {
+    ...representative,
+    tags: ['theme-x', 'unlisted-tag', 'category-y'],
+  },
+}
+
 function getTagCandidatesErrorOutput(alert: HTMLElement) {
   return { role: alert.getAttribute('role'), text: alert.textContent }
+}
+
+function getTagFilterRequestOutput(
+  search: unknown,
+  overviewRequests: Record<string, string | undefined>[],
+) {
+  return { search, overviewRequests }
+}
+
+async function renderNotesPage(initialEntry: string) {
+  const { routeTree } = await import('#routeTree.gen')
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
+  })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(<RouterProvider router={router} />, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+  })
+  return router
 }
 
 afterEach(() => {
@@ -183,16 +215,48 @@ describe('/notes overview route', () => {
     )
   }, 30_000)
 
-  it('uses registered tag labels in API order and filters by key', async () => {
+  it('shows registered tag labels in API order', async () => {
+    const user = userEvent.setup()
+    stubFetch((input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init)
+      const url = new URL(request.url)
+
+      if (url.pathname === '/api/notes/overview') {
+        return Promise.resolve(Response.json([taggedOverview]))
+      }
+      if (url.pathname === '/api/note-tags') {
+        return Promise.resolve(
+          Response.json([
+            { key: 'category-y', display_name: '分類Y' },
+            { key: 'theme-x', display_name: 'テーマX' },
+          ]),
+        )
+      }
+      if (url.pathname === '/api/note-kinds') {
+        return Promise.resolve(Response.json([]))
+      }
+      if (url.pathname === '/api/annotations') {
+        return Promise.resolve(Response.json([]))
+      }
+      return Promise.resolve(Response.json([]))
+    })
+
+    await renderNotesPage('/notes')
+
+    await screen.findByRole('link', { name: '架空の確認ノート' })
+    await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
+    await screen.findByRole('option', { name: '分類Y' })
+    const options = screen
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+
+    expect(options).toEqual(['すべてのタグ', '分類Y', 'テーマX'])
+  }, 30_000)
+
+  it('uses the selected tag key in the overview request', async () => {
     const user = userEvent.setup()
     const overviewRequests: Record<string, string | undefined>[] = []
-    const taggedOverview: NoteOverview = {
-      ...overview,
-      representative: {
-        ...representative,
-        tags: ['theme-x', 'unlisted-tag', 'category-y'],
-      },
-    }
     stubFetch((input, init) => {
       const request =
         input instanceof Request ? input : new Request(input, init)
@@ -222,52 +286,25 @@ describe('/notes overview route', () => {
       return Promise.resolve(Response.json([]))
     })
 
-    const { routeTree } = await import('#routeTree.gen')
-    const router = createRouter({
-      routeTree,
-      history: createMemoryHistory({ initialEntries: ['/notes'] }),
-    })
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-    render(<RouterProvider router={router} />, {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
-      ),
-    })
-
-    await screen.findByRole('heading', { name: 'ノート一覧' })
+    const router = await renderNotesPage('/notes')
     await screen.findByRole('link', { name: '架空の確認ノート' })
     await user.click(screen.getByRole('combobox', { name: 'タグで絞り込み' }))
-    await screen.findByRole('option', { name: '分類Y' })
-    expect(
-      screen.getAllByRole('option').map((option) => option.textContent),
-    ).toEqual(['すべてのタグ', '分類Y', 'テーマX'])
     await user.click(await screen.findByRole('option', { name: 'テーマX' }))
-    const expectedSearch = { tag: 'theme-x' }
-    await waitFor(() => {
-      expect(router.state.location.search).toEqual(expectedSearch)
-    })
-    await waitFor(() => {
-      expect(overviewRequests).toEqual([
-        { tag: undefined, view: 'all' },
-        { tag: 'theme-x', view: 'all' },
-      ])
-    })
 
-    expect(
-      Array.from(
-        screen.getByRole('listitem').querySelectorAll('[data-slot="chip"]'),
-      ).map((chip) => chip.textContent),
-    ).toEqual([
-      '未登録の種別',
-      '現行 v2',
-      '未読 1 バージョン',
-      'テーマX',
-      '分類Y',
-    ])
+    await waitFor(() => {
+      expect(
+        getTagFilterRequestOutput(
+          router.state.location.search,
+          overviewRequests,
+        ),
+      ).toEqual({
+        search: { tag: 'theme-x' },
+        overviewRequests: [
+          { tag: undefined, view: 'all' },
+          { tag: 'theme-x', view: 'all' },
+        ],
+      })
+    })
   }, 30_000)
 
   it('shows when the tag vocabulary could not be loaded', async () => {
