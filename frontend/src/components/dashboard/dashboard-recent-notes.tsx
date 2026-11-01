@@ -1,16 +1,18 @@
+import { Chip } from '@fohte/ui/chip'
 import { Link } from '@tanstack/react-router'
 
+import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 import { formatRelative } from '#lib/note-utils'
 
-type Note = components['schemas']['Note']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 
 export function DashboardRecentNotes({
   notes,
   isError,
 }: {
-  notes: Note[] | null
+  notes: NoteOverview[] | null
   isError: boolean
 }) {
   const recentNotes =
@@ -18,7 +20,9 @@ export function DashboardRecentNotes({
       ? []
       : [...notes]
           .sort((left, right) =>
-            right.updated_at.localeCompare(left.updated_at),
+            right.representative.updated_at.localeCompare(
+              left.representative.updated_at,
+            ),
           )
           .slice(0, 3)
 
@@ -54,22 +58,37 @@ export function DashboardRecentNotes({
             ノートはまだありません。
           </p>
         ) : (
-          recentNotes.map((note) => (
-            <Link
-              key={note.id}
-              to="/notes/$noteId"
-              params={{ noteId: note.id }}
-              className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5 hover:bg-surface-strong"
-            >
-              <span className="truncate text-sm text-foreground">
-                {note.title}
-              </span>
-              <span className="font-mono text-2xs text-muted-foreground">
-                {note.created_by_kind === 'human' ? '自分' : 'エージェント'} ·{' '}
-                {formatRelative(note.updated_at)}
-              </span>
-            </Link>
-          ))
+          recentNotes.map((overview) => {
+            const note = overview.representative
+
+            return (
+              <Link
+                key={note.id}
+                to="/notes/$noteId"
+                params={{ noteId: note.id }}
+                className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5 hover:bg-surface-strong"
+              >
+                <span className="truncate text-sm text-foreground">
+                  {note.title}
+                </span>
+                <span className="font-mono text-2xs text-muted-foreground">
+                  {note.created_by_kind === 'human' ? '自分' : 'エージェント'} ·{' '}
+                  {formatRelative(note.updated_at)}
+                </span>
+                <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
+                  <StatusPill status={note.status} />
+                  {!note.is_current && overview.current == null && (
+                    <Chip>現行なし</Chip>
+                  )}
+                  {overview.unread_version_count > 0 && (
+                    <Chip>
+                      未読 {String(overview.unread_version_count)} バージョン
+                    </Chip>
+                  )}
+                </span>
+              </Link>
+            )
+          })
         )}
       </div>
     </section>

@@ -2,52 +2,16 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
+import {
+  approvedNoteOverview,
+  currentAndUnreadNoteOverview,
+  humanApprovedNoteOverview,
+  pendingNoteOverview,
+} from '#components/dashboard/dashboard-notes.fixtures'
 import { DashboardRecentNotes } from '#components/dashboard/dashboard-recent-notes'
-import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
-type Note = components['schemas']['Note']
-
-const notes: Note[] = [
-  {
-    id: 'fake-note-a',
-    version_id: 'fake-version-a',
-    version_no: 1,
-    is_current: true,
-    title: '架空企業の決算前メモ',
-    body_md: '表示用の架空ノートです。',
-    frontmatter_json: {},
-    resolved_price_references_json: {},
-    graphs_json: [],
-    tags: [],
-    kind: null,
-    status: 'approved',
-    trigger: null,
-    trigger_label: null,
-    created_by_kind: 'llm',
-    created_at: '2026-10-10T03:00:00Z',
-    updated_at: '2026-10-10T03:00:00Z',
-  },
-  {
-    id: 'fake-note-b',
-    version_id: 'fake-version-b',
-    version_no: 1,
-    is_current: true,
-    title: '売買後の振り返り',
-    body_md: '表示用の架空ノートです。',
-    frontmatter_json: {},
-    resolved_price_references_json: {},
-    graphs_json: [],
-    tags: [],
-    kind: null,
-    status: 'approved',
-    trigger: null,
-    trigger_label: null,
-    created_by_kind: 'human',
-    created_at: '2026-10-09T03:00:00Z',
-    updated_at: '2026-10-09T03:00:00Z',
-  },
-]
+const notes = [approvedNoteOverview, humanApprovedNoteOverview]
 
 function withRouter(Story: ComponentType) {
   return (
@@ -76,6 +40,16 @@ type Story = StoryObj<typeof meta>
 
 export const Recent: Story = {
   name: 'shows recent notes from the user and the agent.',
+}
+
+export const PendingOnly: Story = {
+  name: 'shows a pending note without a current version.',
+  args: { notes: [pendingNoteOverview] },
+}
+
+export const CurrentAndUnread: Story = {
+  name: 'shows an unread version alongside its current version.',
+  args: { notes: [currentAndUnreadNoteOverview] },
 }
 
 export const Empty: Story = {

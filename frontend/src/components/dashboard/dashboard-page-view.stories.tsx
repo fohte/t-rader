@@ -2,6 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentProps, ComponentType } from 'react'
 
+import {
+  approvedNoteOverview,
+  humanApprovedNoteOverview,
+  pendingNoteOverview,
+} from '#components/dashboard/dashboard-notes.fixtures'
 import { DashboardPageView } from '#components/dashboard/dashboard-page-view'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -132,46 +137,7 @@ const args: DashboardPageViewProps = {
     },
   ],
   isEventsError: false,
-  notes: [
-    {
-      id: 'fake-note-a',
-      version_id: 'fake-version-a',
-      version_no: 1,
-      is_current: true,
-      title: '架空企業の決算前メモ',
-      body_md: '表示用の架空ノートです。',
-      frontmatter_json: {},
-      resolved_price_references_json: {},
-      graphs_json: [],
-      tags: [],
-      kind: null,
-      status: 'approved',
-      trigger: null,
-      trigger_label: null,
-      created_by_kind: 'llm',
-      created_at: '2026-10-10T03:00:00Z',
-      updated_at: '2026-10-10T03:00:00Z',
-    },
-    {
-      id: 'fake-note-b',
-      version_id: 'fake-version-b',
-      version_no: 1,
-      is_current: true,
-      title: '売買後の振り返り',
-      body_md: '表示用の架空ノートです。',
-      frontmatter_json: {},
-      resolved_price_references_json: {},
-      graphs_json: [],
-      tags: [],
-      kind: null,
-      status: 'approved',
-      trigger: null,
-      trigger_label: null,
-      created_by_kind: 'human',
-      created_at: '2026-10-09T03:00:00Z',
-      updated_at: '2026-10-09T03:00:00Z',
-    },
-  ],
+  notes: [approvedNoteOverview, humanApprovedNoteOverview, pendingNoteOverview],
   isNotesError: false,
   tasks: [
     {

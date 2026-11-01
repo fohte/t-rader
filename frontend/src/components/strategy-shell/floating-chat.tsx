@@ -122,9 +122,12 @@ export function FloatingChat(): React.ReactElement {
 
   useEffect(() => {
     if (!isCompleted) return
-    void queryClient.invalidateQueries({
-      queryKey: $api.queryOptions('get', '/api/notes').queryKey,
-    })
+    for (const queryKey of [
+      $api.queryOptions('get', '/api/notes').queryKey,
+      $api.queryOptions('get', '/api/notes/overview').queryKey,
+    ]) {
+      void queryClient.invalidateQueries({ queryKey })
+    }
   }, [isCompleted, queryClient])
 
   const taskNotesQuery = $api.useQuery(
