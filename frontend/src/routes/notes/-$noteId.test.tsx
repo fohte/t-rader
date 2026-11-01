@@ -231,6 +231,15 @@ function displayedBodyText(): string | null {
   return paragraphs.length === 0 ? null : paragraphs.join('\n')
 }
 
+function historicalVersionNoticeOutput() {
+  return {
+    notice: screen.queryByText(/過去のバージョン/)?.textContent ?? null,
+    currentVersionLink:
+      screen.queryByRole('link', { name: '現行バージョンを開く' })
+        ?.textContent ?? null,
+  }
+}
+
 function selectedVersionIndicatorOutput(
   chip: HTMLElement,
   noteRequests: NoteRequest[],
@@ -412,6 +421,56 @@ describe('NoteDetailPage', () => {
         },
       ],
     ])
+  }, 30_000)
+
+  it('shows the historical notice for a version older than the current version', async () => {
+    await renderNoteDetail(
+      [historicalVersion, currentVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      `/notes/${noteId}?version_id=${historicalVersion.id}`,
+    )
+
+    await screen.findByRole('heading', { name: historicalVersion.title })
+
+    expect(historicalVersionNoticeOutput()).toEqual({
+      notice: '過去のバージョン v1 を表示中です。',
+      currentVersionLink: '現行バージョンを開く',
+    })
+  }, 30_000)
+
+  it('does not show the historical notice when no current version exists', async () => {
+    await renderNoteDetail(
+      [pendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(pendingVersion))),
+      `/notes/${noteId}?version_id=${pendingVersion.id}`,
+    )
+
+    await screen.findByRole('heading', { name: pendingVersion.title })
+
+    expect(historicalVersionNoticeOutput()).toEqual({
+      notice: null,
+      currentVersionLink: null,
+    })
+  }, 30_000)
+
+  it('does not show the historical notice for a pending version newer than the current version', async () => {
+    const newerPendingVersion: NoteVersion = {
+      ...pendingVersion,
+      id: 'fake-newer-pending-version',
+      version_no: 3,
+    }
+    await renderNoteDetail(
+      [currentVersion, newerPendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(newerPendingVersion))),
+      `/notes/${noteId}?version_id=${newerPendingVersion.id}`,
+    )
+
+    await screen.findByRole('heading', { name: newerPendingVersion.title })
+
+    expect(historicalVersionNoticeOutput()).toEqual({
+      notice: null,
+      currentVersionLink: null,
+    })
   }, 30_000)
 
   it('keeps raw body hidden until a matching display response arrives', async () => {
