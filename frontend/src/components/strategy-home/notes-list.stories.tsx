@@ -444,6 +444,13 @@ export const KindUnregistered: Story = {
   },
 }
 
+export const UnregisteredTagHidden: Story = {
+  name: 'shows the registered tag label and hides an unregistered tag.',
+  args: {
+    overviews: [makeOverview({ tags: ['sample-tag', 'unregistered-tag'] })],
+  },
+}
+
 export const KindUnset: Story = {
   name: 'shows when a note has no kind.',
   args: { overviews: [makeOverview({ kind: null })] },
