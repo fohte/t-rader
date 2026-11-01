@@ -242,7 +242,7 @@ impl StrategyServer {
     /// YouTube 動画について複数の質問にまとめて回答する
     #[tool(
         name = "query_youtube",
-        description = "Answer one or more questions about a YouTube video in a single model call. Pass all questions about the same video together because each call rereads the entire video. Include an MM:SS timestamp for every numerical value and every statement attributed to the video. Returns free-form text using the model configured for this tool in agent_graph.tool_models.",
+        description = "Answer one or more questions about a YouTube video in a single model call. Pass all questions about the same video together because each call rereads the entire video. Include an MM:SS timestamp for every numerical value and every statement attributed to the video. Returns free-form text using the model configured for this tool in agent_graph.tool_models. If the model request times out, the tool returns error -32053. Do not retry the same query; narrow the questions or continue with available context.",
         annotations(read_only_hint = true)
     )]
     async fn query_youtube(
