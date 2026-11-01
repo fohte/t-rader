@@ -274,6 +274,16 @@ mod tests {
     #[case::currency_prefix_before_year_prefixed_word("¥9876 年末", vec![
         price_warning("¥9876"),
     ])]
+    #[case::comma_grouped_number_before_year_prefixed_word("銘柄A 3,500 年初来高値", vec![
+        price_warning("3,500"),
+    ])]
+    #[case::comma_grouped_number_with_price_word_before_year_prefixed_word(
+        "終値は 2,673 年初来高値",
+        vec![price_warning("2,673")],
+    )]
+    #[case::decimal_number_before_spaced_year("12.34 年", vec![
+        price_warning("12.34"),
+    ])]
     #[case::year_marker_on_next_line_is_not_a_date("9876\n年末", vec![
         price_warning("9876"),
     ])]

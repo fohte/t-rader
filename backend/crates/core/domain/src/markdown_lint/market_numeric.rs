@@ -268,7 +268,11 @@ fn is_date_year(text: &str, number: &NumberRange) -> bool {
     }
     let after = &text[number.range.end..];
     let same_line_after = after.split(['\r', '\n']).next().unwrap_or_default();
-    let has_spaced_year_suffix = !after.starts_with('年')
+    let is_unseparated_integer = text[number.number_start..number.range.end]
+        .bytes()
+        .all(|byte| byte.is_ascii_digit());
+    let has_spaced_year_suffix = is_unseparated_integer
+        && !after.starts_with('年')
         && same_line_after.trim_start().starts_with('年')
         && !has_price_context(text, number.number_start)
         && !has_currency_prefix(text, number.number_start);
@@ -308,7 +312,7 @@ fn has_numeric_date_suffix(after: &str) -> bool {
 fn numeric_date_separator(after: &str) -> Option<(usize, char)> {
     let (separator_start, separator) = after.char_indices().next()?;
     let (separator_start, separator) = if separator == '\\' {
-        // Markdown では `\-` が `-` と表示されるため、区切り文字の直前のバックスラッシュを読み飛ばします。
+        // Markdown では `\-` が `-` と表示されます。
         let (offset, escaped_separator) = after[separator.len_utf8()..].char_indices().next()?;
         (separator.len_utf8() + offset, escaped_separator)
     } else {
