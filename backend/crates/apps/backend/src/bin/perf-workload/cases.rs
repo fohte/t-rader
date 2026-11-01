@@ -5,8 +5,30 @@ use core_application::widget::{
 };
 
 const EXPECTED_VALID_COMBINATIONS: usize = 129;
-const EXPECTED_CASE_COUNT: usize = 296;
+pub(super) const EXPECTED_WIDGET_CASE_COUNT: usize = 296;
 const GROUPS_PER_AXIS: usize = 30;
+pub(super) const GROUP_MOVER_CASES: [GroupMoverCase; 4] = [
+    GroupMoverCase {
+        id: "group-movers-short",
+        days: 5,
+        filtered: false,
+    },
+    GroupMoverCase {
+        id: "group-movers-long",
+        days: 60,
+        filtered: false,
+    },
+    GroupMoverCase {
+        id: "group-movers-short-filtered",
+        days: 5,
+        filtered: true,
+    },
+    GroupMoverCase {
+        id: "group-movers-long-filtered",
+        days: 60,
+        filtered: true,
+    },
+];
 const STOCK_IDS: [&str; 8] = [
     "X001", "X002", "X003", "X004", "X005", "X006", "X007", "X008",
 ];
@@ -26,6 +48,13 @@ pub(super) struct WorkloadCase {
     pub(super) expected_row_count: usize,
     pub(super) expected_as_of: NaiveDate,
     pub(super) full_candidate_response: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct GroupMoverCase {
+    pub(super) id: &'static str,
+    pub(super) days: i64,
+    pub(super) filtered: bool,
 }
 
 pub(super) fn build_cases(reference_date: NaiveDate) -> Result<Vec<WorkloadCase>, String> {
@@ -78,7 +107,7 @@ pub(super) fn build_cases(reference_date: NaiveDate) -> Result<Vec<WorkloadCase>
         .checked_sub_days(Days::new(14))
         .ok_or_else(|| "reference date is outside the supported range".to_string())?;
     let past_as_of = previous_weekday(past_request);
-    let mut cases = Vec::with_capacity(EXPECTED_CASE_COUNT);
+    let mut cases = Vec::with_capacity(EXPECTED_WIDGET_CASE_COUNT);
     for (query, universe) in valid_combinations {
         for (requested, expected_as_of) in
             [(None, reference_date), (Some(past_request), past_as_of)]
@@ -120,9 +149,9 @@ pub(super) fn build_cases(reference_date: NaiveDate) -> Result<Vec<WorkloadCase>
             }
         }
     }
-    if cases.len() != EXPECTED_CASE_COUNT {
+    if cases.len() != EXPECTED_WIDGET_CASE_COUNT {
         return Err(format!(
-            "widget workload matrix changed: expected {EXPECTED_CASE_COUNT} cases, got {}",
+            "widget workload matrix changed: expected {EXPECTED_WIDGET_CASE_COUNT} cases, got {}",
             cases.len()
         ));
     }
@@ -131,12 +160,7 @@ pub(super) fn build_cases(reference_date: NaiveDate) -> Result<Vec<WorkloadCase>
 
 pub(super) fn required_case_ids(cases: &[WorkloadCase]) -> Vec<String> {
     let mut ids = cases.iter().map(|case| case.id.clone()).collect::<Vec<_>>();
-    ids.extend([
-        "group-movers-short".to_string(),
-        "group-movers-long".to_string(),
-        "group-movers-short-filtered".to_string(),
-        "group-movers-long-filtered".to_string(),
-    ]);
+    ids.extend(GROUP_MOVER_CASES.map(|case| case.id.to_string()));
     ids
 }
 
@@ -243,11 +267,11 @@ fn is_selected_combination(query: &WidgetQuery, universe: UniverseKind) -> bool 
             }
         },
         WidgetMetric::Indicator => true,
-        WidgetMetric::Close => is_selected_regular_combination(query),
-        WidgetMetric::Turnover => is_selected_regular_combination(query),
-        WidgetMetric::MktCap => is_selected_regular_combination(query),
-        WidgetMetric::Per => is_selected_regular_combination(query),
-        WidgetMetric::Pbr => is_selected_regular_combination(query),
+        WidgetMetric::Close
+        | WidgetMetric::Turnover
+        | WidgetMetric::MktCap
+        | WidgetMetric::Per
+        | WidgetMetric::Pbr => is_selected_regular_combination(query),
     }
 }
 
@@ -378,27 +402,58 @@ mod tests {
     use std::collections::BTreeSet;
 
     use chrono::NaiveDate;
-    use core_application::widget::{WidgetAggregation, WidgetBy, WidgetMetric, WidgetUniverse};
+    use core_application::widget::{
+        WidgetAggregation, WidgetBy, WidgetMetric, WidgetPeriod, WidgetUniverse,
+    };
 
-    use super::{build_cases, required_case_ids};
+    use super::{EXPECTED_WIDGET_CASE_COUNT, build_cases};
 
     #[test]
-    fn enumerates_the_required_widget_case_set() {
-        let reference_date = NaiveDate::from_ymd_opt(2099, 6, 30);
-        let actual = reference_date
-            .map(build_cases)
-            .transpose()
-            .map(|cases| cases.map(|cases| required_case_ids(&cases)));
-        let expected = (0..296)
-            .map(|index| format!("widget-{index:03}"))
-            .chain([
-                "group-movers-short".to_string(),
-                "group-movers-long".to_string(),
-                "group-movers-short-filtered".to_string(),
-                "group-movers-long-filtered".to_string(),
-            ])
-            .collect::<Vec<_>>();
-        assert_eq!(actual, Ok(Some(expected)));
+    fn checks_a_selected_case_with_latest_and_past_dates() {
+        let actual = NaiveDate::from_ymd_opt(2099, 6, 30)
+            .map(|reference_date| {
+                build_cases(reference_date).map(|cases| {
+                    let selected = cases
+                        .iter()
+                        .filter(|case| {
+                            let Some(query) = case.definition.queries.get("value") else {
+                                return false;
+                            };
+                            query.metric == WidgetMetric::Change
+                                && query.by == WidgetBy::Stock
+                                && matches!(
+                                    query.universe.as_ref(),
+                                    Some(WidgetUniverse::Stocks { .. })
+                                )
+                                && query.period == Some(WidgetPeriod::OneDay)
+                                && query.agg.is_none()
+                        })
+                        .map(|case| {
+                            (
+                                case.expected_candidate_count,
+                                case.expected_row_count,
+                                case.expected_as_of,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    (cases.len(), selected)
+                })
+            })
+            .transpose();
+        let expected = NaiveDate::from_ymd_opt(2099, 6, 30).map(|reference_date| {
+            (
+                EXPECTED_WIDGET_CASE_COUNT,
+                vec![
+                    (8, 5, reference_date),
+                    (
+                        8,
+                        5,
+                        super::previous_weekday(reference_date - chrono::Duration::days(14)),
+                    ),
+                ],
+            )
+        });
+        assert_eq!(actual, Ok(expected));
     }
 
     #[test]
@@ -439,10 +494,16 @@ mod tests {
                         .then_some((query.metric, case.expected_row_count))
                     })
                     .collect::<Vec<_>>();
-                (candidate_counts, group_axis_rows, sparse_group_rows)
+                (
+                    cases.len(),
+                    candidate_counts,
+                    group_axis_rows,
+                    sparse_group_rows,
+                )
             })
         });
         let expected = Ok(Some((
+            EXPECTED_WIDGET_CASE_COUNT,
             BTreeSet::from([8, 500, 15_000]),
             vec![
                 (Some("demo-axis".to_string()), 1),

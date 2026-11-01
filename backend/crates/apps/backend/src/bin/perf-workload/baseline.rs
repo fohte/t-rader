@@ -1,44 +1,25 @@
-use std::{env, time::Duration};
+use std::env;
 
 use chrono::{Days, NaiveDate};
 use gateway_postgres::performance_workload_sql::unoptimized_group_movers_sql;
 use rust_decimal::Decimal;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DbErr, RuntimeErr, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, RuntimeErr, Statement};
+
+use crate::connection::{connect_performance_database, error_kind, reference_date_statement};
 
 pub(super) async fn run() -> Result<(), String> {
     let database_url = env::var("DATABASE_URL")
         .map_err(|_| "DATABASE_URL is required for the performance control".to_string())?;
-    let mut options = ConnectOptions::new(database_url);
-    options.max_connections(1);
-    options.min_connections(1);
-    options.connect_timeout(Duration::from_secs(30));
-    options.sqlx_logging(false);
-    options.map_sqlx_postgres_opts(|options| options.statement_cache_capacity(8));
-    let connection = Database::connect(options)
-        .await
-        .map_err(|_| "could not connect to the performance database".to_string())?;
-    connection
-        .execute_unprepared("SET TIME ZONE 'UTC'")
-        .await
-        .map_err(|_| "could not set the performance database timezone".to_string())?;
-    connection
-        .execute_unprepared("SET default_transaction_read_only = on")
-        .await
-        .map_err(|_| "could not make the performance control read-only".to_string())?;
-    connection
-        .execute_unprepared("SET statement_timeout = '5s'")
-        .await
-        .map_err(|_| "could not apply the five second SQL limit".to_string())?;
-    connection
-        .execute_unprepared("SET plan_cache_mode = auto")
-        .await
-        .map_err(|_| "could not enable automatic prepared statement planning".to_string())?;
+    let connection = connect_performance_database(database_url, 8).await?;
     connection
         .execute_unprepared("SET application_name = 'unoptimized-group-movers-control'")
         .await
-        .map_err(|_| "could not label the performance control connection".to_string())?;
+        .map_err(|error| {
+            format!(
+                "could not label the performance control connection: {}",
+                error_kind(&error)
+            )
+        })?;
 
     let reference_date = reference_date(&connection).await?;
     let from = reference_date
@@ -65,22 +46,23 @@ pub(super) async fn run() -> Result<(), String> {
             );
             Ok(())
         }
-        Err(_) => {
-            Err("unoptimized group movers SQL failed for a reason other than timeout".to_string())
-        }
+        Err(error) => Err(format!(
+            "unoptimized group movers SQL failed for a reason other than timeout: {}",
+            error_kind(&error)
+        )),
     }
 }
 
 async fn reference_date(connection: &sea_orm::DatabaseConnection) -> Result<NaiveDate, String> {
     let row = connection
-        .query_one_raw(Statement::from_string(
-            DatabaseBackend::Postgres,
-            "SELECT MAX(latest_timestamp AT TIME ZONE 'UTC')::date AS reference_date \
-             FROM bars_timestamp_coverage WHERE timeframe = '1d'"
-                .to_string(),
-        ))
+        .query_one_raw(reference_date_statement())
         .await
-        .map_err(|_| "could not read the performance profile reference date".to_string())?
+        .map_err(|error| {
+            format!(
+                "could not read the performance profile reference date: {}",
+                error_kind(&error)
+            )
+        })?
         .ok_or_else(|| "performance profile has no daily bars".to_string())?;
     row.try_get("", "reference_date")
         .map_err(|_| "could not decode the performance profile reference date".to_string())

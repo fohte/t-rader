@@ -20,7 +20,10 @@ use required_workload::{
 use runner::PerfReport;
 
 const EXCLUSIONS: &str = include_str!("../exclusions.json");
-const EXPECTED_REQUIRED_CASE_COUNT: usize = 300;
+const EXPECTED_WIDGET_CASE_COUNT: usize = 296;
+const EXPECTED_GROUP_MOVER_CASE_COUNT: usize = 4;
+const EXPECTED_REQUIRED_CASE_COUNT: usize =
+    EXPECTED_WIDGET_CASE_COUNT + EXPECTED_GROUP_MOVER_CASE_COUNT;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -153,7 +156,7 @@ fn print_report(report: &PerfReport) {
         );
     }
     for failure in &report.failures {
-        let category = if failure.message.to_ascii_lowercase().contains("timeout") {
+        let category = if failure.kind == "statement timeout" {
             "timeout"
         } else {
             "execution"

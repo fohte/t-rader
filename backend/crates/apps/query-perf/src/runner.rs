@@ -45,7 +45,6 @@ pub struct Failure {
     pub shifted_parameters: bool,
     pub duration: Duration,
     pub kind: String,
-    pub message: String,
 }
 
 struct StatementState {
@@ -91,7 +90,7 @@ pub async fn replay(
         let statement_name = format!("query_perf_{statement_index}");
         let replay_sql = match strip_for_update_clause(&sql) {
             Ok(replay_sql) => replay_sql,
-            Err(message) => {
+            Err(_) => {
                 for parameters in parameter_sets {
                     report.failures.push(Failure {
                         sql: sql.clone(),
@@ -100,7 +99,6 @@ pub async fn replay(
                         shifted_parameters: false,
                         duration: Duration::ZERO,
                         kind: "query transformation error".to_string(),
-                        message: message.clone(),
                     });
                 }
                 statement_states.insert(sql.clone(), StatementState::failed(&sql, Duration::ZERO));
@@ -113,7 +111,7 @@ pub async fn replay(
             let acquire_started = Instant::now();
             let mut connection = match acquire_connection(&pool).await {
                 Ok(connection) => connection,
-                Err(error) => {
+                Err(_) => {
                     let duration = acquire_started.elapsed();
                     report.failures.push(Failure {
                         sql: sql.clone(),
@@ -122,7 +120,6 @@ pub async fn replay(
                         shifted_parameters: false,
                         duration,
                         kind: "connection unavailable".to_string(),
-                        message: format!("could not reconnect to perf-db: {error}"),
                     });
                     statement_states
                         .entry(sql.clone())
@@ -170,7 +167,6 @@ pub async fn replay(
                             shifted_parameters: false,
                             duration,
                             kind: error_kind(&error),
-                            message: error.to_string(),
                         });
                         let state = statement_states
                             .entry(sql.clone())
@@ -186,7 +182,7 @@ pub async fn replay(
 
             let parameters = match shift_parameters(&parameters, &parameter_types, target_date) {
                 Ok(parameters) => parameters,
-                Err(message) => {
+                Err(_) => {
                     let _ = deallocate_or_close(&mut connection, &statement_name).await;
                     if exclusion_for(&exclusions, &sql).is_some() {
                         add_exclusion(&mut report.excluded, &exclusions, &sql);
@@ -200,7 +196,6 @@ pub async fn replay(
                         shifted_parameters: false,
                         duration: Duration::ZERO,
                         kind: "parameter replay error".to_string(),
-                        message,
                     });
                     statement_states
                         .entry(sql.clone())
@@ -215,7 +210,7 @@ pub async fn replay(
 
             let execute_sql = match build_execute_sql(&statement_name, &parameters) {
                 Ok(execute_sql) => execute_sql,
-                Err(message) => {
+                Err(_) => {
                     let _ = deallocate_or_close(&mut connection, &statement_name).await;
                     if exclusion_for(&exclusions, &sql).is_some() {
                         add_exclusion(&mut report.excluded, &exclusions, &sql);
@@ -229,7 +224,6 @@ pub async fn replay(
                         shifted_parameters: true,
                         duration: Duration::ZERO,
                         kind: "parameter replay error".to_string(),
-                        message,
                     });
                     statement_states
                         .entry(sql.clone())
@@ -284,7 +278,6 @@ pub async fn replay(
                         shifted_parameters: true,
                         duration: error.duration,
                         kind: error.kind,
-                        message: error.message,
                     });
                 }
             }
@@ -303,7 +296,6 @@ pub async fn replay(
                     shifted_parameters: true,
                     duration: Duration::ZERO,
                     kind: error_kind(&error),
-                    message: format!("failed to deallocate prepared statement: {error}"),
                 });
             }
         }
@@ -321,7 +313,6 @@ pub async fn replay(
                 shifted_parameters: false,
                 duration: Duration::ZERO,
                 kind: "unused exclusion".to_string(),
-                message: "configured exclusion was not needed by any SQL statement".to_string(),
             });
         }
     }
@@ -408,7 +399,6 @@ fn record_unexecuted_parameter_sets(
             shifted_parameters: false,
             duration: Duration::ZERO,
             kind: "connection unavailable".to_string(),
-            message: "not executed because perf-db could not be reconnected".to_string(),
         });
         statement_states
             .entry(sql.to_string())

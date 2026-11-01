@@ -54,7 +54,7 @@ backend/crates/
 | `core/application`   | ユースケースと port を定義する。port は application が必要とする機能を表す。                             |
 | `entrypoints/*`      | HTTP、MCP、webhook、単発ジョブなどの入力を受け取り、application のユースケースを呼び出す。               |
 | `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                                             |
-| `apps/backend`       | 各 crate を組み立て、アプリケーションを起動する。                                                        |
+| `apps/backend`       | 各 crate を組み立てて起動し、CI 専用の性能 workload を実行する。                                         |
 | `apps/query-perf`    | backend test の SQL を perf-db で再実行し、必須 workload のケース ID と SQL 観測も照合する CI 専用 CLI。 |
 | `libs/rate-limit`    | Redis を使って process 間で共有する rate limit と cooldown を提供する。                                  |
 | `libs/test-macros`   | DB test 用 proc macro を提供する。                                                                       |
@@ -66,7 +66,7 @@ composition root は `backend/crates/apps/backend/` にある。`src/main.rs` �
 
 entrypoint をまたぐ結合テストは composition root に置く。現在は `backend/crates/apps/backend/src/integration_tests/` がその場所である。
 
-`apps/backend` パッケージの bin は 1 つとする。`--run-mode api` で HTTP / MCP API を起動し、`--run-job <job-name>` で `entrypoints/scheduler` のジョブを 1 回実行して終了する。定期実行は Kubernetes CronJob から `--run-job` を呼び出す。
+`apps/backend` パッケージの通常起動 bin は 1 つとする。`--run-mode api` で HTTP / MCP API を起動し、`--run-job <job-name>` で `entrypoints/scheduler` のジョブを 1 回実行して終了する。定期実行は Kubernetes CronJob から `--run-job` を呼び出す。`perf-workload` は `performance-workload` feature でのみ有効になる CI 専用 bin で、合成 perf-db に対して application use case を実行する。
 
 ## crate 間の依存
 

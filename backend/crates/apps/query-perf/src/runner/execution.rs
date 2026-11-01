@@ -9,7 +9,6 @@ const STATEMENT_TIMEOUT: &str = "5s";
 
 #[derive(Debug)]
 pub(super) struct RunError {
-    pub(super) message: String,
     pub(super) duration: Duration,
     pub(super) fatal: bool,
     pub(super) kind: String,
@@ -192,7 +191,6 @@ pub(super) async fn execute_read_only(
 ) -> Result<Duration, RunError> {
     if let Err(error) = begin_read_only(connection).await {
         return Err(RunError {
-            message: error.to_string(),
             duration: Duration::ZERO,
             fatal: !is_database_error(&error),
             kind: error_kind(&error),
@@ -210,21 +208,18 @@ pub(super) async fn execute_read_only(
     match (execution, rollback) {
         (Ok(_), Ok(_)) => Ok(duration),
         (Err(error), Ok(_)) => Err(RunError {
-            message: error.to_string(),
             duration,
             fatal: !is_database_error(&error),
             kind: error_kind(&error),
             non_replayable: is_non_replayable_error(&error),
         }),
         (Ok(_), Err(error)) => Err(RunError {
-            message: format!("query completed but rollback failed: {error}"),
             duration,
             fatal: true,
             kind: error_kind(&error),
             non_replayable: false,
         }),
-        (Err(error), Err(rollback_error)) => Err(RunError {
-            message: format!("{error}; rollback failed: {rollback_error}"),
+        (Err(error), Err(_rollback_error)) => Err(RunError {
             duration,
             fatal: true,
             kind: error_kind(&error),

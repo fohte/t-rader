@@ -1,5 +1,6 @@
 mod baseline;
 mod cases;
+mod connection;
 mod report;
 mod sql;
 mod workload;

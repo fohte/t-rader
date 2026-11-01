@@ -244,18 +244,30 @@ mod tests {
     use rstest::rstest;
 
     use super::{
-        WorkloadFailureKind, WorkloadReport, WorkloadVerification, parse_workload_report,
-        sql_fingerprint, verify_required_workload,
+        WorkloadFailureKind, WorkloadReport, WorkloadVerification, parse_observed_sql,
+        parse_workload_report, sql_fingerprint, verify_required_workload,
     };
 
     const SQL: &str = "SELECT * FROM sample_items WHERE id = $1";
 
     fn report(required: Vec<&str>, completed: Vec<&str>) -> WorkloadReport {
         let expected = sql_fingerprint(SQL);
+        report_with_expected_sql(
+            required,
+            completed,
+            BTreeMap::from([("case-a".to_string(), vec![expected])]),
+        )
+    }
+
+    fn report_with_expected_sql(
+        required: Vec<&str>,
+        completed: Vec<&str>,
+        expected_sql_by_case: BTreeMap<String, Vec<String>>,
+    ) -> WorkloadReport {
         WorkloadReport {
             required_case_ids: required.into_iter().map(str::to_string).collect(),
             completed_case_ids: completed.into_iter().map(str::to_string).collect(),
-            expected_sql_by_case: BTreeMap::from([("case-a".to_string(), vec![expected])]),
+            expected_sql_by_case,
         }
     }
 
@@ -269,7 +281,8 @@ mod tests {
     #[case::complete(report(vec!["case-a"], vec!["case-a"]), log("perf:case-a"), BTreeSet::new(), Ok(WorkloadVerification { case_count: 1, observed_sql_count: 1 }))]
     #[case::missing_completion(report(vec!["case-a"], vec![]), log("perf:case-a"), BTreeSet::new(), Err(WorkloadFailureKind::MissingCase))]
     #[case::missing_observation(report(vec!["case-a"], vec!["case-a"]), log("other:case-a"), BTreeSet::new(), Err(WorkloadFailureKind::MissingObservation))]
-    #[case::excluded_only(report(vec!["case-a"], vec![]), "", BTreeSet::from([sql_fingerprint(SQL)]), Err(WorkloadFailureKind::ExcludedOnly))]
+    #[case::missing_sql_log(report(vec!["case-a"], vec!["case-a"]), "", BTreeSet::new(), Err(WorkloadFailureKind::MissingObservation))]
+    #[case::excluded_only(report(vec!["case-a"], vec!["case-a"]), "", BTreeSet::from([sql_fingerprint(SQL)]), Err(WorkloadFailureKind::ExcludedOnly))]
     fn verifies_required_cases_and_sql_observations(
         #[case] report: WorkloadReport,
         #[case] sql_log: String,
@@ -279,6 +292,44 @@ mod tests {
         assert_eq!(
             verify_required_workload(&report, &sql_log, &excluded),
             expected
+        );
+    }
+
+    #[rstest]
+    #[case::unexpected_completed(report(vec!["case-a"], vec!["case-a", "case-b"]), log("perf:case-a"), BTreeSet::new(), Err(WorkloadFailureKind::UnexpectedCompletedCase))]
+    #[case::unexpected_expectation(report_with_expected_sql(vec!["case-a"], vec!["case-a"], BTreeMap::from([("case-a".to_string(), vec![sql_fingerprint(SQL)]), ("case-b".to_string(), vec![sql_fingerprint(SQL)])])), log("perf:case-a"), BTreeSet::new(), Err(WorkloadFailureKind::UnexpectedExpectation))]
+    #[case::duplicate_expectation(report_with_expected_sql(vec!["case-a"], vec!["case-a"], BTreeMap::from([("case-a".to_string(), vec![sql_fingerprint(SQL), sql_fingerprint(SQL)])])), log("perf:case-a"), BTreeSet::new(), Err(WorkloadFailureKind::DuplicateExpectation))]
+    #[case::invalid_fingerprint(report_with_expected_sql(vec!["case-a"], vec!["case-a"], BTreeMap::from([("case-a".to_string(), vec!["invalid".to_string()])])), log("perf:case-a"), BTreeSet::new(), Err(WorkloadFailureKind::InvalidReport))]
+    #[case::unexpected_observed_case(report(vec!["case-a"], vec!["case-a"]), format!("{}\n{}", log("perf:case-a"), log("perf:case-b")), BTreeSet::new(), Err(WorkloadFailureKind::UnexpectedObservedCase))]
+    #[case::invalid_sql_log(report(vec!["case-a"], vec!["case-a"]), "not-json".to_string(), BTreeSet::new(), Err(WorkloadFailureKind::InvalidSqlLog))]
+    fn rejects_malformed_or_unexpected_workload_data(
+        #[case] report: WorkloadReport,
+        #[case] sql_log: String,
+        #[case] excluded: BTreeSet<String>,
+        #[case] expected: Result<WorkloadVerification, WorkloadFailureKind>,
+    ) {
+        assert_eq!(
+            verify_required_workload(&report, &sql_log, &excluded),
+            expected
+        );
+    }
+
+    #[rstest]
+    #[case::statement_message(format!(r#"{{"application_name":"perf:case-a","message":"statement: {SQL}"}}"#), Some(SQL))]
+    #[case::statement_field(format!(r#"{{"application_name":"perf:case-a","statement":"{SQL}"}}"#), Some(SQL))]
+    #[case::block_comment(format!(r#"{{"application_name":"perf:case-a","message":"execute prepared: /* sample comment */ {SQL}"}}"#), Some("/* sample comment */ SELECT * FROM sample_items WHERE id = $1"))]
+    #[case::line_comment(r#"{"application_name":"perf:case-a","message":"execute prepared: -- sample comment\nWITH sample_rows AS (SELECT 1) SELECT * FROM sample_rows"}"#.to_string(), Some("-- sample comment\nWITH sample_rows AS (SELECT 1) SELECT * FROM sample_rows"))]
+    #[case::non_select_is_ignored(r#"{"application_name":"perf:case-a","statement":"INSERT INTO sample_items (id) VALUES ($1)"}"#.to_string(), None)]
+    fn parses_json_log_statement_forms(
+        #[case] contents: String,
+        #[case] expected_sql: Option<&str>,
+    ) {
+        let expected = expected_sql.map(|sql| {
+            BTreeMap::from([("case-a".to_string(), BTreeSet::from([sql_fingerprint(sql)]))])
+        });
+        assert_eq!(
+            parse_observed_sql(&contents),
+            Ok(expected.unwrap_or_default())
         );
     }
 
