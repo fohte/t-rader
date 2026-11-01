@@ -100,6 +100,8 @@ pub struct NoteMeta {
     pub status: String,
     pub created_by_kind: String,
     pub updated_at: DateTime<FixedOffset>,
+    pub is_current: bool,
+    pub unread_version_count: i64,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
