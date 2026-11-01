@@ -29,6 +29,7 @@ const tasks: Task[] = [
     purpose: null,
     as_of: null,
     error_summary: null,
+    model_call_limit_reached: false,
     created_at: '2026-10-10T03:00:00Z',
     updated_at: '2026-10-10T03:00:00Z',
   },
@@ -61,6 +62,40 @@ type Story = StoryObj<typeof meta>
 
 export const Recent: Story = {
   name: 'shows recent task runs with their phase and strategy.',
+}
+
+export const WithModelCallLimitReached: Story = {
+  name: 'shows the model call limit badge only on marked tasks.',
+  args: {
+    tasks: [
+      {
+        task_id: 'synthetic-task-a',
+        strategy_id: 'fake-strategy-a',
+        source: 'frontend',
+        prompt: '架空の項目を確認する',
+        phase: 'completed',
+        purpose: null,
+        as_of: null,
+        error_summary: null,
+        model_call_limit_reached: true,
+        created_at: '2030-01-02T03:05:05Z',
+        updated_at: '2030-01-02T03:05:05Z',
+      },
+      {
+        task_id: 'synthetic-task-b',
+        strategy_id: 'fake-strategy-a',
+        source: 'frontend',
+        prompt: '別の架空項目を確認する',
+        phase: 'completed',
+        purpose: null,
+        as_of: null,
+        error_summary: null,
+        model_call_limit_reached: false,
+        created_at: '2030-01-02T03:04:05Z',
+        updated_at: '2030-01-02T03:04:05Z',
+      },
+    ],
+  },
 }
 
 export const Empty: Story = {

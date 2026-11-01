@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
+import { ModelCallLimitBadge } from '#components/model-call-limit-badge'
 import { taskPhaseLabel } from '#components/task-phase-label'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
@@ -85,6 +86,7 @@ export function DashboardRecentRuns({
               >
                 {taskPhaseLabel(task.phase)}
               </span>
+              {task.model_call_limit_reached && <ModelCallLimitBadge />}
               <span className="hidden shrink-0 font-mono text-2xs text-muted-foreground sm:inline">
                 {formatRelative(task.created_at)}
               </span>

@@ -24,6 +24,14 @@ const NAMES: Record<string, string> = {
   'group:set/e': 'Index',
 }
 
+const INDICATOR_CHANGE_OBSERVATIONS: Record<
+  string,
+  Array<{ date: string; value: number }>
+> = {
+  '2030-01-02': [{ date: '2030-01-02', value: 100 }],
+  '2030-01-03': [{ date: '2030-01-03', value: 112.5 }],
+}
+
 const SAMPLE = `# サンプル項目の記録
 
 ## 要約
@@ -182,6 +190,10 @@ const meta = {
       handlers: [
         mockResolveRef(NAMES),
         http.get('/api/bars', () => HttpResponse.json(CHANGE_REFERENCE_BARS)),
+        http.get('/api/refs/indicators/:id/observations', ({ request }) => {
+          const date = new URL(request.url).searchParams.get('from') ?? ''
+          return HttpResponse.json(INDICATOR_CHANGE_OBSERVATIONS[date] ?? [])
+        }),
       ],
     },
   },
@@ -284,16 +296,19 @@ export const WithRangeCommentGutter: Story = {
 }
 
 export const WithResolvedPriceReferences: Story = {
-  name: 'renders resolved dated values and keeps unresolved values visible.',
+  name: 'renders resolved stock and indicator changes and keeps unresolved values visible.',
   args: {
     source:
-      '記録値 [[price:item-a@2030-01-02:close]]、期間差 [[change:item-a@2030-01-02..2030-01-03:close]]、比率 [[valuation:item-a@2030-01-02:per]]、補助値 [[indicator:metric-a@2030-01-02]]、算出結果 [[eval:11111111-2222-4333-8444-555555555501:result]]、項目参照 [[indicator:metric-a]]、未登録値 [[price:item-a@2030-01-04:close]]',
+      '記録値 [[price:item-a@2030-01-02:close]]、株価差 [[change:item-a@2030-01-02..2030-01-03:close]]、指標差 [[change:indicator:metric-a@2030-01-02..2030-01-03]]、比率 [[valuation:item-a@2030-01-02:per]]、補助値 [[indicator:metric-a@2030-01-02]]、算出結果 [[eval:11111111-2222-4333-8444-555555555501:result]]、項目参照 [[indicator:metric-a]]、未登録値 [[price:item-a@2030-01-04:close]]',
     resolvedPriceReferences: {
       '[[price:item-a@2030-01-02:close]]': {
         value: 1234.5,
       },
       '[[change:item-a@2030-01-02..2030-01-03:close]]': {
         value: 2.5,
+      },
+      '[[change:indicator:metric-a@2030-01-02..2030-01-03]]': {
+        value: 12.5,
       },
       '[[valuation:item-a@2030-01-02:per]]': { value: 24.6 },
       '[[indicator:metric-a@2030-01-02]]': { value: 152.3 },
@@ -308,7 +323,7 @@ export const WithUnresolvedDatedReferences: Story = {
   name: 'keeps dated value tokens visible when their values are unavailable.',
   args: {
     source:
-      '日付つきの値 [[valuation:item-a@2030-01-04:per]] と [[indicator:metric-a@2030-01-04]] は未登録です。日付なしの [[indicator:metric-a]] は項目参照です。',
+      '日付つきの値 [[valuation:item-a@2030-01-04:per]]、[[indicator:metric-a@2030-01-04]]、[[change:indicator:metric-a@2030-01-02..2030-01-04]] は未登録です。日付なしの [[indicator:metric-a]] は項目参照です。',
   },
 }
 

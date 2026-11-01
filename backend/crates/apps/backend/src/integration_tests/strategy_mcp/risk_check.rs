@@ -80,6 +80,7 @@ mod tests {
             name: Set(symbol.to_string()),
             market: Set(None),
             product_category: Set(None),
+            cik: Default::default(),
             created_at: NotSet,
             updated_at: NotSet,
         }

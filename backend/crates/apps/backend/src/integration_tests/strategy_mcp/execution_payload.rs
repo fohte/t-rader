@@ -1,20 +1,23 @@
-use std::sync::Arc;
+use std::future::pending;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use axum::http::{HeaderMap, HeaderValue};
 use chrono::Utc;
 use core_application::{
-    kata_exec::{ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor},
+    kata_exec::{ExecFile, ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor},
     strategy_execution::{
-        DatasetCaptureReport, DatasetPage, DatasetPageCompletion, DatasetProvider,
-        DatasetProviderError, DatasetSnapshot, PayloadDefinition, PayloadKind, PayloadPage,
-        PayloadRef, ReadPayloadQuery,
+        DatasetCaptureOptions, DatasetCaptureReport, DatasetPage, DatasetPageCompletion,
+        DatasetProvider, DatasetProviderError, DatasetSnapshot, PayloadDefinition, PayloadKind,
+        PayloadPage, PayloadRef, ReadPayloadQuery, SharedDatasetProvider,
     },
     strategy_scope::StrategyScope,
 };
 use gateway_postgres::entities::{
-    custom_indicator, custom_indicator_evaluation, task_execution_definition_snapshot,
-    task_execution_payload,
+    custom_indicator, custom_indicator_evaluation, sea_orm_active_enums::StrategyTaskPhase,
+    strategy_task, task_execution_definition_snapshot, task_execution_payload,
 };
+use indoc::indoc;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
@@ -23,7 +26,8 @@ use sea_orm::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use super::tests_common;
+use super::super::mcp_tool::call_tool_output_with_headers_and_id;
+use super::{StrategyServer, tests_common};
 
 const DATASET_REVISION: &str = "sample-revision-a";
 const DATASET_DIGEST: &str = "b52cddda5a045faaee6394056f35404ef21a3b843edfbe739fc30fd52933c8ca";
@@ -33,6 +37,8 @@ const OPERATION_OUTPUT_DIGEST: &str =
     "02e3edf64da0a6e80a2df605decdb64605cd8a66b71be923c8148c945955b615";
 const OPERATION_FAILURE_DIGEST: &str =
     "6ee28d7049e92a25b270e9f8d805a635d27e957420d6bb1c4f6270a10515d804";
+const TASK_START_SNAPSHOT_DIGEST: &str =
+    "8b71de3f8e45dcb78cf9e14199658490a9bbe1b59a902c22b849b6386b921cbc";
 
 #[derive(Clone, Copy)]
 enum ProviderMode {
@@ -48,6 +54,54 @@ enum ProviderMode {
 struct SyntheticDatasetProvider {
     items: Vec<Value>,
     mode: ProviderMode,
+}
+
+struct WaitingDatasetProvider {
+    started: Arc<tokio::sync::Notify>,
+    wait_at: DatasetWaitStage,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DatasetWaitStage {
+    Open,
+    ReadPage,
+}
+
+#[async_trait]
+impl DatasetProvider for WaitingDatasetProvider {
+    async fn open(
+        &self,
+        _scope: StrategyScope,
+        _request: Value,
+    ) -> Result<DatasetSnapshot, DatasetProviderError> {
+        if self.wait_at == DatasetWaitStage::Open {
+            self.started.notify_one();
+            pending().await
+        }
+        Ok(DatasetSnapshot {
+            source_revision: DATASET_REVISION.into(),
+            source_locator: None,
+            source_metadata: Value::Null,
+            schema: json!({"type": "array"}),
+            captured_at: Utc::now().fixed_offset(),
+            expected_count: None,
+        })
+    }
+
+    async fn read_page(
+        &self,
+        _snapshot: &DatasetSnapshot,
+        _cursor: Option<&str>,
+        _limit: usize,
+    ) -> Result<DatasetPage, DatasetProviderError> {
+        if self.wait_at == DatasetWaitStage::ReadPage {
+            self.started.notify_one();
+            pending().await
+        }
+        Err(DatasetProviderError::Failed(
+            "unexpected provider read".into(),
+        ))
+    }
 }
 
 impl SyntheticDatasetProvider {
@@ -144,6 +198,482 @@ async fn create_running_task(
     (task.task_id, task.a2a_task_id)
 }
 
+async fn create_running_task_without_snapshot(
+    db: &gateway_postgres::DatabaseHandle,
+    strategy_id: Uuid,
+) -> (Uuid, String) {
+    let task_id = crate::testing::insert_test_strategy_task(
+        db,
+        strategy_id,
+        "synthetic snapshot task",
+        None,
+        Utc::now().fixed_offset(),
+    )
+    .await;
+    let a2a_task_id = format!("sample-task-{}", Uuid::new_v4());
+    strategy_task::ActiveModel {
+        task_id: Set(task_id),
+        a2a_task_id: Set(Some(a2a_task_id.clone())),
+        phase: Set(StrategyTaskPhase::Running),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("mark synthetic task as running");
+    (task_id, a2a_task_id)
+}
+
+#[backend_test_macros::database_test]
+async fn mcp_task_snapshot_returns_fixed_definition_and_rejects_digest_mismatch(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (valid_task_id, valid_a2a_task_id) =
+        create_running_task_without_snapshot(&db, strategy_id).await;
+    let (invalid_task_id, invalid_a2a_task_id) =
+        create_running_task_without_snapshot(&db, strategy_id).await;
+    let (_, missing_a2a_task_id) = create_running_task_without_snapshot(&db, strategy_id).await;
+    let definition = json!({"phase": "synthetic"});
+    for (task_id, digest) in [
+        (valid_task_id, TASK_START_SNAPSHOT_DIGEST),
+        (invalid_task_id, "demo-invalid-digest"),
+    ] {
+        task_execution_definition_snapshot::ActiveModel {
+            task_id: Set(task_id),
+            definition_key: Set("task_start".into()),
+            definition: Set(definition.clone()),
+            digest: Set(digest.into()),
+            created_at: Set(Utc::now().fixed_offset()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert synthetic definition snapshot");
+    }
+
+    let server = tests_common::build_server(db);
+    let valid: Result<Value, String> = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some(valid_a2a_task_id),
+            None,
+        )
+        .await
+        .map(|response| response.into_value())
+        .map_err(|error| error.message.to_string());
+    let missing: Result<Value, String> = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some(missing_a2a_task_id),
+            None,
+        )
+        .await
+        .map(|response| response.into_value())
+        .map_err(|error| error.message.to_string());
+    let invalid: Result<Value, String> = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some(invalid_a2a_task_id),
+            None,
+        )
+        .await
+        .map(|response| response.into_value())
+        .map_err(|error| error.message.to_string());
+
+    let actual = (valid, missing, invalid);
+
+    assert_eq!(
+        actual,
+        (
+            Ok(json!({
+                "definition": definition,
+                "digest": TASK_START_SNAPSHOT_DIGEST,
+            })),
+            Ok(json!({"definition": null, "digest": null})),
+            Err("strategy graph execution failed".into()),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn task_only_mcp_reads_authorize_snapshot_and_sealed_payload_with_fixed_deadline(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let other_strategy_id = tests_common::insert_strategy(&db, "other-sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let snapshot = task_execution_definition_snapshot::Entity::find()
+        .filter(task_execution_definition_snapshot::Column::TaskId.eq(task_id))
+        .filter(task_execution_definition_snapshot::Column::DefinitionKey.eq("task_start"))
+        .one(&db)
+        .await
+        .expect("query task start snapshot")
+        .expect("task start snapshot exists");
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+    let access = use_cases
+        .strategy_executions()
+        .authorize_execution(
+            StrategyScope::from(strategy_id),
+            &a2a_task_id,
+            Some(Uuid::from_u128(703)),
+        )
+        .await
+        .expect("authorize synthetic task");
+    let payload = use_cases
+        .strategy_executions()
+        .write_payload(
+            &access,
+            PayloadDefinition {
+                kind: PayloadKind::Output,
+                source: "synthetic-operation".into(),
+                source_revision: Some("sample-revision-a".into()),
+                source_locator: None,
+                source_metadata: json!({}),
+                schema: json!({"type": "object"}),
+            },
+            json!({"value": {"items": [{"key": "synthetic"}]}}),
+        )
+        .await
+        .expect("write sealed synthetic payload");
+    let server = tests_common::build_server(db.clone());
+    let task_only_id = Some(a2a_task_id.clone());
+    let mut task_only_headers = HeaderMap::new();
+    task_only_headers.insert(
+        "x-strategy-id",
+        HeaderValue::from_str(&strategy_id.to_string()).expect("valid strategy ID"),
+    );
+    task_only_headers.insert(
+        "x-execution-id",
+        HeaderValue::from_str(&a2a_task_id).expect("valid task-only execution ID"),
+    );
+    task_only_headers.insert(
+        "x-strategy-task-id",
+        HeaderValue::from_str(&task_id.to_string()).expect("valid task UUID"),
+    );
+    let snapshot_read: Value = call_tool_output_with_headers_and_id(
+        server.entrypoint_server(),
+        "read_task_execution_snapshot",
+        json!({}),
+        rmcp::model::NumberOrString::String("same-task-read-request-id".into()),
+        task_only_headers.clone(),
+    )
+    .await
+    .expect("read task-only execution snapshot");
+    let payload_page: Value = call_tool_output_with_headers_and_id(
+        server.entrypoint_server(),
+        "read_execution_payload",
+        json!({
+            "payload_id": payload.id,
+            "pointer": "/value/items",
+            "cursor": 0,
+            "limit": 10,
+        }),
+        rmcp::model::NumberOrString::String("same-task-read-request-id".into()),
+        task_only_headers,
+    )
+    .await
+    .expect("read task-only sealed payload");
+    let unknown_task = server
+        .invoke_with_strategy_task_id::<_, Value>(
+            "read_task_execution_snapshot",
+            strategy_id,
+            json!({}),
+            Some("synthetic-unknown-task".into()),
+            None,
+            Some(task_id),
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    let other_strategy = server
+        .invoke::<_, Value>(
+            "read_task_execution_snapshot",
+            other_strategy_id,
+            json!({}),
+            task_only_id.clone(),
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    strategy_task::ActiveModel {
+        task_id: Set(task_id),
+        deadline_at: Set((Utc::now() - chrono::Duration::seconds(1)).fixed_offset()),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .expect("expire synthetic task deadline");
+    let expired_task = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({
+                "payload_id": payload.id,
+                "pointer": "/value/items",
+                "cursor": 0,
+                "limit": 10,
+            }),
+            task_only_id,
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    let mut normalized_page = payload_page;
+    normalized_page["payload_id"] = json!("<payload-id>");
+
+    assert_eq!(
+        (
+            snapshot_read,
+            normalized_page,
+            unknown_task,
+            other_strategy,
+            expired_task,
+        ),
+        (
+            json!({
+                "definition": snapshot.definition,
+                "digest": snapshot.digest,
+            }),
+            json!({
+                "payload_id": "<payload-id>",
+                "pointer": "/value/items",
+                "data": [{"key": "synthetic"}],
+                "cursor": 0,
+                "next_cursor": null,
+                "total_count": 1,
+                "digest": payload.digest,
+            }),
+            Err("execution does not match an active task".into()),
+            Err("execution does not match an active task".into()),
+            Err("execution does not match an active task".into()),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn operation_mcp_call_respects_zero_tool_budgets_without_dispatch(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let task_wide_task = tests_common::create_test_execution_task(
+        &db,
+        strategy_id,
+        indoc! {"
+            execution_limits:
+              max_tool_calls: 0
+            phases: []
+        "},
+    )
+    .await;
+    let scoped_task = tests_common::create_test_execution_task(
+        &db,
+        strategy_id,
+        indoc! {"
+            tool_limits:
+              execute_operation: 0
+            phases: []
+        "},
+    )
+    .await;
+    let task_wide_execution_id = format!("{}:{}", task_wide_task.a2a_task_id, Uuid::from_u128(712));
+    let task_wide_result = tests_common::build_server(db.clone())
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            json!({
+                "name": "synthetic-operation",
+                "args": {},
+                "payload_inputs": [],
+            }),
+            Some(task_wide_execution_id),
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    let scoped_execution_id = format!("{}:{}", scoped_task.a2a_task_id, Uuid::from_u128(713));
+    let scoped_result = tests_common::build_server(db.clone())
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            json!({
+                "name": "synthetic-operation",
+                "args": {},
+                "payload_inputs": [],
+            }),
+            Some(scoped_execution_id),
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.message.to_string());
+    let task_wide_usage =
+        super::super::execution_budget::task_budget_usage(&db, task_wide_task.task_id).await;
+    let scoped_usage =
+        super::super::execution_budget::task_budget_usage(&db, scoped_task.task_id).await;
+
+    assert_eq!(
+        (
+            task_wide_result,
+            task_wide_usage,
+            scoped_result,
+            scoped_usage,
+        ),
+        (
+            Err("execution budget limit was exceeded for __task_total".into()),
+            (0, 0, 0, 0),
+            Err("execution budget limit was exceeded for execute_operation".into()),
+            (0, 0, 0, 0),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn mcp_operation_materializes_selected_payload_as_an_input_file(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (_, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let execution_step_id = Uuid::from_u128(707);
+    let indicator_id = Uuid::from_u128(708);
+    custom_indicator::ActiveModel {
+        indicator_id: Set(indicator_id),
+        name: Set("sample-operation".into()),
+        scope: Set("strategy".into()),
+        strategy_id: Set(Some(strategy_id)),
+        code: Set("synthetic source".into()),
+        input_schema: Set(json!({
+            "type": "object",
+            "properties": {"items": {"type": "object"}},
+            "required": ["items"],
+            "additionalProperties": false,
+        })),
+        output_schema: Set(json!({"type": "object"})),
+        description: Set(None),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("insert synthetic operation");
+
+    let base_server = tests_common::build_server(db.clone());
+    let provider: SharedDatasetProvider = Arc::new(SyntheticDatasetProvider {
+        items: vec![
+            json!({"value": 11}),
+            json!({"value": 22}),
+            json!({"value": 33}),
+        ],
+        mode: ProviderMode::Stable,
+    });
+    let executor = Arc::new(FakeKataExecutor::new());
+    executor
+        .set_response(Ok(ExecResult {
+            stdout: "{\"ok\":true}".into(),
+            stderr: String::new(),
+            exit_code: 0,
+            files: Vec::new(),
+        }))
+        .await;
+    let server = StrategyServer::new(
+        base_server
+            .entrypoint_server()
+            .clone()
+            .with_dataset_providers(BTreeMap::from([(
+                "synthetic-provider".to_string(),
+                provider,
+            )])),
+        db.clone(),
+    )
+    .with_kata_executor(Some(executor.clone()));
+    let execution_id = format!("{a2a_task_id}:{execution_step_id}");
+    let captured: Value = server
+        .invoke::<_, Value>(
+            "capture_dataset",
+            strategy_id,
+            json!({
+                "provider": "synthetic-provider",
+                "params": {"request_tag": "sample"},
+                "page_size": 2,
+            }),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("capture synthetic dataset")
+        .into_value();
+    let payload_id = Uuid::parse_str(
+        captured["payload"]["id"]
+            .as_str()
+            .expect("captured payload ID"),
+    )
+    .expect("valid captured payload ID");
+    server
+        .invoke::<_, Value>(
+            "execute_operation",
+            strategy_id,
+            json!({
+                "name": "sample-operation",
+                "args": {},
+                "payload_inputs": [{
+                    "field": "items",
+                    "payload_id": payload_id,
+                    "pointer": "",
+                    "cursor": 1,
+                    "limit": 1,
+                }],
+                "timeout_secs": null,
+                "max_output_bytes": null,
+            }),
+            Some(execution_id),
+            None,
+        )
+        .await
+        .expect("execute operation with selected payload input");
+
+    let request = executor.requests.lock().await[0].clone();
+    let stdin: Value = serde_json::from_str(request.stdin.as_deref().expect("operation stdin"))
+        .expect("operation input JSON");
+    let actual = (stdin, request.input_files);
+
+    assert_eq!(
+        actual,
+        (
+            json!({
+                "args": {
+                    "items": {
+                        "path": "inputs/input-0.json",
+                        "payload_id": payload_id,
+                        "pointer": "",
+                        "digest": DATASET_DIGEST,
+                    },
+                },
+                "payload_inputs": [{
+                    "field": "items",
+                    "payload_id": payload_id,
+                    "pointer": "",
+                    "cursor": 1,
+                    "limit": 1,
+                    "digest": DATASET_DIGEST,
+                    "path": "inputs/input-0.json",
+                }],
+            }),
+            Some(vec![ExecFile {
+                path: "inputs/input-0.json".into(),
+                bytes: b"[{\"value\":22}]".to_vec(),
+            }]),
+        ),
+    );
+}
+
 fn normalize_payload_ref(mut payload: PayloadRef) -> PayloadRef {
     payload.id = Uuid::nil();
     payload.task_id = Uuid::nil();
@@ -216,7 +746,10 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
             "synthetic-provider".into(),
             &provider,
             json!({"request_tag": "sample"}),
-            2,
+            DatasetCaptureOptions {
+                page_size: 2,
+                cancellation: &tokio_util::sync::CancellationToken::new(),
+            },
         )
         .await
         .expect("capture synthetic dataset");
@@ -342,6 +875,142 @@ async fn synthetic_provider_payload_is_read_in_stable_bounded_pages(
 }
 
 #[backend_test_macros::database_test]
+async fn mcp_capture_dataset_uses_registered_provider_and_returns_sealed_pages(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let execution_step_id = Uuid::from_u128(704);
+    let base_server = tests_common::build_server(db.clone());
+    let provider: SharedDatasetProvider = Arc::new(SyntheticDatasetProvider {
+        items: vec![
+            json!({"value": 11}),
+            json!({"value": 22}),
+            json!({"value": 33}),
+        ],
+        mode: ProviderMode::Stable,
+    });
+    let server = StrategyServer::new(
+        base_server
+            .entrypoint_server()
+            .clone()
+            .with_dataset_providers(BTreeMap::from([(
+                "synthetic-provider".to_string(),
+                provider,
+            )])),
+        db.clone(),
+    );
+    let execution_id = format!("{a2a_task_id}:{execution_step_id}");
+    let captured: Value = server
+        .invoke::<_, Value>(
+            "capture_dataset",
+            strategy_id,
+            json!({
+                "provider": "synthetic-provider",
+                "params": {"request_tag": "sample"},
+                "page_size": 2,
+            }),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("capture dataset through MCP")
+        .into_value();
+    let payload_id = Uuid::parse_str(
+        captured["payload"]["id"]
+            .as_str()
+            .expect("captured payload ID"),
+    )
+    .expect("valid captured payload ID");
+    let persisted = task_execution_payload::Entity::find_by_id(payload_id)
+        .one(&db)
+        .await
+        .expect("query captured payload")
+        .expect("captured payload exists");
+    let mut returned_payload = captured["payload"].clone();
+    let returned_task_matches = returned_payload["task_id"] == json!(task_id);
+    returned_payload["id"] = json!("<payload-id>");
+    returned_payload["task_id"] = json!("<task-id>");
+    let mut stored_page_one: Value = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({
+                "payload_id": payload_id,
+                "pointer": "",
+                "cursor": 0,
+                "limit": 2,
+            }),
+            Some(execution_id.clone()),
+            None,
+        )
+        .await
+        .expect("read first captured page through MCP")
+        .into_value();
+    stored_page_one["payload_id"] = json!("<payload-id>");
+    let mut stored_page_two: Value = server
+        .invoke::<_, Value>(
+            "read_execution_payload",
+            strategy_id,
+            json!({
+                "payload_id": payload_id,
+                "pointer": "",
+                "cursor": 2,
+                "limit": 2,
+            }),
+            Some(execution_id),
+            None,
+        )
+        .await
+        .expect("read second captured page through MCP")
+        .into_value();
+    stored_page_two["payload_id"] = json!("<payload-id>");
+
+    assert_eq!(
+        (
+            returned_task_matches,
+            returned_payload,
+            persisted.status,
+            stored_page_one,
+            stored_page_two,
+        ),
+        (
+            true,
+            json!({
+                "id": "<payload-id>",
+                "task_id": "<task-id>",
+                "kind": "input",
+                "digest": DATASET_DIGEST,
+                "item_count": 3,
+                "byte_count": 40,
+                "source_revision": DATASET_REVISION,
+                "source_locator": {"page_key": "sample-page"},
+                "source_metadata": {"provider_tag": "synthetic"},
+            }),
+            "sealed".to_string(),
+            json!({
+                "payload_id": "<payload-id>",
+                "pointer": "",
+                "data": [{"value": 11}, {"value": 22}],
+                "cursor": 0,
+                "next_cursor": 2,
+                "total_count": 3,
+                "digest": DATASET_DIGEST,
+            }),
+            json!({
+                "payload_id": "<payload-id>",
+                "pointer": "",
+                "data": [{"value": 33}],
+                "cursor": 2,
+                "next_cursor": null,
+                "total_count": 3,
+                "digest": DATASET_DIGEST,
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn incomplete_provider_capture_cannot_be_read(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
     let use_cases =
@@ -371,7 +1040,10 @@ async fn incomplete_provider_capture_cannot_be_read(db: gateway_postgres::Databa
                 "synthetic-provider".into(),
                 &provider,
                 json!({}),
-                1,
+                DatasetCaptureOptions {
+                    page_size: 1,
+                    cancellation: &tokio_util::sync::CancellationToken::new(),
+                },
             )
             .await
             .map(|_| ())
@@ -492,7 +1164,10 @@ async fn unknown_provider_total_is_persisted_without_inventing_a_count(
             "synthetic-provider".into(),
             &provider,
             json!({}),
-            1,
+            DatasetCaptureOptions {
+                page_size: 1,
+                cancellation: &tokio_util::sync::CancellationToken::new(),
+            },
         )
         .await
         .expect("capture dataset with unknown total");
@@ -519,6 +1194,119 @@ async fn unknown_provider_total_is_persisted_without_inventing_a_count(
                 "unretrieved_count": 0,
             }),
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn cancelled_dataset_capture_marks_its_payload_incomplete(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+            .strategy_executions();
+    let access = use_cases
+        .authorize_execution(StrategyScope::from(strategy_id), &a2a_task_id, None)
+        .await
+        .expect("authorize synthetic task");
+    let started = Arc::new(tokio::sync::Notify::new());
+    let provider = WaitingDatasetProvider {
+        started: Arc::clone(&started),
+        wait_at: DatasetWaitStage::ReadPage,
+    };
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let capture_cancellation = cancellation.clone();
+    let capture = tokio::spawn(async move {
+        use_cases
+            .capture_dataset(
+                StrategyScope::from(strategy_id),
+                &access,
+                "synthetic-provider".into(),
+                &provider,
+                json!({}),
+                DatasetCaptureOptions {
+                    page_size: 10,
+                    cancellation: &capture_cancellation,
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("dataset page read starts");
+    cancellation.cancel();
+    let capture_result = capture.await.expect("join cancelled capture");
+    let stored = task_execution_payload::Entity::find()
+        .filter(task_execution_payload::Column::TaskId.eq(task_id))
+        .one(&db)
+        .await
+        .expect("query cancelled payload")
+        .expect("cancelled payload row exists");
+
+    assert_eq!(
+        (capture_result, stored.status, stored.incomplete_reason),
+        (
+            Err("dataset capture was cancelled".to_string()),
+            "incomplete".to_string(),
+            Some("request_cancelled".to_string()),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn cancelled_dataset_open_does_not_create_a_payload(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = tests_common::insert_strategy(&db, "sample-strategy").await;
+    let (task_id, a2a_task_id) = create_running_task(&db, strategy_id).await;
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+            .strategy_executions();
+    let access = use_cases
+        .authorize_execution(StrategyScope::from(strategy_id), &a2a_task_id, None)
+        .await
+        .expect("authorize synthetic task");
+    let started = Arc::new(tokio::sync::Notify::new());
+    let provider = WaitingDatasetProvider {
+        started: Arc::clone(&started),
+        wait_at: DatasetWaitStage::Open,
+    };
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let capture_cancellation = cancellation.clone();
+    let capture = tokio::spawn(async move {
+        use_cases
+            .capture_dataset(
+                StrategyScope::from(strategy_id),
+                &access,
+                "synthetic-provider".into(),
+                &provider,
+                json!({}),
+                DatasetCaptureOptions {
+                    page_size: 10,
+                    cancellation: &capture_cancellation,
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("dataset provider open starts");
+    cancellation.cancel();
+    let capture_result = capture.await.expect("join cancelled dataset open");
+    let stored = task_execution_payload::Entity::find()
+        .filter(task_execution_payload::Column::TaskId.eq(task_id))
+        .one(&db)
+        .await
+        .expect("query payload created during cancelled open");
+
+    assert_eq!(
+        (capture_result, stored.is_none()),
+        (Err("dataset capture was cancelled".to_string()), true),
     );
 }
 

@@ -43,6 +43,7 @@ impl UsStockBarsIngestUseCases {
                         to: range.to,
                         page_token: page_token.clone(),
                     },
+                    None,
                     context.budget.deadline(),
                 )
                 .await

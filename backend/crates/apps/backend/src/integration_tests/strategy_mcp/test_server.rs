@@ -56,7 +56,8 @@ impl StrategyServer {
         mut self,
         web_search_client: Option<core_application::web_search::SharedWebSearchClient>,
     ) -> Self {
-        self.server = self.server.with_web_search_client(web_search_client);
+        let budget = super::test_credit_budget::test_tavily_credit_budget(web_search_client);
+        self.server = self.server.with_tavily_credit_budget(Some(budget));
         self
     }
 
@@ -67,6 +68,23 @@ impl StrategyServer {
         input: TInput,
         execution_id: Option<String>,
         model: Option<String>,
+    ) -> Result<ToolOutput<TOutput>, McpError>
+    where
+        TInput: Serialize,
+        TOutput: DeserializeOwned + Serialize,
+    {
+        self.invoke_with_strategy_task_id(name, strategy_id, input, execution_id, model, None)
+            .await
+    }
+
+    pub(super) async fn invoke_with_strategy_task_id<TInput, TOutput>(
+        &self,
+        name: &'static str,
+        strategy_id: Uuid,
+        input: TInput,
+        execution_id: Option<String>,
+        model: Option<String>,
+        stable_task_id: Option<Uuid>,
     ) -> Result<ToolOutput<TOutput>, McpError>
     where
         TInput: Serialize,
@@ -84,16 +102,20 @@ impl StrategyServer {
                 "x-execution-id",
                 HeaderValue::from_str(&execution_id).expect("execution ID header is valid"),
             );
-            if let Some((a2a_task_id, _)) = execution_id.rsplit_once(':')
-                && let Some(task) = strategy_task::Entity::find()
-                    .filter(strategy_task::Column::A2aTaskId.eq(a2a_task_id))
-                    .one(&self.db)
-                    .await
-                    .expect("resolve test execution task")
+            let a2a_task_id = execution_id
+                .rsplit_once(':')
+                .map(|(task_id, _)| task_id)
+                .unwrap_or(&execution_id);
+            let resolved_task = strategy_task::Entity::find()
+                .filter(strategy_task::Column::A2aTaskId.eq(a2a_task_id))
+                .one(&self.db)
+                .await
+                .expect("resolve test execution task");
+            if let Some(task_id) = stable_task_id.or_else(|| resolved_task.map(|task| task.task_id))
             {
                 headers.insert(
                     "x-strategy-task-id",
-                    HeaderValue::from_str(&task.task_id.to_string())
+                    HeaderValue::from_str(&task_id.to_string())
                         .expect("strategy task UUID header is valid"),
                 );
             }

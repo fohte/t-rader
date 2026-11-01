@@ -12,7 +12,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools'
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling'
 import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, createMiddleware } from 'langchain'
-import { errAsync, okAsync } from 'neverthrow'
+import { errAsync, ok, okAsync } from 'neverthrow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -26,6 +26,7 @@ import type {
   CompiledPhaseAgent,
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import type { ExecutionToolRequest } from '#strategy-agent/execution-tool-client'
 import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
 import { createReasoningContentAwareFetch } from '#strategy-agent/reasoning-content-middleware'
 import type {
@@ -41,6 +42,7 @@ import type {
   FetchSubagentDefinition,
   SubagentDefinition,
 } from '#strategy-agent/subagent-definition-client'
+import type { TaskExecutionSnapshot } from '#strategy-agent/task-execution-snapshot'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
 import {
   type CaptureWithFingerprintMock,
@@ -163,6 +165,7 @@ const AGENT_CONFIG: AgentConfig = {
 interface BuildDepsOptions {
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
+  readonly taskSnapshot?: TaskExecutionSnapshot
   readonly fetchSubagentDefinition?: FetchSubagentDefinition
   readonly onBuildPhaseAgentOptions?: (options: BuildPhaseAgentOptions) => void
   readonly buildPhaseAgentInvoke?: (
@@ -174,6 +177,7 @@ interface BuildDepsOptions {
 
 interface McpClientCall {
   readonly executionId: string
+  readonly executionToolRequests?: ExecutionToolRequest[]
   readonly subagentExecution?: {
     readonly executionId: string
     readonly definitionKey: string
@@ -183,6 +187,10 @@ interface McpClientCall {
 
 interface Calls {
   fetchAgentConfigKey?: Parameters<FetchAgentConfig>[0]
+  taskExecutionSnapshotFetchCount: number
+  createChatModelCallCount: number
+  buildPhaseAgentCallCount: number
+  executionToolRequests: ExecutionToolRequest[]
   mcpClientClosed: boolean
   // createMcpClient の呼び出しごとの 1 行。生成数と close タイミングの検証用。
   mcpClients: McpClientCall[]
@@ -195,6 +203,10 @@ const buildDeps = (
   options: BuildDepsOptions,
 ): { deps: StrategyAgentDeps; calls: Calls } => {
   const calls: Calls = {
+    taskExecutionSnapshotFetchCount: 0,
+    createChatModelCallCount: 0,
+    buildPhaseAgentCallCount: 0,
+    executionToolRequests: [],
     mcpClientClosed: false,
     mcpClients: [],
     mcpClientToolModels: [],
@@ -211,6 +223,10 @@ const buildDeps = (
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
       })
     },
+    fetchTaskExecutionSnapshot: () => {
+      calls.taskExecutionSnapshotFetchCount++
+      return Promise.resolve(ok(options.taskSnapshot))
+    },
     fetchSubagentDefinition:
       options.fetchSubagentDefinition ??
       (() => errAsync(new Error('unexpected subagent definition fetch'))),
@@ -224,12 +240,39 @@ const buildDeps = (
       calls.mcpClientToolModels.push(toolModels)
       const client: McpClientCall = {
         executionId,
+        executionToolRequests: [],
         closed: false,
         ...(subagentExecution !== undefined ? { subagentExecution } : {}),
       }
       calls.mcpClients.push(client)
       return {
         getTools: () => Promise.resolve([...(options.tools ?? [])]),
+        callExecutionTool: (request) => {
+          calls.executionToolRequests.push(request)
+          client.executionToolRequests?.push(request)
+          return Promise.resolve(
+            ok(
+              request.name === 'execute_operation'
+                ? {
+                    input_payload: { id: 'synthetic-input-payload' },
+                    output_payload: { id: 'synthetic-output-payload' },
+                    exit_code: 0,
+                    stderr: '',
+                  }
+                : request.name === 'read_execution_payload'
+                  ? {
+                      payload_id: request.arguments.payload_id,
+                      pointer: request.arguments.pointer,
+                      data: [],
+                      cursor: request.arguments.cursor,
+                      next_cursor: null,
+                      total_count: 0,
+                      digest: 'synthetic-digest',
+                    }
+                  : {},
+            ),
+          )
+        },
         reserveModelCall: () => Promise.resolve(),
         reserveSubagentRun: () => Promise.resolve(),
         transitionReservation: () => Promise.resolve(),
@@ -240,8 +283,12 @@ const buildDeps = (
         },
       }
     },
-    createChatModel: () => chatModel,
+    createChatModel: () => {
+      calls.createChatModelCallCount++
+      return chatModel
+    },
     buildPhaseAgent: (buildOptions) => {
+      calls.buildPhaseAgentCallCount++
       calls.capturedDeadlineSignal = buildOptions.deadlineSignal
       calls.capturedAgentSignal = buildOptions.agentSignal
       options.onBuildPhaseAgentOptions?.(buildOptions)
@@ -394,6 +441,75 @@ describe('runStrategyAgent', () => {
     })
   })
 
+  it('uses a task-only MCP execution ID when resolving a prior output', async () => {
+    const { deps, calls } = buildDeps({
+      agentGraph: `phases:
+  - key: source
+    label: Source
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: demo-source
+    output: {}
+  - key: consume
+    label: Consume
+    model: demo-consumer-model
+    prompt: Read the selected payload page.
+    input:
+      rows:
+        prior_output:
+          phase: source
+          pointer: /value/items
+          cursor: 1
+          limit: 2
+    output: {}
+`,
+      buildPhaseAgentInvoke: () => Promise.resolve({ structuredResponse: {} }),
+    })
+
+    const result = await runStrategyAgent(deps, buildRunInput())
+    const label = createFirstOccurrenceLabeler('execution-step-id')
+    const taskOnlyClient = calls.mcpClients.find(
+      (client) => client.executionId === 'task-1',
+    )
+    const normalizeExecutionId = (executionId: string): string => {
+      const [taskId, stepId] = executionId.split(':')
+      if (stepId === undefined) return executionId
+      return UUID_PATTERN.test(stepId)
+        ? `${String(taskId)}:${label(stepId)}`
+        : `${String(taskId)}:<invalid-step-id>`
+    }
+    expect(
+      Array.of<unknown>(
+        result,
+        calls.mcpClients.map((client) =>
+          normalizeExecutionId(client.executionId),
+        ),
+        taskOnlyClient?.executionToolRequests ?? [],
+      ),
+    ).toEqual([
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Source → Consume)',
+      },
+      [
+        'task-1:<execution-step-id-1>',
+        'task-1',
+        'task-1:<execution-step-id-2>',
+      ],
+      [
+        {
+          name: 'read_execution_payload',
+          arguments: {
+            payload_id: 'synthetic-output-payload',
+            pointer: '/value/items',
+            cursor: 1,
+            limit: 2,
+          },
+        },
+      ],
+    ])
+  })
+
   it('passes phase MCP tools to the compiled-agent builder', async () => {
     const mcpTools = [buildFakeTool('query_data'), buildFakeTool('write_note')]
     const buildOptions: BuildPhaseAgentOptions[] = []
@@ -441,6 +557,59 @@ describe('runStrategyAgent', () => {
       expect(calls.mcpClientToolModels).toEqual([expectedToolModels])
     },
   )
+
+  it('executes the snapshotted saved operation without starting an LLM phase', async () => {
+    const { deps, calls } = buildDeps({
+      taskSnapshot: {
+        agentConfig: {
+          ...AGENT_CONFIG,
+          agentGraph: `phases:
+  - key: evaluate
+    label: Evaluate
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: snapshot-code
+    input:
+      factor:
+        literal: 3
+`,
+        },
+        subagentDefinitions: new Map(),
+      },
+    })
+
+    const result = await runStrategyAgent(deps, buildRunInput())
+
+    const actual = Array.of<unknown>(
+      result,
+      calls.fetchAgentConfigKey,
+      calls.taskExecutionSnapshotFetchCount,
+      calls.createChatModelCallCount,
+      calls.buildPhaseAgentCallCount,
+      calls.executionToolRequests,
+    )
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (Evaluate)',
+      },
+      undefined,
+      1,
+      0,
+      0,
+      [
+        {
+          name: 'execute_operation',
+          arguments: {
+            name: 'snapshot-code',
+            args: { factor: 3 },
+            payload_inputs: [],
+          },
+        },
+      ],
+    ])
+  })
 
   it('passes the given purpose straight through to fetchAgentConfig instead of the default', async () => {
     const { deps, calls } = buildDeps({})
@@ -916,6 +1085,30 @@ describe('createStrategyAgentDeps', () => {
     })
   })
 
+  it('uses a task-only execution ID in the strategy MCP header', () => {
+    createStrategyAgentDeps(baseConfig).createMcpClient(
+      'strategy-1',
+      '22222222-2222-2222-2222-222222222222',
+      'task-1',
+      {},
+    )
+
+    expect(capturedMcpClientConfig).toEqual({
+      defaultToolTimeout: 150_000,
+      mcpServers: {
+        strategy: {
+          url: 'http://t-rader-backend/mcp/strategy',
+          headers: {
+            'x-strategy-id': 'strategy-1',
+            'x-strategy-task-id': '22222222-2222-2222-2222-222222222222',
+            'x-execution-id': 'task-1',
+            'x-tool-models': '{}',
+          },
+        },
+      },
+    })
+  })
+
   it('sends the subagent execution identity as separate headers', () => {
     createStrategyAgentDeps(baseConfig).createMcpClient(
       'strategy-1',
@@ -1211,9 +1404,11 @@ describe('createStrategyAgentDeps', () => {
   // 拾う。test 対象の agent は必ずこれを宣言するため、無ければテスト側のバグ。
   const pickStructuredOutputToolName = (
     tools: z.infer<typeof toolCallRequestSchema>['tools'],
+    excludedToolNames: readonly string[] = ['search'],
   ): string => {
-    const name = tools.find((tool) => tool.function.name !== 'search')?.function
-      .name
+    const name = tools.find(
+      (tool) => !excludedToolNames.includes(tool.function.name),
+    )?.function.name
     if (name === undefined) {
       throw new Error('expected a structured-output tool to be declared')
     }
@@ -1223,10 +1418,11 @@ describe('createStrategyAgentDeps', () => {
   const buildStructuredOutputResponse = (
     callId: string,
     requestBody: string,
+    excludedToolNames?: readonly string[],
   ): Response => {
     const { tools } = toolCallRequestSchema.parse(JSON.parse(requestBody))
     return buildToolCallResponse(callId, {
-      name: pickStructuredOutputToolName(tools),
+      name: pickStructuredOutputToolName(tools, excludedToolNames),
       arguments: JSON.stringify({ status: 'completed', message: 'done' }),
     })
   }
@@ -1586,9 +1782,71 @@ describe('createStrategyAgentDeps', () => {
     })
   }, 15_000)
 
+  it('records only successful tool results for required-tool tracking', async () => {
+    const successfulTools: string[] = []
+    const successfulTool = new DynamicStructuredTool({
+      name: 'demo_tool_a',
+      description: 'Returns a synthetic result.',
+      schema: z.object({}),
+      func: () => Promise.resolve('synthetic result'),
+    })
+    const failingTool = new DynamicStructuredTool({
+      name: 'demo_tool_b',
+      description: 'Returns a synthetic failure.',
+      schema: z.object({}),
+      func: () => Promise.reject(new Error('synthetic tool failure')),
+    })
+    const requestBodies: string[] = []
+    const model = buildStubModel((_url, init) => {
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      if (requestBodies.length === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('call-1', {
+            name: 'demo_tool_a',
+            arguments: '{}',
+          }),
+        )
+      }
+      if (requestBodies.length === 2) {
+        return Promise.resolve(
+          buildToolCallResponse('call-2', {
+            name: 'demo_tool_b',
+            arguments: '{}',
+          }),
+        )
+      }
+      return Promise.resolve(
+        buildStructuredOutputResponse('call-3', body, [
+          'demo_tool_a',
+          'demo_tool_b',
+        ]),
+      )
+    })
+    const agent = buildPhaseAgentUnderTest(
+      createStrategyAgentDeps(baseConfig),
+      {
+        model,
+        tools: [successfulTool, failingTool],
+        systemPrompt: 'test system prompt',
+        onToolSuccess: (toolName) => successfulTools.push(toolName),
+      },
+    )
+    const result = await agent.invoke({
+      messages: [new HumanMessage('process the synthetic input')],
+    })
+
+    const actual = Array.of<unknown>(result.structuredResponse, successfulTools)
+    expect(actual).toEqual([
+      { status: 'completed', message: 'done' },
+      ['demo_tool_a'],
+    ])
+  }, 15_000)
+
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     captureWithFingerprintMock.mockClear()
     const requestedToolCounts: number[] = []
+    let modelCallLimitReached = false
     let callCount = 0
     const model = buildStubModel((_url, init) => {
       callCount += 1
@@ -1618,32 +1876,42 @@ describe('createStrategyAgentDeps', () => {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
+      onModelCallLimitReached: () => {
+        modelCallLimitReached = true
+      },
     })
     const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
 
-    expect(
+    const actual = Array.of<unknown>(
       getForcedSubmissionOutput(result.structuredResponse, requestedToolCounts),
-    ).toEqual({
-      structuredResponse: { status: 'completed', message: 'done' },
-      requestedToolCounts: [
-        ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
-        1,
-      ],
-      captures: [
-        {
-          errorName: 'Error',
-          errorMessage:
-            'finalTurnMiddleware: forcing structured-output submission at model call 15',
-          fingerprint: ['final-turn-middleware.forced-submission'],
-          level: 'warning',
-          extras: null,
-        },
-      ],
-    })
+      modelCallLimitReached,
+    )
+
+    expect(actual).toEqual([
+      {
+        structuredResponse: { status: 'completed', message: 'done' },
+        requestedToolCounts: [
+          ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
+          1,
+        ],
+        captures: [
+          {
+            errorName: 'Error',
+            errorMessage:
+              'finalTurnMiddleware: forcing structured-output submission at model call 15',
+            fingerprint: ['final-turn-middleware.forced-submission'],
+            level: 'warning',
+            extras: null,
+          },
+        ],
+      },
+      true,
+    ])
   })
 
   it('enforces a shared per-subagent model-call budget', async () => {
     const requestedToolCounts: number[] = []
+    let modelCallLimitReached = false
     let callCount = 0
     const modelCallBudget = { maxModelCalls: 2, count: 0 }
     const model = buildStubModel((_url, init) => {
@@ -1673,6 +1941,9 @@ describe('createStrategyAgentDeps', () => {
         tools: [buildFakeTool('search')],
         systemPrompt: 'you are a helpful bot',
         modelCallBudget,
+        onModelCallLimitReached: () => {
+          modelCallLimitReached = true
+        },
       },
     )
     const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
@@ -1681,12 +1952,67 @@ describe('createStrategyAgentDeps', () => {
       result.structuredResponse,
       requestedToolCounts,
       modelCallBudget,
+      modelCallLimitReached,
     )
 
     expect(actual).toEqual([
       { status: 'completed', message: 'done' },
       [2, 1],
       { maxModelCalls: 2, count: 2 },
+      true,
+    ])
+  })
+
+  it('does not report a forced submission before regular or shared limits are reached', async () => {
+    const run = async (
+      modelCallBudget?: BuildPhaseAgentOptions['modelCallBudget'],
+    ) => {
+      let callCount = 0
+      let modelCallLimitReached = false
+      const model = buildStubModel((_url, init) => {
+        callCount += 1
+        return Promise.resolve(
+          buildStructuredOutputResponse(
+            `call-${String(callCount)}`,
+            getRequestBody(init),
+          ),
+        )
+      })
+      const agent = buildPhaseAgentUnderTest(
+        createStrategyAgentDeps(baseConfig),
+        {
+          model,
+          tools: [buildFakeTool('search')],
+          systemPrompt: 'you are a helpful bot',
+          ...(modelCallBudget !== undefined ? { modelCallBudget } : {}),
+          onModelCallLimitReached: () => {
+            modelCallLimitReached = true
+          },
+        },
+      )
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+      return {
+        structuredResponse: result.structuredResponse,
+        callCount,
+        modelCallLimitReached,
+      }
+    }
+    const actual = await Promise.all([
+      run(),
+      run({ maxModelCalls: 2, count: 0 }),
+    ])
+
+    expect(actual).toEqual([
+      {
+        structuredResponse: { status: 'completed', message: 'done' },
+        callCount: 1,
+        modelCallLimitReached: false,
+      },
+      {
+        structuredResponse: { status: 'completed', message: 'done' },
+        callCount: 1,
+        modelCallLimitReached: false,
+      },
     ])
   })
 

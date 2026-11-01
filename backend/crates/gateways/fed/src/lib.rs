@@ -1,35 +1,28 @@
 //! FRB の FOMC 会合カレンダーを取得する gateway。
 
+mod macro_references;
+mod official_http;
 mod parser;
-
-use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_application::calendar::source::{
     CalendarEventBatch, CalendarEventSource, CalendarEventSourceError,
 };
+use official_http::OfficialHttpClient;
+
+pub use macro_references::FedMacroReferenceSource;
 
 const CALENDAR_URL: &str = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
-const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const SOURCE: &str = "fed";
 
 pub struct FedClient {
-    http: reqwest::Client,
+    http: OfficialHttpClient,
 }
 
 impl FedClient {
-    pub fn new() -> Result<Self, CalendarEventSourceError> {
-        let http = reqwest::Client::builder()
-            .timeout(HTTP_TIMEOUT)
-            .user_agent("t-rader/0.1 (calendar event source)")
-            .build()
-            .map_err(|error| {
-                CalendarEventSourceError::Failed(format!(
-                    "failed to initialize Federal Reserve calendar client: {error}"
-                ))
-            })?;
-
+    pub fn new(redis_url: &str) -> Result<Self, CalendarEventSourceError> {
+        let http = OfficialHttpClient::new(redis_url).map_err(CalendarEventSourceError::Failed)?;
         Ok(Self { http })
     }
 }
@@ -44,21 +37,9 @@ impl CalendarEventSource for FedClient {
         &self,
         today: NaiveDate,
     ) -> Result<CalendarEventBatch, CalendarEventSourceError> {
-        let response = self.http.get(CALENDAR_URL).send().await.map_err(|error| {
+        let html = self.http.get_text(CALENDAR_URL).await.map_err(|error| {
             CalendarEventSourceError::Failed(format!(
                 "failed to fetch Federal Reserve calendar: {error}"
-            ))
-        })?;
-        let status = response.status().as_u16();
-        if !(200..300).contains(&status) {
-            return Err(CalendarEventSourceError::Failed(format!(
-                "Federal Reserve calendar returned HTTP status {status}"
-            )));
-        }
-
-        let html = response.text().await.map_err(|error| {
-            CalendarEventSourceError::Failed(format!(
-                "failed to read Federal Reserve calendar: {error}"
             ))
         })?;
         parser::parse_calendar_event_batch(&html, today)

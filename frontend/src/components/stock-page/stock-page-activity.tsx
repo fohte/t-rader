@@ -7,6 +7,7 @@ import { StatusPill } from '#components/strategy-home/status-pill'
 import { formatYen } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 import { buildSnippet, formatRelative } from '#lib/note-utils'
+import type { FinancialPeriodType } from '#lib/stock-page-date'
 import {
   sortAnnotationsNewestFirst,
   sortNotesNewestFirst,
@@ -334,6 +335,7 @@ export function StockPageActivity({
   tradeState = 'ready',
   financialSummaries,
   financialSummariesState,
+  selectedPeriod,
   groups,
   groupsState,
 }: {
@@ -349,6 +351,7 @@ export function StockPageActivity({
   tradeState?: ListState
   financialSummaries: FinancialSummary[]
   financialSummariesState: ListState
+  selectedPeriod?: { end: string; type: FinancialPeriodType }
   groups: GroupMembership[]
   groupsState: ListState
 }) {
@@ -385,6 +388,7 @@ export function StockPageActivity({
             <StockPageFinancials
               summaries={financialSummaries}
               summariesState={financialSummariesState}
+              selectedPeriod={selectedPeriod}
               groups={groups}
               groupsState={groupsState}
             />

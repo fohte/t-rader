@@ -81,7 +81,7 @@ fn parse_calendar_events(
     Ok((events, coverage_end))
 }
 
-fn parse_year(heading: &str) -> Result<i32, CalendarEventSourceError> {
+pub(crate) fn parse_year(heading: &str) -> Result<i32, CalendarEventSourceError> {
     let year = heading
         .trim()
         .strip_suffix(" FOMC Meetings")
@@ -90,7 +90,7 @@ fn parse_year(heading: &str) -> Result<i32, CalendarEventSourceError> {
         .map_err(|error| parse_error(format!("invalid Federal Reserve calendar year: {error}")))
 }
 
-fn parse_statement_date(
+pub(crate) fn parse_statement_date(
     year: i32,
     month_text: &str,
     date_text: &str,
@@ -141,7 +141,7 @@ fn parse_statement_date(
     Ok(end_date)
 }
 
-fn parse_month(value: &str) -> Result<u32, CalendarEventSourceError> {
+pub(crate) fn parse_month(value: &str) -> Result<u32, CalendarEventSourceError> {
     match value.to_ascii_lowercase().as_str() {
         "jan" | "january" => Ok(1),
         "feb" | "february" => Ok(2),

@@ -5,7 +5,7 @@
 
 mod agent_webhook;
 pub(crate) mod calendar_test_support;
-mod execution_budget;
+pub(crate) mod execution_budget;
 mod external_webhook;
 mod frontend_api;
 pub(crate) mod mcp_tool;
@@ -278,6 +278,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_scheduler_recon
             "prompt": "inspect 7203",
             "phase": "completed",
             "error_summary": null,
+            "model_call_limit_reached": false,
             "result_text": "7203 は堅調",
             "steps": [],
             "purpose": "default",

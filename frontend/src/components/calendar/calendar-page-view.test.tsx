@@ -11,10 +11,19 @@ import { createStoryRouter } from '#storybook/story-router'
 type CalendarPageViewProps = ComponentProps<typeof CalendarPageView>
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Strategy = components['schemas']['Strategy']
+const EVENT_REFERENCE_DEFAULTS = {
+  fiscal_period_type: null,
+  has_matching_earnings_summary: false,
+  references: [],
+} satisfies Pick<
+  Extract<CalendarEvent, { kind: 'event' }>,
+  'fiscal_period_type' | 'has_matching_earnings_summary' | 'references'
+>
 
 afterEach(cleanup)
 
 const WEEK_RANGE = { from: '2099-01-05', to: '2099-01-11' }
+const TODAY = '2099-01-07'
 const NOOP = (): void => {}
 const STRATEGY: Strategy = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -30,6 +39,7 @@ function makeProps(
 ): CalendarPageViewProps {
   return {
     calendar: { ...WEEK_RANGE, events: [] },
+    today: TODAY,
     weekRange: WEEK_RANGE,
     strategies: [],
     selectedStrategyId: undefined,
@@ -70,6 +80,19 @@ function getEarningsDetailsRelationship(button: HTMLElement) {
     controlsId,
     detailsId: details?.id,
     detailsText: details?.textContent,
+  }
+}
+
+function getExpandedEarningsOutput(
+  button: HTMLElement,
+  details: HTMLElement | null,
+) {
+  return {
+    relationship: getEarningsDetailsRelationship(button),
+    links: [...(details?.querySelectorAll('a') ?? [])].map((link) => ({
+      name: link.textContent,
+      href: link.getAttribute('href'),
+    })),
   }
 }
 
@@ -166,6 +189,7 @@ describe('CalendarPageView', () => {
 
   it('links domestic earnings to the stock chart', async () => {
     const earning: CalendarEvent = {
+      ...EVENT_REFERENCE_DEFAULTS,
       kind: 'event',
       source: 'jquants',
       external_id: 'sample-stock-earnings',
@@ -188,6 +212,31 @@ describe('CalendarPageView', () => {
         .getByRole('link', { name: '架空工業 (0000)' })
         .getAttribute('href'),
     ).toBe('/stocks/0000')
+  })
+
+  it('links overseas earnings to the stock chart', async () => {
+    const earning: CalendarEvent = {
+      ...EVENT_REFERENCE_DEFAULTS,
+      kind: 'event',
+      source: 'alpha_vantage',
+      external_id: 'sample-overseas-earnings',
+      category: 'earnings',
+      country: 'US',
+      title: '架空電子',
+      stock_id: 'US:FICT1',
+      fiscal_period: '2099-01-01',
+      event_date: '2099-01-06',
+      event_at: null,
+      time_of_day: 'pre_market',
+    }
+
+    await renderCalendarPageView(
+      makeProps({ calendar: { ...WEEK_RANGE, events: [earning] } }),
+    )
+
+    expect(
+      screen.getByRole('link', { name: '架空電子' }).getAttribute('href'),
+    ).toBe('/stocks/US%3AFICT1')
   })
 
   it('requests the other earnings for the selected country and date', async () => {
@@ -237,4 +286,84 @@ describe('CalendarPageView', () => {
       detailsText: '該当する決算はありません。',
     })
   })
+
+  it.each([
+    {
+      country: 'JP',
+      source: 'jquants',
+      title: '架空工業',
+      stockId: '0000',
+      expectedHref: '/stocks/0000',
+      timeOfDay: 'post_market',
+      expectedLinkName: '架空工業 (0000)',
+      expectedDetailsText:
+        '引け後JP決算架空工業 (0000)実績・資料未取得 / 公表未確認',
+    },
+    {
+      country: 'US',
+      source: 'alpha_vantage',
+      title: '架空電子',
+      stockId: 'US:FICT1',
+      expectedHref: '/stocks/US%3AFICT1',
+      timeOfDay: 'pre_market',
+      expectedLinkName: '架空電子',
+      expectedDetailsText: '寄り前US決算架空電子実績・資料未取得 / 公表未確認',
+    },
+  ] as const)(
+    'links expanded $country earnings to their stock pages',
+    async ({
+      country,
+      source,
+      title,
+      stockId,
+      expectedHref,
+      timeOfDay,
+      expectedLinkName,
+      expectedDetailsText,
+    }) => {
+      const eventDate = '2099-01-06'
+      const summary: CalendarEvent = {
+        kind: 'other_earnings_summary',
+        country,
+        event_date: eventDate,
+        count: 1,
+      }
+      const earning: CalendarEvent = {
+        ...EVENT_REFERENCE_DEFAULTS,
+        kind: 'event',
+        source,
+        external_id: `sample-other-${country.toLowerCase()}-earnings`,
+        category: 'earnings',
+        country,
+        title,
+        stock_id: stockId,
+        fiscal_period: '2099-01-01',
+        event_date: eventDate,
+        event_at: null,
+        time_of_day: timeOfDay,
+      }
+
+      await renderCalendarPageView(
+        makeProps({
+          calendar: { ...WEEK_RANGE, events: [summary] },
+          expandedOtherEarnings: { country, eventDate },
+          otherEarningsEvents: [earning],
+        }),
+      )
+
+      const button = screen.getByRole('button', { name: '他 1 社' })
+      const detailsId = `calendar-other-earnings-${country}-${eventDate}`
+      const details = document.getElementById(detailsId)
+
+      expect(getExpandedEarningsOutput(button, details)).toEqual({
+        relationship: {
+          expanded: 'true',
+          controlsId: detailsId,
+          detailsId,
+          detailsText: expectedDetailsText,
+        },
+        links: [{ name: expectedLinkName, href: expectedHref }],
+      })
+    },
+  )
 })

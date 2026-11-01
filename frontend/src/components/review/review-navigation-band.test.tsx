@@ -65,7 +65,7 @@ function renderBand({
       />
     ),
     {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+      paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
       initialPath: '/annotations/sample-annotation-02',
     },
   )
@@ -98,6 +98,18 @@ function getRenderedAlert(container: HTMLElement) {
   }
 }
 
+function getNotesNavigationOutput(
+  pathname: string,
+  search: unknown,
+  state: unknown,
+) {
+  return {
+    pathname,
+    search,
+    navigation: reviewQueueModel.readNavigationState(state),
+  }
+}
+
 describe('ReviewNavigationBand', () => {
   it.each([
     {
@@ -109,9 +121,12 @@ describe('ReviewNavigationBand', () => {
         links: [
           {
             label: '← 前の未読',
-            href: '/annotations/sample-annotation-01',
+            href: '/annotations/sample-annotation-01?tab=annotations',
           },
-          { label: '次の未読へ →', href: '/annotations/sample-annotation-03' },
+          {
+            label: '次の未読へ →',
+            href: '/annotations/sample-annotation-03?tab=annotations',
+          },
         ],
       },
     },
@@ -122,7 +137,10 @@ describe('ReviewNavigationBand', () => {
       expected: {
         text: 'レビュー · 残り 3 件 次の未読へ →',
         links: [
-          { label: '次の未読へ →', href: '/notes/sample-note-02?version=3' },
+          {
+            label: '次の未読へ →',
+            href: '/notes/sample-note-02?version=3&version_id=sample-version-02',
+          },
         ],
       },
     },
@@ -133,8 +151,14 @@ describe('ReviewNavigationBand', () => {
       expected: {
         text: 'レビュー · 残り 3 件 ← 前の未読次の未読へ →',
         links: [
-          { label: '← 前の未読', href: '/notes/sample-note-02?version=3' },
-          { label: '次の未読へ →', href: '/annotations/sample-annotation-01' },
+          {
+            label: '← 前の未読',
+            href: '/notes/sample-note-02?version=3&version_id=sample-version-02',
+          },
+          {
+            label: '次の未読へ →',
+            href: '/annotations/sample-annotation-01?tab=annotations',
+          },
         ],
       },
     },
@@ -147,18 +171,18 @@ describe('ReviewNavigationBand', () => {
         links: [
           {
             label: '未読の先頭へ →',
-            href: '/annotations/sample-annotation-01',
+            href: '/annotations/sample-annotation-01?tab=annotations',
           },
         ],
       },
     },
     {
-      name: 'links to the review page when the queue is empty',
+      name: 'links to the unified unread list when the queue is empty',
       items: [],
       currentItemKey: 'annotation:sample-annotation-01',
       expected: {
-        text: '未読はありません · レビューへ',
-        links: [{ label: 'レビューへ', href: '/review' }],
+        text: '未読はありません · 未読一覧へ',
+        links: [{ label: '未読一覧へ', href: '/notes?view=pending' }],
       },
     },
     {
@@ -187,7 +211,7 @@ describe('ReviewNavigationBand', () => {
 
   it('shows a busy state while the unread queue is loading', async () => {
     const router = createStoryRouter(() => <ReviewNavigationBand isPending />, {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+      paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
     })
     const { container } = render(<RouterProvider router={router} />)
     await screen.findByRole('status')
@@ -200,13 +224,27 @@ describe('ReviewNavigationBand', () => {
 
   it('shows an alert when unread navigation fails', async () => {
     const router = createStoryRouter(() => <ReviewNavigationBand isError />, {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+      paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'],
     })
     const { container } = render(<RouterProvider router={router} />)
     await screen.findByRole('alert')
 
     expect(getRenderedAlert(container)).toEqual({
       text: '未読の移動情報を読み込めませんでした。',
+      role: 'alert',
+    })
+  })
+
+  it('identifies a notes list navigation error', async () => {
+    const router = createStoryRouter(
+      () => <ReviewNavigationBand isError scope="notes" />,
+      { paths: ['/notes', '/notes/$noteId', '/annotations/$annoId'] },
+    )
+    const { container } = render(<RouterProvider router={router} />)
+    await screen.findByRole('alert')
+
+    expect(getRenderedAlert(container)).toEqual({
+      text: '一覧内の移動情報を読み込めませんでした。',
       role: 'alert',
     })
   })
@@ -226,6 +264,78 @@ describe('ReviewNavigationBand', () => {
     ).toEqual({
       snapshot,
       currentItemKey: 'note:sample-version-02',
+    })
+  })
+
+  it('moves within the note overview snapshot and keeps its URL filters', async () => {
+    const user = userEvent.setup()
+    const noteItems: ReviewQueueItem[] = [
+      {
+        kind: 'note',
+        id: 'fake-version-current',
+        noteId: 'fake-note-current',
+        versionNo: 2,
+        title: '架空の現行ノート',
+        createdAt: '2026-10-15T03:00:00Z',
+        noteKind: 'sample-kind',
+        createdByKind: 'human',
+        unreadVersionCount: 0,
+      },
+      {
+        kind: 'note',
+        id: 'fake-version-next',
+        noteId: 'fake-note-next',
+        versionNo: 4,
+        title: '架空の未読ノート',
+        createdAt: '2026-10-15T02:00:00Z',
+        noteKind: 'sample-kind',
+        createdByKind: 'llm',
+        unreadVersionCount: 1,
+      },
+    ]
+    const noteSnapshot = reviewQueueModel.createNavigationSnapshot(noteItems)
+    const router = createStoryRouter(
+      () => (
+        <ReviewNavigationBand
+          items={noteItems}
+          snapshot={noteSnapshot}
+          currentItemKey="note:fake-version-current"
+          scope="notes"
+        />
+      ),
+      {
+        paths: ['/notes/$noteId'],
+        initialPath:
+          '/notes/fake-note-current?view=pending&kind=sample-kind&tag=sample-tag',
+      },
+    )
+    render(<RouterProvider router={router} />)
+
+    await user.click(await screen.findByRole('link', { name: '次へ →' }))
+
+    expect(
+      getNotesNavigationOutput(
+        router.state.location.pathname,
+        router.state.location.search,
+        router.state.location.state,
+      ),
+    ).toEqual({
+      pathname: '/notes/fake-note-next',
+      search: {
+        view: 'pending',
+        kind: 'sample-kind',
+        tag: 'sample-tag',
+        version: 4,
+        version_id: 'fake-version-next',
+      },
+      navigation: {
+        snapshot: {
+          itemKeys: ['note:fake-version-current', 'note:fake-version-next'],
+        },
+        currentItemKey: 'note:fake-version-next',
+        items: noteItems,
+        scope: 'notes',
+      },
     })
   })
 })

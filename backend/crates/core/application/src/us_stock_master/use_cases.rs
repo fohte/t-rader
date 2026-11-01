@@ -128,6 +128,7 @@ mod tests {
             id: ForeignStockId::new("US", "QZ7")?,
             name: "架空銘柄".into(),
             exchange: Some("架空市場".into()),
+            cik: Some("900000001".into()),
         })
     }
 

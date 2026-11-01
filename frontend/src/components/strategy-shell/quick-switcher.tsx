@@ -20,10 +20,16 @@ type AppRouter = ReturnType<typeof useRouter>
 
 const SCREEN_ITEMS = [
   {
-    id: 'dashboard',
-    label: 'ダッシュボード',
-    searchTerms: ['dashboard', 'home'],
+    id: 'home',
+    label: 'ホーム',
+    searchTerms: ['home'],
     to: '/',
+  },
+  {
+    id: 'dashboards',
+    label: 'ダッシュボード',
+    searchTerms: ['dashboard'],
+    to: '/dashboards',
   },
   {
     id: 'portfolio',
@@ -39,9 +45,10 @@ const SCREEN_ITEMS = [
   },
   {
     id: 'review',
-    label: 'レビュー',
-    searchTerms: ['review'],
-    to: '/review',
+    label: '未読・レビュー待ち',
+    searchTerms: ['review', '未読', 'レビュー待ち'],
+    to: '/notes',
+    search: { view: 'pending' },
   },
   {
     id: 'notes',
@@ -136,6 +143,7 @@ function matchesQuery(query: string, values: string[]) {
 
 function navigateToScreen(router: AppRouter, item: ScreenItem) {
   switch (item.id) {
+    case 'review':
     case 'annotations':
       void router.navigate({ to: item.to, search: item.search })
       return

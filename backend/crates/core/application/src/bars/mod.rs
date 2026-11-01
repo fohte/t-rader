@@ -18,18 +18,23 @@ pub use error::{BarsUseCaseError, UsStockBarsIngestError};
 pub use repository::{BarsRepository, BarsRepositoryError, SharedBarsRepository};
 pub use types::{
     BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, IngestStats, LatestPrices,
-    UsStockBarTarget, UsStockBarsIngestResult, UsStockBarsIngestStats,
-    UsStockMinuteBarsDownsampleStats, UsStockSipBarRefetchConfig, UsStockSipBarRefetchCursor,
-    UsStockSipBarRefetchTarget, UsStockSipBarRefetchTimeframe,
+    US_STOCK_MINUTE_BARS_DOWNSAMPLE_PROCESSING_BUDGET, UsStockBarTarget, UsStockBarsIngestResult,
+    UsStockBarsIngestStats, UsStockMinuteBarsDownsampleConfig, UsStockMinuteBarsDownsampleStats,
+    UsStockSipBarRefetchConfig, UsStockSipBarRefetchCursor, UsStockSipBarRefetchTarget,
+    UsStockSipBarRefetchTimeframe,
 };
 pub use us_stock_source::{
     SharedUsStockBarSource, SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery,
     UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
 };
 pub use use_cases::{BarsUseCases, UsStockBarsIngestUseCases};
-pub use write_lock::{SharedUsStockBarsWriteLock, UsStockBarsWriteLock, UsStockBarsWriteLockGuard};
+pub use write_lock::{
+    SharedSipRefetchLease, SharedUsStockBarsWriteLock, UsStockBarsWriteLock,
+    UsStockBarsWriteLockGuard,
+};
 
 use chrono::{DateTime, Duration, Months, Timelike, Utc};
+use core_domain::bar::{Bar, Timeframe};
 
 pub(super) const HOURLY_HISTORY_MONTHS: u32 = 12;
 pub(super) const US_STOCK_SIP_DELAY_MINUTES: i64 = 16;
@@ -66,6 +71,13 @@ pub(super) fn hourly_bar_bucket_start(timestamp: DateTime<Utc>) -> DateTime<Utc>
         .and_hms_opt(timestamp.hour(), 0, 0)
         .map(|timestamp| timestamp.and_utc())
         .unwrap_or(timestamp)
+}
+
+pub fn earliest_us_stock_minute_bar_timestamp(bars: &[Bar]) -> Option<DateTime<Utc>> {
+    bars.iter()
+        .filter(|bar| bar.instrument_id.starts_with("US:") && bar.timeframe == Timeframe::Minute)
+        .map(|bar| bar.timestamp)
+        .min()
 }
 
 #[cfg(feature = "test-support")]

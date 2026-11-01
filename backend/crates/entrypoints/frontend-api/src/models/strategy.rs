@@ -118,6 +118,8 @@ pub struct StrategyTaskStatusResponse {
     pub result_text: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    /// いずれかの step がモデル呼び出し上限で打ち切られたことを示す。
+    pub model_call_limit_reached: bool,
     /// フェーズ/分岐ごとの実行状況。`strategy_task_step` の各行から既知のフィールドのみを
     /// 再構築した配列。
     #[schema(value_type = serde_json::Value)]
@@ -148,6 +150,8 @@ pub struct StrategyTaskSummary {
     pub error_summary: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    /// いずれかの step がモデル呼び出し上限で打ち切られたことを示す。
+    pub model_call_limit_reached: bool,
     /// 投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。
     pub purpose: Option<String>,
     /// 実行の論理的な基準時刻。監査用に記録し、agent がプロンプトにも含めて LLM に伝える。
@@ -172,6 +176,7 @@ impl From<TaskStatusView> for StrategyTaskSummary {
             error_summary: view.error_summary,
             created_at: view.created_at,
             updated_at: view.updated_at,
+            model_call_limit_reached: view.model_call_limit_reached,
             purpose: view.purpose,
             as_of: view.as_of,
             context_kind: view.context_kind,

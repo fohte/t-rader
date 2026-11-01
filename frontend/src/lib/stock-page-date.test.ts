@@ -23,10 +23,42 @@ const bar: Bar = {
 describe('validateStockPageSearch', () => {
   it.each([
     ['valid date', { date: '2030-04-03' }, { date: '2030-04-03' }],
+    [
+      'financial period with chart date',
+      {
+        date: '2030-04-03',
+        stockTab: 'financials',
+        periodEnd: '2030-03-31',
+        periodType: 'FY',
+      },
+      {
+        date: '2030-04-03',
+        stockTab: 'financials',
+        periodEnd: '2030-03-31',
+        periodType: 'FY',
+      },
+    ],
+    [
+      'quarter tab without target period',
+      { stockTab: 'financials' },
+      { stockTab: 'financials' },
+    ],
     ['invalid format', { date: '2030-4-3' }, {}],
     ['impossible date', { date: '2030-02-30' }, {}],
     ['non-string date', { date: ['2030-04-03'] }, {}],
-  ])('keeps only a valid date for %s', (_name, search, expected) => {
+    ['period without its type', { periodEnd: '2030-03-31' }, {}],
+    [
+      'invalid target period',
+      { periodEnd: '2030-02-30', periodType: 'FY' },
+      {},
+    ],
+    [
+      'unsupported period type',
+      { periodEnd: '2030-03-31', periodType: 'H1' },
+      {},
+    ],
+    ['unsupported tab', { stockTab: 'history' }, {}],
+  ])('normalizes the stock page URL for %s', (_name, search, expected) => {
     expect(validateStockPageSearch(search)).toEqual(expected)
   })
 })

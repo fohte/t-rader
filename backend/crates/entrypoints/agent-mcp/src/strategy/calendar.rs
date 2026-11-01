@@ -73,7 +73,7 @@ impl StrategyServer {
 impl From<CalendarEventReadItem> for CalendarEventDto {
     fn from(item: CalendarEventReadItem) -> Self {
         match item {
-            CalendarEventReadItem::Event(event) => event.into(),
+            CalendarEventReadItem::Event(read_model) => read_model.event.into(),
             CalendarEventReadItem::OtherEarningsSummary {
                 country,
                 event_date,

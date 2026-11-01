@@ -8,8 +8,8 @@ use core_domain::markdown_lint::{FixError, apply_safe_edits};
 
 use super::query::{NoteReadQueryError, SharedNoteReadQuery};
 use super::types::{
-    Note, NoteDisplaySnapshot, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot,
-    NoteVersion, PendingNoteVersion,
+    Note, NoteDisplaySnapshot, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteOverview,
+    NoteOverviewQuery, NoteSnapshot, NoteVersion, PendingNoteVersion,
 };
 
 #[derive(Debug, Error)]
@@ -68,6 +68,13 @@ impl NoteReadUseCases {
         query: NoteListQuery,
     ) -> Result<NoteListPage, NoteReadUseCaseError> {
         Ok(self.query.list_notes(query).await?)
+    }
+
+    pub async fn list_note_overviews(
+        &self,
+        query: NoteOverviewQuery,
+    ) -> Result<Vec<NoteOverview>, NoteReadUseCaseError> {
+        Ok(self.query.list_note_overviews(query).await?)
     }
 
     pub async fn list_notes_written_by_task(

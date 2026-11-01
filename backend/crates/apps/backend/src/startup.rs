@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
 use core_application::bars::SharedUsStockBarSource;
-use core_application::us_stock_master_source::SharedUsStockMasterSource;
 use gateway_alpaca::AlpacaClient;
 use gateway_jquants::JQuantsPlan;
 use gateway_sec::SecClient;
 use sea_orm::DbErr;
 
 mod eoddata_source;
+mod macro_reference_sources;
 mod news_and_central_bank_sources;
 
 pub(super) use eoddata_source::eoddata_kospi_source_from_env;
+pub(super) use macro_reference_sources::initialize_macro_reference_pipeline;
 pub(super) use news_and_central_bank_sources::{
     NewsAndCentralBankSources, initialize_news_and_central_bank_sources,
 };
@@ -106,25 +107,26 @@ pub(super) fn alpaca_us_stock_bar_source_from_env(
     )
 }
 
-pub(super) fn us_stock_master_source(
+pub(super) fn sec_client(
     for_job: bool,
+    redis_url: &str,
     user_agent: Option<String>,
-) -> Result<Option<SharedUsStockMasterSource>, StartupError> {
+) -> Result<Option<Arc<SecClient>>, StartupError> {
     if !for_job {
         return Ok(None);
     }
 
     match user_agent {
         Some(user_agent) if !user_agent.trim().is_empty() => {
-            let client = SecClient::new(&user_agent).map_err(|error| {
+            let client = SecClient::new(redis_url, &user_agent).map_err(|error| {
                 StartupError::Config(format!("failed to initialize SEC client: {error}"))
             })?;
-            tracing::info!("SEC US stock master source initialized");
+            tracing::info!("SEC data sources initialized");
             Ok(Some(Arc::new(client)))
         }
         _ => {
             tracing::warn!(
-                "SEC_USER_AGENT が未設定のため、この実行では米国株のマスタを同期しません"
+                "SEC_USER_AGENT が未設定のため、この実行では SEC の米国株マスタと決算資料を取得しません"
             );
             Ok(None)
         }

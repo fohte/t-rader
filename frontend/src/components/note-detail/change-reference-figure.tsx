@@ -1,8 +1,8 @@
 import { ChangeReferenceFigureView } from '#components/note-detail/change-reference-figure-view'
 import { $api } from '#lib/api/client'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
+import type { ParsedStockChangeReference } from '#lib/note-change-reference'
 
-export function ChangeReferenceFigure(reference: ParsedNoteChangeReference) {
+export function ChangeReferenceFigure(reference: ParsedStockChangeReference) {
   const result = useChangeReferenceBars(reference)
 
   const bars = result.data ?? []
@@ -24,7 +24,7 @@ export function ChangeReferenceFigure(reference: ParsedNoteChangeReference) {
   )
 }
 
-export function useChangeReferenceBars(reference: ParsedNoteChangeReference) {
+export function useChangeReferenceBars(reference: ParsedStockChangeReference) {
   return $api.useQuery('get', '/api/bars', {
     params: {
       query: {

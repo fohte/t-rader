@@ -50,6 +50,8 @@ pub enum StrategyExecutionUseCaseError {
     StrategyMismatch,
     #[error("task execution is not running")]
     TaskNotRunning,
+    #[error("task execution deadline has expired")]
+    TaskDeadlineExpired,
     #[error("definition snapshot is invalid")]
     InvalidDefinitionSnapshot,
     #[error("custom indicator definition was not found")]
@@ -66,6 +68,8 @@ pub enum StrategyExecutionUseCaseError {
     InvalidPayloadPointer,
     #[error("payload page limit is invalid")]
     InvalidPageLimit,
+    #[error("payload manifest page limit is invalid")]
+    InvalidPayloadManifestPageLimit,
     #[error("payload page exceeds the response byte limit")]
     PayloadPageTooLarge,
     #[error("payload source revision changed between pages")]
@@ -76,6 +80,8 @@ pub enum StrategyExecutionUseCaseError {
     InvalidDatasetCompletion,
     #[error("dataset provider reported an incomplete capture")]
     DatasetCaptureIncomplete,
+    #[error("dataset capture was cancelled")]
+    DatasetCaptureCancelled,
     #[error(transparent)]
     DatasetProvider(#[from] DatasetProviderError),
     #[error("numeric projection is invalid")]

@@ -19,7 +19,6 @@ const MENU_LINK_ACTIVE =
   'flex items-center border border-muted-foreground bg-surface-strong px-2.5 py-1.5 font-mono text-xs text-foreground'
 
 const MENU_ITEMS = [
-  { to: '/notes', label: 'ノート', matches: ['/notes', '/annotations'] },
   { to: '/dashboards', label: 'ダッシュボード', matches: ['/dashboards'] },
   { to: '/strategies', label: '戦略', matches: ['/strategies'] },
   {
@@ -185,8 +184,8 @@ export function Header({
         <Link
           to="/"
           className="inline-flex flex-shrink-0 items-baseline gap-2 font-mono"
-          title="ダッシュボードへ"
-          aria-label="ダッシュボードへ"
+          title="ホームへ"
+          aria-label="ホームへ"
         >
           <span className="text-xl font-bold text-foreground">&gt;</span>
           <span className="hidden text-lg font-medium tracking-tight text-foreground md:inline">
@@ -207,9 +206,12 @@ export function Header({
             }
           />
           <NavLink
-            to="/review"
-            label="レビュー"
-            active={isPathWithin(pathname, '/review')}
+            to="/notes"
+            label="ノート"
+            active={
+              isPathWithin(pathname, '/notes') ||
+              isPathWithin(pathname, '/annotations')
+            }
           >
             {reviewBadge != null && (
               <span className="border border-primary px-1 text-2xs leading-4 tabular-nums text-primary">

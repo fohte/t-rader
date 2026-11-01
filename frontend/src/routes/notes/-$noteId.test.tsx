@@ -19,6 +19,8 @@ import { resetFetch, stubFetch } from '#test/stub-fetch.test-helper'
 type Note = components['schemas']['Note']
 type NoteVersion = components['schemas']['NoteVersion']
 type NoteKind = components['schemas']['NoteKind']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
+type Annotation = components['schemas']['Annotation']
 const noteId = 'fake-note'
 const versionId = 'fake-note-version'
 const noteKindKey = 'fabricated-kind-key'
@@ -36,6 +38,7 @@ const historicalVersion: NoteVersion = {
   body_md: rawBody,
   frontmatter_json: {},
   resolved_price_references_json: {},
+  warning_dispositions: [],
   graphs_json: [],
   status: 'approved',
   created_by_kind: 'human',
@@ -61,7 +64,11 @@ const pendingVersion: NoteVersion = {
   created_by_kind: 'llm',
 }
 
-function noteForVersion(version: NoteVersion, body = displayBody): Note {
+function noteForVersion(
+  version: NoteVersion,
+  body = displayBody,
+  kind: string | null = noteKindKey,
+): Note {
   return {
     id: noteId,
     version_id: version.id,
@@ -74,7 +81,7 @@ function noteForVersion(version: NoteVersion, body = displayBody): Note {
     resolved_price_references_json: {},
     graphs_json: [],
     tags: [],
-    kind: noteKindKey,
+    kind,
     status: version.status,
     created_by_kind: version.created_by_kind,
     created_at: version.created_at,
@@ -96,11 +103,25 @@ type NoteRequest = {
   versionId: string | null
 }
 
+type DetailFetchOptions = {
+  noteOverviews?: NoteOverview[]
+  noteOverviewsError?: boolean
+  annotations?: Annotation[]
+}
+
 function setupFetch(
   versions: NoteVersion[],
   fetchNote: (request: Request) => Promise<Response>,
+  fetchNoteKinds: () => Promise<Response> = () =>
+    Promise.resolve(Response.json([noteKind])),
+  options: DetailFetchOptions = {},
 ) {
   const noteRequests: NoteRequest[] = []
+  const overviewRequests: Array<{
+    view: string | null
+    kind: string | null
+    tag: string | null
+  }> = []
   stubFetch((input, init) => {
     const request = input instanceof Request ? input : new Request(input, init)
     const url = new URL(request.url)
@@ -121,20 +142,33 @@ function setupFetch(
       const refs: Record<string, string> = {
         'stock:DEMO-A': '架空工業',
         'stock:DEMO-B': '架空商事',
+        'indicator:demo-indicator': 'デモ指標',
       }
       const name = link == null ? undefined : refs[link]
+      const separator = link?.indexOf(':') ?? -1
       return Promise.resolve(
         Response.json([
           {
-            kind: 'stock',
-            id: link?.slice('stock:'.length) ?? '',
+            kind: separator < 0 ? 'stock' : link?.slice(0, separator),
+            id: separator < 0 ? (link ?? '') : link?.slice(separator + 1),
             name: name ?? null,
           },
         ]),
       )
     }
     if (url.pathname === '/api/note-kinds') {
-      return Promise.resolve(Response.json([noteKind]))
+      return fetchNoteKinds()
+    }
+    if (url.pathname === '/api/notes/overview') {
+      overviewRequests.push({
+        view: url.searchParams.get('view'),
+        kind: url.searchParams.get('kind'),
+        tag: url.searchParams.get('tag'),
+      })
+      if (options.noteOverviewsError === true) {
+        return Promise.resolve(Response.json({}, { status: 500 }))
+      }
+      return Promise.resolve(Response.json(options.noteOverviews ?? []))
     }
     if (url.pathname === `/api/notes/${noteId}/links`) {
       return Promise.resolve(Response.json({ incoming: [], outgoing: [] }))
@@ -152,22 +186,26 @@ function setupFetch(
       url.pathname === `/api/notes/${noteId}/trades` ||
       url.pathname === `/api/notes/${noteId}/predictions` ||
       url.pathname === '/api/comments' ||
-      url.pathname === '/api/note-versions/pending' ||
-      url.pathname === '/api/annotations'
+      url.pathname === '/api/note-versions/pending'
     ) {
       return Promise.resolve(Response.json([]))
     }
+    if (url.pathname === '/api/annotations') {
+      return Promise.resolve(Response.json(options.annotations ?? []))
+    }
     return Promise.resolve(Response.json({}, { status: 404 }))
   })
-  return { noteRequests }
+  return { noteRequests, overviewRequests }
 }
 
 async function renderNoteDetail(
   versions: NoteVersion[],
   fetchNote: (request: Request) => Promise<Response>,
   initialEntry = `/notes/${noteId}`,
+  fetchNoteKinds?: () => Promise<Response>,
+  options?: DetailFetchOptions,
 ) {
-  const requests = setupFetch(versions, fetchNote)
+  const requests = setupFetch(versions, fetchNote, fetchNoteKinds, options)
   const { routeTree } = await import('#routeTree.gen')
   const router = createRouter({
     routeTree,
@@ -181,7 +219,7 @@ async function renderNoteDetail(
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   })
-  return requests
+  return { ...requests, router }
 }
 
 function displayedBodyText(): string | null {
@@ -191,6 +229,26 @@ function displayedBodyText(): string | null {
     (paragraph) => paragraph.textContent,
   )
   return paragraphs.length === 0 ? null : paragraphs.join('\n')
+}
+
+function historicalVersionNoticeOutput() {
+  return {
+    notice: screen.queryByText(/過去のバージョン/)?.textContent ?? null,
+    currentVersionLink:
+      screen.queryByRole('link', { name: '現行バージョンを開く' })
+        ?.textContent ?? null,
+  }
+}
+
+function selectedVersionIndicatorOutput(
+  chip: HTMLElement,
+  noteRequests: NoteRequest[],
+) {
+  return {
+    body: displayedBodyText(),
+    chip: chip.textContent,
+    requests: noteRequests,
+  }
 }
 
 function notePageOutput(noteRequests: NoteRequest[]) {
@@ -208,9 +266,38 @@ function notePageOutput(noteRequests: NoteRequest[]) {
 function noteKindOutput(): string | null {
   return (
     screen.queryByText(noteKindLabel)?.textContent ??
-    screen.queryByText('種別を読み込めませんでした')?.textContent ??
+    screen.queryByText('種別なし')?.textContent ??
+    screen.queryByText('種別を読み込み中')?.textContent ??
+    screen.queryByText('種別を取得できません')?.textContent ??
+    screen.queryByText('ノートの種別を読み込み中')?.textContent ??
+    screen.queryByText('ノートの種別を取得できません')?.textContent ??
+    screen.queryByText('未登録の種別')?.textContent ??
     null
   )
+}
+
+function getCatalogLoadingOutput() {
+  return {
+    kindLabel: noteKindOutput(),
+    bodyAvailable: displayedBodyText() != null,
+  }
+}
+
+function getCatalogErrorOutput() {
+  return {
+    kindLabel: noteKindOutput(),
+    bodyAvailable: displayedBodyText() != null,
+    pageError: screen.queryByRole('alert')?.textContent ?? null,
+  }
+}
+
+function getUnsetOrUnregisteredKindOutput(kind: string | null) {
+  return {
+    label: noteKindOutput(),
+    keyVisible:
+      kind == null ? false : screen.queryByText(kind, { exact: true }) != null,
+    kindLink: screen.queryByRole('link', { name: /のノートを表示/ }) != null,
+  }
 }
 
 afterEach(() => {
@@ -218,7 +305,95 @@ afterEach(() => {
   resetFetch()
 })
 
+function getNoteOverviewReturnOutput(pathname: string, search: unknown) {
+  return { pathname, search }
+}
+
+function directNotesNavigationOutput({
+  overviewRequests,
+  navigation,
+  nextLink,
+  legacyQueueLink,
+}: {
+  overviewRequests: Array<{
+    view: string | null
+    kind: string | null
+    tag: string | null
+  }>
+  navigation: HTMLElement
+  nextLink: HTMLElement | null
+  legacyQueueLink: HTMLElement | null
+}) {
+  const href = nextLink?.getAttribute('href')
+  const nextLocation = href == null ? null : new URL(href, 'http://localhost')
+  return {
+    overviewRequests,
+    navigation: navigation.textContent,
+    next:
+      nextLocation == null
+        ? null
+        : {
+            pathname: nextLocation.pathname,
+            search: Object.fromEntries(nextLocation.searchParams),
+          },
+    legacyQueueLink: legacyQueueLink?.getAttribute('href') ?? null,
+  }
+}
+
+function notesNavigationErrorOutput(
+  overviewRequests: Array<{
+    view: string | null
+    kind: string | null
+    tag: string | null
+  }>,
+  alert: HTMLElement,
+) {
+  return {
+    overviewRequests,
+    alert: {
+      role: alert.getAttribute('role'),
+      text: alert.textContent,
+    },
+  }
+}
+
 describe('NoteDetailPage', () => {
+  it('shows the selected version’s saved indicator change as a percentage chip', async () => {
+    const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
+    const version: NoteVersion = {
+      ...historicalVersion,
+      body_md: token,
+      resolved_price_references_json: { [token]: { value: 12.5 } },
+    }
+    const note = noteForVersion(version, token)
+    note.resolved_price_references_json = { [token]: { value: 12.5 } }
+    const requests = await renderNoteDetail(
+      [version, currentVersion],
+      () => Promise.resolve(Response.json(note)),
+      `/notes/${noteId}?version_id=${version.id}`,
+    )
+
+    const chip = await screen.findByRole(
+      'button',
+      { name: '+12.5% の根拠を開く' },
+      { timeout: 30_000 },
+    )
+
+    expect(selectedVersionIndicatorOutput(chip, requests.noteRequests)).toEqual(
+      {
+        body: '+12.5%',
+        chip: '+12.5%',
+        requests: [
+          {
+            method: 'GET',
+            path: `/api/notes/${noteId}`,
+            versionId: version.id,
+          },
+        ],
+      },
+    )
+  }, 30_000)
+
   it('shows the selected historical version with its corrected display body', async () => {
     const requests = await renderNoteDetail(
       [historicalVersion, currentVersion],
@@ -248,6 +423,56 @@ describe('NoteDetailPage', () => {
     ])
   }, 30_000)
 
+  it('shows the historical notice for a version older than the current version', async () => {
+    await renderNoteDetail(
+      [historicalVersion, currentVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      `/notes/${noteId}?version_id=${historicalVersion.id}`,
+    )
+
+    await screen.findByRole('heading', { name: historicalVersion.title })
+
+    expect(historicalVersionNoticeOutput()).toEqual({
+      notice: '過去のバージョン v1 を表示中です。',
+      currentVersionLink: '現行バージョンを開く',
+    })
+  }, 30_000)
+
+  it('does not show the historical notice when no current version exists', async () => {
+    await renderNoteDetail(
+      [pendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(pendingVersion))),
+      `/notes/${noteId}?version_id=${pendingVersion.id}`,
+    )
+
+    await screen.findByRole('heading', { name: pendingVersion.title })
+
+    expect(historicalVersionNoticeOutput()).toEqual({
+      notice: null,
+      currentVersionLink: null,
+    })
+  }, 30_000)
+
+  it('does not show the historical notice for a pending version newer than the current version', async () => {
+    const newerPendingVersion: NoteVersion = {
+      ...pendingVersion,
+      id: 'fake-newer-pending-version',
+      version_no: 3,
+    }
+    await renderNoteDetail(
+      [currentVersion, newerPendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(newerPendingVersion))),
+      `/notes/${noteId}?version_id=${newerPendingVersion.id}`,
+    )
+
+    await screen.findByRole('heading', { name: newerPendingVersion.title })
+
+    expect(historicalVersionNoticeOutput()).toEqual({
+      notice: null,
+      currentVersionLink: null,
+    })
+  }, 30_000)
+
   it('keeps raw body hidden until a matching display response arrives', async () => {
     let resolveNoteResponse: (response: Response) => void = () => {}
     const response = new Promise<Response>((resolve) => {
@@ -269,7 +494,20 @@ describe('NoteDetailPage', () => {
         },
       ])
     })
-    expect(displayedBodyText()).toEqual(null)
+    expect(notePageOutput(requests.noteRequests)).toEqual([
+      historicalVersion.title,
+      'ノートの種別を読み込み中',
+      null,
+      null,
+      null,
+      [
+        {
+          method: 'GET',
+          path: `/api/notes/${noteId}`,
+          versionId: historicalVersion.id,
+        },
+      ],
+    ])
 
     resolveNoteResponse(Response.json(noteForVersion(historicalVersion)))
     await screen.findByRole(
@@ -278,9 +516,20 @@ describe('NoteDetailPage', () => {
       { timeout: 30_000 },
     )
 
-    expect(displayedBodyText()).toEqual(
+    expect(notePageOutput(requests.noteRequests)).toEqual([
+      historicalVersion.title,
+      noteKindLabel,
       '銘柄架空工業DEMO-A: 銘柄架空商事DEMO-B: 内容の続き',
-    )
+      null,
+      null,
+      [
+        {
+          method: 'GET',
+          path: `/api/notes/${noteId}`,
+          versionId: historicalVersion.id,
+        },
+      ],
+    ])
   }, 30_000)
 
   it('keeps raw body hidden when the detail response belongs to another version', async () => {
@@ -322,7 +571,7 @@ describe('NoteDetailPage', () => {
 
     expect(notePageOutput(requests.noteRequests)).toEqual([
       historicalVersion.title,
-      '種別を読み込めませんでした',
+      'ノートの種別を取得できません',
       null,
       'バージョンを読み込めませんでした。',
       null,
@@ -334,6 +583,217 @@ describe('NoteDetailPage', () => {
         },
       ],
     ])
+  }, 30_000)
+
+  it('keeps the note readable while the kind catalog is loading', async () => {
+    let resolveCatalog: (response: Response) => void = () => {}
+    const catalogResponse = new Promise<Response>((resolve) => {
+      resolveCatalog = resolve
+    })
+    await renderNoteDetail(
+      [historicalVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      undefined,
+      () => catalogResponse,
+    )
+
+    await screen.findByText('種別を読み込み中')
+    await screen.findByRole('region', { name: 'ノート本文' })
+    resolveCatalog(Response.json([noteKind]))
+    await screen.findByText(noteKindLabel)
+
+    expect(getCatalogLoadingOutput()).toEqual({
+      kindLabel: noteKindLabel,
+      bodyAvailable: true,
+    })
+  }, 30_000)
+
+  it('keeps the note readable when the kind catalog request fails', async () => {
+    await renderNoteDetail(
+      [historicalVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      undefined,
+      () => Promise.resolve(Response.json({}, { status: 500 })),
+    )
+
+    await screen.findByText('種別を取得できません')
+    await screen.findByRole('region', { name: 'ノート本文' })
+
+    expect(getCatalogErrorOutput()).toEqual({
+      kindLabel: '種別を取得できません',
+      bodyAvailable: true,
+      pageError: null,
+    })
+  }, 30_000)
+
+  it.each([
+    { kind: null, label: '種別なし' },
+    { kind: 'unlisted-kind-key', label: '未登録の種別' },
+  ])(
+    'distinguishes notes with kind $kind',
+    async ({ kind, label }) => {
+      await renderNoteDetail([historicalVersion], () =>
+        Promise.resolve(
+          Response.json(noteForVersion(historicalVersion, displayBody, kind)),
+        ),
+      )
+
+      await screen.findByText(label)
+
+      expect(getUnsetOrUnregisteredKindOutput(kind)).toEqual({
+        label,
+        keyVisible: false,
+        kindLink: false,
+      })
+    },
+    30_000,
+  )
+
+  it('opens the filtered note list from a registered kind label', async () => {
+    const result = await renderNoteDetail(
+      [historicalVersion],
+      () => Promise.resolve(Response.json(noteForVersion(historicalVersion))),
+      `/notes/${noteId}?version=1&tag=sample-tag`,
+    )
+
+    const kindLink = await screen.findByRole('link', {
+      name: `${noteKindLabel} のノートを表示`,
+    })
+    fireEvent.click(kindLink)
+    await waitFor(() => {
+      expect(result.router.state.location.pathname).toEqual('/notes')
+    })
+
+    expect(result.router.state.location.search).toEqual({ kind: noteKindKey })
+  }, 30_000)
+
+  it('returns to the note overview with its view and filters intact', async () => {
+    const result = await renderNoteDetail(
+      [pendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(pendingVersion))),
+      `/notes/${noteId}?version_id=${pendingVersion.id}&view=pending&kind=sample-kind&tag=sample-tag`,
+    )
+
+    await screen.findByRole('region', { name: 'ノート本文' })
+    fireEvent.click(screen.getByRole('link', { name: '< ノート一覧に戻る' }))
+    await waitFor(() => {
+      expect(result.router.state.location.pathname).toEqual('/notes')
+    })
+
+    expect(
+      getNoteOverviewReturnOutput(
+        result.router.state.location.pathname,
+        result.router.state.location.search,
+      ),
+    ).toEqual({
+      pathname: '/notes',
+      search: {
+        view: 'pending',
+        kind: 'sample-kind',
+        tag: 'sample-tag',
+      },
+    })
+  }, 30_000)
+
+  it('uses the URL filters for navigation when a filtered detail opens directly', async () => {
+    const nextVersion: NoteVersion = {
+      ...pendingVersion,
+      id: 'fake-next-unread-version',
+      note_id: 'fake-next-note',
+      version_no: 4,
+      title: '架空の次ノート',
+      created_at: '2099-01-02T00:00:00Z',
+    }
+    const nextRepresentative: Note = {
+      ...noteForVersion(nextVersion),
+      id: nextVersion.note_id,
+    }
+    const noteOverviews: NoteOverview[] = [
+      {
+        representative: noteForVersion(pendingVersion),
+        current: null,
+        latest_unread: pendingVersion,
+        unread_version_count: 1,
+      },
+      {
+        representative: nextRepresentative,
+        current: null,
+        latest_unread: nextVersion,
+        unread_version_count: 2,
+      },
+    ]
+    const annotations: Annotation[] = [
+      {
+        id: 'fake-unread-annotation',
+        created_by_kind: 'human',
+        status: 'unread',
+        text: '架空の確認メモ',
+        target_kind: 'stock',
+        target_symbol: 'DEMO-C',
+        timestamp: '2026-01-14T02:30:00Z',
+        created_at: '2026-01-14T03:00:00Z',
+        updated_at: '2026-01-14T03:00:00Z',
+      },
+    ]
+    const result = await renderNoteDetail(
+      [pendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(pendingVersion))),
+      `/notes/${noteId}?view=pending&kind=${noteKindKey}&tag=sample-tag`,
+      undefined,
+      { noteOverviews, annotations },
+    )
+
+    const navigation = await screen.findByRole('navigation', {
+      name: '一覧内の移動',
+    })
+    const nextLink = screen.queryByRole('link', { name: '次へ →' })
+    const legacyQueueLink = screen.queryByRole('link', {
+      name: '未読の先頭へ →',
+    })
+
+    expect(
+      directNotesNavigationOutput({
+        overviewRequests: result.overviewRequests,
+        navigation,
+        nextLink,
+        legacyQueueLink,
+      }),
+    ).toEqual({
+      overviewRequests: [
+        { view: 'pending', kind: noteKindKey, tag: 'sample-tag' },
+      ],
+      navigation: '次へ →',
+      next: {
+        pathname: '/notes/fake-next-note',
+        search: {
+          version: '4',
+          version_id: 'fake-next-unread-version',
+          view: 'pending',
+          kind: noteKindKey,
+          tag: 'sample-tag',
+        },
+      },
+      legacyQueueLink: null,
+    })
+  }, 30_000)
+
+  it('shows an error when a directly opened filtered list cannot load', async () => {
+    const result = await renderNoteDetail(
+      [pendingVersion],
+      () => Promise.resolve(Response.json(noteForVersion(pendingVersion))),
+      `/notes/${noteId}?tag=sample-tag`,
+      undefined,
+      { noteOverviewsError: true },
+    )
+    const alert = await screen.findByRole('alert')
+
+    expect(notesNavigationErrorOutput(result.overviewRequests, alert)).toEqual({
+      overviewRequests: [{ view: 'all', kind: null, tag: 'sample-tag' }],
+      alert: {
+        role: 'alert',
+        text: '一覧内の移動情報を読み込めませんでした。',
+      },
+    })
   }, 30_000)
 
   it('shows the pending note kind while reading a version without a current marker', async () => {

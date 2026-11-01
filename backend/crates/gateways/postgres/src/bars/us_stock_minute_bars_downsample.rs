@@ -13,7 +13,7 @@ struct TimestampRow {
 
 #[derive(Debug, FromQueryResult)]
 struct EarliestTimestampRow {
-    timestamp: DateTime<FixedOffset>,
+    timestamp: Option<DateTime<FixedOffset>>,
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -21,24 +21,153 @@ struct InsertedBarRow {
     timestamp: DateTime<FixedOffset>,
 }
 
+#[derive(Debug, FromQueryResult)]
+struct InstrumentIdRow {
+    instrument_id: String,
+}
+
+pub(super) async fn find_instrument_ids_with_minute_bars(
+    db: &impl ConnectionTrait,
+    from: DateTime<Utc>,
+    until: DateTime<Utc>,
+    cutoff: DateTime<Utc>,
+) -> Result<Vec<String>, sea_orm::DbErr> {
+    db.query_all_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT DISTINCT instrument_id FROM bars \
+         WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' \
+           AND timestamp >= $1 AND timestamp < $2 AND timestamp < $3 \
+         ORDER BY instrument_id",
+        [
+            from.fixed_offset().into(),
+            until.fixed_offset().into(),
+            cutoff.fixed_offset().into(),
+        ],
+    ))
+    .await?
+    .iter()
+    .map(|row| InstrumentIdRow::from_query_result(row, "").map(|row| row.instrument_id))
+    .collect()
+}
+
 pub(super) async fn find_earliest_minute_bar_before(
     db: &impl ConnectionTrait,
     cutoff: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>, sea_orm::DbErr> {
     // MIN/MAX 専用の順序探索を避け、chunk ごとの部分集約を全体でまとめる。
+    // 非 C 照合順序では LIKE が圧縮 chunk の索引条件にならないため、instruments の ID を等価条件に使う。
+    // 同じ statement snapshot を使い、対象銘柄がない場合は bars の subquery を実行しない。
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT MIN(timestamp) AS timestamp FROM bars \
-             WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' AND timestamp < $1 \
-             GROUP BY timeframe",
+            r#"
+            WITH us_instrument_ids AS (
+                SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]) AS ids
+                FROM instruments
+                WHERE id LIKE 'US:%'
+            )
+            SELECT CASE WHEN cardinality(us_instrument_ids.ids) = 0 THEN NULL
+                   ELSE (
+                       SELECT MIN(timestamp) AS timestamp
+                       FROM bars
+                       WHERE instrument_id = ANY(us_instrument_ids.ids)
+                         AND timeframe = '1m'
+                         AND timestamp < $1
+                       GROUP BY timeframe
+                   )
+                   END AS timestamp
+            FROM us_instrument_ids
+            "#,
             [cutoff.fixed_offset().into()],
         ))
         .await?;
 
     row.map(|row| EarliestTimestampRow::from_query_result(&row, ""))
         .transpose()
-        .map(|row| row.map(|row| row.timestamp.to_utc()))
+        .map(|row| row.and_then(|row| row.timestamp.map(|timestamp| timestamp.to_utc())))
+}
+
+#[derive(Debug, FromQueryResult)]
+struct DownsampleCursorRow {
+    cursor_timestamp: DateTime<FixedOffset>,
+}
+
+pub(super) async fn find_downsample_cursor(
+    db: &impl ConnectionTrait,
+) -> Result<Option<DateTime<Utc>>, sea_orm::DbErr> {
+    db.query_one_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT cursor_timestamp FROM us_stock_minute_bar_downsample_cursor \
+         WHERE singleton_key = 1",
+        [],
+    ))
+    .await?
+    .map(|row| DownsampleCursorRow::from_query_result(&row, ""))
+    .transpose()
+    .map(|row| row.map(|row| row.cursor_timestamp.to_utc()))
+}
+
+pub(super) async fn initialize_downsample_cursor(
+    db: &impl ConnectionTrait,
+    cursor_timestamp: DateTime<Utc>,
+) -> Result<DateTime<Utc>, sea_orm::DbErr> {
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "INSERT INTO us_stock_minute_bar_downsample_cursor \
+         (singleton_key, cursor_timestamp) VALUES (1, $1) \
+         ON CONFLICT (singleton_key) DO NOTHING",
+        [cursor_timestamp.fixed_offset().into()],
+    ))
+    .await?;
+    find_downsample_cursor(db)
+        .await?
+        .ok_or_else(|| sea_orm::DbErr::Custom("downsample cursor was not initialized".to_owned()))
+}
+
+pub(super) async fn advance_downsample_cursor(
+    db: &impl ConnectionTrait,
+    from: DateTime<Utc>,
+    until: DateTime<Utc>,
+) -> Result<bool, sea_orm::DbErr> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE us_stock_minute_bar_downsample_cursor AS cursor
+            SET cursor_timestamp = $2
+            WHERE cursor.singleton_key = 1
+              AND cursor.cursor_timestamp = $1
+              AND $2 > $1
+              AND NOT EXISTS (
+                    SELECT 1 FROM bars
+                    WHERE instrument_id LIKE 'US:%'
+                      AND timeframe = '1m'
+                      AND timestamp >= $1
+                      AND timestamp < $2
+              )
+            RETURNING cursor_timestamp
+            "#,
+            [from.fixed_offset().into(), until.fixed_offset().into()],
+        ))
+        .await?;
+    Ok(row.is_some())
+}
+
+pub(super) async fn rewind_downsample_cursor(
+    transaction: &sea_orm::DatabaseTransaction,
+    earliest_minute_timestamp: DateTime<Utc>,
+) -> Result<(), sea_orm::DbErr> {
+    transaction
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE us_stock_minute_bar_downsample_cursor \
+             SET cursor_timestamp = LEAST( \
+                 cursor_timestamp, time_bucket('1 hour', $1::timestamptz)) \
+             WHERE singleton_key = 1 AND $1 < cursor_timestamp",
+            [earliest_minute_timestamp.fixed_offset().into()],
+        ))
+        .await
+        .map(|_| ())
 }
 
 pub(super) async fn downsample_minute_bar_range(

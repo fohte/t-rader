@@ -8,14 +8,26 @@ use sqlx::postgres::{PgAdvisoryLock, PgAdvisoryLockGuard, PgAdvisoryLockKey, PgC
 use sqlx::{Connection as _, Either, PgPool};
 
 const LOCK_KEY: i64 = 0x7452_6164_6572_4261;
+const SIP_REFETCH_LEASE_LOCK_KEY: i64 = 0x7452_6164_6572_5369;
 
 pub struct PostgresUsStockBarsWriteLock {
     pool: PgPool,
+    lock_key: i64,
 }
 
 impl PostgresUsStockBarsWriteLock {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            lock_key: LOCK_KEY,
+        }
+    }
+
+    pub fn new_for_sip_refetch_job(pool: PgPool) -> Self {
+        Self {
+            pool,
+            lock_key: SIP_REFETCH_LEASE_LOCK_KEY,
+        }
     }
 }
 
@@ -35,7 +47,7 @@ impl UsStockBarsWriteLock for PostgresUsStockBarsWriteLock {
         }
 
         // セッション advisory lock は専用接続が閉じると PostgreSQL が解放する。
-        match session_lock().acquire(connection).await {
+        match session_lock(self.lock_key).acquire(connection).await {
             Ok(guard) => Ok(Some(Box::new(PostgresUsStockBarsWriteLockGuard {
                 _guard: guard,
             }))),
@@ -49,7 +61,7 @@ impl PostgresUsStockBarsWriteLock {
         &self,
         connection: PgConnection,
     ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
-        match session_lock().try_acquire(connection).await {
+        match session_lock(self.lock_key).try_acquire(connection).await {
             Ok(Either::Left(guard)) => Ok(Some(Box::new(PostgresUsStockBarsWriteLockGuard {
                 _guard: guard,
             }))),
@@ -65,8 +77,8 @@ struct PostgresUsStockBarsWriteLockGuard {
 
 impl UsStockBarsWriteLockGuard for PostgresUsStockBarsWriteLockGuard {}
 
-fn session_lock() -> PgAdvisoryLock {
-    PgAdvisoryLock::with_key(PgAdvisoryLockKey::BigInt(LOCK_KEY))
+fn session_lock(lock_key: i64) -> PgAdvisoryLock {
+    PgAdvisoryLock::with_key(PgAdvisoryLockKey::BigInt(lock_key))
 }
 
 fn database_error(error: sqlx::Error) -> PersistenceError {
@@ -213,5 +225,26 @@ mod tests {
             ),
             (true, true, true, true, true)
         );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn sip_job_lease_is_exclusive_and_independent_from_bar_writes(
+        _db: crate::DatabaseHandle,
+    ) {
+        let pool = crate::test_support::create_test_pool_with_max_connections(2).await;
+        let write_lock = PostgresUsStockBarsWriteLock::new(pool.clone());
+        let first_lease = PostgresUsStockBarsWriteLock::new_for_sip_refetch_job(pool.clone());
+        let second_lease = PostgresUsStockBarsWriteLock::new_for_sip_refetch_job(pool);
+
+        let write_guard = write_lock.acquire(Duration::ZERO).await;
+        let first_guard = first_lease.acquire(Duration::ZERO).await;
+        let second_guard = second_lease.acquire(Duration::ZERO).await;
+        let actual = (
+            matches!(write_guard, Ok(Some(_))),
+            matches!(first_guard, Ok(Some(_))),
+            matches!(second_guard, Ok(None)),
+        );
+
+        assert_eq!(actual, (true, true, true));
     }
 }

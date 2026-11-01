@@ -2,7 +2,7 @@ import type { Message } from '@a2a-js/sdk'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
-import { errAsync, ResultAsync } from 'neverthrow'
+import { errAsync, okAsync, type Result, ResultAsync } from 'neverthrow'
 
 import { extractMessageText } from '#a2a/message-text'
 import { logger } from '#logger'
@@ -19,8 +19,11 @@ import {
   strategyTaskStepJsonSchema,
 } from '#strategy-agent/agent-graph/step'
 import { withAsOf } from '#strategy-agent/as-of'
+import type { ExecutionToolRequest } from '#strategy-agent/execution-tool-client'
 import type { FetchSubagentDefinition } from '#strategy-agent/subagent-definition-client'
 import { createRunSubagentTool } from '#strategy-agent/subagent-tool'
+import type { FetchTaskExecutionSnapshot } from '#strategy-agent/task-execution-snapshot'
+import { createSnapshotSubagentDefinitionFetcher } from '#strategy-agent/task-execution-snapshot'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
 const DEFAULT_PURPOSE = 'default'
@@ -37,6 +40,10 @@ export interface StrategyAgentResult {
 
 export interface McpToolsClient {
   getTools(): Promise<DynamicStructuredTool[]>
+  callExecutionTool?(
+    request: ExecutionToolRequest,
+    signal?: AbortSignal,
+  ): Promise<Result<unknown, Error>>
   reserveModelCall(callId: string): Promise<void>
   reserveSubagentRun(input: {
     readonly callId: string
@@ -58,6 +65,7 @@ interface SubagentExecutionIdentity {
 
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
+  readonly fetchTaskExecutionSnapshot: FetchTaskExecutionSnapshot
   readonly fetchSubagentDefinition: FetchSubagentDefinition
   readonly createMcpClient: (
     strategyId: string,
@@ -163,8 +171,21 @@ export const runStrategyAgent = async (
 
   return Promise.resolve()
     .then(() =>
-      deps
-        .fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
+      deps.fetchTaskExecutionSnapshot(strategyId, strategyTaskId, taskId),
+    )
+    .then((snapshotResult) => {
+      if (snapshotResult.isErr()) return toErrorResult(snapshotResult.error)
+      const snapshot = snapshotResult.value
+      const agentConfigResult =
+        snapshot === undefined
+          ? deps.fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
+          : okAsync(snapshot.agentConfig)
+      const fetchSubagentDefinition = createSnapshotSubagentDefinitionFetcher(
+        snapshot,
+        deps.fetchSubagentDefinition,
+      )
+
+      return agentConfigResult
         .andThen((agentConfig) => {
           const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
           if (parsedGraph.isErr()) {
@@ -178,7 +199,9 @@ export const runStrategyAgent = async (
                 deps.createMcpClient(
                   strategyId,
                   strategyTaskId,
-                  `${taskId}:${executionStepId}`,
+                  executionStepId === undefined
+                    ? taskId
+                    : `${taskId}:${executionStepId}`,
                   parsedGraph.value.toolModels ?? {},
                 ),
               createSubagentTool: (
@@ -193,7 +216,7 @@ export const runStrategyAgent = async (
                   parentExecutionStepId,
                   recorder,
                   parentMcpClient,
-                  fetchDefinition: deps.fetchSubagentDefinition,
+                  fetchDefinition: fetchSubagentDefinition,
                   createMcpClient: (executionStepId, definitionKey) =>
                     deps.createMcpClient(
                       strategyId,
@@ -232,7 +255,7 @@ export const runStrategyAgent = async (
             (error) => error,
           )
         })
-        .match((r) => r, toErrorResult),
-    )
+        .match((r) => r, toErrorResult)
+    })
     .catch((error: unknown) => toErrorResult(error))
 }

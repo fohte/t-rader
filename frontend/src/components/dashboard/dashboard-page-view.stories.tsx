@@ -116,6 +116,9 @@ const args: DashboardPageViewProps = {
   events: [
     {
       kind: 'event',
+      fiscal_period_type: null,
+      has_matching_earnings_summary: false,
+      references: [],
       event_date: '2026-10-14',
       event_at: null,
       time_of_day: '引け後',
@@ -180,6 +183,7 @@ const args: DashboardPageViewProps = {
       purpose: null,
       as_of: null,
       error_summary: null,
+      model_call_limit_reached: false,
       created_at: '2026-10-10T03:00:00Z',
       updated_at: '2026-10-10T03:00:00Z',
     },
@@ -203,7 +207,6 @@ const paths = [
   '/trades',
   '/trades/$tradeId',
   '/calendar',
-  '/review',
   '/notes',
   '/notes/$noteId',
   '/annotations/$annoId',
@@ -242,7 +245,7 @@ export const Populated: Story = {
 }
 
 export const Empty: Story = {
-  name: 'shows the dashboard when no portfolio activity exists.',
+  name: 'shows the home page when no portfolio activity exists.',
   args: {
     ...args,
     stats: [
@@ -315,7 +318,7 @@ export const MissingMarketValue: Story = {
 }
 
 export const Loading: Story = {
-  name: 'shows loading placeholders while dashboard data is fetched.',
+  name: 'shows loading placeholders while home data is fetched.',
   args: {
     ...args,
     stats: null,

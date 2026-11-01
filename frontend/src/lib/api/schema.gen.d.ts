@@ -691,6 +691,42 @@ export interface paths {
     patch: operations['update_note_kind']
     trace?: never
   }
+  '/api/note-tags': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートタグ一覧 */
+    get: operations['list_note_tags']
+    put?: never
+    /** ノートタグを作成 */
+    post: operations['create_note_tag']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/note-tags/{key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** ノートタグを削除 */
+    delete: operations['delete_note_tag']
+    options?: never
+    head?: never
+    /** ノートタグを部分更新する (key は変更不可) */
+    patch: operations['update_note_tag']
+    trace?: never
+  }
   '/api/note-versions/pending': {
     parameters: {
       query?: never
@@ -720,6 +756,23 @@ export interface paths {
     put?: never
     /** ノート作成 */
     post: operations['create_note']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/overview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノート一覧の代表・現行・最新 unread バージョン */
+    get: operations['list_note_overviews']
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1413,6 +1466,60 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/tasks/{task_id}/execution-artifacts': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** task 開始時点で固定した定義を取得する。 */
+    get: operations['get_task_execution_artifacts']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * task に属する payload manifest の live 一覧を有限ページで取得する。
+     * @description total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
+     */
+    get: operations['list_task_execution_payload_manifests']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** task に紐づく payload の固定 manifest と有限 page を取得する。 */
+    get: operations['get_task_execution_payload']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/tasks/{task_id}/notes': {
     parameters: {
       query?: never
@@ -1733,6 +1840,12 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    ApproveNoteVersionRequest: {
+      /** @description 任意のラベル。 */
+      label?: string | null
+      /** @description 理由付きで無視した警告の値・位置・理由を確認したことを示す。 */
+      warning_dispositions_confirmed?: boolean | null
+    }
     Bar: {
       /** Format: double */
       close: number
@@ -1749,23 +1862,30 @@ export interface components {
       /** Format: int64 */
       volume: number
     }
+    /** @enum {string} */
+    CalendarEventReferenceKindResponse:
+      'earnings_summary' | 'individual_document' | 'official_listing'
+    CalendarEventReferenceResponse: {
+      /** Format: date-time */
+      checked_at: string
+      external_id: string
+      kind: components['schemas']['CalendarEventReferenceKindResponse']
+      publication_evidence?: string | null
+      publication_evidence_url?: string | null
+      source: string
+      /** Format: date */
+      target_period_end?: string | null
+      /** Format: date */
+      target_period_start?: string | null
+      target_period_type?: string | null
+      title: string
+      url?: string | null
+    }
     CalendarEventResponse:
-      | {
-          category: string
-          country: string
-          /** Format: date-time */
-          event_at?: string | null
-          /** Format: date */
-          event_date: string
-          external_id: string
-          fiscal_period?: string | null
+      | (components['schemas']['CalendarEventResponseEvent'] & {
           /** @enum {string} */
           kind: 'event'
-          source: string
-          stock_id?: string | null
-          time_of_day?: string | null
-          title: string
-        }
+        })
       | {
           count: number
           country: string
@@ -1774,6 +1894,23 @@ export interface components {
           /** @enum {string} */
           kind: 'other_earnings_summary'
         }
+    CalendarEventResponseEvent: {
+      category: string
+      country: string
+      /** Format: date-time */
+      event_at?: string | null
+      /** Format: date */
+      event_date: string
+      external_id: string
+      fiscal_period?: string | null
+      fiscal_period_type?: string | null
+      has_matching_earnings_summary: boolean
+      references: components['schemas']['CalendarEventReferenceResponse'][]
+      source: string
+      stock_id?: string | null
+      time_of_day?: string | null
+      title: string
+    }
     CalendarEventsResponse: {
       events: components['schemas']['CalendarEventResponse'][]
       /** Format: date */
@@ -1933,6 +2070,11 @@ export interface components {
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
     }
+    CreateNoteTagRequest: {
+      description?: string | null
+      display_name: string
+      key: string
+    }
     CreatePaperAccountRequest: {
       benchmark_stock_id?: string | null
       /** Format: double */
@@ -2056,6 +2198,91 @@ export interface components {
     ErrorResponse: {
       /** @description エラーメッセージ */
       error: string
+    }
+    ExecutionArtifactsResponse: {
+      definition_snapshots: components['schemas']['ExecutionDefinitionSnapshotResponse'][]
+      /** Format: uuid */
+      task_id: string
+    }
+    ExecutionDefinitionSnapshotResponse: {
+      /** Format: date-time */
+      created_at: string
+      definition: unknown
+      definition_key: string
+      digest: string
+      /** Format: uuid */
+      task_id: string
+    }
+    ExecutionPayloadCaptureMetadataResponse: {
+      /** Format: date-time */
+      captured_at: string
+      /** Format: int64 */
+      expected_count?: number | null
+      /** Format: int64 */
+      missing_count?: number | null
+      /** Format: int64 */
+      received_count: number
+      /** Format: int64 */
+      unretrieved_count?: number | null
+    }
+    ExecutionPayloadManifestPageResponse: {
+      cursor?: string | null
+      items: components['schemas']['ExecutionPayloadManifestResponse'][]
+      next_cursor?: string | null
+      /** Format: uuid */
+      task_id: string
+      /**
+       * Format: int64
+       * @description 取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。
+       */
+      total_count: number
+    }
+    ExecutionPayloadManifestResponse: {
+      /** Format: int64 */
+      byte_count: number
+      capture_metadata?:
+        null | components['schemas']['ExecutionPayloadCaptureMetadataResponse']
+      /** Format: int64 */
+      chunk_count: number
+      /** Format: date-time */
+      created_at: string
+      digest?: string | null
+      /** Format: uuid */
+      execution_step_id?: string | null
+      /** Format: uuid */
+      id: string
+      incomplete_reason?: string | null
+      /** Format: int64 */
+      item_count: number
+      kind: string
+      root_is_array: boolean
+      schema: unknown
+      /** Format: date-time */
+      sealed_at?: string | null
+      source: string
+      source_locator?: unknown
+      source_metadata: unknown
+      source_revision?: string | null
+      status: string
+      /** Format: uuid */
+      task_id: string
+    }
+    ExecutionPayloadPageResponse: {
+      /** Format: int64 */
+      cursor: number
+      data: unknown
+      digest: string
+      /** Format: int64 */
+      next_cursor?: number | null
+      /** Format: uuid */
+      payload_id: string
+      pointer: string
+      /** Format: int64 */
+      total_count: number
+    }
+    ExecutionPayloadResponse: {
+      manifest: components['schemas']['ExecutionPayloadManifestResponse']
+      page?: null | components['schemas']['ExecutionPayloadPageResponse']
     }
     GraphDef: {
       edges: components['schemas']['GraphEdge'][]
@@ -2266,6 +2493,18 @@ export interface components {
       incoming: components['schemas']['NoteLinkItem'][]
       outgoing: components['schemas']['NoteLinkItem'][]
     }
+    NoteOverviewResponse: {
+      current?: null | components['schemas']['NoteVersion']
+      latest_unread?: null | components['schemas']['NoteVersion']
+      representative: components['schemas']['Note']
+      /** Format: int64 */
+      unread_version_count: number
+    }
+    NoteTag: {
+      description?: string | null
+      display_name: string
+      key: string
+    }
     /**
      * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
      * @enum {string}
@@ -2293,6 +2532,7 @@ export interface components {
       title: string
       /** Format: int32 */
       version_no: number
+      warning_dispositions: components['schemas']['WarningDispositionResponse'][]
     }
     PaperAccount: {
       benchmark_stock_id?: string | null
@@ -2881,6 +3121,8 @@ export interface components {
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
+      /** @description いずれかの step がモデル呼び出し上限で打ち切られたことを示す。 */
+      model_call_limit_reached: boolean
       phase: string
       prompt: string
       /**
@@ -2928,6 +3170,8 @@ export interface components {
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
+      /** @description いずれかの step がモデル呼び出し上限で打ち切られたことを示す。 */
+      model_call_limit_reached: boolean
       phase: string
       prompt: string
       /** @description 投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。 */
@@ -3086,6 +3330,10 @@ export interface components {
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
     }
+    UpdateNoteTagRequest: {
+      description?: string | null
+      display_name?: string | null
+    }
     UpdateRssFeedRequest: {
       /** @description 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。 */
       content_source?: string | null
@@ -3148,6 +3396,26 @@ export interface components {
       schedule?: string | null
     }
     Value: unknown
+    WarningDispositionLocationResponse:
+      | {
+          end: number
+          /** @enum {string} */
+          kind: 'body'
+          start: number
+        }
+      | {
+          end: number
+          /** @enum {string} */
+          kind: 'graph'
+          path: string
+          start: number
+        }
+    WarningDispositionResponse: {
+      location: components['schemas']['WarningDispositionLocationResponse']
+      reason: string
+      value: string
+      warning_id: string
+    }
     /** @enum {string} */
     WidgetAggregationRequest: 'mkt_cap_weighted' | 'mean' | 'sum' | 'count'
     /** @enum {string} */
@@ -6267,6 +6535,203 @@ export interface operations {
       }
     }
   }
+  list_note_tags: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteTag'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_note_tag: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateNoteTagRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteTag']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description key が既存と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_note_tag: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノートタグ key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_note_tag: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノートタグ key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateNoteTagRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteTag']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_pending_note_versions: {
     parameters: {
       query?: never
@@ -6378,6 +6843,52 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_note_overviews: {
+    parameters: {
+      query?: {
+        /**
+         * @description 表示対象。`all` は現行優先、`pending` は最新 unread のみを返す。
+         * @example all
+         */
+        view?: string
+        /** @description ノート属性で絞り込む。 */
+        kind?: string
+        /** @description view が選んだ代表バージョンのタグで絞り込む。 */
+        tag?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteOverviewResponse'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
         headers: {
           [name: string]: unknown
         }
@@ -6810,7 +7321,7 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json': components['schemas']['ChangeStatusRequest']
+        'application/json': components['schemas']['ApproveNoteVersionRequest']
       }
     }
     responses: {
@@ -6822,7 +7333,7 @@ export interface operations {
           'application/json': components['schemas']['NoteVersion']
         }
       }
-      /** @description リクエストパラメータが不正 */
+      /** @description リクエストパラメータが不正、または警告の確認が必要 */
       400: {
         headers: {
           [name: string]: unknown
@@ -8091,7 +8602,12 @@ export interface operations {
   }
   list_stock_financial_summaries: {
     parameters: {
-      query?: never
+      query?: {
+        /** @description 対象期末。期区分と同時に指定する */
+        current_period_end?: string
+        /** @description 対象期区分。期末と同時に指定する */
+        current_period_type?: 'FY' | '1Q' | '2Q' | '3Q' | '4Q'
+      }
       header?: never
       path: {
         /** @description 銘柄 ID */
@@ -8107,6 +8623,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['StockFinancialSummaryResponse'][]
+        }
+      }
+      /** @description 検索条件が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       500: {
@@ -9064,6 +9589,162 @@ export interface operations {
         }
       }
       /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_task_execution_artifacts: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExecutionArtifactsResponse']
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_task_execution_payload_manifests: {
+    parameters: {
+      query?: {
+        cursor?: string
+        limit?: number
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExecutionPayloadManifestPageResponse']
+        }
+      }
+      /** @description パスまたは page パラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_task_execution_payload: {
+    parameters: {
+      query?: {
+        pointer?: string
+        cursor?: number
+        limit?: number
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+        /** @description payload ID */
+        payload_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExecutionPayloadResponse']
+        }
+      }
+      /** @description パスまたは page パラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown

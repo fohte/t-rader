@@ -19,7 +19,7 @@ use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::strategy_task::StrategyTaskReconcileUseCases;
-use core_application::web_search::SharedWebSearchClient;
+use core_application::tavily_credit_budget::SharedTavilyCreditBudgetUseCases;
 use entrypoint_frontend_api::{AppError, ErrorResponse, FrontendApiState};
 use gateway_postgres::DatabaseHandle;
 use sea_orm::ConnectionTrait;
@@ -55,6 +55,7 @@ pub fn build_http_state(
         indicator_observation_use_cases: use_cases.indicator_observations(),
         ingest_status_use_case: Arc::new(use_cases.ingest_status()),
         note_kind_use_cases: use_cases.note_kinds(),
+        note_tag_use_cases: use_cases.note_tags(),
         note_read_use_cases: use_cases.note_reads(),
         note_use_cases: use_cases.notes(),
         paper_trade_use_cases: use_cases.paper_trade(),
@@ -67,6 +68,7 @@ pub fn build_http_state(
         screener_use_cases: use_cases.screener(),
         subagent_definition_use_cases: use_cases.subagent_definitions(),
         strategy_scope_use_cases: Arc::new(use_cases.strategy_scope()),
+        strategy_execution_use_cases: use_cases.strategy_executions(),
         strategy_task_use_cases: use_cases.strategy_tasks(),
         strategy_earnings_target_use_cases: use_cases.strategy_earnings_targets(),
         strategy_use_cases: use_cases.strategies(),
@@ -129,7 +131,7 @@ pub fn create_router(
     external_webhook_state: entrypoint_external_webhook::ExternalWebhookState,
     mcp_use_cases: crate::services::use_cases::UseCases,
     mcp_daily_bar_source: Option<SharedDailyBarSource>,
-    mcp_web_search_client: Option<SharedWebSearchClient>,
+    tavily_credit_budget: Option<SharedTavilyCreditBudgetUseCases>,
     health_db: DatabaseHandle,
 ) -> Router {
     let agent_task_client = state.agent_task_client.clone();
@@ -159,7 +161,7 @@ pub fn create_router(
             mcp_daily_bar_source,
             kata_executor,
             llm_gateway_client,
-            mcp_web_search_client,
+            tavily_credit_budget,
             mcp::allowed_hosts_from_env(),
         ))
 }

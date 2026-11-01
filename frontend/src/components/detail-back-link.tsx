@@ -5,13 +5,22 @@ import { type NotesTab, notesTabSearch } from '#components/notes/notes-tabs'
 type DetailBackLinkProps = {
   label: string
   tab?: NotesTab
+  notesSearch?: {
+    view?: 'all' | 'pending'
+    kind?: string
+    tag?: string
+  }
 }
 
-export function DetailBackLink({ label, tab }: DetailBackLinkProps) {
+export function DetailBackLink({
+  label,
+  tab,
+  notesSearch,
+}: DetailBackLinkProps) {
   return (
     <Link
       to="/notes"
-      search={notesTabSearch(tab ?? 'notes')}
+      search={{ ...notesTabSearch(tab ?? 'notes'), ...notesSearch }}
       className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
     >
       &lt; {label}

@@ -739,6 +739,13 @@ mod tests {
             Ok(Vec::new())
         }
 
+        async fn list_model_call_limit_reached_task_ids(
+            &self,
+            _task_ids: &[Uuid],
+        ) -> Result<Vec<Uuid>, StrategyTaskRepositoryError> {
+            Ok(Vec::new())
+        }
+
         async fn list_in_flight(&self) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
             Ok(Vec::new())
         }

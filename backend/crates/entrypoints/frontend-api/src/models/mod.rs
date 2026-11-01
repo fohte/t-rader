@@ -10,6 +10,7 @@ pub mod config;
 pub mod custom_indicator;
 pub mod custom_indicator_evaluation;
 pub mod dashboard;
+pub mod execution_artifact;
 pub mod group_axis;
 pub mod import;
 pub mod ingest_status;
@@ -17,6 +18,8 @@ pub mod instrument;
 pub mod margin;
 pub mod note;
 pub mod note_kind;
+pub mod note_overview;
+pub mod note_tag;
 pub mod note_version;
 pub mod paper_account;
 pub mod portfolio_history;
@@ -55,6 +58,9 @@ pub use custom_indicator::{
 };
 pub use custom_indicator_evaluation::CustomIndicatorEvaluationResponse;
 pub use dashboard::{CreateDashboardRequest, DashboardResponse, UpdateDashboardRequest};
+pub use execution_artifact::{
+    ExecutionArtifactsResponse, ExecutionPayloadManifestPageResponse, ExecutionPayloadResponse,
+};
 pub use group_axis::GroupAxisResponse;
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiPreviewIssue, SbiPreviewResponse, SbiPreviewRow,
@@ -62,7 +68,11 @@ pub use import::{
 pub use ingest_status::IngestStatusResponse;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use note_kind::NoteKindResponse;
-pub use note_version::{NoteVersionResponse, PendingNoteVersionResponse};
+pub use note_overview::NoteOverviewResponse;
+pub use note_tag::NoteTagResponse;
+pub use note_version::{
+    ApproveNoteVersionRequest, NoteVersionResponse, PendingNoteVersionResponse,
+};
 pub use paper_account::{
     CreatePaperAccountRequest, PaperAccountPortfolioResponse, PaperAccountResponse,
     PaperAccountStatsResponse,

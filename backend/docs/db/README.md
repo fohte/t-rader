@@ -7,7 +7,7 @@
 | [public.instruments](public.instruments.md)                                                     | 4       | 価格データの取得対象となる金融商品を管理する。                                                                                                     | BASE TABLE        |
 | [public.bars](public.bars.md)                                                                   | 9       | 銘柄ごとの 1 分足、1 時間足、日足の価格と出来高を保持する。                                                                                        | BASE TABLE        |
 | [public.strategy](public.strategy.md)                                                           | 6       | 投資判断と関連データを分けて管理する永続的な戦略ワークスペース。                                                                                   | BASE TABLE        |
-| [public.stock](public.stock.md)                                                                 | 6       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。                                             | BASE TABLE        |
+| [public.stock](public.stock.md)                                                                 | 7       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。                                             | BASE TABLE        |
 | [public.indicator](public.indicator.md)                                                         | 3       | マクロ指標などの参照先を定義する。                                                                                                                 | BASE TABLE        |
 | [public.note](public.note.md)                                                                   | 7       | ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。                                                                         | BASE TABLE        |
 | [public.note_ref](public.note_ref.md)                                                           | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                                                                                       | BASE TABLE        |
@@ -23,7 +23,7 @@
 | [public.strategy_investable_amount](public.strategy_investable_amount.md)                       | 5       | 戦略ごとに設定した投資可能額の履歴。                                                                                                               | BASE TABLE        |
 | [public.account_risk_policy](public.account_risk_policy.md)                                     | 3       | 口座全体に適用するリスク制限設定を保持する。                                                                                                       | BASE TABLE        |
 | [public.agent_config](public.agent_config.md)                                                   | 7       | purpose ごとのエージェント実行設定を保持する。                                                                                                     | BASE TABLE        |
-| [public.strategy_task_step](public.strategy_task_step.md)                                       | 15      | エージェントタスクを構成する実行ステップの状態と結果を記録する。                                                                                   | BASE TABLE        |
+| [public.strategy_task_step](public.strategy_task_step.md)                                       | 20      | エージェントタスクを構成する実行ステップの状態と結果を記録する。                                                                                   | BASE TABLE        |
 | [public.strategy_task_step_evidence](public.strategy_task_step_evidence.md)                     | 8       | 実行ステップが取得したデータのスナップショットと時刻を記録する。                                                                                   | BASE TABLE        |
 | [public.checkpoint](public.checkpoint.md)                                                       | 8       | 戦略・処理グラフごとに外部 stream の読み進め位置を保持する。                                                                                       | BASE TABLE        |
 | [public.trade_note](public.trade_note.md)                                                       | 4       | 取引と関連ノートおよび関連付け時のノートバージョンを結び付ける。                                                                                   | BASE TABLE        |
@@ -40,7 +40,7 @@
 | [public.valuation](public.valuation.md)                                                         | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                                                                                         | BASE TABLE        |
 | [public.valuation_ingested_date](public.valuation_ingested_date.md)                             | 1       | 株価評価指標データの取り込み済み日付を記録する。                                                                                                   | BASE TABLE        |
 | [public.note_kind](public.note_kind.md)                                                         | 5       | ノートの分類と、その分類に適用するレビュー設定を定義する。                                                                                         | BASE TABLE        |
-| [public.note_version](public.note_version.md)                                                   | 15      | ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。                                                                                 | BASE TABLE        |
+| [public.note_version](public.note_version.md)                                                   | 16      | ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。                                                                                 | BASE TABLE        |
 | [public.note_link](public.note_link.md)                                                         | 3       | ノートバージョン本文から別のノートへのリンクを保持する。                                                                                           | BASE TABLE        |
 | [public.financial_summary](public.financial_summary.md)                                         | 37      | 銘柄ごとの決算開示内容と業績予想を保持する。                                                                                                       | BASE TABLE        |
 | [public.large_volume_shareholding_documents](public.large_volume_shareholding_documents.md)     | 7       | EDINET の大量保有報告書と保有状況の明細を保持する。                                                                                                | BASE TABLE        |
@@ -67,13 +67,21 @@
 | [public.screener_stock_snapshot](public.screener_stock_snapshot.md)                             | 12      | スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。データと銘柄マスタの取り込み成功後に再生成し、個別登録銘柄は次回の再生成後に反映する。 | MATERIALIZED VIEW |
 | [public.bars_timestamp_coverage](public.bars_timestamp_coverage.md)                             | 4       | 銘柄と時間足ごとの最古・最新のバー時刻を保持する。                                                                                                 | BASE TABLE        |
 | [public.us_stock_sip_bar_refetch_progress](public.us_stock_sip_bar_refetch_progress.md)         | 7       | 米国株の SIP 足を再取得した銘柄と、再取得できない理由を保持する。                                                                                  | BASE TABLE        |
-| [public.us_stock_sip_bar_refetch_write_budget](public.us_stock_sip_bar_refetch_write_budget.md) | 3       | 米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。                                                                                        | BASE TABLE        |
+| [public.us_stock_sip_bar_refetch_write_budget](public.us_stock_sip_bar_refetch_write_budget.md) | 4       | 米国株 SIP 足の再取得で時間ごとに書き込んだ行数を保持する。                                                                                        | BASE TABLE        |
 | [public.us_stock_minute_bar_ingest_progress](public.us_stock_minute_bar_ingest_progress.md)     | 2       | 米国株の 1 分足を取得済みの終端時刻を保持する。                                                                                                    | BASE TABLE        |
 | [public.task_execution_definition_snapshot](public.task_execution_definition_snapshot.md)       | 5       | task 開始時の設定と初回参照した定義を不変 snapshot として保持する。                                                                                | BASE TABLE        |
 | [public.task_execution_payload](public.task_execution_payload.md)                               | 19      | task に属する input/output payload の revision、schema、完全性状態を保持する。                                                                     | BASE TABLE        |
 | [public.task_execution_payload_chunk](public.task_execution_payload_chunk.md)                   | 6       | payload の順序付き JSON chunk を追記専用で保持する。                                                                                               | BASE TABLE        |
 | [public.task_execution_state](public.task_execution_state.md)                                   | 8       | 戦略 task の固定期限と累計実行量を保持する。                                                                                                       | BASE TABLE        |
 | [public.execution_reservation](public.execution_reservation.md)                                 | 12      | task の実行量予約と送信状態を記録する。                                                                                                            | BASE TABLE        |
+| [public.calendar_event_reference](public.calendar_event_reference.md)                           | 15      | カレンダーイベントに対応する実績要約や公式資料への参照先と確認根拠を保持する。                                                                     | BASE TABLE        |
+| [public.tavily_credit_budget_state](public.tavily_credit_budget_state.md)                       | 14      | Tavily account 単位の UTC 日次・月次 credit 上限と照合状態を保持する。                                                                             | BASE TABLE        |
+| [public.tavily_credit_reservation](public.tavily_credit_reservation.md)                         | 12      | Tavily provider へ送る検索・抽出の account credit 予約、精算、再送結果を保持する。                                                                 | BASE TABLE        |
+| [public.tavily_retrieval_cache](public.tavily_retrieval_cache.md)                               | 7       | 認可範囲と credential 世代で分離した Tavily 検索結果と抽出本文の有効期間付き cache を保持する。                                                    | BASE TABLE        |
+| [public.calendar_event_sec_filing_check](public.calendar_event_sec_filing_check.md)             | 2       | SEC の資料を照合した最終日時をカレンダーイベントごとに保持する。                                                                                   | BASE TABLE        |
+| [public.calendar_event_macro_reference_check](public.calendar_event_macro_reference_check.md)   | 2       | 経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。                                                   | BASE TABLE        |
+| [public.us_stock_minute_bar_downsample_cursor](public.us_stock_minute_bar_downsample_cursor.md) | 2       | 米国株の 1 分足 downsample の再開位置を保持する。                                                                                                  | BASE TABLE        |
+| [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -251,6 +259,9 @@ erDiagram
 "public.task_execution_payload_chunk" }o--|| "public.task_execution_payload" : "FOREIGN KEY (payload_id) REFERENCES task_execution_payload(id) ON DELETE RESTRICT"
 "public.task_execution_state" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE"
 "public.execution_reservation" }o--|| "public.task_execution_state" : "FOREIGN KEY (task_id) REFERENCES task_execution_state(task_id) ON DELETE CASCADE"
+"public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
+"public.calendar_event_sec_filing_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
+"public.calendar_event_macro_reference_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -284,6 +295,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   varchar product_category
+  varchar cik
 }
 "public.indicator" {
   varchar id
@@ -463,6 +475,11 @@ erDiagram
   text span_id
   text error
   bigint seq
+  text kind
+  jsonb item_key
+  jsonb input_ref
+  jsonb output_ref
+  boolean model_call_limit_reached
 }
 "public.strategy_task_step_evidence" {
   uuid id
@@ -633,6 +650,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone reviewed_at
   jsonb resolved_price_references_json
+  jsonb warning_dispositions_json
 }
 "public.note_link" {
   uuid from_version_id FK
@@ -885,6 +903,7 @@ erDiagram
   smallint id
   timestamp_with_time_zone hour_started_at
   bigint rows_written
+  timestamp_with_time_zone next_allowed_at
 }
 "public.us_stock_minute_bar_ingest_progress" {
   text instrument_id FK
@@ -949,6 +968,79 @@ erDiagram
   jsonb response_json
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.calendar_event_reference" {
+  uuid id
+  uuid calendar_event_id FK
+  text kind
+  text source
+  text external_id
+  text title
+  text url
+  date target_period_start
+  date target_period_end
+  text target_period_type
+  text publication_evidence
+  text publication_evidence_url
+  timestamp_with_time_zone checked_at
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.tavily_credit_budget_state" {
+  smallint singleton_key
+  varchar_255_ account_id
+  numeric_12_6_ daily_limit
+  numeric_12_6_ monthly_limit
+  date day_start
+  numeric_12_6_ daily_used
+  numeric_12_6_ daily_carry
+  numeric_12_6_ day_provider_usage
+  timestamp_with_time_zone daily_blocked_until
+  date month_start
+  numeric_12_6_ monthly_used
+  numeric_12_6_ monthly_carry
+  numeric_12_6_ provider_usage
+  timestamp_with_time_zone updated_at
+}
+"public.tavily_credit_reservation" {
+  uuid reservation_id
+  varchar_255_ call_id
+  varchar_64_ request_fingerprint
+  varchar_16_ operation
+  varchar_24_ state
+  numeric_12_6_ reserved_credits
+  numeric_12_6_ settled_credits
+  date day_start
+  date month_start
+  jsonb outcome_json
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.tavily_retrieval_cache" {
+  bytea cache_key
+  varchar_16_ kind
+  jsonb payload_json
+  timestamp_with_time_zone fetched_at
+  timestamp_with_time_zone expires_at
+  uuid lease_token
+  timestamp_with_time_zone lease_expires_at
+}
+"public.calendar_event_sec_filing_check" {
+  uuid calendar_event_id FK
+  timestamp_with_time_zone checked_at
+}
+"public.calendar_event_macro_reference_check" {
+  uuid calendar_event_id FK
+  timestamp_with_time_zone checked_at
+}
+"public.us_stock_minute_bar_downsample_cursor" {
+  smallint singleton_key
+  timestamp_with_time_zone cursor_timestamp
+}
+"public.note_tag" {
+  text key
+  text display_name
+  text description
 }
 ```
 

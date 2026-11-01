@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use core_application::{
     strategy_execution::{
-        DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk, PayloadKind, PayloadManifest,
-        PayloadSeal, PayloadStatus, StrategyExecutionRepository, StrategyExecutionRepositoryError,
+        DefinitionSnapshot, PayloadCaptureMetadata, PayloadChunk, PayloadManifest, PayloadSeal,
+        PayloadStatus, StrategyExecutionRepository, StrategyExecutionRepositoryError,
     },
     unit_of_work::UnitOfWorkTransaction,
 };
@@ -21,6 +21,7 @@ use crate::{
         task_execution_definition_snapshot, task_execution_payload, task_execution_payload_chunk,
     },
     persistence::persistence_error,
+    strategy_execution_manifest_query,
     transaction::transaction_ref,
 };
 
@@ -50,6 +51,19 @@ impl StrategyExecutionRepository for PostgresStrategyExecutionRepository {
         .await
         .map(|row| row.map(Into::into))
         .map_err(database_error)
+    }
+
+    async fn list_definition_snapshots(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<DefinitionSnapshot>, StrategyExecutionRepositoryError> {
+        let rows = task_execution_definition_snapshot::Entity::find()
+            .filter(task_execution_definition_snapshot::Column::TaskId.eq(task_id))
+            .order_by_asc(task_execution_definition_snapshot::Column::DefinitionKey)
+            .all(&self.db)
+            .await
+            .map_err(database_error)?;
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     async fn insert_definition_snapshot(
@@ -335,6 +349,23 @@ impl StrategyExecutionRepository for PostgresStrategyExecutionRepository {
         row.map(TryInto::try_into).transpose()
     }
 
+    async fn count_payload_manifests(
+        &self,
+        task_id: Uuid,
+    ) -> Result<u64, StrategyExecutionRepositoryError> {
+        strategy_execution_manifest_query::count_payload_manifests(&self.db, task_id).await
+    }
+
+    async fn list_payload_manifests(
+        &self,
+        task_id: Uuid,
+        cursor: Option<core_application::strategy_execution::PayloadManifestCursor>,
+        limit: usize,
+    ) -> Result<Vec<PayloadManifest>, StrategyExecutionRepositoryError> {
+        strategy_execution_manifest_query::list_payload_manifests(&self.db, task_id, cursor, limit)
+            .await
+    }
+
     async fn list_payload_chunks(
         &self,
         task_id: Uuid,
@@ -422,70 +453,5 @@ impl From<task_execution_definition_snapshot::Model> for DefinitionSnapshot {
             digest: model.digest,
             created_at: model.created_at,
         }
-    }
-}
-
-impl TryFrom<task_execution_payload::Model> for PayloadManifest {
-    type Error = StrategyExecutionRepositoryError;
-
-    fn try_from(model: task_execution_payload::Model) -> Result<Self, Self::Error> {
-        let kind = match model.kind.as_str() {
-            "input" => PayloadKind::Input,
-            "output" => PayloadKind::Output,
-            _ => return Err(StrategyExecutionRepositoryError::InconsistentPayload),
-        };
-        let status = match model.status.as_str() {
-            "staging" => PayloadStatus::Staging,
-            "sealed" => PayloadStatus::Sealed,
-            "incomplete" => PayloadStatus::Incomplete,
-            _ => return Err(StrategyExecutionRepositoryError::InconsistentPayload),
-        };
-        Ok(Self {
-            id: model.id,
-            task_id: model.task_id,
-            execution_step_id: model.execution_step_id,
-            kind,
-            source: model.source,
-            source_revision: model.source_revision,
-            source_locator: model.source_locator,
-            source_metadata: model.source_metadata,
-            schema: model.schema,
-            capture_metadata: model
-                .capture_metadata
-                .map(serde_json::from_value::<PayloadCaptureMetadata>)
-                .transpose()
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-            root_is_array: model.root_is_array,
-            chunk_count: u64::try_from(model.chunk_count)
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-            item_count: u64::try_from(model.item_count)
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-            byte_count: u64::try_from(model.byte_count)
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-            digest: model.digest,
-            status,
-            incomplete_reason: model.incomplete_reason,
-            created_at: model.created_at,
-            sealed_at: model.sealed_at,
-        })
-    }
-}
-
-impl TryFrom<task_execution_payload_chunk::Model> for PayloadChunk {
-    type Error = StrategyExecutionRepositoryError;
-
-    fn try_from(model: task_execution_payload_chunk::Model) -> Result<Self, Self::Error> {
-        Ok(Self {
-            payload_id: model.payload_id,
-            sequence: u64::try_from(model.sequence)
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-            start_item: u64::try_from(model.start_item)
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-            data: model.data,
-            byte_count: u64::try_from(model.byte_count)
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-            item_count: u64::try_from(model.item_count)
-                .map_err(|_| StrategyExecutionRepositoryError::InconsistentPayload)?,
-        })
     }
 }

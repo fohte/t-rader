@@ -1,6 +1,7 @@
 use chrono::{DateTime, FixedOffset};
 use core_domain::markdown_lint::LintReport;
 use core_domain::note_body_warning::NoteBodyWarning;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -27,6 +28,7 @@ pub struct NoteVersion {
     pub frontmatter_json: Value,
     pub graphs_json: Value,
     pub resolved_price_references_json: Value,
+    pub warning_dispositions: Vec<NoteWarningDispositionRecord>,
     pub status: String,
     pub is_current: bool,
     pub change_reason: Option<String>,
@@ -83,6 +85,7 @@ pub struct NewNoteVersion {
     pub frontmatter_json: Value,
     pub graphs_json: Value,
     pub resolved_price_references_json: Value,
+    pub warning_dispositions: Vec<NoteWarningDispositionRecord>,
     pub status: String,
     pub is_current: bool,
     pub change_reason: Option<String>,
@@ -150,6 +153,28 @@ pub struct NoteListPage {
     pub has_more: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum NoteOverviewView {
+    #[default]
+    All,
+    Pending,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NoteOverviewQuery {
+    pub view: NoteOverviewView,
+    pub kind: Option<String>,
+    pub tag: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteOverview {
+    pub representative: NoteSnapshot,
+    pub current: Option<NoteVersion>,
+    pub latest_unread: Option<NoteVersion>,
+    pub unread_version_count: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NewNoteLink {
     pub from_version_id: Uuid,
@@ -179,6 +204,28 @@ pub struct NoteWriteCommand {
 pub struct NoteBodyWarningDisposition {
     pub id: String,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct NoteWarningDispositionRecord {
+    pub warning_id: String,
+    pub value: String,
+    pub location: NoteWarningDispositionLocation,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NoteWarningDispositionLocation {
+    Body {
+        start: usize,
+        end: usize,
+    },
+    Graph {
+        path: String,
+        start: usize,
+        end: usize,
+    },
 }
 
 #[derive(Debug, Clone)]

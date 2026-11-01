@@ -230,9 +230,10 @@ impl UsStockBarSource for AlpacaClient {
     async fn fetch_page(
         &self,
         query: &UsStockBarQuery,
+        max_rows: Option<u32>,
         deadline: Instant,
     ) -> Result<UsStockBarPage, UsStockBarSourceError> {
-        self.fetch_page_inner(query, deadline)
+        self.fetch_page_inner(query, max_rows, deadline)
             .await
             .map_err(source_error)
     }
@@ -253,6 +254,7 @@ impl AlpacaClient {
     async fn fetch_page_inner(
         &self,
         query: &UsStockBarQuery,
+        max_rows: Option<u32>,
         deadline: Instant,
     ) -> Result<UsStockBarPage, AlpacaError> {
         if query.instrument_ids.is_empty() {
@@ -274,7 +276,11 @@ impl AlpacaClient {
         request_query.instrument_ids = instrument_ids;
 
         let Some(response) = self
-            .fetch_json::<BarsResponse>(&self.url, &request_params(&request_query)?, deadline)
+            .fetch_json::<BarsResponse>(
+                &self.url,
+                &request_params(&request_query, max_rows)?,
+                deadline,
+            )
             .await?
         else {
             return Err(AlpacaError::RunDeadlineExceeded);
@@ -485,7 +491,10 @@ fn split_request_params(
     ])
 }
 
-fn request_params(query: &UsStockBarQuery) -> Result<Vec<(&'static str, String)>, AlpacaError> {
+fn request_params(
+    query: &UsStockBarQuery,
+    max_rows: Option<u32>,
+) -> Result<Vec<(&'static str, String)>, AlpacaError> {
     let symbols = query
         .instrument_ids
         .iter()
@@ -509,7 +518,7 @@ fn request_params(query: &UsStockBarQuery) -> Result<Vec<(&'static str, String)>
         ("end", query.to.to_rfc3339()),
         ("adjustment", "split".to_owned()),
         ("feed", "sip".to_owned()),
-        ("limit", RESPONSE_LIMIT.to_string()),
+        ("limit", max_rows.unwrap_or(RESPONSE_LIMIT).to_string()),
         ("sort", "asc".to_owned()),
     ];
     if let Some(page_token) = &query.page_token {
@@ -582,6 +591,7 @@ mod tests {
                         to: date("2040-01-03T00:00:00Z"),
                         page_token: None,
                     },
+                    None,
                     deadline(),
                 )
                 .await,
@@ -613,6 +623,7 @@ mod tests {
                         to: date("2040-01-03T00:00:00Z"),
                         page_token: None,
                     },
+                    None,
                     Instant::now() - Duration::from_secs(1),
                 )
                 .await,
@@ -671,6 +682,7 @@ mod tests {
                     to: date("2040-01-03T00:00:00Z"),
                     page_token: None,
                 },
+                None,
                 deadline(),
             )
             .await
@@ -698,6 +710,43 @@ mod tests {
                             .to_owned(),
                 }],
             },
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn uses_the_requested_page_limit_for_sip_refetch() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v2/stocks/bars"))
+            .and(query_param("symbols", "DEMO.SIP"))
+            .and(query_param("limit", "1000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "bars": {},
+                "next_page_token": null
+            })))
+            .mount(&server)
+            .await;
+        let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
+            .expect("test client is configured");
+
+        let actual = client
+            .fetch_page(
+                &UsStockBarQuery {
+                    instrument_ids: vec!["US:DEMO-SIP".to_owned()],
+                    timeframe: Timeframe::Daily,
+                    from: date("2040-01-01T00:00:00Z"),
+                    to: date("2040-01-02T00:00:00Z"),
+                    page_token: None,
+                },
+                Some(1_000),
+                deadline(),
+            )
+            .await;
+
+        assert_eq!(
+            actual,
+            Ok(core_application::bars::UsStockBarPage::default())
         );
     }
 
@@ -738,6 +787,7 @@ mod tests {
                     to: date("2039-01-02T12:00:00Z"),
                     page_token: None,
                 },
+                None,
                 deadline(),
             )
             .await
@@ -951,6 +1001,7 @@ mod tests {
                     to: date("2040-01-03T00:00:00Z"),
                     page_token: Some("synthetic-page".to_owned()),
                 },
+                None,
                 deadline(),
             )
             .await
@@ -985,6 +1036,7 @@ mod tests {
                     to: date("2040-01-03T00:00:00Z"),
                     page_token: None,
                 },
+                None,
                 deadline(),
             )
             .await;
@@ -1089,6 +1141,7 @@ mod tests {
                     to: date("2040-01-03T00:00:00Z"),
                     page_token: None,
                 },
+                None,
                 deadline(),
             )
             .await;

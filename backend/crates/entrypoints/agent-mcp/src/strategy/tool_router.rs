@@ -5,6 +5,7 @@
 
 mod calendar;
 mod execution_payload;
+mod graph_execution;
 mod movers;
 mod news;
 mod paper_trade;
@@ -49,7 +50,8 @@ use super::ref_terms::{
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::youtube::TOOL_NAME as QUERY_YOUTUBE_TOOL_NAME;
 use super::{
-    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
+    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, execution_task_id_from_ctx,
+    internal_error, tool_model_from_ctx,
 };
 
 #[tool_router(router = base_tool_router, vis = "pub(super)")]
@@ -88,7 +90,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Use title-bearing Markdown links for note references; bare UUIDs in visible body text are blocking errors and cannot be dismissed with warning_dispositions. When citing a note you read, use its body_reference Markdown link. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference matching daily (1d) bars already stored for those dates; query_data is not required. Fields for price and stock change are open, high, low, close, or volume, and stock change resolves to a percentage. Indicator changes use [[change:indicator:<id>@<start>..<end>]] and resolve from observations on both dates to a percentage. Use [[valuation:<id>@<date>:<field>]] for valuation fields per, fwd_per, pbr, roe, fwd_roe, mkt_cap, eps, fwd_eps, or bps, and [[indicator:<id>@<date>]] for an indicator observation. These values resolve from the specified date without query_data. Use [[eval:<evaluation-uuid>:<output-name>]] to reference a numeric output by its top-level key. Keep [[indicator:<id>]] for a plain reference link. Stock-reference chips display the resolved stock name. Do not repeat that name immediately after a [[stock:<id>]] token. If a duplicate-stock-name error is returned, edit the body and retry; warning_dispositions and reasons cannot dismiss it. The references remain in the body while their values are saved separately. Use ```widget fenced blocks in body_md to embed widget definitions; every block must pass widget validation and include time.as_of. Call query_widget with the same YAML to inspect its values. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Use graphs to show relationships, causal links, branches, and procedures instead of listing them in prose. Do not repeat graph content in the body; use the body for information that cannot be represented in a graph, such as judgments, reasons, and sources for numeric values. The warnings array lists unlinked numeric warnings in body_md and graph node/edge labels; graph-label messages include the graph and label location. The diagnostics array reports rule IDs, severity, UTF-8 byte ranges, and optional text edits for Markdown body findings. A write is rejected until each warning is fixed or covered by warning_dispositions with its id and a non-empty reason; a successful write means all warnings were covered. For price and relative warnings, if a value is not a stock price or stock price change rate, keep it in its current location and dismiss the warning with a non-empty reason in warning_dispositions instead of deleting it. For bar-count warnings, replace the candle count with the start and end dates. IDs use warning type, exact text, and occurrence order. If earlier identical warnings are removed, prior IDs for that same warning type and text still count toward the remaining occurrences. Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Use title-bearing Markdown links for note references; bare UUIDs in visible body text are blocking errors and cannot be dismissed with warning_dispositions. When citing a note you read, use its body_reference Markdown link. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference matching daily (1d) bars already stored for those dates; query_data is not required. Fields for price and stock change are open, high, low, close, or volume, and stock change resolves to a percentage. Indicator changes use [[change:indicator:<id>@<start>..<end>]] and resolve from observations on both dates to a percentage. Use [[valuation:<id>@<date>:<field>]] for valuation fields per, fwd_per, pbr, roe, fwd_roe, mkt_cap, eps, fwd_eps, or bps, and [[indicator:<id>@<date>]] for an indicator observation. These values resolve from the specified date without query_data. Use [[eval:<evaluation-uuid>:<output-name>]] to reference a numeric output by its top-level key. Keep [[indicator:<id>]] for a plain reference link. Stock-reference chips display the resolved stock name. Do not repeat that name immediately after a [[stock:<id>]] token. If a duplicate-stock-name error is returned, edit the body and retry; warning_dispositions and reasons cannot dismiss it. The references remain in the body while their values are saved separately. Use ```widget fenced blocks in body_md to embed widget definitions; every block must pass widget validation and include time.as_of. Call query_widget with the same YAML to inspect its values. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Use graphs to show relationships, causal links, branches, and procedures instead of listing them in prose. Do not repeat graph content in the body; use the body for information that cannot be represented in a graph, such as judgments, reasons, and sources for numeric values. The warnings array lists unlinked numeric warnings in body_md and graph node/edge labels; graph-label messages include the graph and label location. The diagnostics array reports rule IDs, severity, UTF-8 byte ranges, and optional text edits for Markdown body findings. A write is rejected until each warning is fixed or covered by warning_dispositions with its id and a non-empty reason; a successful write means all warnings were covered. If warning_dispositions is non-empty, the version remains unread and non-current until a human reviews each recorded value, location, and reason and explicitly confirms the exception during approval; note-kind auto-approval does not make it current. The tool does not accept a status field, and a version with non-empty warning_dispositions cannot be saved with status=approved. For price and relative warnings, if a value is not a stock price or stock price change rate, keep it in its current location and dismiss the warning with a non-empty reason in warning_dispositions instead of deleting it. For bar-count warnings, replace the candle count with the start and end dates. IDs use warning type, exact text, and occurrence order. If earlier identical warnings are removed, prior IDs for that same warning type and text still count toward the remaining occurrences. Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -268,7 +270,14 @@ impl StrategyServer {
     ) -> Result<Json<ReadPageResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let model = tool_model_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
-        self.read_page_inner(scope, model, params).await.map(Json)
+        let arguments = serde_json::to_value(&params).map_err(|error| {
+            internal_error(format!("failed to encode read_page request: {error}"))
+        })?;
+        let (call_id, fingerprint) =
+            tavily_call_identity(&ctx, scope.id(), READ_PAGE_TOOL_NAME, arguments)?;
+        self.read_page_inner(scope, model, params, call_id, fingerprint)
+            .await
+            .map(Json)
     }
 
     /// Tavily で web 検索し、記事の出典とスニペットを返す
@@ -283,7 +292,14 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.search_web_inner(scope, params).await.map(Json)
+        let arguments = serde_json::to_value(&params).map_err(|error| {
+            internal_error(format!("failed to encode search_web request: {error}"))
+        })?;
+        let (call_id, fingerprint) =
+            tavily_call_identity(&ctx, scope.id(), "search_web", arguments)?;
+        self.search_web_inner(params, call_id, fingerprint, scope.id().to_string())
+            .await
+            .map(Json)
     }
 
     /// 口座全体 (全戦略横断) の保有銘柄と実現損益、および接続元戦略のスライスを時価で返す
@@ -485,6 +501,31 @@ impl StrategyServer {
     }
 }
 
+fn tavily_call_identity(
+    context: &RequestContext<RoleServer>,
+    strategy_id: uuid::Uuid,
+    tool_name: &str,
+    arguments: serde_json::Value,
+) -> Result<(String, String), McpError> {
+    let call_id = tavily_call_id(strategy_id, execution_id_from_ctx(context), &context.id);
+    let fingerprint = super::execution_budget_router::request_fingerprint(&serde_json::json!({
+        "name": tool_name,
+        "arguments": arguments,
+    }))?;
+    Ok((call_id, fingerprint))
+}
+
+fn tavily_call_id(
+    strategy_id: uuid::Uuid,
+    execution_id: Option<String>,
+    request_id: &impl std::fmt::Display,
+) -> String {
+    match execution_id {
+        Some(execution_id) => format!("{execution_id}:{request_id}"),
+        None => format!("direct:{strategy_id}:{}", uuid::Uuid::new_v4()),
+    }
+}
+
 impl StrategyServer {
     pub(super) fn tool_router() -> ToolRouter<Self> {
         Self::base_tool_router()
@@ -500,6 +541,7 @@ impl StrategyServer {
             + Self::news_tool_router()
             + Self::widget_tool_router()
             + Self::execution_payload_tool_router()
+            + Self::graph_execution_tool_router()
     }
 
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
@@ -591,6 +633,7 @@ mod tests {
                 ("add_earnings_target", None),
                 ("add_ref_terms", None),
                 ("add_stock_to_group", None),
+                ("capture_dataset", None),
                 ("check_buyable_qty", Some(true)),
                 ("create_annotation", None),
                 ("create_stock_group", None),
@@ -625,6 +668,7 @@ mod tests {
                 ("read_prediction_stats", Some(true)),
                 ("read_sector_short_ratio", Some(true)),
                 ("read_shareholding_structure", Some(true)),
+                ("read_task_execution_snapshot", Some(true)),
                 ("read_short_sale_reports", Some(true)),
                 ("read_trades", Some(true)),
                 ("read_valuation", Some(true)),

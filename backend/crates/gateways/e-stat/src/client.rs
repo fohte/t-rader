@@ -6,6 +6,7 @@ use core_application::{
     calendar::source::{CalendarEventBatch, CalendarEventSource, CalendarEventSourceError},
     daily_bar_source::DateRange,
 };
+use rate_limit::{Quota, RateLimiter};
 use reqwest::Url;
 
 use crate::{
@@ -17,23 +18,68 @@ use crate::{
 const RELEASE_CALENDAR_URL: &str = "https://www.e-stat.go.jp/release-calendar";
 const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 const MAX_LOOKAHEAD_MONTHS: u32 = 12;
+const RATE_LIMIT_KEY_PREFIX: &str = "t-rader:ratelimit:";
+const RATE_LIMIT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+const RATE_LIMIT_MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+enum EStatRateLimiter {
+    Shared(RateLimiter),
+    #[cfg(test)]
+    Noop,
+}
+
+impl EStatRateLimiter {
+    async fn acquire(&self, url: &Url) -> Result<(), CalendarEventSourceError> {
+        let host = url
+            .host_str()
+            .ok_or_else(|| CalendarEventSourceError::Failed("e-Stat URL has no host".to_owned()))?;
+        match self {
+            Self::Shared(rate_limiter) => rate_limiter
+                .acquire(
+                    &[Quota::new(
+                        format!("official-source:{host}"),
+                        1,
+                        RATE_LIMIT_INTERVAL,
+                    )],
+                    RATE_LIMIT_MAX_WAIT,
+                )
+                .await
+                .map_err(|error| {
+                    CalendarEventSourceError::Failed(format!(
+                        "e-Stat shared rate limiter failed: {error}"
+                    ))
+                }),
+            #[cfg(test)]
+            Self::Noop => Ok(()),
+        }
+    }
+}
 
 pub struct EStatCalendarEventSource {
     http: reqwest::Client,
     base_url: Url,
+    rate_limiter: EStatRateLimiter,
 }
 
 impl EStatCalendarEventSource {
-    pub fn new() -> Result<Self, CalendarEventSourceError> {
+    pub fn new(redis_url: &str) -> Result<Self, CalendarEventSourceError> {
         let base_url = Url::parse(RELEASE_CALENDAR_URL).map_err(|error| {
             CalendarEventSourceError::Failed(format!(
                 "invalid e-Stat release calendar URL: {error}"
             ))
         })?;
-        Self::from_base_url(base_url)
+        let rate_limiter = RateLimiter::new(redis_url, RATE_LIMIT_KEY_PREFIX).map_err(|error| {
+            CalendarEventSourceError::Failed(format!(
+                "failed to initialize e-Stat rate limiter: {error}"
+            ))
+        })?;
+        Self::build(base_url, EStatRateLimiter::Shared(rate_limiter))
     }
 
-    fn from_base_url(base_url: Url) -> Result<Self, CalendarEventSourceError> {
+    fn build(
+        base_url: Url,
+        rate_limiter: EStatRateLimiter,
+    ) -> Result<Self, CalendarEventSourceError> {
         let http = reqwest::Client::builder()
             .timeout(HTTP_TIMEOUT)
             .user_agent("t-rader calendar importer")
@@ -44,7 +90,16 @@ impl EStatCalendarEventSource {
                 ))
             })?;
 
-        Ok(Self { http, base_url })
+        Ok(Self {
+            http,
+            base_url,
+            rate_limiter,
+        })
+    }
+
+    #[cfg(test)]
+    fn from_base_url(base_url: Url) -> Result<Self, CalendarEventSourceError> {
+        Self::build(base_url, EStatRateLimiter::Noop)
     }
 
     async fn fetch_month(
@@ -55,6 +110,7 @@ impl EStatCalendarEventSource {
         let mut url = self.base_url.clone();
         url.query_pairs_mut()
             .append_pair("page_month", &month_param);
+        self.rate_limiter.acquire(&url).await?;
         let response = self.http.get(url).send().await.map_err(|error| {
             CalendarEventSourceError::Failed(format!(
                 "failed to fetch e-Stat release calendar for {month_param}: {error}"

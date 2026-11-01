@@ -12,9 +12,12 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { TaskRunDefinitionSnapshotPanel } from '#components/strategy-shell/task-run-definition-snapshot-panel'
+import { TaskRunPayloadPanel } from '#components/strategy-shell/task-run-payload-panel'
 import {
   sourceLabel,
   TaskRunView,
@@ -45,6 +48,7 @@ async function renderTaskView(
   task: TaskRun,
   notes: TaskRunNote[] = [],
   notesState: ComponentProps<typeof TaskRunView>['notesState'] = 'success',
+  additionalProps: Partial<ComponentProps<typeof TaskRunView>> = {},
 ) {
   const rootRoute = createRootRoute({
     component: () => (
@@ -55,6 +59,7 @@ async function renderTaskView(
         configPhases={[]}
         notes={notes}
         notesState={notesState}
+        {...additionalProps}
       />
     ),
   })
@@ -104,6 +109,34 @@ function readNotesOutput() {
       title: link.textContent,
       href: link.getAttribute('href'),
     })),
+  }
+}
+
+function readPayloadPanelOutput(section: HTMLElement) {
+  return {
+    title: section.querySelector('h2')?.textContent,
+    messages: Array.from(section.querySelectorAll('p')).map((paragraph) =>
+      paragraph.textContent.trim(),
+    ),
+    content: section.querySelector('pre')?.textContent ?? null,
+    nextPage:
+      Array.from(section.querySelectorAll('button')).find((button) =>
+        button.textContent.includes('次のページを表示'),
+      )?.textContent ?? null,
+  }
+}
+
+function readDefinitionSnapshotOutput() {
+  const section = screen.getByRole('region', { name: '実行時の固定定義' })
+  return {
+    selectedKey: screen.getByRole('combobox', { name: '固定定義 snapshot' })
+      .textContent,
+    metadata: Array.from(
+      section.querySelectorAll(
+        '[data-testid="definition-snapshot-metadata"] dt, [data-testid="definition-snapshot-metadata"] dd',
+      ),
+    ).map((element) => element.textContent),
+    definition: section.querySelector('pre')?.textContent ?? null,
   }
 }
 
@@ -181,5 +214,271 @@ describe('TaskRunView', () => {
       emptyMessage: 'この実行で作成・更新されたノートはありません。',
       notes: [],
     })
+  })
+
+  it('payload page の全件数と表示件数、次ページを区別する', async () => {
+    await renderTaskView(makeTask(), [], 'success', {
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000001',
+        label: 'input: source',
+        pointer: '/records',
+        cursor: 0,
+        limit: 2,
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'sealed',
+          itemCount: 5,
+          incompleteReason: null,
+        },
+        page: {
+          data: [{ value: 'sample-a' }, { value: 'sample-b' }],
+          totalCount: 5,
+          nextCursor: 2,
+        },
+      },
+      onNextPayloadPage: () => {},
+    })
+
+    const section = screen.getByRole('region', { name: '実行 payload' })
+    expect(readPayloadPanelOutput(section)).toEqual({
+      title: 'input: source',
+      messages: [
+        '00000000-0000-4000-8000-000000000001 · pointer /records',
+        '全 5 件 · 表示 2 件',
+      ],
+      content:
+        '[\n  {\n    "value": "sample-a"\n  },\n  {\n    "value": "sample-b"\n  }\n]',
+      nextPage: '次のページを表示',
+    })
+  })
+
+  it('ネスト配列 pointer を適用すると cursor を先頭に戻して bounded page を選び直す', async () => {
+    const user = userEvent.setup()
+    const onSelectPayload = vi.fn()
+    await renderTaskView(makeTask(), [], 'success', {
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000003',
+        label: '出力',
+        pointer: '/value',
+        cursor: 8,
+        limit: 2,
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'sealed',
+          itemCount: 3,
+          incompleteReason: null,
+        },
+        page: {
+          data: { items: [{ value: 'synthetic-a' }, { value: 'synthetic-b' }] },
+          totalCount: 1,
+          nextCursor: null,
+        },
+      },
+      onSelectPayload,
+    })
+
+    await user.clear(screen.getByRole('textbox', { name: 'JSON Pointer' }))
+    await user.type(
+      screen.getByRole('textbox', { name: 'JSON Pointer' }),
+      '/value/items',
+    )
+    await user.click(screen.getByRole('button', { name: 'pointer を適用' }))
+
+    expect(onSelectPayload.mock.calls).toEqual([
+      [
+        {
+          payloadId: '00000000-0000-4000-8000-000000000003',
+          label: '出力',
+          pointer: '/value/items',
+          cursor: 0,
+          limit: 2,
+        },
+      ],
+    ])
+  })
+
+  it('保存済み definition_snapshots から custom_indicator を選んで本文と metadata を表示する', async () => {
+    const user = userEvent.setup()
+    await renderTaskView(makeTask(), [], 'success', {
+      definitionSnapshotsState: 'ready',
+      definitionSnapshots: [
+        {
+          definitionKey: 'task_start',
+          taskId: 'sample-task',
+          digest: 'synthetic-task-digest',
+          createdAt: '2026-08-15T00:00:00.000Z',
+          definition: { config: 'synthetic task definition' },
+        },
+        {
+          definitionKey: 'custom_indicator:sample-indicator',
+          taskId: 'sample-task',
+          digest: 'synthetic-indicator-digest',
+          createdAt: '2026-08-15T00:00:01.000Z',
+          definition: {
+            name: 'sample-indicator',
+            code: 'synthetic code body',
+            metadata: { revision: 'synthetic-r1' },
+          },
+        },
+      ],
+    })
+
+    await user.click(
+      screen.getByRole('combobox', { name: '固定定義 snapshot' }),
+    )
+    await user.click(
+      await screen.findByRole('option', {
+        name: 'custom_indicator:sample-indicator',
+      }),
+    )
+    await user.click(screen.getByText('固定定義本文を表示'))
+
+    expect(readDefinitionSnapshotOutput()).toEqual({
+      selectedKey: 'custom_indicator:sample-indicator',
+      metadata: [
+        '定義キー',
+        'custom_indicator:sample-indicator',
+        'SHA-256',
+        'synthetic-indicator-digest',
+        '記録日時',
+        '2026-08-15T00:00:01.000Z',
+        'task ID',
+        'sample-task',
+      ],
+      definition:
+        '{\n  "name": "sample-indicator",\n  "code": "synthetic code body",\n  "metadata": {\n    "revision": "synthetic-r1"\n  }\n}',
+    })
+  })
+
+  it('未完了 payload の理由だけを表示し内容を表示しない', async () => {
+    await renderTaskView(makeTask(), [], 'success', {
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000002',
+        label: '出力',
+        pointer: '/value',
+      },
+      payloadRead: {
+        status: 'ready',
+        manifest: {
+          status: 'incomplete',
+          itemCount: 0,
+          incompleteReason: 'capture interrupted',
+        },
+        page: null,
+      },
+    })
+
+    const section = screen.getByRole('region', { name: '実行 payload' })
+    expect(readPayloadPanelOutput(section)).toEqual({
+      title: '出力',
+      messages: [
+        '00000000-0000-4000-8000-000000000002 · pointer /value',
+        'payload は未完了のため内容を表示できません。 capture interrupted',
+      ],
+      content: null,
+      nextPage: null,
+    })
+  })
+})
+
+describe('TaskRunDefinitionSnapshotPanel', () => {
+  it('initialSelectedKey で選んだ固定定義の本文を開いて表示する', () => {
+    render(
+      <TaskRunDefinitionSnapshotPanel
+        snapshots={[
+          {
+            definitionKey: 'task_start',
+            taskId: 'sample-task',
+            digest: 'synthetic-task-digest',
+            createdAt: '2026-08-15T00:00:00.000Z',
+            definition: { config: 'synthetic task definition' },
+          },
+          {
+            definitionKey: 'custom_indicator:sample-indicator',
+            taskId: 'sample-task',
+            digest: 'synthetic-indicator-digest',
+            createdAt: '2026-08-15T00:00:01.000Z',
+            definition: {
+              name: 'sample-indicator',
+              code: 'synthetic code body',
+              metadata: { revision: 'synthetic-r1' },
+            },
+          },
+        ]}
+        state="ready"
+        initialSelectedKey="custom_indicator:sample-indicator"
+        definitionBodyOpen
+      />,
+    )
+
+    expect(readDefinitionSnapshotOutput()).toEqual({
+      selectedKey: 'custom_indicator:sample-indicator',
+      metadata: [
+        '定義キー',
+        'custom_indicator:sample-indicator',
+        'SHA-256',
+        'synthetic-indicator-digest',
+        '記録日時',
+        '2026-08-15T00:00:01.000Z',
+        'task ID',
+        'sample-task',
+      ],
+      definition:
+        '{\n  "name": "sample-indicator",\n  "code": "synthetic code body",\n  "metadata": {\n    "revision": "synthetic-r1"\n  }\n}',
+    })
+  })
+})
+
+describe('TaskRunPayloadPanel', () => {
+  it('initialPointerDraft を表示して適用時に先頭 cursor を選ぶ', async () => {
+    const user = userEvent.setup()
+    const onSelectPayload = vi.fn()
+    render(
+      <TaskRunPayloadPanel
+        reference={{
+          payloadId: '00000000-0000-4000-8000-000000000004',
+          label: '出力',
+          pointer: '/value',
+          cursor: 8,
+          limit: 2,
+        }}
+        initialPointerDraft="/value/items"
+        payloadRead={{
+          status: 'ready',
+          manifest: {
+            status: 'sealed',
+            itemCount: 10,
+            incompleteReason: null,
+          },
+          page: {
+            data: { items: ['synthetic-a', 'synthetic-b'] },
+            totalCount: 1,
+            nextCursor: null,
+          },
+        }}
+        onSelectPayload={onSelectPayload}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'JSON Pointer' })).toHaveValue(
+      '/value/items',
+    )
+    await user.click(screen.getByRole('button', { name: 'pointer を適用' }))
+
+    expect(onSelectPayload.mock.calls).toEqual([
+      [
+        {
+          payloadId: '00000000-0000-4000-8000-000000000004',
+          label: '出力',
+          pointer: '/value/items',
+          cursor: 0,
+          limit: 2,
+        },
+      ],
+    ])
   })
 })

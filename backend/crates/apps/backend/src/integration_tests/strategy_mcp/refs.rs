@@ -44,6 +44,7 @@ mod tests {
             name: Set(name.into()),
             market: Set(None),
             product_category: Set(product_category.map(str::to_string)),
+            cik: Default::default(),
             created_at: NotSet,
             updated_at: NotSet,
         }

@@ -5,4 +5,5 @@ pub struct UsStockMasterEntry {
     pub id: ForeignStockId,
     pub name: String,
     pub exchange: Option<String>,
+    pub cik: Option<String>,
 }

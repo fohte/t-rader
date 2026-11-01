@@ -14,6 +14,7 @@
 | created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                 |         |                                            |
 | updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                 |         |                                            |
 | product_category | varchar                  |                   | true     |                                                                                                                                                                                                 |         | 銘柄の商品区分コード。                     |
+| cik              | varchar                  |                   | true     |                                                                                                                                                                                                 |         | SEC が割り当てた企業識別番号。             |
 
 ## Constraints
 
@@ -49,6 +50,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   varchar product_category
+  varchar cik
 }
 "public.prediction" {
   uuid prediction_id

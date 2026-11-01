@@ -81,6 +81,8 @@ pub struct GetStrategyTaskStatusResult {
     pub phase: String,
     pub error_summary: Option<String>,
     pub result_text: Option<String>,
+    /// いずれかの step がモデル呼び出し上限で打ち切られたことを示す。
+    pub model_call_limit_reached: bool,
     pub updated_at: DateTime<FixedOffset>,
 }
 

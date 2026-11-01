@@ -138,6 +138,7 @@ const buildDeps = (
   invokeImpl: (
     call: InvokeCall,
     deadlineSignal: AbortSignal | undefined,
+    buildOptions: BuildPhaseAgentOptions,
   ) => Promise<{ structuredResponse?: Record<string, unknown> }>,
 ): { deps: RunAgentGraphDeps; calls: InvokeCall[] } => {
   const calls: InvokeCall[] = []
@@ -151,7 +152,7 @@ const buildDeps = (
           executionStepId: input.executionStepId,
         }
         calls.push(call)
-        return invokeImpl(call, options.deadlineSignal)
+        return invokeImpl(call, options.deadlineSignal, options)
       },
     }),
   }
@@ -323,6 +324,60 @@ describe('runAgentGraph', () => {
       },
       [['search_web', 'run_subagent']],
       ['work'],
+    ])
+  })
+
+  it('preserves legacy LLM tools while keeping task runtime tools internal', async () => {
+    const configuredTools: string[][] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => {
+        configuredTools.push(options.tools.map((tool) => tool.name))
+        return {
+          invoke: () => Promise.resolve({ structuredResponse: {} }),
+        }
+      },
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'demo-model',
+          prompt: 'Process the synthetic input.',
+          skills: [],
+          subagents: [],
+          tools: [
+            'execute_operation',
+            'read_execution_payload',
+            'capture_dataset',
+            'read_task_execution_snapshot',
+          ],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory([
+        buildFakeTool('execute_operation'),
+        buildFakeTool('read_execution_payload'),
+        buildFakeTool('capture_dataset'),
+        buildFakeTool('read_task_execution_snapshot'),
+      ]),
+      originalPromptText: 'req',
+    })
+
+    const actual = Array.of<unknown>(result, configuredTools)
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (Work)',
+      },
+      [['execute_operation', 'read_execution_payload']],
     ])
   })
 
@@ -1055,6 +1110,8 @@ describe('runAgentGraph', () => {
             ...capturedOptions,
             reserveModelCall: typeof capturedOptions.reserveModelCall,
             transitionReservation: typeof capturedOptions.transitionReservation,
+            onModelCallLimitReached:
+              typeof capturedOptions.onModelCallLimitReached,
           }
 
     expect(capturedOptionSnapshot).toEqual({
@@ -1063,6 +1120,7 @@ describe('runAgentGraph', () => {
       mcpTools: [toolA],
       reserveModelCall: 'function',
       transitionReservation: 'function',
+      onModelCallLimitReached: 'function',
       systemPrompt: 'AGENTS\n\n# Skill: skill-a\n\nbody a',
       responseSchema: {
         type: 'object',
@@ -1116,6 +1174,8 @@ describe('runAgentGraph', () => {
             ...capturedOptions,
             reserveModelCall: typeof capturedOptions.reserveModelCall,
             transitionReservation: typeof capturedOptions.transitionReservation,
+            onModelCallLimitReached:
+              typeof capturedOptions.onModelCallLimitReached,
           }
 
     expect(capturedOptionSnapshot).toEqual({
@@ -1124,6 +1184,7 @@ describe('runAgentGraph', () => {
       mcpTools: [toolA, toolB],
       reserveModelCall: 'function',
       transitionReservation: 'function',
+      onModelCallLimitReached: 'function',
       systemPrompt: 'AGENTS',
       responseSchema: {
         type: 'object',
@@ -1382,6 +1443,307 @@ describe('runAgentGraph', () => {
         }),
         executionStepId: '<execution-step-id-1>',
       },
+    ])
+  })
+
+  it('completes when the required tool succeeds', async () => {
+    let attempts = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const { deps } = buildDeps((_call, _deadlineSignal, options) => {
+      attempts++
+      options.onToolSuccess?.('demo_tool_a')
+      return Promise.resolve({ structuredResponse: { ok: true } })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stage_a',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          prompt: 'Process the input',
+          subagents: [],
+          skills: [],
+          tools: ['demo_tool_a'],
+          requiredTools: ['demo_tool_a'],
+          output: { ok: { type: 'boolean' } },
+        },
+      ],
+    }
+
+    const { result } = await runWithWarnSpy(() =>
+      runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+        onStepsChanged: (steps) => notifications.push(steps),
+      }),
+    )
+
+    const actual = Array.of<unknown>(
+      result,
+      attempts,
+      normalizeStepTimestamps(notifications.at(-1) ?? []),
+    )
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (Stage A)',
+      },
+      1,
+      [
+        {
+          phaseKey: 'stage_a',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          status: 'completed',
+          output: { ok: true },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('fails after structured output is returned without any successful required tool', async () => {
+    let attempts = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const { deps, calls } = buildDeps((_call, _deadlineSignal, options) => {
+      attempts++
+      options.onToolSuccess?.('demo_write_tool_b')
+      return Promise.resolve({ structuredResponse: { ok: true } })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stage_a',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          prompt: 'Process the input',
+          subagents: [],
+          skills: [],
+          tools: ['demo_tool_a', 'demo_write_tool_b'],
+          requiredTools: ['demo_tool_a'],
+          output: { ok: { type: 'boolean' } },
+        },
+      ],
+    }
+
+    const { result } = await runWithWarnSpy(() =>
+      runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+        onStepsChanged: (steps) => notifications.push(steps),
+      }),
+    )
+
+    const actual = Array.of<unknown>(
+      result,
+      attempts,
+      normalizeStepTimestamps(notifications.at(-1) ?? []),
+      calls.map((call) => call.messageText),
+    )
+    const basePrompt = buildPhaseMessageText({
+      originalPromptText: 'req',
+      phaseKeys: ['stage_a'],
+      phaseKey: 'stage_a',
+      phasePrompt: 'Process the input',
+      item: undefined,
+      priorResults: {},
+    })
+    const feedback = [
+      '前回の試行は却下されました (理由: required tool(s) did not complete successfully: demo_tool_a)。',
+      '未成功の必須 tool を実行してから、構造化出力を提出し直してください: demo_tool_a',
+      '未成功の必須 tool 以外の書き込み系 tool は前回の試行で実行済みの可能性があるため、同じ内容を重複して実行しないでください。',
+    ].join('\n')
+    expect(actual).toEqual([
+      {
+        status: 'failed',
+        message:
+          'フェーズ「Stage A」(stage_a) の実行に失敗しました: required tool(s) did not complete successfully: demo_tool_a',
+        errorKind: 'agent_error',
+      },
+      3,
+      [
+        {
+          phaseKey: 'stage_a',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          status: 'failed',
+          error: 'required tool(s) did not complete successfully: demo_tool_a',
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        basePrompt,
+        [basePrompt, feedback].join('\n'),
+        [basePrompt, feedback, feedback].join('\n'),
+      ],
+    ])
+  })
+
+  it('keeps a successful required tool across structured-output retries', async () => {
+    let attempts = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const { deps } = buildDeps((_call, _deadlineSignal, options) => {
+      attempts++
+      if (attempts === 1) {
+        options.onToolSuccess?.('demo_tool_a')
+        return Promise.resolve({})
+      }
+      return Promise.resolve({ structuredResponse: { ok: true } })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stage_a',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          prompt: 'Process the input',
+          subagents: [],
+          skills: [],
+          tools: ['demo_tool_a'],
+          requiredTools: ['demo_tool_a'],
+          output: { ok: { type: 'boolean' } },
+        },
+      ],
+    }
+
+    const { result } = await runWithWarnSpy(() =>
+      runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+        onStepsChanged: (steps) => notifications.push(steps),
+      }),
+    )
+
+    const actual = Array.of<unknown>(
+      result,
+      attempts,
+      normalizeStepTimestamps(notifications.at(-1) ?? []),
+    )
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (Stage A)',
+      },
+      2,
+      [
+        {
+          phaseKey: 'stage_a',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          status: 'completed',
+          output: { ok: true },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('fails when the next retry reaches an exhausted step model-call budget', async () => {
+    let attempts = 0
+    let reservations = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const { deps } = buildDeps(async (_call, _deadlineSignal, options) => {
+      attempts++
+      if (options.reserveModelCall === undefined) {
+        return Promise.reject(
+          new Error('model-call reservation is unavailable'),
+        )
+      }
+      if (attempts === 1) {
+        for (let callIndex = 0; callIndex < 15; callIndex++) {
+          await options.reserveModelCall(`model-call-${String(callIndex)}`)
+        }
+        options.onModelCallLimitReached?.()
+        return { structuredResponse: { ok: true } }
+      }
+      await options.reserveModelCall('model-call-after-limit')
+      return { structuredResponse: { ok: true } }
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stage_a',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          prompt: 'Process the input',
+          subagents: [],
+          skills: [],
+          tools: ['demo_tool_a'],
+          requiredTools: ['demo_tool_a'],
+          output: { ok: { type: 'boolean' } },
+        },
+      ],
+    }
+
+    const { result } = await runWithWarnSpy(() =>
+      runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: () => ({
+          getTools: () => Promise.resolve([]),
+          reserveModelCall: () => {
+            reservations++
+            return reservations <= 15
+              ? Promise.resolve()
+              : Promise.reject(new Error('step model-call budget exhausted'))
+          },
+          reserveSubagentRun: () => Promise.resolve(),
+          transitionReservation: () => Promise.resolve(),
+          close: () => Promise.resolve(),
+        }),
+        originalPromptText: 'req',
+        onStepsChanged: (steps) => notifications.push(steps),
+      }),
+    )
+
+    const actual = Array.of<unknown>(
+      result,
+      attempts,
+      reservations,
+      normalizeStepTimestamps(notifications.at(-1) ?? []),
+    )
+    expect(actual).toEqual([
+      {
+        status: 'failed',
+        message:
+          'フェーズ「Stage A」(stage_a) の実行に失敗しました: step model-call budget exhausted',
+        errorKind: 'agent_error',
+      },
+      2,
+      16,
+      [
+        {
+          phaseKey: 'stage_a',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Stage A',
+          model: 'demo-model-a',
+          status: 'failed',
+          modelCallLimitReached: true,
+          error: 'step model-call budget exhausted',
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
     ])
   })
 
@@ -1962,6 +2324,336 @@ describe('runAgentGraph', () => {
           spanId: NOOP_SPAN_ID,
         },
       ],
+    ])
+  })
+
+  it('keeps the model-call limit marker on the completed phase step', async () => {
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => ({
+        invoke: () => {
+          options.onModelCallLimitReached?.()
+          return Promise.resolve({ structuredResponse: { value: 'A-OUT' } })
+        },
+      }),
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(notifications.map(normalizeStepTimestamps)).toEqual([
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          modelCallLimitReached: true,
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'completed',
+          modelCallLimitReached: true,
+          output: { value: 'A-OUT' },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('notifies once when the model-call limit is reported repeatedly', async () => {
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => ({
+        invoke: () => {
+          options.onModelCallLimitReached?.()
+          options.onModelCallLimitReached?.()
+          return Promise.resolve({ structuredResponse: { value: 'A-OUT' } })
+        },
+      }),
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(notifications.map(normalizeStepTimestamps)).toEqual([
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          modelCallLimitReached: true,
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'completed',
+          modelCallLimitReached: true,
+          output: { value: 'A-OUT' },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('keeps the marker when a structured-output retry fails', async () => {
+    let invokeCount = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => ({
+        invoke: () => {
+          invokeCount += 1
+          if (invokeCount === 1) {
+            options.onModelCallLimitReached?.()
+            return Promise.resolve({ structuredResponse: {} })
+          }
+          return Promise.reject(new Error('retry failed'))
+        },
+      }),
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'model-a',
+          prompt: 'do plan',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'model-a',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(
+      Array.of<unknown>(
+        invokeCount,
+        normalizeStepTimestamps(notifications.at(-1) ?? []),
+      ),
+    ).toEqual([
+      2,
+      [
+        {
+          phaseKey: 'plan',
+          executionStepId: '<execution-step-id-1>',
+          label: 'Plan',
+          model: 'model-a',
+          status: 'failed',
+          modelCallLimitReached: true,
+          error: 'retry failed',
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('marks only the for_each item that reaches the model-call limit', async () => {
+    let buildCount = 0
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => {
+        const stepNumber = buildCount
+        buildCount += 1
+        return {
+          invoke: () => {
+            if (stepNumber === 0) {
+              return Promise.resolve({
+                structuredResponse: { items: ['first', 'second'] },
+              })
+            }
+            if (stepNumber === 1) options.onModelCallLimitReached?.()
+            return Promise.resolve({ structuredResponse: {} })
+          },
+        }
+      },
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'model-a',
+          prompt: 'do plan',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'model-a',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(normalizeStepTimestamps(notifications.at(-1) ?? [])).toEqual([
+      {
+        phaseKey: 'plan',
+        executionStepId: '<execution-step-id-1>',
+        label: 'Plan',
+        model: 'model-a',
+        status: 'completed',
+        output: { items: ['first', 'second'] },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'work',
+        executionStepId: '<execution-step-id-2>',
+        label: 'Work',
+        model: 'model-a',
+        status: 'completed',
+        modelCallLimitReached: true,
+        item: 'first',
+        output: {},
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'work',
+        executionStepId: '<execution-step-id-3>',
+        label: 'Work',
+        model: 'model-a',
+        status: 'completed',
+        item: 'second',
+        output: {},
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
     ])
   })
 

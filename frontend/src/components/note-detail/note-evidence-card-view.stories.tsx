@@ -192,3 +192,107 @@ export const IndicatorNameUnavailable: Story = {
     },
   },
 }
+
+export const IndicatorChange: Story = {
+  name: 'shows current endpoint observations and the indicator change formula.',
+  args: {
+    displayValue: '+12.5%',
+    reference: {
+      kind: 'indicator-change',
+      indicatorName: 'デモ指標',
+      indicatorId: 'demo-indicator',
+      start: '2030-01-02',
+      end: '2030-01-03',
+      state: {
+        status: 'ready',
+        evidence: {
+          startValue: 100,
+          endValue: 112.5,
+          changePercent: 12.5,
+        },
+      },
+    },
+  },
+}
+
+export const IndicatorChangeNameUnavailable: Story = {
+  name: 'falls back to the indicator ID when its name is unavailable.',
+  args: {
+    displayValue: '+12.5%',
+    reference: {
+      kind: 'indicator-change',
+      indicatorName: null,
+      indicatorId: 'demo-indicator',
+      start: '2030-01-02',
+      end: '2030-01-03',
+      state: {
+        status: 'ready',
+        evidence: {
+          startValue: 100,
+          endValue: 112.5,
+          changePercent: 12.5,
+        },
+      },
+    },
+  },
+}
+
+export const IndicatorChangeLoading: Story = {
+  name: 'shows a loading message while indicator observations are requested.',
+  args: {
+    displayValue: '+12.5%',
+    reference: {
+      kind: 'indicator-change',
+      indicatorName: 'デモ指標',
+      indicatorId: 'demo-indicator',
+      start: '2030-01-02',
+      end: '2030-01-03',
+      state: { status: 'loading' },
+    },
+  },
+}
+
+export const IndicatorChangeError: Story = {
+  name: 'shows an error when indicator observations cannot be retrieved.',
+  args: {
+    displayValue: '+12.5%',
+    reference: {
+      kind: 'indicator-change',
+      indicatorName: 'デモ指標',
+      indicatorId: 'demo-indicator',
+      start: '2030-01-02',
+      end: '2030-01-03',
+      state: { status: 'error' },
+    },
+  },
+}
+
+export const IndicatorChangeMissingObservation: Story = {
+  name: 'identifies the date without an indicator observation.',
+  args: {
+    displayValue: '+12.5%',
+    reference: {
+      kind: 'indicator-change',
+      indicatorName: 'デモ指標',
+      indicatorId: 'demo-indicator',
+      start: '2030-01-02',
+      end: '2030-01-03',
+      state: { status: 'missing', missingDates: ['2030-01-03'] },
+    },
+  },
+}
+
+export const IndicatorChangeZeroStart: Story = {
+  name: 'shows both observations when the starting value is zero.',
+  args: {
+    displayValue: '+12.5%',
+    reference: {
+      kind: 'indicator-change',
+      indicatorName: 'デモ指標',
+      indicatorId: 'demo-indicator',
+      start: '2030-01-02',
+      end: '2030-01-03',
+      state: { status: 'zero-start', startValue: 0, endValue: 112.5 },
+    },
+  },
+}

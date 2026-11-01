@@ -185,6 +185,42 @@ export const WithFailure: Story = {
   ),
 }
 
+export const WithModelCallLimitReached: Story = {
+  name: 'shows the limit badge only on the step stopped at the model call limit.',
+  render: () => (
+    <Frame>
+      <TaskExecutionTree
+        steps={[
+          {
+            phase_key: 'limited',
+            execution_step_id: 'synthetic-step-a',
+            label: '架空の確認対象 A',
+            model: 'synthetic-model',
+            status: 'completed',
+            model_call_limit_reached: true,
+            started_at: '2030-01-02T03:04:05.000Z',
+            finished_at: '2030-01-02T03:04:10.000Z',
+            trace_id: 'synthetic-trace-a',
+            span_id: 'synthetic-span-a',
+          },
+          {
+            phase_key: 'regular',
+            execution_step_id: 'synthetic-step-b',
+            label: '架空の確認対象 B',
+            model: 'synthetic-model',
+            status: 'completed',
+            started_at: '2030-01-02T03:05:05.000Z',
+            finished_at: '2030-01-02T03:05:10.000Z',
+            trace_id: 'synthetic-trace-b',
+            span_id: 'synthetic-span-b',
+          },
+        ]}
+        configPhases={[]}
+      />
+    </Frame>
+  ),
+}
+
 export const Expanded: Story = {
   name: 'the selected step shows its details.',
   render: () => (

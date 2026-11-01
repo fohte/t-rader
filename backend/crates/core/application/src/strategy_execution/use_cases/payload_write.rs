@@ -14,6 +14,8 @@ use super::{
 };
 
 mod dataset_capture;
+pub use dataset_capture::DatasetCaptureOptions;
+
 impl StrategyExecutionUseCases {
     pub async fn begin_payload(
         &self,

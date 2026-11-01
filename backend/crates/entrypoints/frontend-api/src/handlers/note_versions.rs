@@ -8,7 +8,9 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::comments::map_comment_read_error;
 use crate::handlers::strategies::{map_get_task_error, map_submit_error};
-use crate::models::{ChangeStatusRequest, NoteVersionResponse, PendingNoteVersionResponse};
+use crate::models::{
+    ApproveNoteVersionRequest, ChangeStatusRequest, NoteVersionResponse, PendingNoteVersionResponse,
+};
 use core_application::note::INITIAL_NOTE_STATUS;
 
 /// ノートの全バージョンを古い順に返す。
@@ -106,10 +108,10 @@ fn ensure_pending_version(version: &core_application::note::NoteVersion) -> Resu
         ("id" = Uuid, Path, description = "ノート ID"),
         ("n" = i32, Path, description = "バージョン番号"),
     ),
-    request_body = ChangeStatusRequest,
+    request_body = ApproveNoteVersionRequest,
     responses(
         (status = 200, body = NoteVersionResponse),
-        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正、または警告の確認が必要", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, description = "バージョンが承認待ちではない", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -120,11 +122,16 @@ fn ensure_pending_version(version: &core_application::note::NoteVersion) -> Resu
 pub async fn approve_note_version(
     State(state): State<FrontendApiState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
-    JsonBody(payload): JsonBody<ChangeStatusRequest>,
+    JsonBody(payload): JsonBody<ApproveNoteVersionRequest>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     let updated = state
         .note_use_cases
-        .approve_version(note_id, version_no, payload.label)
+        .approve_version(
+            note_id,
+            version_no,
+            payload.warning_dispositions_confirmed == Some(true),
+            payload.label,
+        )
         .await
         .map_err(crate::handlers::notes::map_note_error)?;
     Ok(Json(updated.into()))

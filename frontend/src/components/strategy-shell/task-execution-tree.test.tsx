@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -23,6 +29,7 @@ import {
   findEnumBadge,
   formatDuration,
   listEnumEntries,
+  listStepPayloadReferences,
   stepSubtitle,
 } from '#components/strategy-shell/task-execution-tree/model'
 
@@ -87,6 +94,19 @@ function getDefaultSelectedStepOutput() {
   }
 }
 
+function readOperationStepDetailOutput(
+  step: TaskStep,
+  selectedPayload: unknown,
+) {
+  return {
+    operation: screen.getByText('evaluate_saved_code').textContent,
+    model: screen.getByText('—').textContent,
+    definitionHeading: screen.getByText('固定したフェーズ定義').textContent,
+    payloadReferences: listStepPayloadReferences(step),
+    selectedPayload,
+  }
+}
+
 function getTaskStepStatusLabels() {
   return [
     screen.getByText('実行中').textContent,
@@ -94,10 +114,51 @@ function getTaskStepStatusLabels() {
   ]
 }
 
+function readStepBadgeRows(entries: { label: string; row: HTMLElement }[]) {
+  return entries.map(({ label, row }) => ({
+    label: within(row).getByText(label).textContent,
+    badges: within(row)
+      .queryAllByText('モデル呼び出し上限で打ち切り')
+      .map((element) => element.textContent),
+  }))
+}
+
 describe('readTaskSteps', () => {
   it('keeps a step with all required fields', () => {
     const step = makeStep({ phase_key: 'plan' })
     expect(readTaskSteps([step])).toEqual([step])
+  })
+
+  it('keeps an operation step whose model is null', () => {
+    const step = makeStep({
+      phase_key: 'run',
+      kind: 'operation',
+      model: null,
+    })
+    expect(readTaskSteps([step])).toEqual([step])
+  })
+
+  it('keeps steps with any value for the optional model call limit marker', () => {
+    const flagged = {
+      ...makeStep({ phase_key: 'limited' }),
+      model_call_limit_reached: true,
+    }
+    const unflagged = makeStep({ phase_key: 'regular' })
+    const invalid = {
+      ...makeStep({ phase_key: 'invalid' }),
+      model_call_limit_reached: 'true',
+    }
+    const invalidNull = {
+      ...makeStep({ phase_key: 'invalid-null' }),
+      model_call_limit_reached: null,
+    }
+
+    expect(readTaskSteps([flagged, unflagged, invalid, invalidNull])).toEqual([
+      flagged,
+      unflagged,
+      invalid,
+      invalidNull,
+    ])
   })
 
   it.each([
@@ -200,6 +261,53 @@ describe('TaskExecutionTree', () => {
 
     expect(screen.getByText('consistent')).toBeInTheDocument()
     expect(screen.queryByText('完了')).not.toBeInTheDocument()
+  })
+
+  it('model call limit marker は印のある step にだけ表示する', () => {
+    const steps = readTaskSteps([
+      makeStep({
+        phase_key: 'limited',
+        label: '架空の確認対象 A',
+        model_call_limit_reached: true,
+      }),
+      makeStep({
+        phase_key: 'regular',
+        label: '架空の確認対象 B',
+      }),
+      {
+        ...makeStep({
+          phase_key: 'malformed',
+          label: '架空の確認対象 C',
+          status: 'failed',
+        }),
+        model_call_limit_reached: 'true',
+      },
+    ])
+    render(<TaskExecutionTree {...makeProps({ steps })} />)
+    const limitedStep = screen.getByRole('button', {
+      name: /架空の確認対象 A/,
+    })
+    const regularStep = screen.getByRole('button', {
+      name: /架空の確認対象 B/,
+    })
+    const malformedStep = screen.getByRole('button', {
+      name: /架空の確認対象 C/,
+    })
+
+    expect(
+      readStepBadgeRows([
+        { label: '架空の確認対象 A', row: limitedStep },
+        { label: '架空の確認対象 B', row: regularStep },
+        { label: '架空の確認対象 C', row: malformedStep },
+      ]),
+    ).toEqual([
+      {
+        label: '架空の確認対象 A',
+        badges: ['モデル呼び出し上限で打ち切り'],
+      },
+      { label: '架空の確認対象 B', badges: [] },
+      { label: '架空の確認対象 C', badges: [] },
+    ])
   })
 
   it('output がまだ無いステップは enum バッジが無いのでステータス文言を表示する', () => {
@@ -610,6 +718,76 @@ describe('StepDetail', () => {
       screen.queryByRole('link', { name: '→ ノートを開く' }),
     ).not.toBeInTheDocument()
   })
+
+  it('operation の null model と固定定義、payload 参照を表示する', async () => {
+    const user = userEvent.setup()
+    const step = makeStep({
+      phase_key: 'calculate',
+      kind: 'operation',
+      model: null,
+      input_ref: {
+        payload_inputs: [
+          {
+            field: 'source',
+            payload_id: '00000000-0000-4000-8000-000000000001',
+            pointer: '/records',
+            cursor: 0,
+            limit: 20,
+          },
+        ],
+      },
+      output_ref: { id: '00000000-0000-4000-8000-000000000002' },
+      output: {
+        payloadRef: { id: '00000000-0000-4000-8000-000000000002' },
+        pointer: '/value',
+      },
+    })
+    const onSelectPayload = vi.fn()
+    render(
+      <StepDetail
+        step={step}
+        phaseDefinition={{
+          key: 'calculate',
+          kind: 'operation',
+          operation: 'evaluate_saved_code',
+          code_id: 'sample-code',
+        }}
+        onSelectPayload={onSelectPayload}
+      />,
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: '→ input: sourceを開く' }),
+    )
+    expect(
+      readOperationStepDetailOutput(step, onSelectPayload.mock.lastCall?.[0]),
+    ).toEqual({
+      operation: 'evaluate_saved_code',
+      model: '—',
+      definitionHeading: '固定したフェーズ定義',
+      payloadReferences: [
+        {
+          payloadId: '00000000-0000-4000-8000-000000000001',
+          label: 'input: source',
+          pointer: '/records',
+          cursor: 0,
+          limit: 20,
+        },
+        {
+          payloadId: '00000000-0000-4000-8000-000000000002',
+          label: '出力',
+          pointer: '/value',
+        },
+      ],
+      selectedPayload: {
+        payloadId: '00000000-0000-4000-8000-000000000001',
+        label: 'input: source',
+        pointer: '/records',
+        cursor: 0,
+        limit: 20,
+      },
+    })
+  })
 })
 
 describe('findEnumBadge', () => {
@@ -734,12 +912,29 @@ describe('parseAgentGraphPhases', () => {
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
+      {
+        key: 'plan',
+        label: '準備一覧',
+        model: 'simulated-model-amber',
+        definition: {
+          key: 'plan',
+          label: '準備一覧',
+          model: 'simulated-model-amber',
+          prompt: '項目の形式を確認する',
+        },
+      },
       {
         key: 'investigate',
         label: '確認',
         model: 'simulated-model-teal',
         forEach: 'plan.items',
+        definition: {
+          key: 'investigate',
+          label: '確認',
+          model: 'simulated-model-teal',
+          prompt: '項目の形式を確認する',
+          for_each: 'plan.items',
+        },
       },
     ])
   })
@@ -766,6 +961,15 @@ describe('parseAgentGraphPhases', () => {
           result: { enum: ['consistent', 'needs_review'] },
           details: { type: 'string' },
         },
+        definition: {
+          key: 'investigate',
+          label: '確認',
+          model: 'simulated-model-teal',
+          output: {
+            result: { enum: ['consistent', 'needs_review'] },
+            details: { type: 'string' },
+          },
+        },
       },
     ])
   })
@@ -785,6 +989,12 @@ describe('parseAgentGraphPhases', () => {
         label: '確認',
         model: 'simulated-model-teal',
         forEach: 'source.entries',
+        definition: {
+          key: 'inspect',
+          label: '確認',
+          model: 'simulated-model-teal',
+          for_each: 'source.entries',
+        },
       },
     ])
   })
@@ -798,6 +1008,49 @@ describe('parseAgentGraphPhases', () => {
     expect(parseAgentGraphPhases('phases: 1')).toEqual([])
   })
 
+  it('extracts operation order and nullable model from a fixed graph', () => {
+    const yaml = [
+      'phases:',
+      '  - key: calculate',
+      '    label: 計算',
+      '    kind: operation',
+      '    operation: evaluate_saved_code',
+      '    code_id: sample-code',
+      '    model: null',
+      '    input:',
+      '      source:',
+      '        prior_output: { phase: prepare, pointer: /records, limit: 20 }',
+    ].join('\n')
+
+    expect(parseAgentGraphPhases(yaml)).toEqual([
+      {
+        key: 'calculate',
+        label: '計算',
+        kind: 'operation',
+        operation: 'evaluate_saved_code',
+        codeId: 'sample-code',
+        model: null,
+        definition: {
+          key: 'calculate',
+          label: '計算',
+          kind: 'operation',
+          operation: 'evaluate_saved_code',
+          code_id: 'sample-code',
+          model: null,
+          input: {
+            source: {
+              prior_output: {
+                phase: 'prepare',
+                pointer: '/records',
+                limit: 20,
+              },
+            },
+          },
+        },
+      },
+    ])
+  })
+
   it('skips phase entries missing required string fields', () => {
     const yaml = [
       'phases:',
@@ -809,7 +1062,16 @@ describe('parseAgentGraphPhases', () => {
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '準備一覧', model: 'simulated-model-amber' },
+      {
+        key: 'plan',
+        label: '準備一覧',
+        model: 'simulated-model-amber',
+        definition: {
+          key: 'plan',
+          label: '準備一覧',
+          model: 'simulated-model-amber',
+        },
+      },
     ])
   })
 })

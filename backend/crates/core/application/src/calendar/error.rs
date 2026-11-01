@@ -14,3 +14,13 @@ pub enum CalendarEventUseCaseError {
     #[error("calendar event source {expected} returned an event for {actual}")]
     SourceMismatch { expected: String, actual: String },
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum CalendarEventReferenceUseCaseError {
+    #[error(transparent)]
+    Repository(#[from] CalendarEventRepositoryError),
+    #[error(transparent)]
+    UnitOfWork(#[from] UnitOfWorkError),
+    #[error("calendar event reference is invalid")]
+    InvalidReference,
+}

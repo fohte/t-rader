@@ -53,3 +53,51 @@ export const Failed: Story = {
     step: FAILED_STEP,
   },
 }
+
+export const Operation: Story = {
+  name: 'the details show a saved-code operation and its payload references.',
+  args: {
+    step: {
+      ...COMPLETED_STEP,
+      phase_key: 'calculate',
+      execution_step_id: 'sample-step-operation',
+      label: '計算',
+      kind: 'operation',
+      model: null,
+      input_ref: {
+        payload_inputs: [
+          {
+            field: 'source',
+            payload_id: '00000000-0000-4000-8000-000000000001',
+            pointer: '/records',
+            cursor: 0,
+            limit: 25,
+          },
+        ],
+      },
+      output_ref: { id: '00000000-0000-4000-8000-000000000002' },
+      output: {
+        payloadRef: { id: '00000000-0000-4000-8000-000000000002' },
+        pointer: '/value',
+      },
+    },
+    phaseDefinition: {
+      key: 'calculate',
+      label: '計算',
+      kind: 'operation',
+      operation: 'evaluate_saved_code',
+      code_id: 'sample-code',
+      input: {
+        source: {
+          prior_output: {
+            phase: 'prepare',
+            pointer: '/records',
+            cursor: 0,
+            limit: 25,
+          },
+        },
+      },
+    },
+    onSelectPayload: () => {},
+  },
+}

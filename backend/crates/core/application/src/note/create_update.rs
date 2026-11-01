@@ -130,6 +130,7 @@ impl NoteUseCases {
                     body_md,
                     frontmatter_json,
                     graphs_json: current_version.graphs_json,
+                    warning_dispositions: Vec::new(),
                     created_by_kind: "human".into(),
                     execution_id: None,
                     change_reason: None,

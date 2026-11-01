@@ -27,7 +27,7 @@ pub(super) async fn list_pending_note_versions(
                 ))
             })?;
             Ok(PendingNoteVersion {
-                version: to_version(version),
+                version: to_version(version)?,
                 kind,
             })
         })
@@ -37,7 +37,10 @@ pub(super) async fn list_pending_note_versions(
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, FixedOffset};
-    use core_application::note::{NoteReadQuery, NoteVersion, PendingNoteVersion};
+    use core_application::note::{
+        NoteReadQuery, NoteVersion, NoteWarningDispositionLocation, NoteWarningDispositionRecord,
+        PendingNoteVersion,
+    };
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
     use uuid::Uuid;
@@ -50,13 +53,20 @@ mod tests {
     async fn list_pending_versions_includes_note_kind_and_frontmatter(db: DatabaseHandle) {
         let kind = insert_note_kind(&db).await;
         let first_note_id = insert_note(&db, Some(kind.clone())).await;
-        let first_version = version_fixture(
+        let mut first_version = version_fixture(
             Uuid::new_v4(),
             first_note_id,
             "unread",
             serde_json::json!({ "tags": ["sample-tag", "another-tag"] }),
             timestamp(2),
         );
+        first_version.body_md = "12,345円".into();
+        first_version.warning_dispositions = vec![NoteWarningDispositionRecord {
+            warning_id: "price:12%2C345%E5%86%86:1".into(),
+            value: "12,345円".into(),
+            location: NoteWarningDispositionLocation::Body { start: 0, end: 9 },
+            reason: "sample reason".into(),
+        }];
         insert_version(&db, &first_version).await;
 
         let ignored_note_id = insert_note(&db, Some(kind.clone())).await;
@@ -142,6 +152,8 @@ mod tests {
             frontmatter_json: Set(version.frontmatter_json.clone()),
             graphs_json: Set(version.graphs_json.clone()),
             resolved_price_references_json: Set(version.resolved_price_references_json.clone()),
+            warning_dispositions_json: Set(serde_json::to_value(&version.warning_dispositions)
+                .expect("warning dispositions serialize")),
             status: Set(version.status.clone()),
             is_current: Set(version.is_current),
             change_reason: Set(version.change_reason.clone()),
@@ -171,6 +183,7 @@ mod tests {
             frontmatter_json,
             graphs_json: serde_json::json!([]),
             resolved_price_references_json: serde_json::json!({}),
+            warning_dispositions: Vec::new(),
             status: status.to_owned(),
             is_current: false,
             change_reason: Some("sample change".to_owned()),

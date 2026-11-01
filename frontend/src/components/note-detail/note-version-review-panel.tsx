@@ -23,6 +23,10 @@ export function NoteVersionReviewPanel({
 }: NoteVersionReviewPanelProps) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
+  const [confirmedWarningVersionId, setConfirmedWarningVersionId] = useState<
+    string | null
+  >(null)
+  const warningDispositionsConfirmed = confirmedWarningVersionId === version.id
   const { data: comments, isPending: isCommentsPending } = $api.useQuery(
     'get',
     '/api/comments',
@@ -68,6 +72,9 @@ export function NoteVersionReviewPanel({
       queryKey: $api.queryOptions('get', '/api/notes').queryKey,
     })
     void queryClient.invalidateQueries({
+      queryKey: $api.queryOptions('get', '/api/notes/overview').queryKey,
+    })
+    void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/history', {
         params: {
           query: {
@@ -86,7 +93,9 @@ export function NoteVersionReviewPanel({
         params: {
           path: { id: version.note_id, n: version.version_no },
         },
-        body: {},
+        body: warningDispositionsConfirmed
+          ? { warning_dispositions_confirmed: true }
+          : {},
       },
       {
         onSuccess: () => {
@@ -139,7 +148,11 @@ export function NoteVersionReviewPanel({
       isRejecting={reject.isPending}
       isMakingCurrent={makeCurrent.isPending}
       hasError={approve.isError || reject.isError || makeCurrent.isError}
+      warningDispositionsConfirmed={warningDispositionsConfirmed}
       onReasonChange={setReason}
+      onWarningDispositionsConfirmedChange={(confirmed) => {
+        setConfirmedWarningVersionId(confirmed ? version.id : null)
+      }}
       onApprove={onApprove}
       onReject={onReject}
       onMakeCurrent={onMakeCurrent}

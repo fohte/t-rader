@@ -43,6 +43,24 @@ const MULTI_PHASE_WITH_FOR_EACH = `phases:
     prompt: sample prompt
 `
 
+const OPERATION_PHASE = `timeout_minutes: 20
+execution_limits: { max_model_calls: 6 }
+tool_limits: { tool_alpha: 2 }
+phases:
+  - key: calculate
+    label: 計算
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: sample-code
+    input:
+      request:
+        literal: { count: 2 }
+      source:
+        dataset: { provider: sample-provider, params: { code: DEMO } }
+    output:
+      result: { type: number }
+`
+
 const MODELS = [
   {
     id: 'fictional-model-orbit',
@@ -148,6 +166,17 @@ export const MultiPhaseWithForEach: Story = {
     value: MULTI_PHASE_WITH_FOR_EACH,
     onChange: () => {},
     lastEnabledValueRef: { current: MULTI_PHASE_WITH_FOR_EACH },
+  },
+  render: (args) => <StoryRenderer {...args} />,
+}
+
+export const Operation: Story = {
+  name: 'shows an operation phase with its input bindings and shared limits.',
+  args: {
+    purpose: 'sample-purpose',
+    value: OPERATION_PHASE,
+    onChange: () => {},
+    lastEnabledValueRef: { current: OPERATION_PHASE },
   },
   render: (args) => <StoryRenderer {...args} />,
 }

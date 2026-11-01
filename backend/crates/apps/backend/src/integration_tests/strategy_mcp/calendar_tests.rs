@@ -32,8 +32,8 @@ async fn read_calendar_keeps_targeted_earnings_and_summarizes_the_rest(
             "events": [
                 {
                     "kind": "event",
-                    "source": "sample_source",
-                    "external_id": "tracked-direct",
+                    "source": "jquants",
+                    "external_id": "00010:2Q:2031-03-31",
                     "category": "earnings",
                     "country": "JP",
                     "title": "サンプル銘柄 A",
@@ -45,8 +45,8 @@ async fn read_calendar_keeps_targeted_earnings_and_summarizes_the_rest(
                 },
                 {
                     "kind": "event",
-                    "source": "sample_source",
-                    "external_id": "tracked-group",
+                    "source": "jquants",
+                    "external_id": "00020:2Q:2031-03-31",
                     "category": "earnings",
                     "country": "JP",
                     "title": "サンプル銘柄 B",

@@ -62,7 +62,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 `create_stock_group` / `update_stock_group` / `add_stock_to_group` / `remove_stock_from_group` / `list_stock_group_members` も分類軸とグループが口座全体に属するため、接続元戦略は存在確認にだけ使い、グループの検索・更新条件には使わない。`derive_from` が設定された分類軸のグループと銘柄の設定は MCP から変更できない。グループの変更履歴は `change_history.target_kind = "stock_group"`、actor `llm` / label `analyst` で記録される。
 
-任意ヘッダ `x-execution-id` で実行単位を識別できる。値は agent_graph のフェーズまたは for_each 要素ごとの実行ステップ 1 件 (`{a2a_task_id}:{step_id}`) を表す。戦略境界の検査対象ではなく、`write_note` / `create_annotation` の resume 時重複排除に使う。resume のたびに同じステップへ新しい `a2a_task_id` が発行されるため、`write_note` の冪等性キーは `step_id` 部分のみを使い (`a2a_task_id` が変わっても同じノートに収束させる)、`create_annotation` は `step_id` と `a2a_task_id` を分けて保持し resume 時の置換要否の判定に使う。
+任意ヘッダ `x-execution-id` で task または実行 step を識別する。`read_task_execution_snapshot` と step に紐付かない `read_execution_payload` は `a2a_task_id` を送り、step に紐付く呼び出しは `{a2a_task_id}:{step_id}` を送る。task を読む処理は `a2a_task_id` で task を引き、`x-strategy-id` との一致と running 状態を確認する。`write_note` / `create_annotation` は step ID を resume 時の重複排除に使う。resume のたびに同じ step へ新しい `a2a_task_id` が発行されるため、`write_note` の冪等性キーは `step_id` 部分のみを使い (`a2a_task_id` が変わっても同じノートに収束させる)、`create_annotation` は `step_id` と `a2a_task_id` を分けて保持し resume 時の置換要否の判定に使う。
 
 `place_paper_order` は `x-execution-id` が必須。`a2a_task_id` から戦略 task を引き、その `strategy_id` が `x-strategy-id` と一致することを確認して task の `purpose` に対応する口座を選ぶ。task、purpose、同じ戦略と purpose の口座のいずれかが見つからない場合は `invalid_params` を返す。
 `read_paper_portfolio` は `account_id` 指定時にその ID の口座を読み、`x-execution-id` を要求しない。`read_paper_stats` が返した ID を使うと別戦略の口座も読める。存在しない ID は `invalid_params` を返す。`account_id` 省略時は `x-execution-id` から task を引き、同じ戦略と purpose の口座を選ぶ。

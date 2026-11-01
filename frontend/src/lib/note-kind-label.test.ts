@@ -13,13 +13,15 @@ describe('resolveNoteKindLabel', () => {
     )
   })
 
-  it('returns the key when the kind is unknown', () => {
-    expect(resolveNoteKindLabel('unlisted-kind-key', noteKinds)).toBe(
-      'unlisted-kind-key',
-    )
+  it('returns null when the kind is unknown', () => {
+    expect(resolveNoteKindLabel('unlisted-kind-key', noteKinds)).toBe(null)
   })
 
   it('returns null when the note has no kind', () => {
     expect(resolveNoteKindLabel(null, noteKinds)).toBeNull()
+  })
+
+  it('returns null when the kind key is empty', () => {
+    expect(resolveNoteKindLabel('', noteKinds)).toBeNull()
   })
 })

@@ -2,7 +2,16 @@ import {
   type CalendarCountryFilter,
   formatCalendarDayLabel,
 } from '#components/calendar/calendar-date'
+import type { CalendarCentralBankStatus } from '#components/calendar/calendar-model-central-bank'
+import { buildCentralBankStatus } from '#components/calendar/calendar-model-central-bank'
+import {
+  type CalendarEventReferenceView,
+  toCalendarEventReferenceView,
+} from '#components/calendar/calendar-model-reference'
 import type { components } from '#lib/api/schema.gen'
+import type { FinancialPeriodType } from '#lib/stock-page-date'
+
+export type { CalendarCentralBankStatus } from '#components/calendar/calendar-model-central-bank'
 
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Event = Extract<CalendarEvent, { kind: 'event' }>
@@ -10,6 +19,36 @@ type OtherEarningsSummary = Extract<
   CalendarEvent,
   { kind: 'other_earnings_summary' }
 >
+type EventReference = components['schemas']['CalendarEventReferenceResponse']
+
+export type CalendarEarningsReferenceView = {
+  key: string
+  title: string
+  source: string
+  checkedAt: string
+  targetPeriodEnd?: string
+  targetPeriodType?: string
+  href?: string
+  publicationEvidence?: string
+  publicationEvidenceHref?: string
+}
+
+export type CalendarEarningsStatus = {
+  label: string
+  internalTarget?: {
+    stockId: string
+    periodEnd: string
+    periodType: FinancialPeriodType
+  }
+  references: CalendarEarningsReferenceView[]
+}
+
+export type CalendarIndicatorReferenceView = CalendarEventReferenceView
+
+export type CalendarIndicatorStatus = {
+  label: string
+  references: CalendarIndicatorReferenceView[]
+}
 
 export type OtherEarningsSelection = {
   country: string
@@ -33,6 +72,9 @@ type CalendarRowView = {
   category: string
   title: string
   stockId?: string
+  earningsStatus?: CalendarEarningsStatus
+  indicatorStatus?: CalendarIndicatorStatus
+  centralBankStatus?: CalendarCentralBankStatus
   emphasized: boolean
   target: boolean
   muted: boolean
@@ -100,6 +142,142 @@ function getEventTime(event: Event): { label: string; sortOrder: number } {
   return { label: '', sortOrder: 2880 }
 }
 
+function matchesEventPeriod(reference: EventReference, event: Event): boolean {
+  if (
+    event.fiscal_period == null ||
+    reference.target_period_end !== event.fiscal_period
+  ) {
+    return false
+  }
+  if (event.country === 'US' && event.category === 'earnings') {
+    return (
+      reference.kind === 'individual_document' &&
+      (reference.target_period_type === '10-Q' ||
+        reference.target_period_type === '10-K')
+    )
+  }
+  return (
+    event.fiscal_period_type != null &&
+    reference.target_period_type === event.fiscal_period_type
+  )
+}
+
+function buildEarningsStatus(
+  event: Event,
+  today: string,
+): CalendarEarningsStatus {
+  const references = event.references
+  const matchingSummaryReference = references.some(
+    (reference) =>
+      reference.kind === 'earnings_summary' &&
+      matchesEventPeriod(reference, event),
+  )
+  const hasSummary =
+    event.has_matching_earnings_summary || matchingSummaryReference
+  const individualDocuments = references.filter(
+    (reference) => reference.kind === 'individual_document',
+  )
+  const hasMatchingIndividualDocument = individualDocuments.some((reference) =>
+    matchesEventPeriod(reference, event),
+  )
+  const hasOfficialListing = references.some(
+    (reference) => reference.kind === 'official_listing',
+  )
+  const label = hasSummary
+    ? '実績あり'
+    : hasMatchingIndividualDocument
+      ? '資料あり / 実績未取得'
+      : event.event_date >= today
+        ? '発表予定'
+        : hasOfficialListing || individualDocuments.length > 0
+          ? '個別資料未確認'
+          : '実績・資料未取得 / 公表未確認'
+  const periodType = toFinancialPeriodType(event.fiscal_period_type)
+  const internalTarget =
+    event.has_matching_earnings_summary &&
+    event.country === 'JP' &&
+    event.stock_id != null &&
+    event.fiscal_period != null &&
+    periodType != null
+      ? {
+          stockId: event.stock_id,
+          periodEnd: event.fiscal_period,
+          periodType,
+        }
+      : undefined
+
+  return {
+    label,
+    ...(internalTarget == null ? {} : { internalTarget }),
+    references: references.map(toEarningsReferenceView),
+  }
+}
+
+function buildIndicatorStatus(
+  event: Event,
+  today: string,
+): CalendarIndicatorStatus {
+  const references = event.references
+  const individualDocuments = references.filter(
+    (reference) =>
+      reference.kind === 'individual_document' && reference.url != null,
+  )
+  const listings = references.filter(
+    (reference) =>
+      reference.kind === 'official_listing' && reference.url != null,
+  )
+  const selectedReferences =
+    individualDocuments.length > 0 ? individualDocuments : listings
+
+  return {
+    label:
+      individualDocuments.length > 0
+        ? '個別資料あり'
+        : event.event_date >= today
+          ? '発表予定'
+          : listings.length > 0
+            ? '公式一覧 / 個別資料未確認'
+            : '遷移先未確認 / 非リンク',
+    references: selectedReferences.map(toCalendarEventReferenceView),
+  }
+}
+
+function toFinancialPeriodType(
+  value: string | null | undefined,
+): FinancialPeriodType | undefined {
+  return value === 'FY' ||
+    value === '1Q' ||
+    value === '2Q' ||
+    value === '3Q' ||
+    value === '4Q'
+    ? value
+    : undefined
+}
+
+function toEarningsReferenceView(
+  reference: EventReference,
+): CalendarEarningsReferenceView {
+  return {
+    key: `${reference.kind}:${reference.source}:${reference.external_id}`,
+    title: reference.title,
+    source: reference.source,
+    checkedAt: reference.checked_at,
+    ...(reference.target_period_end == null
+      ? {}
+      : { targetPeriodEnd: reference.target_period_end }),
+    ...(reference.target_period_type == null
+      ? {}
+      : { targetPeriodType: reference.target_period_type }),
+    ...(reference.url == null ? {} : { href: reference.url }),
+    ...(reference.publication_evidence == null
+      ? {}
+      : { publicationEvidence: reference.publication_evidence }),
+    ...(reference.publication_evidence_url == null
+      ? {}
+      : { publicationEvidenceHref: reference.publication_evidence_url }),
+  }
+}
+
 function isEmphasized(event: Event): boolean {
   if (event.category === 'central_bank') return true
   if (
@@ -116,12 +294,15 @@ function isEmphasized(event: Event): boolean {
 function buildEventRow(
   event: Event,
   selectedStrategyId: string | undefined,
+  today: string,
 ): { row: CalendarRowView; sortOrder: number } {
   const time = getEventTime(event)
   const stockId = event.stock_id ?? undefined
-  const isDomesticEarnings =
-    event.category === 'earnings' && event.country === 'JP' && stockId != null
-  const title = isDomesticEarnings ? `${event.title} (${stockId})` : event.title
+  const isEarningsStock = event.category === 'earnings' && stockId != null
+  const title =
+    isEarningsStock && event.country === 'JP'
+      ? `${event.title} (${stockId})`
+      : event.title
 
   return {
     row: {
@@ -130,7 +311,16 @@ function buildEventRow(
       country: event.country,
       category: formatCalendarCategory(event.category),
       title,
-      stockId: isDomesticEarnings ? stockId : undefined,
+      stockId: isEarningsStock ? stockId : undefined,
+      ...(isEarningsStock
+        ? { earningsStatus: buildEarningsStatus(event, today) }
+        : {}),
+      ...(event.category === 'indicator'
+        ? { indicatorStatus: buildIndicatorStatus(event, today) }
+        : {}),
+      ...(event.category === 'central_bank'
+        ? { centralBankStatus: buildCentralBankStatus(event, today) }
+        : {}),
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',
       muted: false,
@@ -164,6 +354,7 @@ export function buildCalendarDays(
   events: CalendarEvent[],
   countryFilter: CalendarCountryFilter,
   selectedStrategyId: string | undefined,
+  today: string,
 ): CalendarDayView[] {
   const dayRows = new Map<
     string,
@@ -175,7 +366,7 @@ export function buildCalendarDays(
 
     const built =
       event.kind === 'event'
-        ? buildEventRow(event, selectedStrategyId)
+        ? buildEventRow(event, selectedStrategyId, today)
         : buildOtherEarningsRow(event)
     const rows = dayRows.get(event.event_date) ?? []
     rows.push({ ...built, insertionOrder })

@@ -220,6 +220,16 @@ fn calendar_repository_error(
         CalendarEventRepositoryError::InvalidTransaction => {
             EarningsScheduleRepositoryError::InvalidTransaction
         }
+        CalendarEventRepositoryError::MissingEvent => {
+            EarningsScheduleRepositoryError::InvalidSchedule(
+                "calendar event was missing while storing an earnings schedule".into(),
+            )
+        }
+        CalendarEventRepositoryError::InvalidReference => {
+            EarningsScheduleRepositoryError::InvalidSchedule(
+                "calendar event reference was invalid while storing an earnings schedule".into(),
+            )
+        }
     }
 }
 

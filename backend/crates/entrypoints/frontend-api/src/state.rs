@@ -22,6 +22,7 @@ use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
 use core_application::note_kind::NoteKindUseCases;
+use core_application::note_tag::NoteTagUseCases;
 use core_application::paper_trade::PaperTradeUseCases;
 use core_application::portfolio_history::PortfolioHistoryUseCases;
 use core_application::prediction::PredictionUseCases;
@@ -32,6 +33,7 @@ use core_application::screener::ScreenerUseCases;
 use core_application::stock_group::StockGroupUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
+use core_application::strategy_execution::StrategyExecutionUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::subagent_definition::SubagentDefinitionUseCases;
@@ -59,6 +61,7 @@ pub struct FrontendApiState {
     pub indicator_observation_use_cases: IndicatorObservationUseCases,
     pub ingest_status_use_case: Arc<IngestStatusUseCase>,
     pub note_kind_use_cases: NoteKindUseCases,
+    pub note_tag_use_cases: NoteTagUseCases,
     pub note_read_use_cases: NoteReadUseCases,
     pub note_use_cases: NoteUseCases,
     pub paper_trade_use_cases: PaperTradeUseCases,
@@ -71,6 +74,7 @@ pub struct FrontendApiState {
     pub screener_use_cases: ScreenerUseCases,
     pub subagent_definition_use_cases: SubagentDefinitionUseCases,
     pub strategy_scope_use_cases: Arc<StrategyScopeUseCases>,
+    pub strategy_execution_use_cases: StrategyExecutionUseCases,
     pub strategy_task_use_cases: StrategyTaskUseCases,
     pub strategy_earnings_target_use_cases: StrategyEarningsTargetUseCases,
     pub strategy_use_cases: StrategyUseCases,

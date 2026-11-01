@@ -4,6 +4,7 @@ import {
   formatCalendarWeekRange,
   getCalendarWeekRange,
   getTokyoDate,
+  millisecondsUntilTokyoMidnight,
   shiftCalendarWeek,
   validateCalendarSearch,
 } from '#components/calendar/calendar-date'
@@ -11,6 +12,23 @@ import {
 describe('getTokyoDate', () => {
   it('uses the date in Tokyo when UTC has not reached midnight there', () => {
     expect(getTokyoDate(new Date('2099-01-04T15:30:00Z'))).toBe('2099-01-05')
+  })
+})
+
+describe('millisecondsUntilTokyoMidnight', () => {
+  it.each([
+    {
+      name: 'one millisecond before midnight in Tokyo',
+      now: '2099-01-06T14:59:59.999Z',
+      expected: 1,
+    },
+    {
+      name: 'at midnight in Tokyo',
+      now: '2099-01-06T15:00:00.000Z',
+      expected: 24 * 60 * 60 * 1000,
+    },
+  ])('returns the next date boundary for $name', ({ now, expected }) => {
+    expect(millisecondsUntilTokyoMidnight(new Date(now))).toBe(expected)
   })
 })
 

@@ -6,5 +6,6 @@ export function getReviewQueueQueryKeys() {
     $api.queryOptions('get', '/api/annotations', {
       params: { query: { status: 'unread' } },
     }).queryKey,
+    $api.queryOptions('get', '/api/notes/overview').queryKey,
   ] as const
 }

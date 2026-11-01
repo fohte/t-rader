@@ -341,6 +341,7 @@ mod tests {
             frontmatter_json: Set(serde_json::json!({})),
             graphs_json: Set(serde_json::json!([])),
             resolved_price_references_json: Set(serde_json::json!({})),
+            warning_dispositions_json: Set(serde_json::json!([])),
             status: Set("approved".to_string()),
             is_current: Set(is_current),
             change_reason: Set(None),

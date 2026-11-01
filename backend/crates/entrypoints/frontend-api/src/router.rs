@@ -6,10 +6,10 @@ use crate::api_doc::ApiDoc;
 use crate::handlers::{
     agent_config, agent_options, annotations, bars, calendar, comments, config,
     custom_indicator_evaluations, custom_indicators, dashboards, group_axes, history, imports,
-    ingest_status, note_kinds, note_links, note_predictions, note_versions, notes, paper_accounts,
-    portfolio_history, refs, risk_policy, rss_feeds, saved_screens, screener, stock_info,
-    strategies, strategy_task_steps, subagent_definitions, tasks, trade_notes, trades, triggers,
-    widgets,
+    ingest_status, note_kinds, note_links, note_predictions, note_tags, note_versions, notes,
+    notes_overview, paper_accounts, portfolio_history, refs, risk_policy, rss_feeds, saved_screens,
+    screener, stock_info, strategies, strategy_task_steps, subagent_definitions, tasks,
+    trade_notes, trades, triggers, widgets,
 };
 use crate::state::FrontendApiState;
 
@@ -53,6 +53,9 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         ))
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
+        .routes(routes!(strategies::get_task_execution_artifacts))
+        .routes(routes!(strategies::get_task_execution_payload))
+        .routes(routes!(strategies::list_task_execution_payload_manifests))
         .routes(routes!(strategies::list_strategy_task_notes))
         .routes(routes!(strategies::list_strategy_tasks))
         .routes(routes!(strategy_task_steps::get_strategy_task_step_origin))
@@ -101,6 +104,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(refs::get_indicator))
         .routes(routes!(refs::get_indicator_observations))
         .routes(routes!(refs::resolve_refs))
+        .routes(routes!(notes_overview::list_note_overviews))
         .routes(routes!(notes::list_notes, notes::create_note))
         .routes(routes!(
             notes::get_note,
@@ -195,6 +199,14 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(
             note_kinds::update_note_kind,
             note_kinds::delete_note_kind
+        ))
+        .routes(routes!(
+            note_tags::list_note_tags,
+            note_tags::create_note_tag
+        ))
+        .routes(routes!(
+            note_tags::update_note_tag,
+            note_tags::delete_note_tag
         ))
         .routes(routes!(
             group_axes::list_group_axes,

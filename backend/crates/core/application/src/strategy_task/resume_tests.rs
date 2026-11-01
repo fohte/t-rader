@@ -8,8 +8,8 @@ use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentT
 use crate::execution_budget::test_support::FakeExecutionBudgetRepository;
 use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
-    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
-    StrategyTaskUseCases,
+    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepKind,
+    StrategyTaskStepStatus, StrategyTaskUseCases,
 };
 use crate::unit_of_work::FakeUnitOfWork;
 
@@ -270,11 +270,16 @@ fn step(
         execution_step_id,
         task_id,
         phase_key: phase_key.to_string(),
+        kind: StrategyTaskStepKind::Llm,
         label: phase_key.to_string(),
-        model: "fictional-model".to_string(),
+        model: Some("fictional-model".to_string()),
+        model_call_limit_reached: false,
         status,
         item: None,
+        item_key: None,
         item_label: None,
+        input_ref: None,
+        output_ref: None,
         output: None,
         started_at: now,
         finished_at: None,
@@ -372,14 +377,16 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
     let task_id = task.task_id;
     let completed_step_id = Uuid::from_u128(5);
     let failed_step_id = Uuid::from_u128(6);
+    let mut completed_step = step(
+        task_id,
+        completed_step_id,
+        "planning",
+        StrategyTaskStepStatus::Completed,
+        1,
+    );
+    completed_step.model_call_limit_reached = true;
     let steps = vec![
-        step(
-            task_id,
-            completed_step_id,
-            "planning",
-            StrategyTaskStepStatus::Completed,
-            1,
-        ),
+        completed_step,
         step(
             task_id,
             failed_step_id,
@@ -416,16 +423,19 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
                 resume_steps: Some(vec![
                     serde_json::json!({
                         "execution_step_id": completed_step_id,
+                        "kind": "llm",
                         "phase_key": "planning",
                         "label": "planning",
                         "model": "fictional-model",
                         "status": "completed",
+                        "model_call_limit_reached": true,
                         "started_at": "2026-01-01T00:00:00+00:00",
                         "trace_id": "trace-placeholder",
                         "span_id": "span-placeholder",
                     }),
                     serde_json::json!({
                         "execution_step_id": failed_step_id,
+                        "kind": "llm",
                         "phase_key": "research",
                         "label": "research",
                         "model": "fictional-model",

@@ -6,7 +6,9 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
-use crate::note::types::{NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate};
+use crate::note::types::{
+    NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate, NoteWarningDispositionRecord,
+};
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -21,6 +23,7 @@ pub(super) struct AppendVersionCommand {
     pub body_md: String,
     pub frontmatter_json: Value,
     pub graphs_json: Value,
+    pub warning_dispositions: Vec<NoteWarningDispositionRecord>,
     pub created_by_kind: String,
     pub execution_id: Option<String>,
     pub change_reason: Option<String>,
@@ -56,6 +59,9 @@ impl NoteUseCases {
         } else {
             false
         };
+        let warning_dispositions_require_approval = content.created_by_kind
+            != HUMAN_CREATED_BY_KIND
+            && !content.warning_dispositions.is_empty();
         let max_version_no = latest.as_ref().map_or(0, |version| version.version_no);
         if requires_approval
             && max_version_no > 0
@@ -76,7 +82,9 @@ impl NoteUseCases {
         let graphs_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.graphs_json != content.graphs_json);
-        if requires_approval && (body_changed || graphs_changed) {
+        if (requires_approval || warning_dispositions_require_approval)
+            && (body_changed || graphs_changed)
+        {
             let _ = collect_note_references(
                 &content.body_md,
                 &content.graphs_json,
@@ -103,7 +111,7 @@ impl NoteUseCases {
                 (None, None) => Value::Object(Map::new()),
             };
 
-        let becomes_current = !requires_approval;
+        let becomes_current = !requires_approval && !warning_dispositions_require_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             APPROVED_NOTE_STATUS
         } else {
@@ -141,6 +149,7 @@ impl NoteUseCases {
                     frontmatter_json: content.frontmatter_json,
                     graphs_json: content.graphs_json,
                     resolved_price_references_json,
+                    warning_dispositions: content.warning_dispositions,
                     status: status.to_string(),
                     is_current: becomes_current,
                     change_reason: content.change_reason,

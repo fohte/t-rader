@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::persistence::PersistenceError;
 
 use super::types::{
-    Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot, NoteVersion,
-    PendingNoteVersion,
+    Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteOverview, NoteOverviewQuery,
+    NoteSnapshot, NoteVersion, PendingNoteVersion,
 };
 
 #[derive(Debug, Error)]
@@ -54,6 +54,10 @@ pub trait NoteReadQuery: Send + Sync {
         &self,
     ) -> Result<Vec<PendingNoteVersion>, NoteReadQueryError>;
     async fn list_notes(&self, query: NoteListQuery) -> Result<NoteListPage, NoteReadQueryError>;
+    async fn list_note_overviews(
+        &self,
+        query: NoteOverviewQuery,
+    ) -> Result<Vec<NoteOverview>, NoteReadQueryError>;
     async fn list_notes_written_by_task(
         &self,
         task_id: Uuid,

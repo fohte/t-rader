@@ -9,7 +9,7 @@ import { createStoryRouter } from '#storybook/story-router'
 afterEach(cleanup)
 
 describe('NotesTabs', () => {
-  it('switches tabs in the URL while preserving the note filter', async () => {
+  it('switches tabs in the URL while preserving note filters and the view', async () => {
     const user = userEvent.setup()
     const router = createStoryRouter(() => <Outlet />, {
       paths: [
@@ -18,7 +18,7 @@ describe('NotesTabs', () => {
           component: () => <NotesTabs activeTab="notes" />,
         },
       ],
-      initialPath: '/notes?tag=sample-tag',
+      initialPath: '/notes?view=pending&kind=sample-kind&tag=sample-tag',
     })
     render(<RouterProvider router={router} />)
 
@@ -38,9 +38,17 @@ describe('NotesTabs', () => {
     expect(outputs).toEqual([
       {
         pathname: '/notes',
-        search: { tag: 'sample-tag', tab: 'annotations' },
+        search: {
+          view: 'pending',
+          kind: 'sample-kind',
+          tag: 'sample-tag',
+          tab: 'annotations',
+        },
       },
-      { pathname: '/notes', search: { tag: 'sample-tag' } },
+      {
+        pathname: '/notes',
+        search: { view: 'pending', kind: 'sample-kind', tag: 'sample-tag' },
+      },
     ])
   })
 })

@@ -29,6 +29,7 @@ import {
   MAX_TOOL_CALLS_PER_MODEL_CALL,
 } from '#strategy-agent/tool-call-cap-middleware'
 import { createStrategyToolErrorMiddleware } from '#strategy-agent/tool-error-middleware'
+import { createToolSuccessMiddleware } from '#strategy-agent/tool-success-middleware'
 
 // createAgent の型推論は response schema に関わらず
 // `Record<string, unknown>` に collapse するため、その形で返す。
@@ -51,13 +52,21 @@ const buildCompiledAgent = (
       state: 'consumed' | 'released',
     ) => Promise<void>
     captureMessagesOnAbort?: boolean
+    onModelCallLimitReached?: () => void
+    onToolSuccess?: BuildPhaseAgentOptions['onToolSuccess']
   },
 ): CompiledPhaseAgent => {
+  const toolNames = new Set(options.tools.map((tool) => tool.name))
   const maxModelCalls =
     options.modelCallBudget?.maxModelCalls ?? MAX_MODEL_CALLS_PER_INVOKE
   const modelCallMiddleware =
-    options.modelCallBudget !== undefined
-      ? createFinalTurnMiddleware(maxModelCalls, options.modelCallBudget)
+    options.modelCallBudget !== undefined ||
+    options.onModelCallLimitReached !== undefined
+      ? createFinalTurnMiddleware(
+          maxModelCalls,
+          options.modelCallBudget,
+          options.onModelCallLimitReached,
+        )
       : finalTurnMiddleware
   const agent = createAgent({
     model: options.model,
@@ -68,6 +77,13 @@ const buildCompiledAgent = (
     responseFormat: options.responseFormat,
     middleware: [
       createGenAiTracingMiddleware({ providerName: genAiProviderName }),
+      ...(options.onToolSuccess !== undefined
+        ? [
+            createToolSuccessMiddleware((toolName) => {
+              if (toolNames.has(toolName)) options.onToolSuccess?.(toolName)
+            }),
+          ]
+        : []),
       // tracing middleware の wrapToolCall は tool error を自動復旧しないため、
       // 通常の ToolMessage に戻しつつ MCP の通信障害を記録する。
       createStrategyToolErrorMiddleware(),

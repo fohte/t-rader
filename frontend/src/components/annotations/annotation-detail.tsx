@@ -23,6 +23,11 @@ type AnnotationDetailProps = {
   annotation: Annotation | undefined
   isPending: boolean
   reviewNavigationState: ReviewNavigationViewState
+  notesSearch?: {
+    view?: 'all' | 'pending'
+    kind?: string
+    tag?: string
+  }
   comments: Comment[] | undefined
   history: ChangeHistory[] | undefined
   executionOrigin: ExecutionOrigin | null
@@ -57,6 +62,7 @@ export function AnnotationDetail({
   annotation,
   isPending,
   reviewNavigationState,
+  notesSearch,
   comments,
   history,
   executionOrigin,
@@ -83,13 +89,17 @@ export function AnnotationDetail({
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
+      <DetailBackLink
+        tab="annotations"
+        label="アノテーション一覧に戻る"
+        notesSearch={notesSearch}
+      />
       {navigation != null ? (
         <ReviewNavigationBand {...navigation} />
       ) : isNavigationError ? (
-        <ReviewNavigationBand isError />
+        <ReviewNavigationBand isError scope="annotations" />
       ) : isNavigationPending ? (
-        <ReviewNavigationBand isPending />
+        <ReviewNavigationBand isPending scope="annotations" />
       ) : null}
       {isPending || annotation == null ? (
         isPending ? (

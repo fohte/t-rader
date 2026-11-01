@@ -18,6 +18,7 @@ use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, StrategyResponse, UpdateStrategyRequest};
 
 mod earnings_targets;
+mod execution_artifacts;
 mod investable_amount;
 mod tasks;
 
@@ -25,6 +26,11 @@ pub use earnings_targets::{
     __path_add_strategy_earnings_target, __path_list_strategy_earnings_targets,
     __path_remove_strategy_earnings_target, add_strategy_earnings_target,
     list_strategy_earnings_targets, remove_strategy_earnings_target,
+};
+pub use execution_artifacts::{
+    __path_get_task_execution_artifacts, __path_get_task_execution_payload,
+    __path_list_task_execution_payload_manifests, get_task_execution_artifacts,
+    get_task_execution_payload, list_task_execution_payload_manifests,
 };
 pub use investable_amount::{
     __path_get_investable_amount, __path_put_investable_amount, get_investable_amount,

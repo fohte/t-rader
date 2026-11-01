@@ -113,6 +113,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone reviewed_at
   jsonb resolved_price_references_json
+  jsonb warning_dispositions_json
 }
 "public.note_link" {
   uuid from_version_id FK

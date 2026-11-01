@@ -46,6 +46,7 @@ export const buildSubagentAgent = (
       callId: string,
       state: 'consumed' | 'released',
     ) => Promise<void>
+    readonly onModelCallLimitReached?: () => void
     readonly systemPrompt?: string
   },
 ): CompiledPhaseAgent =>
@@ -65,6 +66,9 @@ export const buildSubagentAgent = (
       : {}),
     ...(options.transitionReservation !== undefined
       ? { transitionReservation: options.transitionReservation }
+      : {}),
+    ...(options.onModelCallLimitReached !== undefined
+      ? { onModelCallLimitReached: options.onModelCallLimitReached }
       : {}),
     captureMessagesOnAbort: true,
     ...(options.deadlineSignal !== undefined

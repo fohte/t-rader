@@ -126,6 +126,7 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
         ("demo-stock-e", "Sample stock E"),
         ("demo-stock-f", "Sample stock F"),
         ("demo-stock-g", "Sample stock G"),
+        ("demo-stock-h", "Sample stock H"),
     ] {
         insert_stock(&db, stock_id, name).await;
     }
@@ -137,6 +138,7 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
         "demo-stock-e",
         "demo-stock-f",
         "demo-stock-g",
+        "demo-stock-h",
     ] {
         add_member(&db, stock_id, first_group_id).await;
     }
@@ -167,6 +169,8 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
             bar("demo-stock-g", date(2025, 1, 31), 100, 2),
             bar("demo-stock-g", date(2025, 2, 3), 100, 2),
             bar("demo-stock-g", date(2025, 2, 4), 100, 2),
+            bar("demo-stock-h", date(2025, 1, 31), 0, 1),
+            bar("demo-stock-h", date(2025, 2, 4), 100, 2),
         ],
     )
     .await

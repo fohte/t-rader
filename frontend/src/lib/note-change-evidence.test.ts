@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { components } from '#lib/api/schema.gen'
 import { resolveNoteChangeEvidence } from '#lib/note-change-evidence'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
+import type { ParsedStockChangeReference } from '#lib/note-change-reference'
 
 describe('resolveNoteChangeEvidence', () => {
   it.each([
@@ -57,7 +57,8 @@ describe('resolveNoteChangeEvidence', () => {
         volume: 2000,
       },
     ]
-    const reference: ParsedNoteChangeReference = {
+    const reference: ParsedStockChangeReference = {
+      kind: 'stock',
       instrumentId: '0000',
       start: '2030-01-02',
       end: '2030-01-03',

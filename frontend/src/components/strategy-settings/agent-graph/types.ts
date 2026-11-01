@@ -1,21 +1,39 @@
 /**
  * agent_graph (YAML) の 1 フェーズをフォームで編集するための型。
  *
- * backend の `AgentGraphPhase` (backend/crates/core/application/src/agent_config/graph.rs) と同じ形だが、
- * `runs` は含めない。`for_each` の有無で実行回数が決まり `runs` は実行時に読み捨てられる
- * ため (agent/src/strategy-agent/agent-graph/types.ts 冒頭コメント参照)、フォームの型としても
- * 前提にしない。
+ * backend の `AgentGraphPhase` と同じ形だが、`runs` は含めない。
+ * `for_each` の有無で実行回数が決まり、`runs` は実行時に読み捨てられるため、
+ * フォームの型としても前提にしない。
  */
-export interface AgentGraphPhaseForm {
+interface AgentGraphPhaseBaseForm {
   key: string
   label: string
-  model: string
-  prompt: string
   forEach?: string
   labelField?: string
   maxParallel?: number
-  skills: string[]
-  /** 省略 (undefined) は「全 tool 使用可」、`[]` は「tool を 1 つも使えない」を表す */
-  tools?: string[]
+  timeoutMinutes?: number
+  input?: Record<string, unknown>
   output: Record<string, unknown>
 }
+
+interface LlmAgentGraphPhaseForm extends AgentGraphPhaseBaseForm {
+  kind?: 'llm'
+  model: string
+  prompt: string
+  reasoningEffort?: string
+  skills: string[]
+  tools?: string[]
+}
+
+interface OperationAgentGraphPhaseForm extends AgentGraphPhaseBaseForm {
+  kind: 'operation'
+  model?: null
+  prompt?: never
+  skills?: never
+  tools?: never
+  operation: 'evaluate_saved_code'
+  codeId: string
+}
+
+export type AgentGraphPhaseForm =
+  LlmAgentGraphPhaseForm | OperationAgentGraphPhaseForm

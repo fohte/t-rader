@@ -3914,6 +3914,254 @@
         }
       }
     },
+    "/api/note-tags": {
+      "get": {
+        "tags": [
+          "note_tags"
+        ],
+        "summary": "ノートタグ一覧",
+        "operationId": "list_note_tags",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteTag"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "note_tags"
+        ],
+        "summary": "ノートタグを作成",
+        "operationId": "create_note_tag",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNoteTagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "key が既存と衝突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/note-tags/{key}": {
+      "delete": {
+        "tags": [
+          "note_tags"
+        ],
+        "summary": "ノートタグを削除",
+        "operationId": "delete_note_tag",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "ノートタグ key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "note_tags"
+        ],
+        "summary": "ノートタグを部分更新する (key は変更不可)",
+        "operationId": "update_note_tag",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "ノートタグ key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNoteTagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteTag"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/note-versions/pending": {
       "get": {
         "tags": [
@@ -4076,6 +4324,80 @@
           },
           "422": {
             "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/overview": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノート一覧の代表・現行・最新 unread バージョン",
+        "operationId": "list_note_overviews",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "description": "表示対象。`all` は現行優先、`pending` は最新 unread のみを返す。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "all"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "ノート属性で絞り込む。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "view が選んだ代表バージョンのタグで絞り込む。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteOverviewResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -4692,7 +5014,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ChangeStatusRequest"
+                "$ref": "#/components/schemas/ApproveNoteVersionRequest"
               }
             }
           },
@@ -4710,7 +5032,7 @@
             }
           },
           "400": {
-            "description": "リクエストパラメータが不正",
+            "description": "リクエストパラメータが不正、または警告の確認が必要",
             "content": {
               "application/json": {
                 "schema": {
@@ -6512,6 +6834,33 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "current_period_end",
+            "in": "query",
+            "description": "対象期末。期区分と同時に指定する",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "current_period_type",
+            "in": "query",
+            "description": "対象期区分。期末と同時に指定する",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "銘柄の決算短信検索に指定できる対象期区分",
+              "enum": [
+                "FY",
+                "1Q",
+                "2Q",
+                "3Q",
+                "4Q"
+              ]
+            }
           }
         ],
         "responses": {
@@ -6524,6 +6873,16 @@
                   "items": {
                     "$ref": "#/components/schemas/StockFinancialSummaryResponse"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "検索条件が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -7852,6 +8211,282 @@
           },
           "400": {
             "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies/{id}/tasks/{task_id}/execution-artifacts": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "task 開始時点で固定した定義を取得する。",
+        "operationId": "get_task_execution_artifacts",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionArtifactsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "task に属する payload manifest の live 一覧を有限ページで取得する。",
+        "description": "total_count は取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。",
+        "operationId": "list_task_execution_payload_manifests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPayloadManifestPageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスまたは page パラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies/{id}/tasks/{task_id}/execution-artifacts/payloads/{payload_id}": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "task に紐づく payload の固定 manifest と有限 page を取得する。",
+        "operationId": "get_task_execution_payload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "payload_id",
+            "in": "path",
+            "description": "payload ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pointer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPayloadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスまたは page パラメータが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -9801,6 +10436,26 @@
           }
         }
       },
+      "ApproveNoteVersionRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "任意のラベル。"
+          },
+          "warning_dispositions_confirmed": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "理由付きで無視した警告の値・位置・理由を確認したことを示す。"
+          }
+        },
+        "additionalProperties": false
+      },
       "Bar": {
         "type": "object",
         "required": [
@@ -9846,71 +10501,102 @@
           }
         }
       },
+      "CalendarEventReferenceKindResponse": {
+        "type": "string",
+        "enum": [
+          "earnings_summary",
+          "individual_document",
+          "official_listing"
+        ]
+      },
+      "CalendarEventReferenceResponse": {
+        "type": "object",
+        "required": [
+          "kind",
+          "source",
+          "external_id",
+          "title",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CalendarEventReferenceKindResponse"
+          },
+          "publication_evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publication_evidence_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "target_period_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "target_period_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "target_period_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CalendarEventResponse": {
         "oneOf": [
           {
-            "type": "object",
-            "required": [
-              "source",
-              "external_id",
-              "category",
-              "country",
-              "title",
-              "event_date",
-              "kind"
-            ],
-            "properties": {
-              "category": {
-                "type": "string"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CalendarEventResponseEvent"
               },
-              "country": {
-                "type": "string"
-              },
-              "event_at": {
-                "type": [
-                  "string",
-                  "null"
+              {
+                "type": "object",
+                "required": [
+                  "kind"
                 ],
-                "format": "date-time"
-              },
-              "event_date": {
-                "type": "string",
-                "format": "date"
-              },
-              "external_id": {
-                "type": "string"
-              },
-              "fiscal_period": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "event"
-                ]
-              },
-              "source": {
-                "type": "string"
-              },
-              "stock_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "time_of_day": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "title": {
-                "type": "string"
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "event"
+                    ]
+                  }
+                }
               }
-            }
+            ]
           },
           {
             "type": "object",
@@ -9941,6 +10627,80 @@
             }
           }
         ]
+      },
+      "CalendarEventResponseEvent": {
+        "type": "object",
+        "required": [
+          "source",
+          "external_id",
+          "category",
+          "country",
+          "title",
+          "event_date",
+          "references",
+          "has_matching_earnings_summary"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "event_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "event_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "fiscal_period": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fiscal_period_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_matching_earnings_summary": {
+            "type": "boolean"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventReferenceResponse"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "stock_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time_of_day": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
       },
       "CalendarEventsResponse": {
         "type": "object",
@@ -10477,6 +11237,28 @@
         },
         "additionalProperties": false
       },
+      "CreateNoteTagRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "display_name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CreatePaperAccountRequest": {
         "type": "object",
         "required": [
@@ -10893,6 +11675,298 @@
           "error": {
             "type": "string",
             "description": "エラーメッセージ"
+          }
+        }
+      },
+      "ExecutionArtifactsResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "definition_snapshots"
+        ],
+        "properties": {
+          "definition_snapshots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionDefinitionSnapshotResponse"
+            }
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ExecutionDefinitionSnapshotResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "definition_key",
+          "definition",
+          "digest",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "definition": {},
+          "definition_key": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ExecutionPayloadCaptureMetadataResponse": {
+        "type": "object",
+        "required": [
+          "captured_at",
+          "received_count"
+        ],
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expected_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "missing_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "received_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unretrieved_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionPayloadManifestPageResponse": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "total_count",
+          "items"
+        ],
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionPayloadManifestResponse"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "取得時点の現在総数。追加分は cursor なしで先頭ページを再読すると確認できる。",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionPayloadManifestResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "kind",
+          "source",
+          "source_metadata",
+          "schema",
+          "root_is_array",
+          "chunk_count",
+          "item_count",
+          "byte_count",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "byte_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "capture_metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPayloadCaptureMetadataResponse"
+              }
+            ]
+          },
+          "chunk_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_step_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "incomplete_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "root_is_array": {
+            "type": "boolean"
+          },
+          "schema": {},
+          "sealed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_locator": {},
+          "source_metadata": {},
+          "source_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ExecutionPayloadPageResponse": {
+        "type": "object",
+        "required": [
+          "payload_id",
+          "pointer",
+          "data",
+          "cursor",
+          "total_count",
+          "digest"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "data": {},
+          "digest": {
+            "type": "string"
+          },
+          "next_cursor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "payload_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pointer": {
+            "type": "string"
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionPayloadResponse": {
+        "type": "object",
+        "required": [
+          "manifest"
+        ],
+        "properties": {
+          "manifest": {
+            "$ref": "#/components/schemas/ExecutionPayloadManifestResponse"
+          },
+          "page": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPayloadPageResponse"
+              }
+            ]
           }
         }
       },
@@ -11561,6 +12635,63 @@
           }
         }
       },
+      "NoteOverviewResponse": {
+        "type": "object",
+        "required": [
+          "representative",
+          "unread_version_count"
+        ],
+        "properties": {
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NoteVersion"
+              }
+            ]
+          },
+          "latest_unread": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NoteVersion"
+              }
+            ]
+          },
+          "representative": {
+            "$ref": "#/components/schemas/Note"
+          },
+          "unread_version_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "NoteTag": {
+        "type": "object",
+        "required": [
+          "key",
+          "display_name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        }
+      },
       "NoteTrigger": {
         "type": "string",
         "description": "ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる",
@@ -11581,6 +12712,7 @@
           "body_md",
           "frontmatter_json",
           "resolved_price_references_json",
+          "warning_dispositions",
           "graphs_json",
           "status",
           "is_current",
@@ -11650,6 +12782,12 @@
           "version_no": {
             "type": "integer",
             "format": "int32"
+          },
+          "warning_dispositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WarningDispositionResponse"
+            }
           }
         }
       },
@@ -13444,6 +14582,7 @@
           "phase",
           "created_at",
           "updated_at",
+          "model_call_limit_reached",
           "steps"
         ],
         "properties": {
@@ -13482,6 +14621,10 @@
               "string",
               "null"
             ]
+          },
+          "model_call_limit_reached": {
+            "type": "boolean",
+            "description": "いずれかの step がモデル呼び出し上限で打ち切られたことを示す。"
           },
           "phase": {
             "type": "string"
@@ -13551,7 +14694,8 @@
           "prompt",
           "phase",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "model_call_limit_reached"
         ],
         "properties": {
           "as_of": {
@@ -13583,6 +14727,10 @@
               "string",
               "null"
             ]
+          },
+          "model_call_limit_reached": {
+            "type": "boolean",
+            "description": "いずれかの step がモデル呼び出し上限で打ち切られたことを示す。"
           },
           "phase": {
             "type": "string"
@@ -14157,6 +15305,24 @@
         },
         "additionalProperties": false
       },
+      "UpdateNoteTagRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdateRssFeedRequest": {
         "type": "object",
         "properties": {
@@ -14399,6 +15565,85 @@
         "additionalProperties": false
       },
       "Value": {},
+      "WarningDispositionLocationResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "start",
+              "end",
+              "kind"
+            ],
+            "properties": {
+              "end": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "body"
+                ]
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "path",
+              "start",
+              "end",
+              "kind"
+            ],
+            "properties": {
+              "end": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "graph"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "WarningDispositionResponse": {
+        "type": "object",
+        "required": [
+          "warning_id",
+          "value",
+          "location",
+          "reason"
+        ],
+        "properties": {
+          "location": {
+            "$ref": "#/components/schemas/WarningDispositionLocationResponse"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "warning_id": {
+            "type": "string"
+          }
+        }
+      },
       "WidgetAggregationRequest": {
         "type": "string",
         "enum": [
@@ -15012,6 +16257,10 @@
     {
       "name": "note_kinds",
       "description": "ノート種別"
+    },
+    {
+      "name": "note_tags",
+      "description": "ノートタグ語彙"
     },
     {
       "name": "annotations",

@@ -88,6 +88,7 @@ async fn seed_stock(db: &gateway_postgres::DatabaseHandle, id: &str, name: &str,
         name: Set(name.to_string()),
         market: Set(Some(market.to_string())),
         product_category: Set(None),
+        cik: Default::default(),
         created_at: NotSet,
         updated_at: NotSet,
     }

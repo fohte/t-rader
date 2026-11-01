@@ -35,7 +35,27 @@ pub trait BarsRepository: Send + Sync {
         cutoff: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
 
-    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError>;
+    async fn find_us_stock_minute_bar_downsample_cursor(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
+
+    async fn initialize_us_stock_minute_bar_downsample_cursor(
+        &self,
+        cursor_timestamp: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, BarsRepositoryError>;
+
+    async fn advance_us_stock_minute_bar_downsample_cursor(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> Result<bool, BarsRepositoryError>;
+
+    async fn find_us_stock_minute_bar_instrument_ids(
+        &self,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<String>, BarsRepositoryError>;
 
     async fn downsample_us_stock_minute_bar_range(
         &self,
@@ -94,7 +114,13 @@ pub trait BarsRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         rows: u64,
         max_rows_per_hour: u64,
+        paced_at: DateTime<Utc>,
+        pacing_millis: u64,
     ) -> Result<bool, BarsRepositoryError>;
+
+    async fn find_us_stock_sip_refetch_next_allowed_at(
+        &self,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
 
     async fn mark_us_stock_hourly_bar_history_completed(
         &self,

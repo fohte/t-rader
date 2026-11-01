@@ -315,7 +315,33 @@ mod tests {
             Err(database_error())
         }
 
-        async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
+        async fn find_us_stock_minute_bar_downsample_cursor(
+            &self,
+        ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn initialize_us_stock_minute_bar_downsample_cursor(
+            &self,
+            _: DateTime<Utc>,
+        ) -> Result<DateTime<Utc>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn advance_us_stock_minute_bar_downsample_cursor(
+            &self,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+        ) -> Result<bool, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_us_stock_minute_bar_instrument_ids(
+            &self,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+        ) -> Result<Vec<String>, BarsRepositoryError> {
             Err(database_error())
         }
 
@@ -395,7 +421,15 @@ mod tests {
             _: &UnitOfWorkTransaction,
             _: u64,
             _: u64,
+            _: chrono::DateTime<Utc>,
+            _: u64,
         ) -> Result<bool, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_us_stock_sip_refetch_next_allowed_at(
+            &self,
+        ) -> Result<Option<chrono::DateTime<Utc>>, BarsRepositoryError> {
             Err(database_error())
         }
 

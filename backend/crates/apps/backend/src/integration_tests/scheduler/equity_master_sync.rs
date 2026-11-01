@@ -88,6 +88,7 @@ mod tests {
             name: Set("旧社名".to_string()),
             market: Set(None),
             product_category: Set(None),
+            cik: Default::default(),
             created_at: Set(previous_timestamp),
             updated_at: Set(previous_timestamp),
         }
@@ -143,6 +144,7 @@ mod tests {
             name: Set("架空銘柄".to_string()),
             market: Set(None),
             product_category: Set(None),
+            cik: Default::default(),
             created_at: NotSet,
             updated_at: NotSet,
         }

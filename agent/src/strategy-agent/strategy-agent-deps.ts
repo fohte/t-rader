@@ -1,15 +1,19 @@
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
+import { errAsync, ResultAsync } from 'neverthrow'
 
 import { isRecord } from '#errors'
 import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
 import { createDefaultBuildPhaseAgent } from '#strategy-agent/compiled-phase-agent'
+import type { ExecutionToolRequest } from '#strategy-agent/execution-tool-client'
+import { parseExecutionToolResult } from '#strategy-agent/execution-tool-client'
 import { createReasoningContentAwareFetch } from '#strategy-agent/reasoning-content-middleware'
 import type {
   StrategyAgentConfig,
   StrategyAgentDeps,
 } from '#strategy-agent/strategy-agent'
 import { createSubagentDefinitionFetcher } from '#strategy-agent/subagent-definition-client'
+import { createTaskExecutionSnapshotFetcher } from '#strategy-agent/task-execution-snapshot'
 
 // OpenCode Go's OpenAI-compatible endpoint.
 const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
@@ -31,12 +35,8 @@ type ReasoningEffort = NonNullable<
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
-): StrategyAgentDeps => ({
-  fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
-  fetchSubagentDefinition: createSubagentDefinitionFetcher(
-    config.backendApiBaseUrl,
-  ),
-  createMcpClient: (
+): StrategyAgentDeps => {
+  const createMcpClient: StrategyAgentDeps['createMcpClient'] = (
     strategyId,
     strategyTaskId,
     executionId,
@@ -85,6 +85,31 @@ export const createStrategyAgentDeps = (
     }
     return {
       getTools: () => client.getTools(),
+      callExecutionTool: async (
+        request: ExecutionToolRequest,
+        signal?: AbortSignal,
+      ) =>
+        await ResultAsync.fromPromise(
+          client.getClient('strategy'),
+          (error) =>
+            new Error('failed to connect to strategy MCP server', {
+              cause: error,
+            }),
+        ).andThen((mcpClient) =>
+          mcpClient === undefined
+            ? errAsync(new Error('failed to connect to strategy MCP server'))
+            : ResultAsync.fromPromise(
+                mcpClient.callTool(
+                  request,
+                  undefined,
+                  signal === undefined ? undefined : { signal },
+                ),
+                (error) =>
+                  new Error(`${request.name} MCP tool call failed`, {
+                    cause: error,
+                  }),
+              ).andThen(parseExecutionToolResult),
+        ),
       reserveModelCall: async (callId) => {
         const result = await callBudgetOperation({
           action: 'reserve_model_call',
@@ -124,32 +149,42 @@ export const createStrategyAgentDeps = (
       },
       close: () => client.close(),
     }
-  },
-  createChatModel: (model, options) =>
-    new ChatOpenAI({
-      apiKey: config.llmApiKey,
-      model,
-      // model 引数によっては上流 backend が非ストリーミングの応答から
-      // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
-      streaming: true,
-      timeout: config.llmCallTimeoutMs,
-      // SDK 内の再試行によるタイムアウトの累積を防ぎ、再試行を middleware に集約する。
-      maxRetries: 0,
-      configuration: {
-        baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
-        fetch: createReasoningContentAwareFetch(),
-      },
-      ...(options?.reasoningEffort !== undefined
-        ? {
-            reasoning: {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent_graph 由来の reasoningEffort は model と同じ自由文字列として持ち回っており、ChatOpenAI 側のリテラル型に合わせ込むための意図的な narrowing。
-              effort: options.reasoningEffort as ReasoningEffort,
-            },
-          }
-        : {}),
-    }),
-  buildPhaseAgent: createDefaultBuildPhaseAgent(
-    config.genAiProviderName,
-    config.llmCallTimeoutMs,
-  ),
-})
+  }
+
+  return {
+    fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
+    fetchTaskExecutionSnapshot:
+      createTaskExecutionSnapshotFetcher(createMcpClient),
+    fetchSubagentDefinition: createSubagentDefinitionFetcher(
+      config.backendApiBaseUrl,
+    ),
+    createMcpClient,
+    createChatModel: (model, options) =>
+      new ChatOpenAI({
+        apiKey: config.llmApiKey,
+        model,
+        // model 引数によっては上流 backend が非ストリーミングの応答から
+        // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
+        streaming: true,
+        timeout: config.llmCallTimeoutMs,
+        // SDK 内の再試行によるタイムアウトの累積を防ぎ、再試行を middleware に集約する。
+        maxRetries: 0,
+        configuration: {
+          baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
+          fetch: createReasoningContentAwareFetch(),
+        },
+        ...(options?.reasoningEffort !== undefined
+          ? {
+              reasoning: {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent_graph 由来の reasoningEffort は model と同じ自由文字列として持ち回っており、ChatOpenAI 側のリテラル型に合わせ込むための意図的な narrowing。
+                effort: options.reasoningEffort as ReasoningEffort,
+              },
+            }
+          : {}),
+      }),
+    buildPhaseAgent: createDefaultBuildPhaseAgent(
+      config.genAiProviderName,
+      config.llmCallTimeoutMs,
+    ),
+  }
+}

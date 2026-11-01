@@ -196,6 +196,7 @@ function RunsTab() {
                 phase: task.phase,
                 purpose: task.purpose ?? null,
                 createdAt: task.created_at,
+                modelCallLimitReached: task.model_call_limit_reached,
               }))
         }
       />

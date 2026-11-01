@@ -12,7 +12,7 @@ export function TradesPageHeader({
     <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
       <div className="min-w-0 flex-1">
         <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-          取引履歴
+          取引
         </h1>
         <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
           全戦略横断の約定記録。入力ソースは証券会社 API / CSV 取込 /

@@ -23,6 +23,7 @@ async fn insert_stock(db: &DatabaseHandle, id: &str, name: &str) {
         name: Set(name.to_string()),
         market: Set(Some("OTHER".to_string())),
         product_category: Set(None),
+        cik: Default::default(),
         created_at: Default::default(),
         updated_at: Default::default(),
     }

@@ -362,6 +362,7 @@ mod tests {
                     "body_md": body_md,
                     "frontmatter_json": {},
                     "resolved_price_references_json": {},
+                    "warning_dispositions": [],
                     "graphs_json": [],
                     "status": "approved",
                     "is_current": true,

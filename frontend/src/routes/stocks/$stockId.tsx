@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import type { ComponentProps } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { StockPageState } from '#components/stock-page/stock-page-state'
@@ -35,13 +34,19 @@ type Bar = components['schemas']['Bar']
 
 function StockPage() {
   const { stockId } = Route.useParams()
-  const { date: requestedDate } = Route.useSearch()
+  const search = Route.useSearch()
+  const requestedDate = search.date
+  const selectedPeriod =
+    search.periodEnd != null && search.periodType != null
+      ? { end: search.periodEnd, type: search.periodType }
+      : undefined
+  const activeTab =
+    search.stockTab ?? (selectedPeriod == null ? 'annotations' : 'financials')
+  const navigate = Route.useNavigate()
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null)
-  const [activeTab, setActiveTab] =
-    useState<ComponentProps<typeof StockPageView>['activeTab']>('annotations')
   const chartIndicators = useChartIndicators()
   const lookbackBars = getChartIndicatorLookbackBars(chartIndicators)
   const displayChartRange = useMemo(() => {
@@ -161,7 +166,18 @@ function StockPage() {
   const financialSummariesQuery = $api.useQuery(
     'get',
     '/api/stocks/{stock_id}/financial-summaries',
-    { params: { path: { stock_id: stockId } } },
+    {
+      params: {
+        path: { stock_id: stockId },
+        query:
+          selectedPeriod == null
+            ? {}
+            : {
+                current_period_end: selectedPeriod.end,
+                current_period_type: selectedPeriod.type,
+              },
+      },
+    },
   )
   const selectedDateBar = useMemo(
     () =>
@@ -217,6 +233,7 @@ function StockPage() {
       valuationState={getStockPageListState(valuationQuery)}
       financialSummaries={financialSummariesQuery.data ?? []}
       financialSummariesState={getStockPageListState(financialSummariesQuery)}
+      selectedPeriod={selectedPeriod}
       position={position}
       holdingsState={getStockPageListState(summaryQuery)}
       timeframe={timeframe}
@@ -224,7 +241,11 @@ function StockPage() {
       selectedAnnotationId={selectedAnnotationId}
       onSelectAnnotation={setSelectedAnnotationId}
       activeTab={activeTab}
-      onTabChange={setActiveTab}
+      onTabChange={(tab) => {
+        void navigate({
+          search: (previous) => ({ ...previous, stockTab: tab }),
+        })
+      }}
       currency={getChartCurrency(stock.market)}
       chartLoading={chartBarsQuery.isPending && chartBars == null}
       chartError={chartBarsQuery.isError && chartBars == null}

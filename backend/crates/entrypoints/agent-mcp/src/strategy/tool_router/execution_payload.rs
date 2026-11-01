@@ -8,7 +8,8 @@ use super::super::dto::{
     ReadExecutionPayloadResult,
 };
 use super::super::{
-    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, invalid_params,
+    StrategyServer, execution_step_id_from_ctx, execution_task_id_for_read_from_ctx,
+    execution_task_id_from_ctx, invalid_params,
 };
 
 #[tool_router(router = execution_payload_tool_router, vis = "pub(super)")]
@@ -16,7 +17,7 @@ impl StrategyServer {
     /// 保存済み定義を task に紐付けて実行し、入力・出力 payload の参照を返す
     #[tool(
         name = "execute_operation",
-        description = "Execute a saved custom indicator within the current task. The definition and complete input/output are saved as task-scoped payloads; read them in bounded pages with read_execution_payload. Set numeric_pointers only when numeric values should be available for note citations. Pointers must select numbers under the output payload's value field; omitting them still returns the payload reference."
+        description = "Execute a saved custom indicator within the current task. The definition and complete input/output are saved as task-scoped payloads; read them in bounded pages with read_execution_payload. Use payload_inputs to pass authorized sealed payload selections as bounded files. Set numeric_pointers only when numeric values should be available for note citations. Pointers must select numbers under the output payload's value field; omitting them still returns the payload reference."
     )]
     async fn execute_operation(
         &self,
@@ -29,9 +30,15 @@ impl StrategyServer {
         let execution_step_id = execution_step_id_from_ctx(&ctx).ok_or_else(|| {
             invalid_params("x-execution-id must include a valid execution step ID")
         })?;
-        self.execute_operation_inner(scope, &a2a_task_id, execution_step_id, params)
-            .await
-            .map(Json)
+        self.execute_operation_inner(
+            scope,
+            &a2a_task_id,
+            execution_step_id,
+            params,
+            ctx.ct.clone(),
+        )
+        .await
+        .map(Json)
     }
 
     /// task 内で seal 済み payload の有限ページを読む
@@ -46,11 +53,16 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadExecutionPayloadResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let a2a_task_id = execution_task_id_from_ctx(&ctx)
+        let a2a_task_id = execution_task_id_for_read_from_ctx(&ctx)
             .ok_or_else(|| invalid_params("x-execution-id must include an active task ID"))?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
-        self.read_execution_payload_inner(scope, &a2a_task_id, execution_step_id, params)
-            .await
-            .map(Json)
+        let cancellation = ctx.ct.clone();
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => Err(super::super::internal_error("execution request cancelled")),
+            result = self.read_execution_payload_inner(scope, &a2a_task_id, execution_step_id, params) => {
+                result.map(Json)
+            }
+        }
     }
 }

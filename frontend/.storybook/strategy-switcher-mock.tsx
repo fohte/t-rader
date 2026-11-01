@@ -36,6 +36,7 @@ function unreadNoteVersion(index: number): PendingNoteVersion {
     is_current: true,
     kind: null,
     resolved_price_references_json: {},
+    warning_dispositions: [],
     status: 'unread',
     tags: [],
     title: `デモ戦略のノート ${String(index)}`,

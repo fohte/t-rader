@@ -2,6 +2,13 @@ import { Button } from '@fohte/ui/button'
 import { ButtonGroup } from '@fohte/ui/button-group'
 import { Chip } from '@fohte/ui/chip'
 import { Input } from '@fohte/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@fohte/ui/select'
 import type { ReactNode } from 'react'
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
@@ -15,6 +22,7 @@ interface PhaseCardProps {
   referencedLabel?: string
   hasError?: boolean
   onLabelChange: (next: string) => void
+  onKindChange: (next: 'llm' | 'operation') => void
   onMoveUp: () => void
   onMoveDown: () => void
   onRemove: () => void
@@ -28,6 +36,7 @@ export function PhaseCard({
   referencedLabel,
   hasError = false,
   onLabelChange,
+  onKindChange,
   onMoveUp,
   onMoveDown,
   onRemove,
@@ -57,8 +66,28 @@ export function PhaseCard({
             }}
           />
         </div>
+        <Select
+          value={phase.kind ?? 'llm'}
+          onValueChange={(next) => {
+            if (next === 'llm' || next === 'operation') onKindChange(next)
+          }}
+        >
+          <SelectTrigger aria-label="フェーズ種別" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="llm">LLM</SelectItem>
+            <SelectItem value="operation">Operation</SelectItem>
+          </SelectContent>
+        </Select>
         <Chip size="md" tone="strong">
-          {phase.model === '' ? '(未設定)' : phase.model}
+          {phase.kind === 'operation'
+            ? phase.codeId === ''
+              ? 'evaluate_saved_code'
+              : `evaluate_saved_code · ${phase.codeId}`
+            : phase.model === ''
+              ? '(未設定)'
+              : phase.model}
         </Chip>
         <ButtonGroup aria-label="フェーズの操作" className="ml-auto">
           <Button

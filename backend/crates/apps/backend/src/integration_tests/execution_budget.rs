@@ -8,11 +8,39 @@ use core_application::{
     subagent_definition::SubagentDefinitionFields,
 };
 use indoc::formatdoc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use gateway_postgres::entities::{sea_orm_active_enums::StrategyTaskPhase as DbPhase, strategy};
+use gateway_postgres::entities::{
+    execution_reservation, sea_orm_active_enums::StrategyTaskPhase as DbPhase, strategy,
+    task_execution_state,
+};
+
+pub(crate) async fn task_budget_usage(
+    db: &gateway_postgres::DatabaseHandle,
+    task_id: Uuid,
+) -> (i64, i64, i64, u64) {
+    let state = task_execution_state::Entity::find_by_id(task_id)
+        .one(db)
+        .await
+        .expect("query task execution budget state")
+        .expect("task execution budget state exists");
+    let reservation_count = execution_reservation::Entity::find()
+        .filter(execution_reservation::Column::TaskId.eq(task_id))
+        .count(db)
+        .await
+        .expect("count task execution reservations");
+
+    (
+        state.model_calls_used,
+        state.tool_calls_used,
+        state.subagent_runs_used,
+        reservation_count,
+    )
+}
 
 #[derive(Debug, Clone, Copy)]
 enum ResumeMode {
@@ -31,6 +59,114 @@ async fn task_global_limits_survive_manual_and_automatic_resume(
         (
             expected_outcome("synthetic-manual-attempt-two"),
             expected_outcome("synthetic-auto-attempt-two"),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn zero_model_and_subagent_task_limits_reject_without_reservations(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    const CHILD_KEY: &str = "demo_worker";
+    let strategy_id = insert_strategy(&db).await;
+    let use_cases =
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone());
+    let purpose = format!("sample-zero-budget-{}", Uuid::new_v4());
+    use_cases
+        .agent_configs()
+        .create(purpose.clone())
+        .await
+        .expect("create synthetic agent config");
+    use_cases
+        .subagent_definitions()
+        .create(
+            CHILD_KEY.to_string(),
+            SubagentDefinitionFields {
+                description: "Synthetic helper".to_string(),
+                model: "sample-model".to_string(),
+                reasoning_effort: None,
+                prompt: "Use the provided synthetic input.".to_string(),
+                tools: Vec::new(),
+                timeout_minutes: 1,
+                max_model_calls: 1,
+                tool_limits: std::collections::BTreeMap::new(),
+                output: serde_json::Map::new(),
+            },
+        )
+        .await
+        .expect("create synthetic child definition");
+    let graph = formatdoc! {"
+        execution_limits:
+          max_model_calls: 0
+          max_tool_calls: 0
+          max_subagent_runs: 0
+        phases:
+          - key: demo_phase
+            label: Synthetic phase
+            model: sample-model
+            prompt: Use only synthetic input.
+            subagents: [{CHILD_KEY}]
+            max_subagent_runs: 1
+    "};
+    use_cases
+        .agent_configs()
+        .save_agent_graph(&purpose, &graph)
+        .await
+        .expect("save synthetic graph configuration");
+    let fake = FakeAgentTaskClient::new();
+    let a2a_task_id = format!("synthetic-zero-budget-{}", Uuid::new_v4());
+    fake.set_next_task_id(&a2a_task_id).await;
+    let task = use_cases
+        .strategy_tasks()
+        .submit_task(
+            &fake,
+            strategy_id,
+            "synthetic budget task",
+            TaskSource::Review,
+            Some(purpose),
+        )
+        .await
+        .expect("submit synthetic task");
+    let server = crate::mcp::StrategyServer::new(crate::mcp::strategy_server_dependencies(
+        &use_cases, None, None, None, None,
+    ));
+    let step_id = Uuid::from_u128(404);
+    let execution = ExecutionIdentity {
+        strategy_id,
+        task_id: task.task_id,
+        a2a_task_id: &task.a2a_task_id,
+        execution_step_id: step_id,
+        subagent: None,
+    };
+    let model_call = invoke_budget_operation(
+        &server,
+        execution,
+        json!({
+            "action": "reserve_model_call",
+            "call_id": "synthetic-zero-model-call",
+        }),
+    )
+    .await;
+    let child_run = invoke_budget_operation(
+        &server,
+        execution,
+        json!({
+            "action": "reserve_subagent_run",
+            "call_id": "synthetic-zero-child-run",
+            "phase_key": "demo_phase",
+            "parent_execution_step_id": step_id,
+            "definition_key": CHILD_KEY,
+        }),
+    )
+    .await;
+    let usage = task_budget_usage(&db, task.task_id).await;
+
+    assert_eq!(
+        (model_call, child_run, usage),
+        (
+            Err("execution budget limit was exceeded for __task_total".into()),
+            Err("execution budget limit was exceeded for __task_total".into()),
+            (0, 0, 0, 0),
         ),
     );
 }

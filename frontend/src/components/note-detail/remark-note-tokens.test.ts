@@ -252,6 +252,7 @@ describe('remarkNoteTokens', () => {
                 hName: 'note-change-reference',
                 hProperties: {
                   token,
+                  kind: 'stock',
                   instrumentId: 'fictional-code',
                   start: '2030-01-02',
                   end: '2030-01-03',
@@ -268,6 +269,7 @@ describe('remarkNoteTokens', () => {
           data: {
             hName: 'note-change-figure',
             hProperties: {
+              kind: 'stock',
               instrumentId: 'fictional-code',
               start: '2030-01-02',
               end: '2030-01-03',
@@ -275,6 +277,38 @@ describe('remarkNoteTokens', () => {
             },
           },
           position,
+        },
+      ],
+    })
+  })
+
+  it('keeps an indicator change inline without appending a stock figure', () => {
+    const token = '[[change:indicator:demo-indicator@2030-01-02..2030-01-03]]'
+    const tree = textTree(`期間変化 ${token}`)
+    remarkNoteTokens({ [token]: { value: 12.5 } })(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: '期間変化 ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-change-reference',
+                hProperties: {
+                  token,
+                  kind: 'indicator',
+                  indicatorId: 'demo-indicator',
+                  start: '2030-01-02',
+                  end: '2030-01-03',
+                  value: '12.5',
+                },
+              },
+            },
+          ],
         },
       ],
     })
@@ -329,6 +363,7 @@ describe('remarkNoteTokens', () => {
                     hName: 'note-change-reference',
                     hProperties: {
                       token,
+                      kind: 'stock',
                       instrumentId: 'fictional-code',
                       start: '2030-01-02',
                       end: '2030-01-03',
@@ -343,6 +378,7 @@ describe('remarkNoteTokens', () => {
               data: {
                 hName: 'note-change-figure',
                 hProperties: {
+                  kind: 'stock',
                   instrumentId: 'fictional-code',
                   start: '2030-01-02',
                   end: '2030-01-03',
@@ -368,6 +404,7 @@ describe('remarkNoteTokens', () => {
                         hName: 'note-change-reference',
                         hProperties: {
                           token,
+                          kind: 'stock',
                           instrumentId: 'fictional-code',
                           start: '2030-01-02',
                           end: '2030-01-03',
@@ -382,6 +419,7 @@ describe('remarkNoteTokens', () => {
                   data: {
                     hName: 'note-change-figure',
                     hProperties: {
+                      kind: 'stock',
                       instrumentId: 'fictional-code',
                       start: '2030-01-02',
                       end: '2030-01-03',

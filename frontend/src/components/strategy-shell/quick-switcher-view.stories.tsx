@@ -30,7 +30,8 @@ const initialGroups: CommandPaletteGroup[] = [
     id: 'screens',
     title: '画面',
     items: [
-      item('dashboard', 'ダッシュボード'),
+      item('home', 'ホーム'),
+      item('dashboards', 'ダッシュボード'),
       item('portfolio', '資産 · 保有'),
       item('notes', 'ノート'),
     ],

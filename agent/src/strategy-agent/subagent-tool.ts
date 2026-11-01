@@ -88,6 +88,7 @@ const runWithDefinition = (
   brief: string,
   executionStepId: string,
   options: CreateRunSubagentToolOptions,
+  onModelCallLimitReached: () => void,
 ): Promise<Result<Record<string, unknown>, Error>> => {
   const childDeadline = createChildDeadline(
     options.deadlineSignal,
@@ -127,6 +128,7 @@ const runWithDefinition = (
           mcpClient === undefined
             ? Promise.reject(new Error('subagent MCP client is unavailable'))
             : mcpClient.transitionReservation(callId, state),
+        onModelCallLimitReached,
       })
       return agent.invoke({
         messages: [new HumanMessage(brief)],
@@ -149,6 +151,7 @@ const runWithDefinition = (
         options,
         modelCallBudget,
         result.messages ?? [new HumanMessage(brief)],
+        onModelCallLimitReached,
       )
     })
     .catch((error: unknown) => {
@@ -162,6 +165,7 @@ const runWithDefinition = (
           options,
           modelCallBudget,
           [new HumanMessage(brief)],
+          onModelCallLimitReached,
         )
       }
       return err(toError(error))
@@ -277,6 +281,11 @@ export const createRunSubagentTool = (
             brief,
             executionStepId,
             options,
+            () => {
+              options.recorder.update(stepIndex, {
+                modelCallLimitReached: true,
+              })
+            },
           )
           options.recorder.finish(
             stepIndex,

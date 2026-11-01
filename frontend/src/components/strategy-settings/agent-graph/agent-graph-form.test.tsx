@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
@@ -52,6 +58,17 @@ const SAMPLE = `phases:
     label_field: name
     max_parallel: 4
     prompt: sample prompt
+`
+
+const OPERATION = `phases:
+  - key: calculate
+    label: 計算
+    kind: operation
+    operation: evaluate_saved_code
+    code_id: sample-code
+    input:
+      request:
+        literal: { count: 2 }
 `
 
 const MODELS = [
@@ -149,6 +166,18 @@ function renderForm(props: { initial: string; errorPhaseKey?: string | null }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
   return render(<Controlled {...props} />, { wrapper: Wrapper })
+}
+
+function readOperationFormOutput(phaseCard: HTMLElement) {
+  const fields = within(phaseCard)
+  return {
+    codeIdField: fields.queryByLabelText('保存コード ID') != null,
+    modelField: fields.queryByLabelText('モデル') != null,
+    promptField: fields.queryByLabelText('プロンプト') != null,
+    phase: parseAgentGraphPhases(
+      screen.getByTestId('yaml-value').textContent,
+    )?.[0],
+  }
 }
 
 beforeEach(() => {
@@ -262,6 +291,82 @@ describe('AgentGraphForm', () => {
       await screen.findByRole('option', { name: 'fictional-model-maple' }),
     )
     expect(trigger).toHaveTextContent('fictional-model-maple')
+  })
+
+  it('operation と保存コード ID、入力 binding を編集する', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: OPERATION })
+    const phaseCardElement = screen.getByTestId('phase-card-calculate')
+    const phaseCard = within(phaseCardElement)
+
+    await user.clear(phaseCard.getByLabelText('保存コード ID'))
+    await user.type(phaseCard.getByLabelText('保存コード ID'), 'updated-code')
+    const inputEditor = phaseCard.getByLabelText('入力 binding')
+    await user.clear(inputEditor)
+    fireEvent.change(inputEditor, {
+      target: {
+        value:
+          'previous:\n  prior_output: { phase: prepare, pointer: /items, limit: 25 }',
+      },
+    })
+
+    expect(readOperationFormOutput(phaseCardElement)).toEqual({
+      codeIdField: true,
+      modelField: false,
+      promptField: false,
+      phase: {
+        key: 'calculate',
+        label: '計算',
+        forEach: undefined,
+        labelField: undefined,
+        maxParallel: undefined,
+        input: {
+          previous: {
+            prior_output: { phase: 'prepare', pointer: '/items', limit: 25 },
+          },
+        },
+        output: {},
+        kind: 'operation',
+        operation: 'evaluate_saved_code',
+        codeId: 'updated-code',
+      },
+    })
+  })
+
+  it('LLM phase を operation に切り替える', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const phaseCardElement = screen.getByTestId('phase-card-alpha')
+    const phaseCard = within(phaseCardElement)
+
+    await user.click(phaseCard.getByRole('combobox', { name: 'フェーズ種別' }))
+    await user.click(await screen.findByRole('option', { name: 'Operation' }))
+
+    expect(readOperationFormOutput(phaseCardElement)).toEqual({
+      codeIdField: true,
+      modelField: false,
+      promptField: false,
+      phase: {
+        key: 'alpha',
+        label: 'サンプル',
+        forEach: undefined,
+        labelField: undefined,
+        maxParallel: undefined,
+        output: {
+          records: {
+            type: 'array',
+            items: { name: { type: 'string' } },
+          },
+          entries: {
+            type: 'array',
+            items: { value: { type: 'string' } },
+          },
+        },
+        kind: 'operation',
+        operation: 'evaluate_saved_code',
+        codeId: '',
+      },
+    })
   })
 
   it('tool チップを追加・削除でき、絞り込みの有無を tools キーの有無で表現する', async () => {

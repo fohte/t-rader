@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  type ReviewQueueData,
   type ReviewQueueItem,
   reviewQueueItemKey,
 } from '#components/review/review-queue-model'
@@ -43,6 +44,20 @@ const items: ReviewQueueItem[] = [
     unreadVersionCount: 1,
   },
 ]
+
+function getFrozenApprovalOutput(
+  selectedItemIds: string[],
+  selectedItems: ReviewQueueItem[],
+  approvedItems: ReviewQueueItem[],
+) {
+  return {
+    selectedBeforeApproval: {
+      ids: selectedItemIds,
+      items: selectedItems,
+    },
+    approvedItems,
+  }
+}
 
 describe('useReviewApproval', () => {
   function startApprovalOfEveryItem() {
@@ -148,5 +163,74 @@ describe('useReviewApproval', () => {
     const { invalidate } = runAllApprovalsSuccessfully()
 
     expect(invalidate.mock.calls).toEqual([[]])
+  })
+
+  it('keeps the selected note version when a newer unread version arrives', () => {
+    const olderVersion: ReviewQueueItem = {
+      kind: 'note',
+      id: 'fake-version-old',
+      noteId: 'fake-note-a',
+      versionNo: 4,
+      title: '架空の確認メモ A',
+      createdAt: '2026-10-12T01:00:00Z',
+      noteKind: '架空の種別',
+      createdByKind: 'llm',
+      unreadVersionCount: 1,
+    }
+    const newerVersion: ReviewQueueItem = {
+      kind: 'note',
+      id: 'fake-version-new',
+      noteId: 'fake-note-a',
+      versionNo: 5,
+      title: '架空の確認メモ A',
+      createdAt: '2026-10-13T01:00:00Z',
+      noteKind: '架空の種別',
+      createdByKind: 'llm',
+      unreadVersionCount: 2,
+    }
+    const approveItem = vi.fn(
+      (item: ReviewQueueItem, callbacks: ReviewApprovalCallbacks) =>
+        void [item, callbacks],
+    )
+    const dataFor = (item: ReviewQueueItem): ReviewQueueData => ({
+      counts: { notes: 1, annotations: 0, total: 1 },
+      items: [item],
+    })
+    const getSelectionKey = (item: ReviewQueueItem) =>
+      item.kind === 'note' ? `note:${item.noteId}` : reviewQueueItemKey(item)
+    const { result, rerender } = renderHook(
+      ({ data }: { data: ReviewQueueData }) =>
+        useReviewApproval({
+          data,
+          approveItem,
+          invalidate: () => {},
+          getSelectionKey,
+          preserveSelectedItems: true,
+        }),
+      { initialProps: { data: dataFor(olderVersion) } },
+    )
+
+    act(() => {
+      result.current.actions.toggleItem('note:fake-note-a', true)
+    })
+    rerender({ data: dataFor(newerVersion) })
+
+    act(() => {
+      result.current.actions.approveSelected()
+    })
+
+    expect(
+      getFrozenApprovalOutput(
+        result.current.state.selectedItemIds,
+        result.current.selectedItems,
+        approveItem.mock.calls.map(([item]) => item),
+      ),
+    ).toEqual({
+      selectedBeforeApproval: {
+        ids: ['note:fake-note-a'],
+        items: [olderVersion],
+      },
+      approvedItems: [olderVersion],
+    })
   })
 })

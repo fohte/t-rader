@@ -13,40 +13,6 @@ use crate::persistence::persistence_error;
 
 const TOP_STOCKS_PER_GROUP: i64 = 5;
 
-const GROUP_MOVER_STOCK_CHANGE_CTES: &str = r#"
-    latest_period_bars AS (
-        SELECT period_bars.stock_id,
-               period_bars.is_end_period,
-               MAX(period_bars.timestamp) AS timestamp
-        FROM period_bars
-        GROUP BY period_bars.stock_id, period_bars.is_end_period
-    ),
-    stock_change_prices AS (
-        SELECT latest_period_bars.stock_id,
-               MAX(period_bars.close) FILTER (
-                   WHERE latest_period_bars.is_end_period
-               ) AS end_close,
-               MAX(period_bars.close) FILTER (
-                   WHERE NOT latest_period_bars.is_end_period
-               ) AS start_close
-        FROM latest_period_bars
-        JOIN period_bars
-          ON period_bars.stock_id = latest_period_bars.stock_id
-         AND period_bars.is_end_period = latest_period_bars.is_end_period
-         AND period_bars.timestamp = latest_period_bars.timestamp
-        GROUP BY latest_period_bars.stock_id
-    ),
-    stock_changes AS (
-        SELECT stock_change_prices.stock_id,
-               stock_change_prices.end_close
-                   / NULLIF(stock_change_prices.start_close, 0) - 1 AS change_rate
-        FROM stock_change_prices
-        WHERE stock_change_prices.end_close IS NOT NULL
-          AND stock_change_prices.start_close IS NOT NULL
-          AND stock_change_prices.start_close <> 0
-    )
-"#;
-
 const GROUP_AXIS_EXISTS_SQL: &str =
     "SELECT EXISTS (SELECT 1 FROM group_axis WHERE key = $1::text) AS axis_exists";
 
@@ -61,7 +27,7 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
                   ON stock_group_member.group_id = axis_groups.group_id
                 WHERE stock_group_member.stock_id IS NOT NULL
             ),
-            period_bars AS MATERIALIZED (
+            period_bars AS (
                 SELECT eligible_stocks.stock_id,
                        bars.timestamp,
                        bars.close,
@@ -75,24 +41,37 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
                   AND bars.timestamp < (($3::date + 1)::timestamp AT TIME ZONE 'UTC')
             )
         "#,
-        GROUP_MOVER_STOCK_CHANGE_CTES,
         r#"
-            avg_turnover AS MATERIALIZED (
-                SELECT period_bars.stock_id AS instrument_id,
-                       AVG(period_bars.close * period_bars.volume::numeric) AS avg_turnover
+            stock_metrics AS (
+                SELECT period_bars.stock_id,
+                       last(period_bars.close, period_bars.timestamp)
+                           FILTER (WHERE period_bars.is_end_period) AS end_close,
+                       last(period_bars.close, period_bars.timestamp)
+                           FILTER (WHERE NOT period_bars.is_end_period) AS start_close,
+                       AVG(period_bars.close * period_bars.volume::numeric)
+                           FILTER (WHERE period_bars.is_end_period) AS avg_turnover
                 FROM period_bars
-                WHERE period_bars.is_end_period
                 GROUP BY period_bars.stock_id
-                HAVING AVG(period_bars.close * period_bars.volume::numeric) >= $4::numeric
             ),
+            stock_changes AS (
+                SELECT stock_metrics.stock_id,
+                       stock_metrics.end_close / NULLIF(stock_metrics.start_close, 0) - 1
+                           AS change_rate,
+                       stock_metrics.avg_turnover
+                FROM stock_metrics
+                WHERE stock_metrics.end_close IS NOT NULL
+                  AND stock_metrics.start_close IS NOT NULL
+                  AND stock_metrics.start_close <> 0
+                  AND stock_metrics.avg_turnover >= $4::numeric
+            )
+        "#,
+        r#"
             group_returns AS (
                 SELECT group_members.group_id, group_members.group_key,
                        group_members.group_name, group_members.stock_id,
                        COALESCE(stock.name, instruments.name) AS stock_name,
-                       stock_changes.change_rate, avg_turnover.avg_turnover
+                       stock_changes.change_rate, stock_changes.avg_turnover
                 FROM group_members
-                JOIN avg_turnover
-                  ON avg_turnover.instrument_id = group_members.stock_id
                 JOIN stock_changes
                   ON stock_changes.stock_id = group_members.stock_id
                 JOIN instruments ON instruments.id = group_members.stock_id

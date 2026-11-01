@@ -232,16 +232,20 @@ impl PostgresBarsRepository {
         transaction: &UnitOfWorkTransaction,
         rows: u64,
         max_rows_per_hour: u64,
+        paced_at: chrono::DateTime<chrono::Utc>,
+        pacing_millis: u64,
     ) -> Result<bool, BarsRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         let rows = i64::try_from(rows).unwrap_or(i64::MAX);
         let max_rows_per_hour = i64::try_from(max_rows_per_hour).unwrap_or(i64::MAX);
+        let pacing_millis = i64::try_from(pacing_millis).unwrap_or(i64::MAX);
         let row = transaction
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "INSERT INTO us_stock_sip_bar_refetch_write_budget AS budget \
-                 (id, hour_started_at, rows_written) \
-                 SELECT 1, date_trunc('hour', statement_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC', $1 \
+                 (id, hour_started_at, rows_written, next_allowed_at) \
+                 SELECT 1, date_trunc('hour', statement_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC', $1, \
+                        GREATEST(statement_timestamp(), $3::timestamptz) + ($4::double precision * INTERVAL '1 millisecond') \
                  WHERE $1 <= $2 \
                  ON CONFLICT (id) DO UPDATE \
                  SET hour_started_at = EXCLUDED.hour_started_at, \
@@ -249,14 +253,19 @@ impl PostgresBarsRepository {
                          WHEN budget.hour_started_at = EXCLUDED.hour_started_at \
                          THEN budget.rows_written + EXCLUDED.rows_written \
                          ELSE EXCLUDED.rows_written \
-                     END \
+                     END, \
+                     next_allowed_at = GREATEST( \
+                         COALESCE(budget.next_allowed_at, statement_timestamp()), \
+                         statement_timestamp(), \
+                         $3::timestamptz \
+                     ) + ($4::double precision * INTERVAL '1 millisecond') \
                  WHERE CASE \
                      WHEN budget.hour_started_at = EXCLUDED.hour_started_at \
                      THEN budget.rows_written + EXCLUDED.rows_written <= $2 \
                      ELSE EXCLUDED.rows_written <= $2 \
                  END \
                  RETURNING rows_written",
-                [rows.into(), max_rows_per_hour.into()],
+                [rows.into(), max_rows_per_hour.into(), paced_at.into(), pacing_millis.into()],
             ))
             .await
             .map_err(repository_error)?;
@@ -264,6 +273,33 @@ impl PostgresBarsRepository {
             return Ok(false);
         }
         Ok(true)
+    }
+
+    pub(super) async fn find_us_stock_sip_refetch_next_allowed_at(
+        &self,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, BarsRepositoryError> {
+        #[derive(FromQueryResult)]
+        struct NextAllowedRow {
+            next_allowed_at: Option<chrono::DateTime<FixedOffset>>,
+        }
+
+        let row = self
+            .db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT next_allowed_at \
+                 FROM us_stock_sip_bar_refetch_write_budget \
+                 WHERE id = 1",
+            ))
+            .await
+            .map_err(repository_error)?;
+        row.map(|row| {
+            NextAllowedRow::from_query_result(&row, "")
+                .map(|row| row.next_allowed_at.map(|at| at.to_utc()))
+                .map_err(repository_error)
+        })
+        .transpose()
+        .map(Option::flatten)
     }
 }
 
@@ -279,7 +315,7 @@ mod tests {
     };
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
-    use sea_orm::{ConnectionTrait, EntityTrait, Set, Statement};
+    use sea_orm::{ConnectionTrait, EntityTrait, FromQueryResult, Set, Statement};
 
     use crate::{DatabaseHandle, PostgresUnitOfWork, entities::instruments};
 
@@ -462,15 +498,15 @@ mod tests {
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let first_transaction = unit_of_work.begin().await.expect("begin transaction");
         let initial_over_limit_allowed = repository
-            .reserve_us_stock_sip_refetch_rows(&first_transaction, 6, 5)
+            .reserve_us_stock_sip_refetch_rows(&first_transaction, 6, 5, Utc::now(), 3_000)
             .await
             .expect("reject first reservation over the row limit");
         let first_allowed = repository
-            .reserve_us_stock_sip_refetch_rows(&first_transaction, 3, 5)
+            .reserve_us_stock_sip_refetch_rows(&first_transaction, 3, 5, Utc::now(), 9_000)
             .await
             .expect("reserve first rows");
         let over_limit_allowed = repository
-            .reserve_us_stock_sip_refetch_rows(&first_transaction, 3, 5)
+            .reserve_us_stock_sip_refetch_rows(&first_transaction, 3, 5, Utc::now(), 9_000)
             .await
             .expect("reject rows over limit");
         unit_of_work
@@ -479,13 +515,19 @@ mod tests {
             .expect("commit first reservation");
         db.execute_unprepared(
             "UPDATE us_stock_sip_bar_refetch_write_budget \
-             SET hour_started_at = hour_started_at - INTERVAL '1 hour'",
+             SET hour_started_at = hour_started_at - INTERVAL '1 hour', \
+                 next_allowed_at = GREATEST(next_allowed_at, statement_timestamp() + INTERVAL '30 seconds')",
         )
         .await
         .expect("move rate-limit window to the previous hour");
+        let next_allowed_before_next_hour = repository
+            .find_us_stock_sip_refetch_next_allowed_at()
+            .await
+            .expect("read pacing deadline before the next hour")
+            .expect("write budget exists");
         let next_hour_transaction = unit_of_work.begin().await.expect("begin next hour");
         let next_hour_allowed = repository
-            .reserve_us_stock_sip_refetch_rows(&next_hour_transaction, 5, 5)
+            .reserve_us_stock_sip_refetch_rows(&next_hour_transaction, 5, 5, Utc::now(), 3_000)
             .await
             .expect("reserve rows in the next hour");
         unit_of_work
@@ -503,6 +545,11 @@ mod tests {
                 row.try_get::<i64>("", "rows_written")
                     .expect("read rows_written")
             });
+        let next_allowed_after_hour_reset = repository
+            .find_us_stock_sip_refetch_next_allowed_at()
+            .await
+            .expect("read pacing deadline after the next hour")
+            .expect("write budget exists");
 
         assert_eq!(
             (
@@ -511,8 +558,92 @@ mod tests {
                 over_limit_allowed,
                 next_hour_allowed,
                 budget,
+                next_allowed_after_hour_reset,
             ),
-            (false, true, false, true, Some(5)),
+            (
+                false,
+                true,
+                false,
+                true,
+                Some(5),
+                next_allowed_before_next_hour + chrono::Duration::seconds(3),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn bars_budget_cursor_and_pacing_roll_back_together(db: DatabaseHandle) {
+        let repository = PostgresBarsRepository::new(db.clone());
+        insert_instruments(&repository, &db, &[("US:DEMO-REFETCH-ROLLBACK", "US")]).await;
+        db.execute_unprepared("DELETE FROM us_stock_sip_bar_refetch_write_budget")
+            .await
+            .expect("clear prior row budget");
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let transaction = unit_of_work.begin().await.expect("begin page transaction");
+        repository
+            .reserve_us_stock_sip_refetch_rows(&transaction, 1, 10, Utc::now(), 3)
+            .await
+            .expect("reserve page rows");
+        let mut extra_bar = bar("US:DEMO-REFETCH-ROLLBACK", Timeframe::Daily);
+        extra_bar.timestamp += chrono::Duration::days(1);
+        repository
+            .upsert_bars(&transaction, vec![extra_bar.clone()])
+            .await
+            .expect("upsert page bars");
+        repository
+            .save_us_stock_sip_bar_refetch_cursor(
+                &transaction,
+                "US:DEMO-REFETCH-ROLLBACK",
+                Some(UsStockSipBarRefetchCursor {
+                    timeframe: UsStockSipBarRefetchTimeframe::Daily,
+                    range_from: extra_bar.timestamp,
+                    range_to: extra_bar.timestamp,
+                    page_token: Some("synthetic-page-token".to_owned()),
+                }),
+            )
+            .await
+            .expect("save page cursor");
+        drop(transaction);
+
+        #[derive(FromQueryResult)]
+        struct BarCount {
+            count: i64,
+        }
+
+        let row = db
+            .query_one_raw(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT COUNT(*) AS count FROM bars \
+                 WHERE instrument_id = $1 AND timeframe = '1d' AND timestamp = $2",
+                [
+                    "US:DEMO-REFETCH-ROLLBACK".into(),
+                    extra_bar.timestamp.into(),
+                ],
+            ))
+            .await
+            .expect("query rolled-back bar count")
+            .expect("bar count row exists");
+        let count = BarCount::from_query_result(&row, "")
+            .expect("decode rolled-back bar count")
+            .count;
+        let next_allowed_at = repository
+            .find_us_stock_sip_refetch_next_allowed_at()
+            .await
+            .expect("read rolled-back pacing deadline");
+        let target = repository
+            .find_pending_us_stock_sip_bar_refetch_targets(None)
+            .await
+            .expect("read rolled-back cursor")
+            .into_iter()
+            .find(|target| target.bars.instrument_id == "US:DEMO-REFETCH-ROLLBACK");
+
+        assert_eq!(
+            (
+                count,
+                next_allowed_at,
+                target.and_then(|target| target.cursor)
+            ),
+            (0, None, None),
         );
     }
 }

@@ -14,6 +14,7 @@ export type CalendarSearch = {
 
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 const COUNTRY_CODES: readonly CalendarCountry[] = ['JP', 'US', 'EU']
+const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000
 
 function parseDate(value: string): Date | undefined {
   const match = DATE_PATTERN.exec(value)
@@ -57,6 +58,18 @@ export function getTokyoDate(now: Date = new Date()): string {
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((item) => item.type === type)?.value ?? ''
   return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+export function millisecondsUntilTokyoMidnight(now: Date = new Date()): number {
+  const tokyoNow = new Date(now.getTime() + TOKYO_OFFSET_MS)
+  const nextTokyoMidnight =
+    Date.UTC(
+      tokyoNow.getUTCFullYear(),
+      tokyoNow.getUTCMonth(),
+      tokyoNow.getUTCDate() + 1,
+    ) - TOKYO_OFFSET_MS
+
+  return nextTokyoMidnight - now.getTime()
 }
 
 export function getCalendarWeekRange(dateValue: string): CalendarWeekRange {

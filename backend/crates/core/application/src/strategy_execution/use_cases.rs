@@ -1,5 +1,8 @@
+mod payload_manifest_read;
 mod payload_read;
 mod payload_write;
+
+pub use payload_write::DatasetCaptureOptions;
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -21,7 +24,7 @@ use crate::{
     unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction},
 };
 
-use self::payload_read::assemble_payload;
+use self::payload_read::{assemble_payload, validate_page_limit};
 use super::{
     DefinitionSnapshot, MAX_PAYLOAD_PAGE_ITEMS, PayloadKind, PayloadStatus,
     StrategyExecutionRepository, StrategyExecutionUseCaseError, TaskStartSnapshotter,
@@ -59,6 +62,59 @@ impl StrategyExecutionUseCases {
         }
     }
 
+    pub async fn list_task_execution_definitions(
+        &self,
+        scope: StrategyScope,
+        task_id: Uuid,
+    ) -> Result<Vec<DefinitionSnapshot>, StrategyExecutionUseCaseError> {
+        self.verify_task_scope(scope, task_id).await?;
+        let snapshots = self.repository.list_definition_snapshots(task_id).await?;
+        for snapshot in &snapshots {
+            verify_definition_digest(snapshot)?;
+        }
+        Ok(snapshots)
+    }
+
+    pub async fn read_task_execution_payload(
+        &self,
+        scope: StrategyScope,
+        task_id: Uuid,
+        query: super::ReadPayloadQuery,
+    ) -> Result<super::ExecutionPayloadRead, StrategyExecutionUseCaseError> {
+        self.verify_task_scope(scope, task_id).await?;
+        let manifest = self
+            .repository
+            .find_payload(task_id, query.payload_id)
+            .await?
+            .ok_or(StrategyExecutionUseCaseError::PayloadNotFound)?;
+        let page = if manifest.status == PayloadStatus::Sealed {
+            validate_page_limit(query.limit)?;
+            Some(
+                self.read_sealed_payload_page(task_id, &manifest, query)
+                    .await?,
+            )
+        } else {
+            None
+        };
+        Ok(super::ExecutionPayloadRead { manifest, page })
+    }
+
+    async fn verify_task_scope(
+        &self,
+        scope: StrategyScope,
+        task_id: Uuid,
+    ) -> Result<(), StrategyExecutionUseCaseError> {
+        let task = self
+            .task_repository
+            .find_by_id(task_id)
+            .await?
+            .ok_or(StrategyExecutionUseCaseError::TaskNotFound)?;
+        if task.strategy_id != scope.id() {
+            return Err(StrategyExecutionUseCaseError::StrategyMismatch);
+        }
+        Ok(())
+    }
+
     pub async fn authorize_execution(
         &self,
         scope: StrategyScope,
@@ -76,12 +132,29 @@ impl StrategyExecutionUseCases {
         if task.phase != StrategyTaskPhase::Running {
             return Err(StrategyExecutionUseCaseError::TaskNotRunning);
         }
+        if task.deadline_at <= Utc::now().fixed_offset() {
+            return Err(StrategyExecutionUseCaseError::TaskDeadlineExpired);
+        }
         Ok(super::AuthorizedExecution {
             task_id: task.task_id,
             strategy_id: task.strategy_id,
             a2a_task_id: a2a_task_id.to_string(),
             execution_step_id,
         })
+    }
+
+    pub async fn read_task_start_snapshot(
+        &self,
+        access: &super::AuthorizedExecution,
+    ) -> Result<Option<DefinitionSnapshot>, StrategyExecutionUseCaseError> {
+        let snapshot = self
+            .repository
+            .find_definition_snapshot(access.task_id, "task_start")
+            .await?;
+        if let Some(snapshot) = &snapshot {
+            verify_definition_digest(snapshot)?;
+        }
+        Ok(snapshot)
     }
 
     pub async fn resolve_custom_indicator(

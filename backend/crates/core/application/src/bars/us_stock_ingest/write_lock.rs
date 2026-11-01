@@ -195,7 +195,9 @@ impl UsStockBarsIngestUseCases {
         };
         let completed_at = self.clock.instant();
         let waited = completed_at.saturating_duration_since(acquire_started_at);
-        stats.write_lock_wait_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+        stats.write_lock_wait_ms = stats
+            .write_lock_wait_ms
+            .saturating_add(u64::try_from(waited.as_millis()).unwrap_or(u64::MAX));
         let lock = lock?;
 
         match lock {

@@ -25,19 +25,29 @@ mod write_lock;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
+const SIP_REFETCH_PAGE_LIMIT: u32 = 1_000;
+const SIP_REFETCH_MAX_ROWS_PER_RUN: u64 = 1_000_000;
+const SIP_REFETCH_MILLIS_PER_ROW: u64 = 3;
+const SIP_REFETCH_RUN_ROW_LIMIT_REACHED: &str = "sip_refetch_run_row_limit_reached";
+
+#[derive(Clone, Copy)]
+struct SipRefetchLimits {
+    max_rows_per_hour: u64,
+    max_rows_per_run: u64,
+}
 
 struct IngestContext {
     budget: RequestBudget,
     stats: UsStockBarsIngestStats,
     write_throttle: WriteThrottle,
-    sip_refetch_max_rows_per_hour: Option<u64>,
+    sip_refetch: Option<SipRefetchLimits>,
 }
 
 struct BatchIngestContext<'a> {
     budget: &'a mut RequestBudget,
     stats: &'a mut UsStockBarsIngestStats,
     write_throttle: &'a mut WriteThrottle,
-    sip_refetch_max_rows_per_hour: Option<u64>,
+    sip_refetch: Option<SipRefetchLimits>,
     sip_refetch_progress: Option<SipRefetchProgressContext>,
     page_token: Option<String>,
     skipped_instrument_ids: HashSet<String>,
@@ -45,12 +55,12 @@ struct BatchIngestContext<'a> {
 
 impl<'a> BatchIngestContext<'a> {
     fn new(context: &'a mut IngestContext) -> Self {
-        let sip_refetch_max_rows_per_hour = context.sip_refetch_max_rows_per_hour;
+        let sip_refetch = context.sip_refetch;
         Self {
             budget: &mut context.budget,
             stats: &mut context.stats,
             write_throttle: &mut context.write_throttle,
-            sip_refetch_max_rows_per_hour,
+            sip_refetch,
             sip_refetch_progress: None,
             page_token: None,
             skipped_instrument_ids: HashSet::new(),
@@ -107,6 +117,7 @@ pub(super) struct UsStockSipBarRefetchCheckpoint {
 
 pub(super) struct SipRefetchPageWrite {
     pub max_rows_per_hour: u64,
+    pub max_rows_per_run: u64,
     pub checkpoint: Option<UsStockSipBarRefetchCheckpoint>,
 }
 
@@ -170,7 +181,7 @@ impl UsStockBarsIngestUseCases {
                 ..UsStockBarsIngestStats::default()
             },
             write_throttle: WriteThrottle::default(),
-            sip_refetch_max_rows_per_hour: None,
+            sip_refetch: None,
         };
         let completed = self
             .ingest_timeframe(
@@ -335,6 +346,16 @@ impl UsStockBarsIngestUseCases {
         let mut page_token = context.page_token.take();
         let mut requested = false;
         loop {
+            if context.sip_refetch.is_some_and(|limits| {
+                context.stats.total_rows_upserted() >= limits.max_rows_per_run
+            }) {
+                context.stats.interrupted_reason =
+                    Some(SIP_REFETCH_RUN_ROW_LIMIT_REACHED.to_owned());
+                return Ok(BatchIngestOutcome {
+                    completed: false,
+                    requested,
+                });
+            }
             if !context.budget.take_at(1, self.clock.instant()) {
                 return Ok(BatchIngestOutcome {
                     completed: false,
@@ -351,6 +372,7 @@ impl UsStockBarsIngestUseCases {
                         to: range.to,
                         page_token: page_token.clone(),
                     },
+                    context.sip_refetch.map(|_| SIP_REFETCH_PAGE_LIMIT),
                     context.budget.deadline(),
                 )
                 .await
@@ -419,13 +441,11 @@ impl UsStockBarsIngestUseCases {
             } else {
                 context.sip_refetch_checkpoint(timeframe, range, next_page_token.clone())
             };
-            let sip_refetch_write =
-                context
-                    .sip_refetch_max_rows_per_hour
-                    .map(|max_rows_per_hour| SipRefetchPageWrite {
-                        max_rows_per_hour,
-                        checkpoint,
-                    });
+            let sip_refetch_write = context.sip_refetch.map(|limits| SipRefetchPageWrite {
+                max_rows_per_hour: limits.max_rows_per_hour,
+                max_rows_per_run: limits.max_rows_per_run,
+                checkpoint,
+            });
             if !self
                 .persist_bars(
                     bars,
@@ -520,9 +540,9 @@ mod tests {
 
     use crate::bars::clock::BarsIngestClock;
     use crate::bars::{
-        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock,
-        SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
-        UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsIngestUseCases,
+        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SharedSipRefetchLease,
+        SharedUsStockBarsWriteLock, SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery,
+        UsStockBarSource, UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsIngestUseCases,
         UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockSplit, UsStockSplitBatch,
         UsStockSplitQuery,
     };
@@ -694,6 +714,7 @@ mod tests {
 
     struct TestClock {
         started_at: Instant,
+        started_at_utc: DateTime<Utc>,
         now: StdMutex<Duration>,
         now_readings: StdMutex<VecDeque<Duration>>,
         sleeps: StdMutex<Vec<Duration>>,
@@ -703,6 +724,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 started_at: Instant::now(),
+                started_at_utc: Utc::now(),
                 now: StdMutex::default(),
                 now_readings: StdMutex::default(),
                 sleeps: StdMutex::default(),
@@ -755,6 +777,14 @@ mod tests {
                 *now = reading;
             }
             self.started_at + *now
+        }
+
+        fn utc_now(&self) -> DateTime<Utc> {
+            let elapsed = *self
+                .now
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.started_at_utc + chrono::Duration::from_std(elapsed).unwrap_or_default()
         }
 
         async fn sleep(&self, duration: Duration) {
@@ -1021,7 +1051,8 @@ mod tests {
         Harness {
             use_cases: UsStockBarsIngestUseCases::with_clock(
                 BarsUseCases::new(unit_of_work_shared, repository_shared_trait),
-                write_lock_shared,
+                write_lock_shared.clone(),
+                SharedSipRefetchLease::new(write_lock_shared),
                 clock.clone(),
             ),
             repository,
@@ -1078,6 +1109,7 @@ mod tests {
         async fn fetch_page(
             &self,
             query: &UsStockBarQuery,
+            _max_rows: Option<u32>,
             _deadline: Instant,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
             let call_count = {

@@ -83,6 +83,7 @@ fn commit_cooldown(commit_duration: Duration) -> Duration {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Utc};
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
@@ -99,6 +100,7 @@ mod tests {
 
     struct FakeClock {
         started_at: Instant,
+        started_at_utc: DateTime<Utc>,
         state: Mutex<ClockState>,
     }
 
@@ -106,6 +108,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 started_at: Instant::now(),
+                started_at_utc: Utc::now(),
                 state: Mutex::default(),
             }
         }
@@ -138,6 +141,11 @@ mod tests {
     impl BarsIngestClock for FakeClock {
         fn instant(&self) -> Instant {
             self.started_at + self.snapshot().now
+        }
+
+        fn utc_now(&self) -> DateTime<Utc> {
+            let elapsed = self.snapshot().now;
+            self.started_at_utc + chrono::Duration::from_std(elapsed).unwrap_or_default()
         }
 
         async fn sleep(&self, duration: Duration) {

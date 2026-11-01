@@ -89,6 +89,7 @@ impl MgmtServer {
             phase: view.phase.as_str().to_string(),
             error_summary: view.error_summary,
             result_text: view.result_text,
+            model_call_limit_reached: view.model_call_limit_reached,
             updated_at: view.updated_at,
         })
     }

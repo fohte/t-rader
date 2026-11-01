@@ -11,9 +11,13 @@ mod tests {
     use core_application::agent_task_client::AgentTaskError;
     use core_application::agent_task_client::FakeAgentTaskClient;
     use core_application::strategy_task::DEFAULT_PURPOSE;
-    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use gateway_postgres::entities::strategy_task;
+    use gateway_postgres::entities::sea_orm_active_enums::{
+        StrategyTaskPhase, StrategyTaskStepStatus,
+    };
+    use gateway_postgres::entities::{strategy_task, strategy_task_step};
     use rmcp::handler::server::wrapper::{Json, Parameters};
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
     use serde_json::json;
 
@@ -331,17 +335,54 @@ mod tests {
             .await
             .expect("submit");
 
+        let started_at = chrono::Utc::now().fixed_offset();
+        strategy_task_step::ActiveModel {
+            execution_step_id: Set(Uuid::new_v4()),
+            task_id: Set(submitted.task_id),
+            phase_key: Set("fictional-phase".to_string()),
+            kind: Set("llm".to_string()),
+            label: Set("Fictional phase".to_string()),
+            model: Set(Some("fictional-model".to_string())),
+            model_call_limit_reached: Set(true),
+            status: Set(StrategyTaskStepStatus::Running),
+            item: Set(None),
+            item_key: Set(None),
+            item_label: Set(None),
+            input_ref: Set(None),
+            output_ref: Set(None),
+            output: Set(None),
+            started_at: Set(started_at),
+            finished_at: Set(None),
+            trace_id: Set("fictional-trace".to_string()),
+            span_id: Set("fictional-span".to_string()),
+            error: Set(None),
+            seq: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test task step");
+
         let Json(status) = server
             .get_strategy_task_status(Parameters(GetStrategyTaskStatusParams {
                 a2a_task_id: submitted.a2a_task_id.clone(),
             }))
             .await
             .expect("ok");
-        assert_eq!(status.task_id, submitted.task_id);
-        assert_eq!(status.strategy_id, strategy_id);
-        assert_eq!(status.phase, "running");
-        assert!(status.error_summary.is_none());
-        assert!(status.result_text.is_none());
+        let mut actual = serde_json::to_value(status).expect("serialize task status");
+        actual["updated_at"] = json!("<updated_at>");
+        assert_eq!(
+            actual,
+            json!({
+                "task_id": submitted.task_id,
+                "strategy_id": strategy_id,
+                "a2a_task_id": submitted.a2a_task_id,
+                "phase": "running",
+                "error_summary": null,
+                "result_text": null,
+                "model_call_limit_reached": true,
+                "updated_at": "<updated_at>",
+            }),
+        );
     }
 
     #[backend_test_macros::database_test]

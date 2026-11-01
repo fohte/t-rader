@@ -8,17 +8,29 @@ import {
 import { getReviewQueueQueryKeys } from '#components/review/review-queue-query-keys'
 import { $api } from '#lib/api/client'
 
-export function useReviewQueue(): {
+export function useReviewQueue({
+  enabled = true,
+}: { enabled?: boolean } = {}): {
   data: ReviewQueueData | null
   isPending: boolean
   isError: boolean
   invalidate: () => void
 } {
   const queryClient = useQueryClient()
-  const versionsQuery = $api.useQuery('get', '/api/note-versions/pending')
-  const annotationsQuery = $api.useQuery('get', '/api/annotations', {
-    params: { query: { status: 'unread' } },
-  })
+  const versionsQuery = $api.useQuery(
+    'get',
+    '/api/note-versions/pending',
+    undefined,
+    { enabled },
+  )
+  const annotationsQuery = $api.useQuery(
+    'get',
+    '/api/annotations',
+    {
+      params: { query: { status: 'unread' } },
+    },
+    { enabled },
+  )
   const isPending = versionsQuery.isPending || annotationsQuery.isPending
   const isError = versionsQuery.isError || annotationsQuery.isError
   const data = useMemo(
