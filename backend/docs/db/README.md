@@ -81,6 +81,7 @@
 | [public.calendar_event_sec_filing_check](public.calendar_event_sec_filing_check.md)             | 2       | SEC の資料を照合した最終日時をカレンダーイベントごとに保持する。                                                                                   | BASE TABLE        |
 | [public.calendar_event_macro_reference_check](public.calendar_event_macro_reference_check.md)   | 2       | 経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。                                                   | BASE TABLE        |
 | [public.us_stock_minute_bar_downsample_cursor](public.us_stock_minute_bar_downsample_cursor.md) | 2       | 米国株の 1 分足 downsample の再開位置を保持する。                                                                                                  | BASE TABLE        |
+| [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -1035,6 +1036,11 @@ erDiagram
 "public.us_stock_minute_bar_downsample_cursor" {
   smallint singleton_key
   timestamp_with_time_zone cursor_timestamp
+}
+"public.note_tag" {
+  text key
+  text display_name
+  text description
 }
 ```
 

@@ -15,6 +15,7 @@ pub mod ingest_status;
 pub mod note_kinds;
 pub mod note_links;
 pub mod note_predictions;
+pub mod note_tags;
 pub mod note_versions;
 pub mod notes;
 pub mod notes_overview;

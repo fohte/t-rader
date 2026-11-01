@@ -51,6 +51,7 @@ pub enum TargetKind {
     AgentConfig,
     Trigger,
     NoteKind,
+    NoteTag,
     StockGroup,
     Stock,
 }
@@ -67,6 +68,7 @@ impl TargetKind {
             Self::AgentConfig => "agent_config",
             Self::Trigger => "trigger",
             Self::NoteKind => "note_kind",
+            Self::NoteTag => "note_tag",
             Self::StockGroup => "stock_group",
             Self::Stock => "stock",
         }

@@ -168,6 +168,7 @@ mod history;
 mod ingest_status;
 mod note_kinds;
 mod note_predictions;
+mod note_tags;
 mod note_versions;
 mod notes;
 mod notes_display;

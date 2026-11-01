@@ -55,6 +55,7 @@ pub fn build_http_state(
         indicator_observation_use_cases: use_cases.indicator_observations(),
         ingest_status_use_case: Arc::new(use_cases.ingest_status()),
         note_kind_use_cases: use_cases.note_kinds(),
+        note_tag_use_cases: use_cases.note_tags(),
         note_read_use_cases: use_cases.note_reads(),
         note_use_cases: use_cases.notes(),
         paper_trade_use_cases: use_cases.paper_trade(),
