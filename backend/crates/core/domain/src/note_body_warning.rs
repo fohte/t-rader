@@ -261,6 +261,7 @@ mod tests {
         relative_warning("2-3%"),
     ])]
     #[case::ordinary_date_is_not_a_price("2030-01-02", vec![])]
+    #[case::specified_date_is_not_a_price("2031-04-05", vec![])]
     #[case::year_with_spacing_is_not_a_price("2031 年", vec![])]
     #[case::escaped_date_is_not_a_price("2031\\-04\\-05", vec![])]
     #[case::year_with_suffix_is_not_a_price("2031年", vec![])]
