@@ -2,49 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentProps, ComponentType } from 'react'
 
+import { pendingNoteOverview } from '#components/dashboard/dashboard-notes.fixtures'
 import { DashboardPageView } from '#components/dashboard/dashboard-page-view'
-import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
 type DashboardPageViewProps = ComponentProps<typeof DashboardPageView>
-type Note = components['schemas']['Note']
-type NoteVersion = components['schemas']['NoteVersion']
-
-const note: Note = {
-  id: 'fake-note-a',
-  version_id: 'fake-version-a',
-  version_no: 1,
-  is_current: false,
-  title: '現行なしの架空ノート',
-  body_md: '表示用の架空ノートです。',
-  frontmatter_json: {},
-  resolved_price_references_json: {},
-  graphs_json: [],
-  tags: [],
-  kind: null,
-  status: 'unread',
-  trigger: null,
-  trigger_label: null,
-  created_by_kind: 'llm',
-  created_at: '2026-10-10T03:00:00Z',
-  updated_at: '2026-10-10T03:00:00Z',
-}
-
-const version: NoteVersion = {
-  id: note.version_id,
-  note_id: note.id,
-  version_no: note.version_no,
-  is_current: false,
-  title: note.title,
-  body_md: note.body_md,
-  frontmatter_json: note.frontmatter_json,
-  resolved_price_references_json: note.resolved_price_references_json,
-  graphs_json: note.graphs_json,
-  warning_dispositions: [],
-  status: note.status,
-  created_by_kind: note.created_by_kind,
-  created_at: note.created_at,
-}
 
 const stocks: DashboardPageViewProps['stocks'] = [
   {
@@ -171,14 +133,7 @@ const args: DashboardPageViewProps = {
     },
   ],
   isEventsError: false,
-  notes: [
-    {
-      representative: note,
-      current: null,
-      latest_unread: version,
-      unread_version_count: 1,
-    },
-  ],
+  notes: [pendingNoteOverview],
   isNotesError: false,
   tasks: [
     {
