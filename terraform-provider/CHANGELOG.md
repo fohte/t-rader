@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.6...terraform-provider-v0.1.7) (2026-11-01)
+
+
+### Features
+
+* **terraform-provider:** ノートタグ語彙リソースを追加する ([#1049](https://github.com/fohte/t-rader/issues/1049)) ([1291a54](https://github.com/fohte/t-rader/commit/1291a543c2fbc6dab19c3c9c5c34cf2e321092f8))
+
 ## [0.1.6](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.5...terraform-provider-v0.1.6) (2026-10-17)
 
 
