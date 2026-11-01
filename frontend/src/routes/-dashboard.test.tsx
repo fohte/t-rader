@@ -98,7 +98,7 @@ describe('DashboardRoute', () => {
       name: /現行なしの架空ノート/,
     })
     const currentAndUnreadNoteLink = await screen.findByRole('link', {
-      name: /現行版と未読版を持つ架空ノート/,
+      name: /現行バージョンと未読バージョンを持つ架空ノート/,
     })
 
     expect(

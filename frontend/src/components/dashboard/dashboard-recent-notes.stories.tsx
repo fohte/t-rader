@@ -39,7 +39,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Recent: Story = {
-  name: 'shows recent notes from the user and an agent.',
+  name: 'shows recent notes from the user and the agent.',
 }
 
 export const PendingOnly: Story = {

@@ -99,7 +99,7 @@ const currentWithUnreadNote: Note = {
   ...approvedNote,
   id: 'fake-note-current-unread',
   version_id: 'fake-version-current',
-  title: '現行版と未読版を持つ架空ノート',
+  title: '現行バージョンと未読バージョンを持つ架空ノート',
   updated_at: '2026-10-11T03:00:00Z',
 }
 
