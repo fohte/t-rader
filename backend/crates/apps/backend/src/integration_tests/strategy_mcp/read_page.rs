@@ -14,6 +14,7 @@ use core_application::web_search::{
 use gateway_postgres::{PostgresTavilyRetrievalCacheRepository, PostgresUnitOfWork};
 use indoc::formatdoc;
 use rmcp::ErrorData as McpError;
+use rmcp::model::ErrorCode;
 use rstest::rstest;
 use rust_decimal::Decimal;
 use serde_json::{Value, json};
@@ -671,8 +672,9 @@ async fn read_page_keeps_call_count_after_extraction_failure(db: gateway_postgre
         errors,
         (0..READ_PAGE_TEST_CALL_LIMIT)
             .map(|_| {
-                Err(McpError::internal_error(
-                    "Tavily request failed: failed to extract page https://example.invalid/article: page is unavailable",
+                Err(McpError::new(
+                    ErrorCode(-32051),
+                    "このページは読み取れません。同じ URL で再試行せず、別の情報源を探してください。",
                     None,
                 ))
             })
