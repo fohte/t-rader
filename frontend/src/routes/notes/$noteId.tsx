@@ -124,6 +124,9 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
+  const currentVersionNo = orderedVersions.find(
+    (version) => version.is_current,
+  )?.version_no
   const {
     data: note,
     isError: hasNoteError,
@@ -399,12 +402,13 @@ function NoteDetailPage() {
             }}
           />
           <NoteLinkedTradesPanel noteId={noteId} />
-          {!selectedVersion.is_current && (
-            <HistoricalVersionNotice
-              noteId={noteId}
-              versionNo={selectedVersion.version_no}
-            />
-          )}
+          {currentVersionNo != null &&
+            selectedVersion.version_no < currentVersionNo && (
+              <HistoricalVersionNotice
+                noteId={noteId}
+                versionNo={selectedVersion.version_no}
+              />
+            )}
           {!showInlineReview && (
             <NoteVersionReviewPanel
               key={selectedVersion.id}
