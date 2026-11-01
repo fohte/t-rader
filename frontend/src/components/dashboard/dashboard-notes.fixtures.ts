@@ -52,11 +52,11 @@ export const pendingNoteOverview: NoteOverview = {
 }
 
 const approvedNote: Note = {
-  id: 'fake-note-approved',
-  version_id: 'fake-version-approved',
+  id: 'fake-note-a',
+  version_id: 'fake-version-a',
   version_no: 1,
   is_current: true,
-  title: '承認済みの架空ノート',
+  title: '架空企業の決算前メモ',
   body_md: '表示用の架空ノートです。',
   frontmatter_json: {},
   resolved_price_references_json: {},
@@ -66,9 +66,9 @@ const approvedNote: Note = {
   status: 'approved',
   trigger: null,
   trigger_label: null,
-  created_by_kind: 'human',
-  created_at: '2026-10-09T03:00:00Z',
-  updated_at: '2026-10-09T03:00:00Z',
+  created_by_kind: 'llm',
+  created_at: '2026-10-10T03:00:00Z',
+  updated_at: '2026-10-10T03:00:00Z',
 }
 
 export const approvedNoteOverview: NoteOverview = {
@@ -76,4 +76,46 @@ export const approvedNoteOverview: NoteOverview = {
   current: versionFromNote(approvedNote),
   latest_unread: null,
   unread_version_count: 0,
+}
+
+const humanApprovedNote: Note = {
+  ...approvedNote,
+  id: 'fake-note-b',
+  version_id: 'fake-version-b',
+  title: '売買後の振り返り',
+  created_by_kind: 'human',
+  created_at: '2026-10-09T03:00:00Z',
+  updated_at: '2026-10-09T03:00:00Z',
+}
+
+export const humanApprovedNoteOverview: NoteOverview = {
+  representative: humanApprovedNote,
+  current: versionFromNote(humanApprovedNote),
+  latest_unread: null,
+  unread_version_count: 0,
+}
+
+const currentWithUnreadNote: Note = {
+  ...approvedNote,
+  id: 'fake-note-current-unread',
+  version_id: 'fake-version-current',
+  title: '現行版と未読版を持つ架空ノート',
+  updated_at: '2026-10-11T03:00:00Z',
+}
+
+const unreadVersionForCurrentNote: Note = {
+  ...currentWithUnreadNote,
+  version_id: 'fake-version-unread',
+  version_no: 2,
+  is_current: false,
+  status: 'unread',
+  created_at: '2026-10-11T04:00:00Z',
+  updated_at: '2026-10-11T04:00:00Z',
+}
+
+export const currentAndUnreadNoteOverview: NoteOverview = {
+  representative: currentWithUnreadNote,
+  current: versionFromNote(currentWithUnreadNote),
+  latest_unread: versionFromNote(unreadVersionForCurrentNote),
+  unread_version_count: 1,
 }

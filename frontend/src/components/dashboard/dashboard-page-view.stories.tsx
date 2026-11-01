@@ -2,7 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentProps, ComponentType } from 'react'
 
-import { pendingNoteOverview } from '#components/dashboard/dashboard-notes.fixtures'
+import {
+  approvedNoteOverview,
+  humanApprovedNoteOverview,
+  pendingNoteOverview,
+} from '#components/dashboard/dashboard-notes.fixtures'
 import { DashboardPageView } from '#components/dashboard/dashboard-page-view'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -133,7 +137,7 @@ const args: DashboardPageViewProps = {
     },
   ],
   isEventsError: false,
-  notes: [pendingNoteOverview],
+  notes: [approvedNoteOverview, humanApprovedNoteOverview, pendingNoteOverview],
   isNotesError: false,
   tasks: [
     {

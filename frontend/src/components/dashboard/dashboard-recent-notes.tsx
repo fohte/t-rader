@@ -80,6 +80,11 @@ export function DashboardRecentNotes({
                   {!note.is_current && overview.current == null && (
                     <Chip>現行なし</Chip>
                   )}
+                  {overview.unread_version_count > 0 && (
+                    <Chip>
+                      未読 {String(overview.unread_version_count)} バージョン
+                    </Chip>
+                  )}
                 </span>
               </Link>
             )

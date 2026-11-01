@@ -4,10 +4,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { pendingNoteOverview } from '#components/dashboard/dashboard-notes.fixtures'
+import {
+  currentAndUnreadNoteOverview,
+  pendingNoteOverview,
+} from '#components/dashboard/dashboard-notes.fixtures'
 import { resetFetch, stubFetch } from '#test/stub-fetch.test-helper'
 
 afterEach(() => {
@@ -15,20 +18,38 @@ afterEach(() => {
   resetFetch()
 })
 
-function getPendingNoteOutput(
+function getDashboardNotesOutput(
   requestedViews: { view: string | null }[],
-  noteLink: HTMLElement,
+  pendingNoteLink: HTMLElement,
+  currentAndUnreadNoteLink: HTMLElement,
 ) {
   return {
     requestedViews,
-    href: noteLink.getAttribute('href'),
-    status: screen.getByText('未レビュー').textContent,
-    current: screen.getByText('現行なし').textContent,
+    notes: [
+      {
+        href: pendingNoteLink.getAttribute('href'),
+        status: within(pendingNoteLink).getByText('未レビュー').textContent,
+        current: within(pendingNoteLink).getByText('現行なし').textContent,
+        unreadVersions:
+          within(pendingNoteLink).getByText('未読 1 バージョン').textContent,
+      },
+      {
+        href: currentAndUnreadNoteLink.getAttribute('href'),
+        status: within(currentAndUnreadNoteLink).getByText('承認済み')
+          .textContent,
+        current:
+          within(currentAndUnreadNoteLink).queryByText('現行なし')
+            ?.textContent ?? null,
+        unreadVersions: within(currentAndUnreadNoteLink).getByText(
+          '未読 1 バージョン',
+        ).textContent,
+      },
+    ],
   }
 }
 
 describe('DashboardRoute', () => {
-  it('loads overview notes and displays a pending note without a current version', async () => {
+  it('loads pending notes with and without a current version', async () => {
     const noteRequests: { view: string | null }[] = []
     stubFetch((input, init) => {
       const request =
@@ -39,7 +60,11 @@ describe('DashboardRoute', () => {
         const view = url.searchParams.get('view')
         noteRequests.push({ view })
         return Promise.resolve(
-          Response.json(view === 'all' ? [pendingNoteOverview] : []),
+          Response.json(
+            view === 'all'
+              ? [pendingNoteOverview, currentAndUnreadNoteOverview]
+              : [],
+          ),
         )
       }
       if (url.pathname === '/api/trades/summary') {
@@ -69,15 +94,35 @@ describe('DashboardRoute', () => {
     )
 
     await screen.findByRole('heading', { level: 1, name: 'ホーム' })
-    const noteLink = await screen.findByRole('link', {
+    const pendingNoteLink = await screen.findByRole('link', {
       name: /現行なしの架空ノート/,
     })
+    const currentAndUnreadNoteLink = await screen.findByRole('link', {
+      name: /現行版と未読版を持つ架空ノート/,
+    })
 
-    expect(getPendingNoteOutput(noteRequests, noteLink)).toEqual({
+    expect(
+      getDashboardNotesOutput(
+        noteRequests,
+        pendingNoteLink,
+        currentAndUnreadNoteLink,
+      ),
+    ).toEqual({
       requestedViews: [{ view: 'all' }],
-      href: `/notes/${pendingNoteOverview.representative.id}`,
-      status: '未レビュー',
-      current: '現行なし',
+      notes: [
+        {
+          href: `/notes/${pendingNoteOverview.representative.id}`,
+          status: '未レビュー',
+          current: '現行なし',
+          unreadVersions: '未読 1 バージョン',
+        },
+        {
+          href: `/notes/${currentAndUnreadNoteOverview.representative.id}`,
+          status: '承認済み',
+          current: null,
+          unreadVersions: '未読 1 バージョン',
+        },
+      ],
     })
   }, 30_000)
 })

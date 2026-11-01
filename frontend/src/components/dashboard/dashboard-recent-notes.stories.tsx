@@ -4,12 +4,14 @@ import type { ComponentType } from 'react'
 
 import {
   approvedNoteOverview,
+  currentAndUnreadNoteOverview,
+  humanApprovedNoteOverview,
   pendingNoteOverview,
 } from '#components/dashboard/dashboard-notes.fixtures'
 import { DashboardRecentNotes } from '#components/dashboard/dashboard-recent-notes'
 import { createStoryRouter } from '#storybook/story-router'
 
-const notes = [pendingNoteOverview, approvedNoteOverview]
+const notes = [approvedNoteOverview, humanApprovedNoteOverview]
 
 function withRouter(Story: ComponentType) {
   return (
@@ -42,7 +44,12 @@ export const Recent: Story = {
 
 export const PendingOnly: Story = {
   name: 'shows a pending note without a current version.',
-  args: { notes: notes.slice(0, 1) },
+  args: { notes: [pendingNoteOverview] },
+}
+
+export const CurrentAndUnread: Story = {
+  name: 'shows an unread version alongside its current version.',
+  args: { notes: [currentAndUnreadNoteOverview] },
 }
 
 export const Empty: Story = {
