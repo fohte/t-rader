@@ -51,7 +51,7 @@ export function PortfolioPageView({
 
       <header>
         <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-          ポートフォリオ
+          保有
         </h1>
         <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
           戦略横断の全体ビュー。現金比率・全保有・全体損益を把握します。LLM
