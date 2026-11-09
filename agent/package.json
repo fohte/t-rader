@@ -40,9 +40,9 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "drizzle-kit": "0.31.10",
+    "drizzle-kit": "0.31.11",
     "openapi-typescript": "7.13.0",
     "tsup": "8.5.1",
-    "tsx": "4.23.13"
+    "tsx": "4.23.15"
   }
 }
