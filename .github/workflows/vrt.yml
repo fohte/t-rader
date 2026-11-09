@@ -53,7 +53,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -68,7 +70,7 @@ jobs:
       # `project` must match createStorybookProject()'s `name` in
       # vitest.screenshot.config.ts, and be unique per vrt_pkgs entry.
       # vrt-capture includes it in artifact names, so duplicates collide.
-      - uses: fohte/storybook-vrt-workflows/vrt-capture@a793831ba144b09649eec6b8b8082655a84f459d # v0.2.1
+      - uses: fohte/storybook-vrt-workflows/vrt-capture@e421864a67798d72cb0c12e48d5020ea0a8eee10 # v0.2.2
         with:
           project: storybook-screenshot-frontend
           shard: 1
@@ -104,7 +106,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -119,7 +123,7 @@ jobs:
       # The R2 storage keys aren't scoped per project, so only one
       # vrt_pkgs entry may exist per repo.
       # Multiple packages would overwrite shared `baseline/` and `branch/` keys.
-      - uses: fohte/storybook-vrt-workflows/vrt-report@a793831ba144b09649eec6b8b8082655a84f459d # v0.2.1
+      - uses: fohte/storybook-vrt-workflows/vrt-report@e421864a67798d72cb0c12e48d5020ea0a8eee10 # v0.2.2
         with:
           package-dir: frontend
           screenshots-dir: __screenshots__/desktop
