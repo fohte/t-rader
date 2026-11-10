@@ -672,7 +672,7 @@ jobs:
           version: 2026.9.11
 
       - name: Install cargo-llvm-cov and cargo-nextest
-        uses: taiki-e/install-action@50414676f9f5d50a65992c6dd2ed02641263226c # v2.82.10
+        uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
         with:
           tool: cargo-llvm-cov,cargo-nextest
 
