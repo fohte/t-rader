@@ -339,6 +339,41 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::matching_reference("[[stock:demo-code]]", true)]
+    #[case::other_reference("[[stock:other-code]]", false)]
+    #[tokio::test]
+    async fn list_note_overviews_filters_by_reference(
+        #[case] body_md: &str,
+        #[case] matches: bool,
+    ) {
+        let query = Arc::new(FakeNoteReadQuery::with_body(NOTE_ID, VERSION_ID, body_md));
+        let use_cases = NoteReadUseCases::new(query.clone());
+        let actual = use_cases
+            .list_note_overviews(NoteOverviewQuery {
+                reference: Some(("stock".into(), "demo-code".into())),
+                ..NoteOverviewQuery::default()
+            })
+            .await
+            .expect("list note overviews");
+        let expected = if matches {
+            vec![NoteOverview {
+                representative: NoteSnapshot {
+                    note: query.note(),
+                    version: query.version(),
+                    created_by_kind: "human".into(),
+                },
+                current: Some(query.version()),
+                latest_unread: None,
+                unread_version_count: 0,
+            }]
+        } else {
+            Vec::new()
+        };
+
+        assert_eq!(actual, expected);
+    }
+
     #[tokio::test]
     async fn get_note_for_display_fixes_only_resolved_duplicate_names_without_changing_raw_version()
     {

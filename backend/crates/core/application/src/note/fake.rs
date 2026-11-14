@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
+use core_domain::note_graph::GraphDef;
+use core_domain::note_reference::{BodyTokenPolicy, collect_note_refs_with_policy};
 use serde_json::json;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -172,6 +174,10 @@ impl NoteReadQuery for FakeNoteReadQuery {
                 .as_deref()
                 .is_some_and(|tag| !super::frontmatter_has_tag(&self.version.frontmatter_json, tag))
             || (query.view == NoteOverviewView::Pending && self.version.status != "unread")
+            || query
+                .reference
+                .as_ref()
+                .is_some_and(|reference| !version_matches_reference(&self.version, reference))
         {
             return Ok(Vec::new());
         }
@@ -214,6 +220,22 @@ impl NoteReadQuery for FakeNoteReadQuery {
             incoming: Vec::new(),
         })
     }
+}
+
+fn version_matches_reference(version: &NoteVersion, reference: &(String, String)) -> bool {
+    let Ok(graphs) = serde_json::from_value::<Vec<GraphDef>>(version.graphs_json.clone()) else {
+        return false;
+    };
+    collect_note_refs_with_policy(
+        &version.body_md,
+        &graphs,
+        BodyTokenPolicy::AllowLegacyBodyTokens,
+    )
+    .is_ok_and(|references| {
+        references
+            .iter()
+            .any(|(kind, id)| kind == &reference.0 && id == &reference.1)
+    })
 }
 
 fn timestamp() -> DateTime<FixedOffset> {

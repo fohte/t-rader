@@ -437,6 +437,7 @@ async fn list_note_overviews_separates_representative_versions_and_filters_by_th
 
     let (_db, server) = create_test_server_with_db(db).await;
     let all = get_json(&server, "/api/notes/overview").await;
+    let empty_ref = get_json(&server, "/api/notes/overview?ref=").await;
     let pending = get_json(&server, "/api/notes/overview?view=pending").await;
     let by_kind = get_json(&server, "/api/notes/overview?kind=demo-core").await;
     let by_old_tag = get_json(&server, "/api/notes/overview?tag=historical-tag").await;
@@ -448,6 +449,7 @@ async fn list_note_overviews_separates_representative_versions_and_filters_by_th
     let invalid_view = get_json(&server, "/api/notes/overview?view=unknown").await;
     let actual = vec![
         (all.0, normalize_note_overviews(all.1, &labels)),
+        (empty_ref.0, normalize_note_overviews(empty_ref.1, &labels)),
         (pending.0, normalize_note_overviews(pending.1, &labels)),
         (by_kind.0, normalize_note_overviews(by_kind.1, &labels)),
         (
@@ -610,6 +612,7 @@ async fn list_note_overviews_separates_representative_versions_and_filters_by_th
         version_tag_current.clone(),
     ]);
     let expected = vec![
+        (axum::http::StatusCode::OK, expected_all.clone()),
         (axum::http::StatusCode::OK, expected_all),
         (axum::http::StatusCode::OK, expected_pending),
         (axum::http::StatusCode::OK, expected_by_kind),
@@ -685,7 +688,7 @@ async fn list_note_overviews_filters_by_current_or_pending_version_reference(db:
     seed_note(
         &db,
         &mut labels,
-        "current-then-pending-match",
+        "pending-only-after-current",
         kind,
         &[
             VersionSeed {
@@ -706,7 +709,7 @@ async fn list_note_overviews_filters_by_current_or_pending_version_reference(db:
     set_version_body(
         &db,
         &labels,
-        "current-then-pending-match-v2",
+        "pending-only-after-current-v2",
         "[[stock:demo-code]]",
     )
     .await;
