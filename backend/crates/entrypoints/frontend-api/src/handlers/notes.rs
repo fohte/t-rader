@@ -82,7 +82,7 @@ pub async fn list_notes(
     Ok(Json(responses))
 }
 
-fn note_reference_error_message(error: NoteReferenceParseError) -> String {
+pub(super) fn note_reference_error_message(error: NoteReferenceParseError) -> String {
     match error {
         NoteReferenceParseError::MissingSeparator => "ref must use kind:id format".into(),
         NoteReferenceParseError::UnsupportedKind(kind) => {

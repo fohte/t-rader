@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::testing::{create_test_server_with_db, find_current_note_version, insert_test_note};
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::{note, note_kind, note_version};
+use gateway_postgres::entities::{note, note_kind, note_ref, note_version};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use serde_json::{Value, json};
@@ -101,6 +101,33 @@ async fn seed_note(
             .versions
             .insert(version_id, format!("{label}-v{}", seed.version_no));
     }
+}
+
+async fn set_version_body(db: &DatabaseHandle, labels: &IdLabels, label: &str, body_md: &str) {
+    let version_id = labels
+        .versions
+        .iter()
+        .find_map(|(id, version_label)| (version_label == label).then_some(*id))
+        .expect("version label exists");
+    note_version::ActiveModel {
+        id: Set(version_id),
+        body_md: Set(body_md.into()),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("update note version body");
+}
+
+async fn insert_note_ref(db: &DatabaseHandle, note_id: Uuid, kind: &str, id: &str) {
+    note_ref::ActiveModel {
+        note_id: Set(note_id),
+        ref_kind: Set(kind.into()),
+        ref_id: Set(id.into()),
+    }
+    .insert(db)
+    .await
+    .expect("insert note reference");
 }
 
 fn expected_version(
@@ -593,6 +620,159 @@ async fn list_note_overviews_separates_representative_versions_and_filters_by_th
         (
             axum::http::StatusCode::BAD_REQUEST,
             json!({ "error": "view must be all or pending" }),
+        ),
+    ];
+    assert_eq!(actual, expected);
+}
+
+#[backend_test_macros::database_test]
+async fn list_note_overviews_filters_by_current_or_pending_version_reference(db: DatabaseHandle) {
+    let kind = "demo-kind";
+    let target_id = "demo-code";
+    insert_note_kind(&db, kind, true).await;
+
+    let mut labels = IdLabels::default();
+    seed_note(
+        &db,
+        &mut labels,
+        "current-match",
+        kind,
+        &[VersionSeed {
+            version_no: 1,
+            status: "approved",
+            is_current: true,
+            tag: "current",
+        }],
+    )
+    .await;
+    let current_note_id = labels
+        .notes
+        .iter()
+        .find_map(|(id, label)| (label == "current-match").then_some(*id))
+        .expect("current note label exists");
+    insert_note_ref(&db, current_note_id, "stock", target_id).await;
+
+    seed_note(
+        &db,
+        &mut labels,
+        "pending-match",
+        kind,
+        &[VersionSeed {
+            version_no: 1,
+            status: "unread",
+            is_current: false,
+            tag: "pending",
+        }],
+    )
+    .await;
+    set_version_body(&db, &labels, "pending-match-v1", "[[stock:demo-code]]").await;
+
+    seed_note(
+        &db,
+        &mut labels,
+        "pending-other-ref",
+        kind,
+        &[VersionSeed {
+            version_no: 1,
+            status: "unread",
+            is_current: false,
+            tag: "pending",
+        }],
+    )
+    .await;
+    set_version_body(&db, &labels, "pending-other-ref-v1", "[[stock:other-code]]").await;
+
+    seed_note(
+        &db,
+        &mut labels,
+        "current-then-pending-match",
+        kind,
+        &[
+            VersionSeed {
+                version_no: 1,
+                status: "approved",
+                is_current: true,
+                tag: "current",
+            },
+            VersionSeed {
+                version_no: 2,
+                status: "unread",
+                is_current: false,
+                tag: "pending",
+            },
+        ],
+    )
+    .await;
+    set_version_body(
+        &db,
+        &labels,
+        "current-then-pending-match-v2",
+        "[[stock:demo-code]]",
+    )
+    .await;
+
+    seed_note(
+        &db,
+        &mut labels,
+        "pending-group-ref",
+        kind,
+        &[VersionSeed {
+            version_no: 1,
+            status: "unread",
+            is_current: false,
+            tag: "pending",
+        }],
+    )
+    .await;
+    set_version_body(
+        &db,
+        &labels,
+        "pending-group-ref-v1",
+        "[[group:demo-axis/demo-group]]",
+    )
+    .await;
+
+    let (_db, server) = create_test_server_with_db(db).await;
+    let all = get_json(&server, "/api/notes/overview?ref=stock:demo-code").await;
+    let pending = get_json(
+        &server,
+        "/api/notes/overview?view=pending&ref=stock:demo-code",
+    )
+    .await;
+    let invalid = get_json(&server, "/api/notes/overview?ref=unsupported:demo-code").await;
+    let actual = vec![
+        (all.0, normalize_note_overviews(all.1, &labels)),
+        (pending.0, normalize_note_overviews(pending.1, &labels)),
+        invalid,
+    ];
+
+    let current_match = expected_overview(
+        "current-match",
+        kind,
+        (1, "approved", true, "current"),
+        Some((1, "approved", true, "current")),
+        None,
+        0,
+    );
+    let mut pending_match = expected_overview(
+        "pending-match",
+        kind,
+        (1, "unread", false, "pending"),
+        None,
+        Some((1, "unread", false, "pending")),
+        1,
+    );
+    pending_match["representative"]["body_md"] = json!("[[stock:demo-code]]");
+    pending_match["latest_unread"]["body_md"] = json!("[[stock:demo-code]]");
+    let expected = vec![
+        (
+            axum::http::StatusCode::OK,
+            json!([current_match, pending_match.clone()]),
+        ),
+        (axum::http::StatusCode::OK, json!([pending_match])),
+        (
+            axum::http::StatusCode::BAD_REQUEST,
+            json!({ "error": "unsupported ref kind: unsupported" }),
         ),
     ];
     assert_eq!(actual, expected);
