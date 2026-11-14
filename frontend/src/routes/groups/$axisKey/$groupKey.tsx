@@ -30,8 +30,12 @@ function GroupDetailRoute() {
   })
   const notesQuery = $api.useQuery(
     'get',
-    '/api/notes',
-    { params: { query: { ref: `group:${axisKey}/${groupKey}` } } },
+    '/api/notes/overview',
+    {
+      params: {
+        query: { ref: `group:${axisKey}/${groupKey}`, view: 'all' },
+      },
+    },
     { enabled: groupQuery.data?.kind === 'loaded' },
   )
   const summaryQuery = $api.useQuery('get', '/api/trades/summary')

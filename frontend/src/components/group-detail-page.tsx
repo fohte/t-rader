@@ -6,7 +6,7 @@ import { StockNameLink } from '#components/stocks/stock-name-link'
 import type { components } from '#lib/api/schema.gen'
 
 type Group = components['schemas']['Group']
-type Note = components['schemas']['Note']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 
 type GroupDetailPageProps =
   | { state: 'loading'; axisKey: string; groupKey: string }
@@ -18,7 +18,7 @@ type GroupDetailPageProps =
       heldStockIds: string[]
       isHoldingsLoading: boolean
       isHoldingsError: boolean
-      notes: Note[] | null
+      notes: NoteOverview[] | null
       isNotesError: boolean
     }
 

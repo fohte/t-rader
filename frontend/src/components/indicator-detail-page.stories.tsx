@@ -2,32 +2,18 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
+import {
+  approvedNoteOverview,
+  currentAndUnreadNoteOverview,
+  pendingNoteOverview,
+} from '#components/dashboard/dashboard-notes.fixtures'
 import { IndicatorDetailPage } from '#components/indicator-detail-page'
-import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
-type Note = components['schemas']['Note']
-
-const notes: Note[] = [
-  {
-    id: 'fake-note-a',
-    version_id: 'fake-version-a',
-    version_no: 1,
-    is_current: true,
-    title: 'サンプル値を確認するメモ',
-    body_md: '表示用の架空ノートです。',
-    frontmatter_json: {},
-    resolved_price_references_json: {},
-    graphs_json: [],
-    tags: [],
-    kind: null,
-    status: 'approved',
-    trigger: null,
-    trigger_label: null,
-    created_by_kind: 'llm',
-    created_at: '2040-01-02T03:00:00Z',
-    updated_at: '2040-01-02T03:00:00Z',
-  },
+const notes = [
+  currentAndUnreadNoteOverview,
+  approvedNoteOverview,
+  pendingNoteOverview,
 ]
 
 const observations = [

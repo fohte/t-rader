@@ -2,11 +2,14 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
+import {
+  approvedNoteOverview,
+  currentAndUnreadNoteOverview,
+  pendingNoteOverview,
+} from '#components/dashboard/dashboard-notes.fixtures'
 import { GroupDetailPage } from '#components/group-detail-page'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
-
-type Note = components['schemas']['Note']
 
 const group: components['schemas']['Group'] = {
   key: 'demo-group',
@@ -19,26 +22,10 @@ const group: components['schemas']['Group'] = {
   ],
 }
 
-const notes: Note[] = [
-  {
-    id: 'demo-note-group',
-    version_id: 'demo-version-group',
-    version_no: 1,
-    is_current: true,
-    title: '分類を確認するメモ',
-    body_md: '表示用の架空ノートです。',
-    frontmatter_json: {},
-    resolved_price_references_json: {},
-    graphs_json: [],
-    tags: [],
-    kind: null,
-    status: 'unread',
-    trigger: null,
-    trigger_label: null,
-    created_by_kind: 'llm',
-    created_at: '2020-02-03T00:00:00Z',
-    updated_at: '2020-02-03T00:00:00Z',
-  },
+const notes = [
+  currentAndUnreadNoteOverview,
+  approvedNoteOverview,
+  pendingNoteOverview,
 ]
 
 function withRouter(Story: ComponentType) {

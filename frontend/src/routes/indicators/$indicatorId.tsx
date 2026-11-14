@@ -38,8 +38,8 @@ function IndicatorDetailRoute() {
   )
   const notesQuery = $api.useQuery(
     'get',
-    '/api/notes',
-    { params: { query: { ref: `indicator:${indicatorId}` } } },
+    '/api/notes/overview',
+    { params: { query: { ref: `indicator:${indicatorId}`, view: 'all' } } },
     { enabled: indicatorQuery.data?.kind === 'loaded' },
   )
   const visibleObservations = useMemo(
