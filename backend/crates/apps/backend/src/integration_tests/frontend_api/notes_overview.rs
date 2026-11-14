@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use crate::testing::{create_test_server_with_db, find_current_note_version, insert_test_note};
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::{note, note_kind, note_ref, note_version};
+use gateway_postgres::entities::{
+    group_axis, note, note_kind, note_ref, note_version, stock, stock_group, stock_group_member,
+};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use serde_json::{Value, json};
@@ -633,6 +635,50 @@ async fn list_note_overviews_filters_by_current_or_pending_version_reference(db:
     let kind = "demo-kind";
     let target_id = "demo-code";
     insert_note_kind(&db, kind, true).await;
+
+    stock::ActiveModel {
+        id: Set(target_id.to_string()),
+        name: Set("Demo Stock".to_string()),
+        market: Set(Some("OTHER".to_string())),
+        product_category: Set(None),
+        cik: Set(None),
+        created_at: Default::default(),
+        updated_at: Default::default(),
+    }
+    .insert(&db)
+    .await
+    .expect("insert overview reference stock");
+    let axis_id = Uuid::new_v4();
+    group_axis::ActiveModel {
+        id: Set(axis_id),
+        key: Set("demo-axis".to_string()),
+        name: Set("Demo Axis".to_string()),
+        description: Set("Demo axis".to_string()),
+        derive_from: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("insert overview reference axis");
+    let group_id = Uuid::new_v4();
+    stock_group::ActiveModel {
+        id: Set(group_id),
+        axis_id: Set(axis_id),
+        key: Set("demo-group".to_string()),
+        name: Set("Demo Group".to_string()),
+        description: Set(None),
+        code: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("insert overview reference group");
+    stock_group_member::ActiveModel {
+        stock_id: Set(target_id.to_string()),
+        group_id: Set(group_id),
+        created_at: Default::default(),
+    }
+    .insert(&db)
+    .await
+    .expect("insert overview reference group member");
 
     let mut labels = IdLabels::default();
     seed_note(
