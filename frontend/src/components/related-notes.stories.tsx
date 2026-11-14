@@ -40,7 +40,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Populated: Story = {
-  name: 'shows related notes with all review states.',
+  name: 'shows notes without a current version, with unread versions, and current only.',
 }
 
 export const Empty: Story = {
