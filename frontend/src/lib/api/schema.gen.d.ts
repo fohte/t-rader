@@ -6872,6 +6872,8 @@ export interface operations {
         kind?: string
         /** @description view が選んだ代表バージョンのタグで絞り込む。 */
         tag?: string
+        /** @description 本文またはチャートで参照されている対象で絞り込む。形式は `kind:id`。 */
+        ref?: string
       }
       header?: never
       path?: never
