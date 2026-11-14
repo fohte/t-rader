@@ -10,7 +10,7 @@ import {
 } from '#lib/indicator-observation'
 
 type Indicator = components['schemas']['Indicator']
-type Note = components['schemas']['Note']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 
 type IndicatorDetailPageProps =
   | { state: 'loading'; indicatorId: string }
@@ -23,7 +23,7 @@ type IndicatorDetailPageProps =
       visibleObservations: IndicatorObservation[]
       isObservationsLoading: boolean
       isObservationsError: boolean
-      notes: Note[] | null
+      notes: NoteOverview[] | null
       isNotesError: boolean
       period: IndicatorPeriod
       onPeriodChange: (period: IndicatorPeriod) => void

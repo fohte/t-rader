@@ -3,12 +3,13 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { pendingNoteOverview } from '#components/dashboard/dashboard-notes.fixtures'
 import { StockPageActivity } from '#components/stock-page/stock-page-activity'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Annotation = components['schemas']['Annotation']
-type Note = components['schemas']['Note']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 
 afterEach(cleanup)
 
@@ -31,24 +32,7 @@ const annotations: Annotation[] = [
   },
 ]
 
-const notes: Note[] = [
-  {
-    body_md: '架空コードへの言及を含むテスト用ノートです。',
-    created_at: '2030-04-02T06:00:00Z',
-    created_by_kind: 'llm',
-    frontmatter_json: {},
-    graphs_json: [],
-    id: 'demo-note',
-    is_current: true,
-    resolved_price_references_json: {},
-    status: 'unread',
-    tags: [],
-    title: '銘柄を確認したデモ用ノート',
-    updated_at: '2030-04-02T06:00:00Z',
-    version_id: 'demo-note-version',
-    version_no: 1,
-  },
-]
+const notes: NoteOverview[] = [pendingNoteOverview]
 
 describe('StockPageActivity', () => {
   it('selects an annotation when its row is clicked', async () => {
@@ -187,7 +171,7 @@ describe('StockPageActivity', () => {
 
     render(<RouterProvider router={router} />)
     await screen.findByRole('link', {
-      name: /銘柄を確認したデモ用ノート/,
+      name: /現行なしの架空ノート/,
     })
 
     expect(
@@ -206,9 +190,9 @@ describe('StockPageActivity', () => {
       }),
     ).toEqual([
       [
-        '/notes/demo-note',
-        '銘柄を確認したデモ用ノートエージェント未レビュー[相対日付]',
-        '2030-04-02T06:00:00Z',
+        '/notes/fake-note-pending',
+        '現行なしの架空ノートエージェント[相対日付]未レビュー現行なし未読 1 バージョン',
+        '2026-10-10T03:00:00Z',
       ],
     ])
   })

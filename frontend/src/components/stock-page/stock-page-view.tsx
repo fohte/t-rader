@@ -14,7 +14,7 @@ type Stock = components['schemas']['Stock']
 type Bar = components['schemas']['Bar']
 type Position = components['schemas']['PositionSummary']
 type Annotation = components['schemas']['Annotation']
-type Note = components['schemas']['Note']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 type Trade = components['schemas']['TradeListItem']
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
 type NextEarnings = components['schemas']['StockNextEarningsResponse']
@@ -67,7 +67,7 @@ export function StockPageView({
   bars: components['schemas']['Bar'][]
   displayRangeStart?: string
   annotations: Annotation[]
-  notes: Note[]
+  notes: NoteOverview[]
   trades: Trade[]
   groups: GroupMembership[]
   groupsState: StockPageListState

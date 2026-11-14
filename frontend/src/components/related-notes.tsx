@@ -1,23 +1,19 @@
 import { Link } from '@tanstack/react-router'
 
+import { NoteOverviewStatus } from '#components/note-overview-status'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import { formatRelative } from '#lib/note-utils'
+import { formatRelative, sortNoteOverviewsNewestFirst } from '#lib/note-utils'
 
-type Note = components['schemas']['Note']
+type NoteOverview = components['schemas']['NoteOverviewResponse']
 
 interface RelatedNotesProps {
-  notes: Note[] | null
+  notes: NoteOverview[] | null
   isError: boolean
 }
 
 export function RelatedNotes({ notes, isError }: RelatedNotesProps) {
-  const sortedNotes =
-    notes == null
-      ? []
-      : [...notes].sort((left, right) =>
-          right.updated_at.localeCompare(left.updated_at),
-        )
+  const sortedNotes = notes == null ? [] : sortNoteOverviewsNewestFirst(notes)
 
   return (
     <section className="space-y-2" aria-labelledby="related-notes-title">
@@ -48,22 +44,27 @@ export function RelatedNotes({ notes, isError }: RelatedNotesProps) {
             関連するノートはありません。
           </p>
         ) : (
-          sortedNotes.map((note) => (
-            <Link
-              key={note.id}
-              to="/notes/$noteId"
-              params={{ noteId: note.id }}
-              className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5 hover:bg-surface-strong"
-            >
-              <span className="truncate text-sm text-foreground">
-                {note.title}
-              </span>
-              <span className="font-mono text-2xs text-muted-foreground">
-                {note.created_by_kind === 'human' ? '自分' : 'エージェント'} ·{' '}
-                {formatRelative(note.updated_at)}
-              </span>
-            </Link>
-          ))
+          sortedNotes.map((overview) => {
+            const note = overview.representative
+
+            return (
+              <Link
+                key={note.id}
+                to="/notes/$noteId"
+                params={{ noteId: note.id }}
+                className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5 hover:bg-surface-strong"
+              >
+                <span className="truncate text-sm text-foreground">
+                  {note.title}
+                </span>
+                <span className="font-mono text-2xs text-muted-foreground">
+                  {note.created_by_kind === 'human' ? '自分' : 'エージェント'} ·{' '}
+                  {formatRelative(note.updated_at)}
+                </span>
+                <NoteOverviewStatus overview={overview} />
+              </Link>
+            )
+          })
         )}
       </div>
     </section>
