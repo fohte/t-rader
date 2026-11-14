@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { NoteOverviewStatus } from '#components/note-overview-status'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import { formatRelative } from '#lib/note-utils'
+import { formatRelative, sortNoteOverviewsNewestFirst } from '#lib/note-utils'
 
 type NoteOverview = components['schemas']['NoteOverviewResponse']
 
@@ -13,14 +13,7 @@ interface RelatedNotesProps {
 }
 
 export function RelatedNotes({ notes, isError }: RelatedNotesProps) {
-  const sortedNotes =
-    notes == null
-      ? []
-      : [...notes].sort((left, right) =>
-          right.representative.updated_at.localeCompare(
-            left.representative.updated_at,
-          ),
-        )
+  const sortedNotes = notes == null ? [] : sortNoteOverviewsNewestFirst(notes)
 
   return (
     <section className="space-y-2" aria-labelledby="related-notes-title">

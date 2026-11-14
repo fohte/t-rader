@@ -7,7 +7,11 @@ import { StockPageFinancials } from '#components/stock-page/stock-page-financial
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { formatYen } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
-import { buildSnippet, formatRelative } from '#lib/note-utils'
+import {
+  buildSnippet,
+  formatRelative,
+  sortNoteOverviewsNewestFirst,
+} from '#lib/note-utils'
 import type { FinancialPeriodType } from '#lib/stock-page-date'
 import {
   sortAnnotationsNewestFirst,
@@ -136,39 +140,30 @@ function NoteRows({
 
   return (
     <ul>
-      {[...notes]
-        .sort((left, right) =>
-          right.representative.updated_at.localeCompare(
-            left.representative.updated_at,
-          ),
-        )
-        .map((overview) => {
-          const note = overview.representative
+      {sortNoteOverviewsNewestFirst(notes).map((overview) => {
+        const note = overview.representative
 
-          return (
-            <li
-              key={note.id}
-              className="border-b border-border last:border-b-0"
+        return (
+          <li key={note.id} className="border-b border-border last:border-b-0">
+            <Link
+              to="/notes/$noteId"
+              params={{ noteId: note.id }}
+              className="flex min-w-0 flex-col gap-1.5 px-3.5 py-3 hover:bg-surface-strong"
             >
-              <Link
-                to="/notes/$noteId"
-                params={{ noteId: note.id }}
-                className="flex min-w-0 flex-col gap-1.5 px-3.5 py-3 hover:bg-surface-strong"
-              >
-                <span className="line-clamp-2 text-sm text-foreground">
-                  {note.title}
-                </span>
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs text-muted-foreground">
-                  <span>{getAuthorLabel(note.created_by_kind)}</span>
-                  <time className="ml-auto" dateTime={note.updated_at}>
-                    {formatRelative(note.updated_at)}
-                  </time>
-                </span>
-                <NoteOverviewStatus overview={overview} />
-              </Link>
-            </li>
-          )
-        })}
+              <span className="line-clamp-2 text-sm text-foreground">
+                {note.title}
+              </span>
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs text-muted-foreground">
+                <span>{getAuthorLabel(note.created_by_kind)}</span>
+                <time className="ml-auto" dateTime={note.updated_at}>
+                  {formatRelative(note.updated_at)}
+                </time>
+              </span>
+              <NoteOverviewStatus overview={overview} />
+            </Link>
+          </li>
+        )
+      })}
     </ul>
   )
 }

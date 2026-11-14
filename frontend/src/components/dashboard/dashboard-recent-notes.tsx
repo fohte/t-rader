@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { NoteOverviewStatus } from '#components/note-overview-status'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import { formatRelative } from '#lib/note-utils'
+import { formatRelative, sortNoteOverviewsNewestFirst } from '#lib/note-utils'
 
 type NoteOverview = components['schemas']['NoteOverviewResponse']
 
@@ -15,15 +15,7 @@ export function DashboardRecentNotes({
   isError: boolean
 }) {
   const recentNotes =
-    notes == null
-      ? []
-      : [...notes]
-          .sort((left, right) =>
-            right.representative.updated_at.localeCompare(
-              left.representative.updated_at,
-            ),
-          )
-          .slice(0, 3)
+    notes == null ? [] : sortNoteOverviewsNewestFirst(notes).slice(0, 3)
 
   return (
     <section className="space-y-2" aria-labelledby="dashboard-notes-title">

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildSnippet, formatRelative } from '#lib/note-utils'
+import {
+  currentAndUnreadNoteOverview,
+  pendingNoteOverview,
+} from '#components/dashboard/dashboard-notes.fixtures'
+import {
+  buildSnippet,
+  formatRelative,
+  sortNoteOverviewsNewestFirst,
+} from '#lib/note-utils'
 
 describe('buildSnippet', () => {
   it('strips markdown and ref syntax', () => {
@@ -37,5 +45,16 @@ describe('formatRelative', () => {
 
   it('handles future timestamps as 「たった今」 instead of leaking clock skew', () => {
     expect(formatRelative('2026-06-07T13:00:00Z', now)).toBe('たった今')
+  })
+})
+
+describe('sortNoteOverviewsNewestFirst', () => {
+  it('orders note overviews by representative update time', () => {
+    expect(
+      sortNoteOverviewsNewestFirst([
+        pendingNoteOverview,
+        currentAndUnreadNoteOverview,
+      ]),
+    ).toEqual([currentAndUnreadNoteOverview, pendingNoteOverview])
   })
 })

@@ -1,3 +1,7 @@
+import type { components } from '#lib/api/schema.gen'
+
+type NoteOverview = components['schemas']['NoteOverviewResponse']
+
 const REF_KINDS_ALT = ['stock', 'indicator', 'group'].join('|')
 const REF_RE = new RegExp(`\\[\\[(${REF_KINDS_ALT}):([^\\]]+)\\]\\]`, 'g')
 export const REF_PREFIX_RE = new RegExp(`^(${REF_KINDS_ALT}):`)
@@ -30,4 +34,14 @@ export function formatRelative(iso: string, now = Date.now()): string {
   if (diff < 2 * DAY) return '昨日'
   if (diff < 7 * DAY) return `${String(Math.floor(diff / DAY))} 日前`
   return iso.slice(0, 10)
+}
+
+export function sortNoteOverviewsNewestFirst(
+  overviews: NoteOverview[],
+): NoteOverview[] {
+  return [...overviews].sort((left, right) =>
+    right.representative.updated_at.localeCompare(
+      left.representative.updated_at,
+    ),
+  )
 }
