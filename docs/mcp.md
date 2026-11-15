@@ -78,8 +78,6 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 ### tool 一覧
 
-`search_documents` の `query` は正規化後の各語が 2 文字以上である必要がある。
-
 `write_note` の本文では `[[eval:<evaluation-uuid>:<output-name>]]` で評価出力のトップレベルキーを参照できます。
 本文を省略した更新では、本文と一致する既存バージョンの参照値を引き継ぎます。
 ノート本文から `read_note` で確認したノートを引用するときは、`body_reference` が返す Markdown リンクを使い、ノート ID やバージョン ID を平文で書かないでください。`body_reference` は確認したバージョンのタイトルと番号をラベルに含み、同じバージョンを開きます。
