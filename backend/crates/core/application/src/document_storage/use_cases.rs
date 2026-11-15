@@ -5,7 +5,7 @@ use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::DocumentStorageUseCaseError;
 use super::repository::SharedDocumentStorageRepository;
-use super::types::{DocumentChunkInput, DocumentMetadata, DocumentSnapshot};
+use super::types::{DocumentChunkContext, DocumentChunkInput, DocumentMetadata, DocumentSnapshot};
 
 #[derive(Clone)]
 pub struct DocumentStorageUseCases {
@@ -58,6 +58,17 @@ impl DocumentStorageUseCases {
     ) -> Result<Option<DocumentSnapshot>, DocumentStorageUseCaseError> {
         self.repository
             .find_latest_as_of(source, source_document_id, as_of)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn get_chunk_context(
+        &self,
+        chunk_id: uuid::Uuid,
+        as_of: Option<DateTime<FixedOffset>>,
+    ) -> Result<Option<DocumentChunkContext>, DocumentStorageUseCaseError> {
+        self.repository
+            .find_chunk_context(chunk_id, as_of)
             .await
             .map_err(Into::into)
     }
@@ -140,8 +151,9 @@ mod tests {
 
     use crate::{
         document_storage::{
-            Document, DocumentChunk, DocumentChunkInput, DocumentMetadata, DocumentSnapshot,
-            DocumentStorageUseCases, DocumentVersion, FakeDocumentStorageRepository,
+            Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
+            DocumentSnapshot, DocumentStorageUseCases, DocumentVersion,
+            FakeDocumentStorageRepository,
         },
         unit_of_work::FakeUnitOfWork,
     };
@@ -241,6 +253,61 @@ mod tests {
                 "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
                 timestamp(),
             ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn reads_chunk_with_neighbors_from_its_version(
+        harness: (DocumentStorageUseCases, Arc<FakeDocumentStorageRepository>),
+    ) {
+        let (use_cases, _) = harness;
+        let body = "alpha beta gamma";
+        let snapshot = use_cases
+            .save(
+                metadata(),
+                timestamp(),
+                body.into(),
+                vec![
+                    chunk(0, body, 0, 5),
+                    chunk(1, body, 6, 10),
+                    chunk(2, body, 11, 16),
+                ],
+            )
+            .await
+            .unwrap();
+
+        let mut context = use_cases
+            .get_chunk_context(snapshot.chunks[1].id, Some(timestamp()))
+            .await
+            .unwrap()
+            .unwrap();
+        let normalize_chunk = |mut chunk: DocumentChunk| {
+            chunk.id = Uuid::nil();
+            chunk.version_id = Uuid::nil();
+            chunk
+        };
+        let mut document = snapshot.document;
+        document.id = Uuid::nil();
+        let mut version = snapshot.version;
+        version.id = Uuid::nil();
+        version.document_id = Uuid::nil();
+        context.document.id = Uuid::nil();
+        context.version.id = Uuid::nil();
+        context.version.document_id = Uuid::nil();
+        context.previous_chunk = context.previous_chunk.map(normalize_chunk);
+        context.chunk = normalize_chunk(context.chunk);
+        context.next_chunk = context.next_chunk.map(normalize_chunk);
+
+        assert_eq!(
+            context,
+            DocumentChunkContext {
+                document,
+                version,
+                previous_chunk: Some(normalize_chunk(snapshot.chunks[0].clone())),
+                chunk: normalize_chunk(snapshot.chunks[1].clone()),
+                next_chunk: Some(normalize_chunk(snapshot.chunks[2].clone())),
+            },
         );
     }
 

@@ -85,6 +85,13 @@ impl RecordingRepository {
 
 #[async_trait]
 impl DocumentMentionRepository for RecordingRepository {
+    async fn find_mentions_for_chunks(
+        &self,
+        _chunk_ids: Vec<Uuid>,
+    ) -> Result<Vec<DocumentMention>, DocumentMentionRepositoryError> {
+        Ok(Vec::new())
+    }
+
     async fn lock_chunks_for_update(
         &self,
         transaction: &UnitOfWorkTransaction,

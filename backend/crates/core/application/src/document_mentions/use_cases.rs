@@ -18,6 +18,7 @@ pub enum DocumentMentionUseCasesError {
     InvalidOffset,
 }
 
+#[derive(Clone)]
 pub struct DocumentMentionUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: Arc<dyn DocumentMentionRepository>,
@@ -63,6 +64,19 @@ impl DocumentMentionUseCases {
             .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(mentions)
+    }
+
+    pub async fn find_for_chunks(
+        &self,
+        chunk_ids: Vec<uuid::Uuid>,
+    ) -> Result<Vec<DocumentMention>, DocumentMentionUseCasesError> {
+        if chunk_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.repository
+            .find_mentions_for_chunks(chunk_ids)
+            .await
+            .map_err(Into::into)
     }
 }
 

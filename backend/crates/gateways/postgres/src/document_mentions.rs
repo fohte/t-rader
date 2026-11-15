@@ -10,20 +10,49 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::DatabaseHandle;
 use crate::entities::{document_chunk, document_chunk_mention, stock};
 use crate::persistence::persistence_error;
 
-#[derive(Clone, Default)]
-pub struct PostgresDocumentMentionRepository;
+#[derive(Clone)]
+pub struct PostgresDocumentMentionRepository {
+    db: DatabaseHandle,
+}
 
 impl PostgresDocumentMentionRepository {
-    pub fn new() -> Self {
-        Self
+    pub fn new(db: DatabaseHandle) -> Self {
+        Self { db }
     }
 }
 
 #[async_trait]
 impl DocumentMentionRepository for PostgresDocumentMentionRepository {
+    async fn find_mentions_for_chunks(
+        &self,
+        chunk_ids: Vec<Uuid>,
+    ) -> Result<Vec<DocumentMention>, DocumentMentionRepositoryError> {
+        if chunk_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        document_chunk_mention::Entity::find()
+            .filter(document_chunk_mention::Column::ChunkId.is_in(chunk_ids))
+            .order_by_asc(document_chunk_mention::Column::ChunkId)
+            .order_by_asc(document_chunk_mention::Column::StartOffset)
+            .all(&self.db)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| DocumentMention {
+                        chunk_id: row.chunk_id,
+                        stock_id: row.stock_id,
+                        start_offset: row.start_offset,
+                        end_offset: row.end_offset,
+                    })
+                    .collect()
+            })
+            .map_err(repository_error)
+    }
+
     async fn lock_chunks_for_update(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -231,7 +260,7 @@ mod tests {
         .expect("insert test document chunk");
 
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
-        let repository = PostgresDocumentMentionRepository::new();
+        let repository = PostgresDocumentMentionRepository::new(db.clone());
         let first_mention = DocumentMention {
             chunk_id,
             stock_id: mentioned_id.clone(),
@@ -255,6 +284,10 @@ mod tests {
             .commit(transaction)
             .await
             .expect("transaction commits");
+        let read_mentions = repository
+            .find_mentions_for_chunks(vec![chunk_id])
+            .await
+            .expect("mentions query succeeds");
 
         let updated_mention = DocumentMention {
             chunk_id,
@@ -295,6 +328,7 @@ mod tests {
             (
                 registered_stocks,
                 issuer_stock_id,
+                read_mentions,
                 updated_mentions,
                 mentions
             ),
@@ -310,6 +344,12 @@ mod tests {
                     },
                 ],
                 Some(issuer_id),
+                vec![DocumentMention {
+                    chunk_id,
+                    stock_id: mentioned_id.clone(),
+                    start_offset: 0,
+                    end_offset: 27,
+                }],
                 vec![(mentioned_id, 1, 27)],
                 Vec::<(String, i32, i32)>::new(),
             ),

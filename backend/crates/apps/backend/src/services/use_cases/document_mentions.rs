@@ -9,7 +9,7 @@ impl UseCases {
     pub fn document_mentions(&self) -> DocumentMentionUseCases {
         DocumentMentionUseCases::new(
             self.unit_of_work.clone(),
-            Arc::new(PostgresDocumentMentionRepository::new()),
+            Arc::new(PostgresDocumentMentionRepository::new(self.db.clone())),
         )
     }
 }

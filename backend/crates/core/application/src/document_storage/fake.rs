@@ -7,8 +7,8 @@ use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{DocumentStorageRepository, DocumentStorageRepositoryError};
 use super::types::{
-    Document, DocumentChunk, DocumentChunkInput, DocumentMetadata, DocumentSnapshot,
-    DocumentVersion,
+    Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
+    DocumentSnapshot, DocumentVersion,
 };
 
 #[derive(Default)]
@@ -118,5 +118,34 @@ impl DocumentStorageRepository for FakeDocumentStorageRepository {
             })
             .max_by_key(|(index, snapshot)| (snapshot.version.retrieved_at, *index))
             .map(|(_, snapshot)| snapshot.clone()))
+    }
+
+    async fn find_chunk_context(
+        &self,
+        chunk_id: Uuid,
+        as_of: Option<DateTime<FixedOffset>>,
+    ) -> Result<Option<DocumentChunkContext>, DocumentStorageRepositoryError> {
+        let snapshots = self.snapshots.lock().await;
+        Ok(snapshots.iter().find_map(|snapshot| {
+            if as_of.is_some_and(|limit| {
+                snapshot.version.retrieved_at > limit
+                    || snapshot.document.metadata.published_at > limit
+            }) {
+                return None;
+            }
+            let index = snapshot
+                .chunks
+                .iter()
+                .position(|chunk| chunk.id == chunk_id)?;
+            Some(DocumentChunkContext {
+                document: snapshot.document.clone(),
+                version: snapshot.version.clone(),
+                previous_chunk: index
+                    .checked_sub(1)
+                    .map(|previous| snapshot.chunks[previous].clone()),
+                chunk: snapshot.chunks[index].clone(),
+                next_chunk: snapshot.chunks.get(index + 1).cloned(),
+            })
+        }))
     }
 }

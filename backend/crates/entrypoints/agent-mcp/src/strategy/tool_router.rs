@@ -4,6 +4,7 @@
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
 
 mod calendar;
+mod documents;
 mod execution_payload;
 mod graph_execution;
 mod movers;
@@ -540,6 +541,7 @@ impl StrategyServer {
             + Self::predictions_tool_router()
             + Self::paper_trade_tool_router()
             + Self::news_tool_router()
+            + Self::documents_tool_router()
             + Self::widget_tool_router()
             + Self::execution_payload_tool_router()
             + Self::graph_execution_tool_router()
@@ -642,6 +644,7 @@ mod tests {
                 ("eval_python", None),
                 ("execute_operation", None),
                 ("get_news_content", Some(true)),
+                ("get_document_chunk", Some(true)),
                 ("list_earnings_targets", Some(true)),
                 ("list_note_kinds", Some(true)),
                 ("list_group_movers", Some(true)),
@@ -681,6 +684,7 @@ mod tests {
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),
+                ("search_documents", Some(true)),
                 ("screen_stocks", Some(true)),
                 ("search_refs", Some(true)),
                 ("search_web", Some(true)),

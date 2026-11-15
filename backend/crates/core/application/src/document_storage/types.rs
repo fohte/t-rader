@@ -50,3 +50,12 @@ pub struct DocumentSnapshot {
     pub version: DocumentVersion,
     pub chunks: Vec<DocumentChunk>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentChunkContext {
+    pub document: Document,
+    pub version: DocumentVersion,
+    pub previous_chunk: Option<DocumentChunk>,
+    pub chunk: DocumentChunk,
+    pub next_chunk: Option<DocumentChunk>,
+}
