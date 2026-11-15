@@ -39,10 +39,16 @@ impl DocumentMentionRepository for RecordingRepository {
 #[tokio::test]
 async fn record_matches_registered_names_and_keeps_original_utf8_offsets() {
     let repository = Arc::new(RecordingRepository {
-        stocks: vec![RegisteredStock {
-            id: "DEMO-1".into(),
-            name: "DemoCo".into(),
-        }],
+        stocks: vec![
+            RegisteredStock {
+                id: "DEMO-1".into(),
+                name: "DemoCo".into(),
+            },
+            RegisteredStock {
+                id: "DEMO-2".into(),
+                name: "à".into(),
+            },
+        ],
         ..RecordingRepository::default()
     });
     let use_cases = DocumentMentionUseCases::new(repository.clone());
@@ -51,8 +57,8 @@ async fn record_matches_registered_names_and_keeps_original_utf8_offsets() {
         version_id: Uuid::from_u128(1),
         sequence: 0,
         start_offset: 5,
-        end_offset: 45,
-        body: "xＤｅｍｏＣｏ|DemoCo and UnknownCo".into(),
+        end_offset: 51,
+        body: "xＤｅｍｏＣｏ|DemoCo and UnknownCo|a\u{0315}\u{0300}".into(),
     };
 
     let mentions = use_cases
@@ -79,6 +85,12 @@ async fn record_matches_registered_names_and_keeps_original_utf8_offsets() {
                     start_offset: 25,
                     end_offset: 31,
                 },
+                DocumentMention {
+                    chunk_id: Uuid::nil(),
+                    stock_id: "DEMO-2".into(),
+                    start_offset: 46,
+                    end_offset: 51,
+                },
             ],
             vec![
                 DocumentMention {
@@ -92,6 +104,12 @@ async fn record_matches_registered_names_and_keeps_original_utf8_offsets() {
                     stock_id: "DEMO-1".into(),
                     start_offset: 25,
                     end_offset: 31,
+                },
+                DocumentMention {
+                    chunk_id: Uuid::nil(),
+                    stock_id: "DEMO-2".into(),
+                    start_offset: 46,
+                    end_offset: 51,
                 },
             ],
         ),

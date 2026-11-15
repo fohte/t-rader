@@ -187,6 +187,10 @@ mod tests {
             .await
             .expect("repeated mention save succeeds");
 
+        let registered_stocks = repository
+            .find_registered_stocks()
+            .await
+            .expect("registered stocks query succeeds");
         let issuer_stock_id = document::Entity::find_by_id(document_id)
             .one(&db)
             .await
@@ -208,8 +212,21 @@ mod tests {
             .expect("mention query succeeds");
 
         assert_eq!(
-            (issuer_stock_id, mentions),
-            (Some(issuer_id), vec![(mentioned_id, 0, 27)],),
+            (registered_stocks, issuer_stock_id, mentions),
+            (
+                vec![
+                    core_application::document_mentions::RegisteredStock {
+                        id: issuer_id.clone(),
+                        name: "Synthetic Issuer".into(),
+                    },
+                    core_application::document_mentions::RegisteredStock {
+                        id: mentioned_id.clone(),
+                        name: "Synthetic Mentioned Company".into(),
+                    },
+                ],
+                Some(issuer_id),
+                vec![(mentioned_id, 0, 27)],
+            ),
         );
     }
 }
