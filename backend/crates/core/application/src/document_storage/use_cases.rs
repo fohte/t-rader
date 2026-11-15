@@ -152,7 +152,7 @@ mod tests {
     use crate::{
         document_storage::{
             Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
-            DocumentSnapshot, DocumentStorageUseCases, DocumentVersion,
+            DocumentSnapshot, DocumentStorageUseCases, DocumentVersion, DocumentVersionReference,
             FakeDocumentStorageRepository,
         },
         unit_of_work::FakeUnitOfWork,
@@ -289,12 +289,14 @@ mod tests {
         };
         let mut document = snapshot.document;
         document.id = Uuid::nil();
-        let mut version = snapshot.version;
+        let mut version = DocumentVersionReference {
+            id: snapshot.version.id,
+            content_hash: snapshot.version.content_hash.clone(),
+            retrieved_at: snapshot.version.retrieved_at,
+        };
         version.id = Uuid::nil();
-        version.document_id = Uuid::nil();
         context.document.id = Uuid::nil();
         context.version.id = Uuid::nil();
-        context.version.document_id = Uuid::nil();
         context.previous_chunk = context.previous_chunk.map(normalize_chunk);
         context.chunk = normalize_chunk(context.chunk);
         context.next_chunk = context.next_chunk.map(normalize_chunk);

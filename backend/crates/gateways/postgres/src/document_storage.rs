@@ -3,6 +3,7 @@ use chrono::{DateTime, FixedOffset};
 use core_application::document_storage::{
     Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
     DocumentSnapshot, DocumentStorageRepository, DocumentStorageRepositoryError, DocumentVersion,
+    DocumentVersionReference,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::document_search::prepare_document_search;
@@ -58,11 +59,11 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
         })
         .on_conflict(
             OnConflict::columns([document::Column::Source, document::Column::SourceDocumentId])
-                // as_of の公開可否が後続の取り込みで変わらないよう、公開時刻は初回保存後に固定する。
                 .update_columns([
                     document::Column::StockId,
                     document::Column::SourceIssuerCode,
                     document::Column::Title,
+                    document::Column::PublishedAt,
                     document::Column::UpdatedAt,
                 ])
                 .to_owned(),
@@ -189,7 +190,6 @@ SELECT
     version.id AS version_id,
     version.content_hash AS version_content_hash,
     version.retrieved_at AS version_retrieved_at,
-    version.body AS version_body,
     chunk.id AS chunk_id,
     chunk.version_id AS chunk_version_id,
     chunk.sequence AS chunk_sequence,
@@ -241,12 +241,10 @@ WHERE chunk.id = $1
                     published_at: target.document_published_at,
                 },
             },
-            version: DocumentVersion {
+            version: DocumentVersionReference {
                 id: target.version_id,
-                document_id: target.document_id,
                 content_hash: target.version_content_hash,
                 retrieved_at: target.version_retrieved_at,
-                body: target.version_body,
             },
             previous_chunk,
             chunk: DocumentChunk {
@@ -274,7 +272,6 @@ struct DocumentChunkContextRow {
     version_id: Uuid,
     version_content_hash: String,
     version_retrieved_at: DateTime<FixedOffset>,
-    version_body: String,
     chunk_id: Uuid,
     chunk_version_id: Uuid,
     chunk_sequence: i32,
@@ -340,7 +337,7 @@ mod tests {
     use chrono::{DateTime, Duration, FixedOffset, Utc};
     use core_application::document_storage::{
         Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
-        DocumentSnapshot, DocumentStorageRepository, DocumentVersion,
+        DocumentSnapshot, DocumentStorageRepository, DocumentVersion, DocumentVersionReference,
     };
     use core_application::unit_of_work::UnitOfWork;
     use uuid::Uuid;
@@ -677,12 +674,10 @@ mod tests {
         )
         .await;
         let later_body = "alpha delta";
-        let mut later_metadata = metadata();
-        later_metadata.published_at = timestamp() + Duration::hours(3);
         let later = save(
             &repository,
             &unit_of_work,
-            later_metadata,
+            metadata(),
             timestamp() + Duration::hours(2),
             later_body,
             &"b".repeat(64),
@@ -727,7 +722,6 @@ mod tests {
         let normalized = visible.map(|mut context| {
             context.document.id = Uuid::nil();
             context.version.id = Uuid::nil();
-            context.version.document_id = Uuid::nil();
             context.chunk = normalize_chunk(context.chunk);
             context.previous_chunk = context.previous_chunk.map(normalize_chunk);
             context.next_chunk = context.next_chunk.map(normalize_chunk);
@@ -735,9 +729,12 @@ mod tests {
         });
         let mut expected_document = first.document;
         expected_document.id = Uuid::nil();
-        let mut expected_version = first.version;
+        let mut expected_version = DocumentVersionReference {
+            id: first.version.id,
+            content_hash: first.version.content_hash.clone(),
+            retrieved_at: first.version.retrieved_at,
+        };
         expected_version.id = Uuid::nil();
-        expected_version.document_id = Uuid::nil();
 
         assert_eq!(
             (normalized, hidden, future_publication_hidden),

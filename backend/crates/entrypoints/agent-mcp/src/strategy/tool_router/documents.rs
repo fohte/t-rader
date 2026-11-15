@@ -12,7 +12,7 @@ use super::super::dto::{
 impl StrategyServer {
     #[tool(
         name = "search_documents",
-        description = "Search stored document chunks by full-text query. Optionally restrict results to a publication and retrieval time or an issuing stock. Each result includes the document issuer, source version metadata, chunk body and offsets, and separately identified stock mentions.",
+        description = "Search stored document chunks by full-text query. Optionally restrict results to a publication and retrieval time or an issuing stock. Each result includes the document issuer, source version metadata, chunk body and offsets, and separately identified stock mentions. Chunk and mention offsets are UTF-8 byte positions in the original body.",
         annotations(read_only_hint = true)
     )]
     async fn search_documents(
@@ -26,7 +26,7 @@ impl StrategyServer {
 
     #[tool(
         name = "get_document_chunk",
-        description = "Read a stored document chunk by id with the nearest preceding and following chunks from the same source version, document metadata, the original version body, and stock mentions in the requested chunk. When as_of is supplied, chunks from a later publication or retrieval are not returned.",
+        description = "Read a stored document chunk by id with the nearest preceding and following chunks from the same source version, document metadata, a reference to the original version, and stock mentions in the requested chunk. Use neighboring chunk IDs to read further context. Chunk and mention offsets are UTF-8 byte positions in the original body. When as_of is supplied, chunks from a later publication or retrieval are not returned.",
         annotations(read_only_hint = true)
     )]
     async fn get_document_chunk(

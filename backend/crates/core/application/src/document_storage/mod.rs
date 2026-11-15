@@ -13,6 +13,6 @@ pub use repository::{
 };
 pub use types::{
     Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
-    DocumentSnapshot, DocumentVersion,
+    DocumentSnapshot, DocumentVersion, DocumentVersionReference,
 };
 pub use use_cases::DocumentStorageUseCases;

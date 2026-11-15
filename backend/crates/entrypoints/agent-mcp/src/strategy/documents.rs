@@ -6,9 +6,9 @@ use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
 use super::dto::{
-    DocumentChunkDto, DocumentDto, DocumentMentionDto, DocumentVersionDto,
-    DocumentVersionReferenceDto, GetDocumentChunkParams, GetDocumentChunkResult,
-    SearchDocumentItemDto, SearchDocumentsParams, SearchDocumentsResult,
+    DocumentChunkDto, DocumentDto, DocumentMentionDto, DocumentVersionReferenceDto,
+    GetDocumentChunkParams, GetDocumentChunkResult, SearchDocumentItemDto, SearchDocumentsParams,
+    SearchDocumentsResult,
 };
 use super::{StrategyServer, internal_error, invalid_params};
 
@@ -114,13 +114,14 @@ impl From<core_application::document_search::DocumentSearchVersion>
     }
 }
 
-impl From<core_application::document_storage::DocumentVersion> for DocumentVersionDto {
-    fn from(version: core_application::document_storage::DocumentVersion) -> Self {
+impl From<core_application::document_storage::DocumentVersionReference>
+    for DocumentVersionReferenceDto
+{
+    fn from(version: core_application::document_storage::DocumentVersionReference) -> Self {
         Self {
             id: version.id,
             content_hash: version.content_hash,
             retrieved_at: version.retrieved_at,
-            body: version.body,
         }
     }
 }

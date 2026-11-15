@@ -8,7 +8,7 @@ use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 use super::repository::{DocumentStorageRepository, DocumentStorageRepositoryError};
 use super::types::{
     Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
-    DocumentSnapshot, DocumentVersion,
+    DocumentSnapshot, DocumentVersion, DocumentVersionReference,
 };
 
 #[derive(Default)]
@@ -139,7 +139,11 @@ impl DocumentStorageRepository for FakeDocumentStorageRepository {
                 .position(|chunk| chunk.id == chunk_id)?;
             Some(DocumentChunkContext {
                 document: snapshot.document.clone(),
-                version: snapshot.version.clone(),
+                version: DocumentVersionReference {
+                    id: snapshot.version.id,
+                    content_hash: snapshot.version.content_hash.clone(),
+                    retrieved_at: snapshot.version.retrieved_at,
+                },
                 previous_chunk: index
                     .checked_sub(1)
                     .map(|previous| snapshot.chunks[previous].clone()),

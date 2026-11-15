@@ -44,14 +44,6 @@ pub struct DocumentVersionReferenceDto {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct DocumentVersionDto {
-    pub id: Uuid,
-    pub content_hash: String,
-    pub retrieved_at: DateTime<FixedOffset>,
-    pub body: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DocumentChunkDto {
     pub id: Uuid,
     pub sequence: i32,
@@ -76,7 +68,7 @@ pub struct GetDocumentChunkParams {
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct GetDocumentChunkResult {
     pub document: DocumentDto,
-    pub version: DocumentVersionDto,
+    pub version: DocumentVersionReferenceDto,
     pub previous_chunk: Option<DocumentChunkDto>,
     pub chunk: DocumentChunkDto,
     pub next_chunk: Option<DocumentChunkDto>,

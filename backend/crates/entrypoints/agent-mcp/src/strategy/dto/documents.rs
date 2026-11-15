@@ -54,19 +54,12 @@ pub struct DocumentVersionReferenceDto {
 
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct DocumentVersionDto {
-    pub id: Uuid,
-    pub content_hash: String,
-    pub retrieved_at: DateTime<FixedOffset>,
-    pub body: String,
-}
-
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct DocumentChunkDto {
     pub id: Uuid,
     pub sequence: i32,
+    /// 原文中の UTF-8 byte offset。
     pub start_offset: i32,
+    /// 原文中の UTF-8 byte offset。
     pub end_offset: i32,
     pub body: String,
 }
@@ -75,7 +68,9 @@ pub struct DocumentChunkDto {
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct DocumentMentionDto {
     pub stock_id: String,
+    /// 原文中の UTF-8 byte offset。
     pub start_offset: i32,
+    /// 原文中の UTF-8 byte offset。
     pub end_offset: i32,
 }
 
@@ -92,7 +87,7 @@ pub struct GetDocumentChunkParams {
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct GetDocumentChunkResult {
     pub document: DocumentDto,
-    pub version: DocumentVersionDto,
+    pub version: DocumentVersionReferenceDto,
     pub previous_chunk: Option<DocumentChunkDto>,
     pub chunk: DocumentChunkDto,
     pub next_chunk: Option<DocumentChunkDto>,

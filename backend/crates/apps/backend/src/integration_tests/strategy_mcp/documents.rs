@@ -7,9 +7,9 @@ mod tests {
 
     use super::super::ToolOutput;
     use super::super::dto::{
-        DocumentChunkDto, DocumentDto, DocumentMentionDto, DocumentVersionDto,
-        DocumentVersionReferenceDto, GetDocumentChunkParams, GetDocumentChunkResult,
-        SearchDocumentItemDto, SearchDocumentsParams, SearchDocumentsResult,
+        DocumentChunkDto, DocumentDto, DocumentMentionDto, DocumentVersionReferenceDto,
+        GetDocumentChunkParams, GetDocumentChunkResult, SearchDocumentItemDto,
+        SearchDocumentsParams, SearchDocumentsResult,
     };
     use super::super::tests_common::{build_server, insert_strategy};
     use core_application::document_storage::{
@@ -226,11 +226,10 @@ mod tests {
                         title: "Synthetic notice".into(),
                         published_at: timestamp(1),
                     },
-                    version: DocumentVersionDto {
+                    version: DocumentVersionReferenceDto {
                         id: Uuid::nil(),
                         content_hash: "a".repeat(64),
                         retrieved_at: timestamp(2),
-                        body: body.clone(),
                     },
                     previous_chunk: Some(DocumentChunkDto {
                         id: Uuid::nil(),
@@ -269,11 +268,13 @@ mod tests {
         let strategy_id = insert_strategy(&db, "synthetic").await;
         insert_stock(&db, "demo-issuer", "Synthetic Issuer").await;
         insert_stock(&db, "demo-mentioned", "Synthetic Mentioned Co").await;
-        let (chunk_id, _, _, _) =
+        let (chunk_id, body, start, end) =
             save_document(&db, "DOC-TEST-1", timestamp(1), timestamp(2)).await;
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let repository = PostgresDocumentStorageRepository::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("transaction begins");
+        let later_body = "Synthetic changed version".to_owned();
+        let later_end = i32::try_from(later_body.len()).expect("synthetic body length fits in i32");
         let later = repository
             .save(
                 &transaction,
@@ -287,12 +288,12 @@ mod tests {
                 },
                 "b".repeat(64),
                 timestamp(4),
-                "Synthetic changed version".into(),
+                later_body.clone(),
                 vec![DocumentChunkInput {
                     sequence: 0,
                     start_offset: 0,
-                    end_offset: 26,
-                    body: "Synthetic changed version".into(),
+                    end_offset: later_end,
+                    body: later_body,
                 }],
             )
             .await
@@ -313,7 +314,8 @@ mod tests {
                 },
             )
             .await
-            .map(|output| output.into_value().version.retrieved_at);
+            .map(normalize_read)
+            .map_err(|error| (error.code, error.message));
         let hidden = server
             .get_document_chunk(
                 strategy_id,
@@ -323,7 +325,8 @@ mod tests {
                 },
             )
             .await
-            .map(ToolOutput::into_value);
+            .map(normalize_read)
+            .map_err(|error| (error.code, error.message));
         let future_publication_hidden = server
             .get_document_chunk(
                 strategy_id,
@@ -333,18 +336,62 @@ mod tests {
                 },
             )
             .await
-            .map(ToolOutput::into_value);
+            .map(normalize_read)
+            .map_err(|error| (error.code, error.message));
+
+        let chunk_start = i32::try_from(start).expect("synthetic offset fits in i32");
+        let chunk_end = i32::try_from(end).expect("synthetic offset fits in i32");
 
         assert_eq!(
+            (visible, hidden, future_publication_hidden,),
             (
-                visible,
-                hidden.map_err(|error| error.code),
-                future_publication_hidden.map_err(|error| error.code),
-            ),
-            (
-                Ok(timestamp(2)),
-                Err(ErrorCode::RESOURCE_NOT_FOUND),
-                Err(ErrorCode::RESOURCE_NOT_FOUND),
+                Ok(GetDocumentChunkResult {
+                    document: DocumentDto {
+                        id: Uuid::nil(),
+                        source: "synthetic-archive".into(),
+                        source_document_id: "DOC-TEST-1".into(),
+                        stock_id: Some("demo-issuer".into()),
+                        source_issuer_code: "ISSUER-TEST-1".into(),
+                        title: "Synthetic notice".into(),
+                        published_at: timestamp(1),
+                    },
+                    version: DocumentVersionReferenceDto {
+                        id: Uuid::nil(),
+                        content_hash: "a".repeat(64),
+                        retrieved_at: timestamp(2),
+                    },
+                    previous_chunk: Some(DocumentChunkDto {
+                        id: Uuid::nil(),
+                        sequence: 0,
+                        start_offset: 0,
+                        end_offset: chunk_start,
+                        body: body[..start].to_owned(),
+                    }),
+                    chunk: DocumentChunkDto {
+                        id: Uuid::nil(),
+                        sequence: 1,
+                        start_offset: chunk_start,
+                        end_offset: chunk_end,
+                        body: "Synthetic Mentioned Co".into(),
+                    },
+                    next_chunk: Some(DocumentChunkDto {
+                        id: Uuid::nil(),
+                        sequence: 2,
+                        start_offset: chunk_end,
+                        end_offset: i32::try_from(body.len())
+                            .expect("synthetic body length fits in i32"),
+                        body: body[end..].to_owned(),
+                    }),
+                    mentions: Vec::new(),
+                }),
+                Err((
+                    ErrorCode::RESOURCE_NOT_FOUND,
+                    "document chunk not found".into(),
+                )),
+                Err((
+                    ErrorCode::RESOURCE_NOT_FOUND,
+                    "document chunk not found".into(),
+                )),
             ),
         );
     }
