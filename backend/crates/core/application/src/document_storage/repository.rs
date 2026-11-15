@@ -5,7 +5,7 @@ use thiserror::Error;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{DocumentChunkInput, DocumentMetadata, DocumentSnapshot};
+use super::types::{DocumentChunkContext, DocumentChunkInput, DocumentMetadata, DocumentSnapshot};
 
 #[derive(Debug, Error)]
 pub enum DocumentStorageRepositoryError {
@@ -33,6 +33,12 @@ pub trait DocumentStorageRepository: Send + Sync {
         source_document_id: &str,
         as_of: DateTime<FixedOffset>,
     ) -> Result<Option<DocumentSnapshot>, DocumentStorageRepositoryError>;
+
+    async fn find_chunk_context(
+        &self,
+        chunk_id: uuid::Uuid,
+        as_of: Option<DateTime<FixedOffset>>,
+    ) -> Result<Option<DocumentChunkContext>, DocumentStorageRepositoryError>;
 }
 
 pub type SharedDocumentStorageRepository =

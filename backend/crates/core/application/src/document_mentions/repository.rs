@@ -22,6 +22,11 @@ pub enum DocumentMentionRepositoryError {
 
 #[async_trait]
 pub trait DocumentMentionRepository: Send + Sync {
+    async fn find_mentions_for_chunks(
+        &self,
+        chunk_ids: Vec<uuid::Uuid>,
+    ) -> Result<Vec<DocumentMention>, DocumentMentionRepositoryError>;
+
     async fn lock_chunks_for_update(
         &self,
         transaction: &UnitOfWorkTransaction,

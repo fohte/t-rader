@@ -12,6 +12,7 @@ mod annotations;
 mod calendar_tests;
 mod comments;
 mod data;
+mod documents;
 mod eval;
 mod eval_indicator;
 mod execution_payload;

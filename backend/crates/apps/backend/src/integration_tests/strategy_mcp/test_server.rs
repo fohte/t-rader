@@ -416,6 +416,24 @@ impl StrategyServer {
             .await
     }
 
+    pub(super) async fn search_documents(
+        &self,
+        scope: impl Into<StrategyScope>,
+        params: strategy_dto::SearchDocumentsParams,
+    ) -> Result<ToolOutput<strategy_dto::SearchDocumentsResult>, McpError> {
+        self.invoke("search_documents", scope.into().id(), params, None, None)
+            .await
+    }
+
+    pub(super) async fn get_document_chunk(
+        &self,
+        scope: impl Into<StrategyScope>,
+        params: strategy_dto::GetDocumentChunkParams,
+    ) -> Result<ToolOutput<strategy_dto::GetDocumentChunkResult>, McpError> {
+        self.invoke("get_document_chunk", scope.into().id(), params, None, None)
+            .await
+    }
+
     pub(super) async fn search_refs(
         &self,
         scope: impl Into<StrategyScope>,

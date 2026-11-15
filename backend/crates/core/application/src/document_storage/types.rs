@@ -27,6 +27,13 @@ pub struct DocumentVersion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentVersionReference {
+    pub id: Uuid,
+    pub content_hash: String,
+    pub retrieved_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentChunkInput {
     pub sequence: i32,
     pub start_offset: i32,
@@ -49,4 +56,13 @@ pub struct DocumentSnapshot {
     pub document: Document,
     pub version: DocumentVersion,
     pub chunks: Vec<DocumentChunk>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentChunkContext {
+    pub document: Document,
+    pub version: DocumentVersionReference,
+    pub previous_chunk: Option<DocumentChunk>,
+    pub chunk: DocumentChunk,
+    pub next_chunk: Option<DocumentChunk>,
 }

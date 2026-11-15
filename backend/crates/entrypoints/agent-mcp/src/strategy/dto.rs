@@ -13,6 +13,7 @@ use super::graph_dto::GraphDef;
 use super::serde_helpers::deserialize_nullable_option;
 
 mod annotations;
+mod documents;
 mod financials;
 mod group_movers;
 mod list_movers;
@@ -24,6 +25,7 @@ mod saved_screen;
 mod screen_stocks;
 mod widget;
 pub use annotations::*;
+pub use documents::*;
 pub use financials::*;
 pub use group_movers::*;
 pub use list_movers::*;

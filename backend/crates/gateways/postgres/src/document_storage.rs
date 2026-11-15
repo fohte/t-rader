@@ -1,14 +1,18 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use core_application::document_storage::{
-    Document, DocumentChunk, DocumentChunkInput, DocumentMetadata, DocumentSnapshot,
-    DocumentStorageRepository, DocumentStorageRepositoryError, DocumentVersion,
+    Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
+    DocumentSnapshot, DocumentStorageRepository, DocumentStorageRepositoryError, DocumentVersion,
+    DocumentVersionReference,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::document_search::prepare_document_search;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter,
+    QueryOrder, Statement,
+};
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
@@ -164,6 +168,116 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
             chunks: chunk_rows.into_iter().map(to_chunk).collect(),
         }))
     }
+
+    async fn find_chunk_context(
+        &self,
+        chunk_id: Uuid,
+        as_of: Option<DateTime<FixedOffset>>,
+    ) -> Result<Option<DocumentChunkContext>, DocumentStorageRepositoryError> {
+        let Some(target) = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"
+SELECT
+    document.id AS document_id,
+    document.source AS document_source,
+    document.source_document_id AS document_source_document_id,
+    document.stock_id AS document_stock_id,
+    document.source_issuer_code AS document_source_issuer_code,
+    document.title AS document_title,
+    document.published_at AS document_published_at,
+    version.id AS version_id,
+    version.content_hash AS version_content_hash,
+    version.retrieved_at AS version_retrieved_at,
+    chunk.id AS chunk_id,
+    chunk.version_id AS chunk_version_id,
+    chunk.sequence AS chunk_sequence,
+    chunk.start_offset AS chunk_start_offset,
+    chunk.end_offset AS chunk_end_offset,
+    chunk.body AS chunk_body
+FROM document_chunk AS chunk
+JOIN document_version AS version ON version.id = chunk.version_id
+JOIN document ON document.id = version.document_id
+WHERE chunk.id = $1
+  AND ($2::timestamptz IS NULL OR version.retrieved_at <= $2)
+  AND ($2::timestamptz IS NULL OR document.published_at <= $2)
+"#,
+                [chunk_id.into(), as_of.into()],
+            ))
+            .await
+            .map_err(repository_error)?
+        else {
+            return Ok(None);
+        };
+        let target =
+            DocumentChunkContextRow::from_query_result(&target, "").map_err(repository_error)?;
+        let previous_chunk = document_chunk::Entity::find()
+            .filter(document_chunk::Column::VersionId.eq(target.version_id))
+            .filter(document_chunk::Column::Sequence.lt(target.chunk_sequence))
+            .order_by_desc(document_chunk::Column::Sequence)
+            .one(&self.db)
+            .await
+            .map_err(repository_error)?
+            .map(to_chunk);
+        let next_chunk = document_chunk::Entity::find()
+            .filter(document_chunk::Column::VersionId.eq(target.version_id))
+            .filter(document_chunk::Column::Sequence.gt(target.chunk_sequence))
+            .order_by_asc(document_chunk::Column::Sequence)
+            .one(&self.db)
+            .await
+            .map_err(repository_error)?
+            .map(to_chunk);
+
+        Ok(Some(DocumentChunkContext {
+            document: Document {
+                id: target.document_id,
+                metadata: DocumentMetadata {
+                    source: target.document_source,
+                    source_document_id: target.document_source_document_id,
+                    stock_id: target.document_stock_id,
+                    source_issuer_code: target.document_source_issuer_code,
+                    title: target.document_title,
+                    published_at: target.document_published_at,
+                },
+            },
+            version: DocumentVersionReference {
+                id: target.version_id,
+                content_hash: target.version_content_hash,
+                retrieved_at: target.version_retrieved_at,
+            },
+            previous_chunk,
+            chunk: DocumentChunk {
+                id: target.chunk_id,
+                version_id: target.chunk_version_id,
+                sequence: target.chunk_sequence,
+                start_offset: target.chunk_start_offset,
+                end_offset: target.chunk_end_offset,
+                body: target.chunk_body,
+            },
+            next_chunk,
+        }))
+    }
+}
+
+#[derive(Debug, FromQueryResult)]
+struct DocumentChunkContextRow {
+    document_id: Uuid,
+    document_source: String,
+    document_source_document_id: String,
+    document_stock_id: Option<String>,
+    document_source_issuer_code: String,
+    document_title: String,
+    document_published_at: DateTime<FixedOffset>,
+    version_id: Uuid,
+    version_content_hash: String,
+    version_retrieved_at: DateTime<FixedOffset>,
+    chunk_id: Uuid,
+    chunk_version_id: Uuid,
+    chunk_sequence: i32,
+    chunk_start_offset: i32,
+    chunk_end_offset: i32,
+    chunk_body: String,
 }
 
 fn to_document(row: document::Model) -> Document {
@@ -222,8 +336,8 @@ mod tests {
 
     use chrono::{DateTime, Duration, FixedOffset, Utc};
     use core_application::document_storage::{
-        Document, DocumentChunk, DocumentChunkInput, DocumentMetadata, DocumentSnapshot,
-        DocumentStorageRepository, DocumentVersion,
+        Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
+        DocumentSnapshot, DocumentStorageRepository, DocumentVersion, DocumentVersionReference,
     };
     use core_application::unit_of_work::UnitOfWork;
     use uuid::Uuid;
@@ -270,6 +384,12 @@ mod tests {
             chunk.version_id = Uuid::nil();
         }
         snapshot
+    }
+
+    fn normalize_chunk(mut chunk: DocumentChunk) -> DocumentChunk {
+        chunk.id = Uuid::nil();
+        chunk.version_id = Uuid::nil();
+        chunk
     }
 
     fn expected_snapshot(
@@ -530,6 +650,104 @@ mod tests {
                     &first_hash,
                     timestamp() + Duration::hours(4)
                 )),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_reads_chunk_context_only_when_visible_as_of(db: DatabaseHandle) {
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let repository = PostgresDocumentStorageRepository::new(db);
+        let first_body = "alpha beta gamma";
+        let first = save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp(),
+            first_body,
+            &"a".repeat(64),
+            vec![
+                chunk(0, 0, 5, first_body),
+                chunk(1, 6, 10, first_body),
+                chunk(2, 11, 16, first_body),
+            ],
+        )
+        .await;
+        let later_body = "alpha delta";
+        let later = save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp() + Duration::hours(2),
+            later_body,
+            &"b".repeat(64),
+            vec![chunk(0, 0, 11, later_body)],
+        )
+        .await;
+        let mut future_publication_metadata = metadata();
+        future_publication_metadata.source_document_id = "DOC-FUTURE-42".into();
+        future_publication_metadata.published_at = timestamp() + Duration::hours(2);
+        let future_publication_body = "future document";
+        let future_published = save(
+            &repository,
+            &unit_of_work,
+            future_publication_metadata,
+            timestamp(),
+            future_publication_body,
+            &"c".repeat(64),
+            vec![chunk(
+                0,
+                0,
+                future_publication_body.len(),
+                future_publication_body,
+            )],
+        )
+        .await;
+
+        let visible = repository
+            .find_chunk_context(first.chunks[1].id, Some(timestamp() + Duration::hours(1)))
+            .await
+            .expect("context query succeeds");
+        let hidden = repository
+            .find_chunk_context(later.chunks[0].id, Some(timestamp() + Duration::hours(1)))
+            .await
+            .expect("context query succeeds");
+        let future_publication_hidden = repository
+            .find_chunk_context(
+                future_published.chunks[0].id,
+                Some(timestamp() + Duration::hours(1)),
+            )
+            .await
+            .expect("context query succeeds");
+        let normalized = visible.map(|mut context| {
+            context.document.id = Uuid::nil();
+            context.version.id = Uuid::nil();
+            context.chunk = normalize_chunk(context.chunk);
+            context.previous_chunk = context.previous_chunk.map(normalize_chunk);
+            context.next_chunk = context.next_chunk.map(normalize_chunk);
+            context
+        });
+        let mut expected_document = first.document;
+        expected_document.id = Uuid::nil();
+        let mut expected_version = DocumentVersionReference {
+            id: first.version.id,
+            content_hash: first.version.content_hash.clone(),
+            retrieved_at: first.version.retrieved_at,
+        };
+        expected_version.id = Uuid::nil();
+
+        assert_eq!(
+            (normalized, hidden, future_publication_hidden),
+            (
+                Some(DocumentChunkContext {
+                    document: expected_document,
+                    version: expected_version,
+                    previous_chunk: Some(normalize_chunk(first.chunks[0].clone())),
+                    chunk: normalize_chunk(first.chunks[1].clone()),
+                    next_chunk: Some(normalize_chunk(first.chunks[2].clone())),
+                }),
+                None,
+                None,
             ),
         );
     }

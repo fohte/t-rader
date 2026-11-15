@@ -9,6 +9,7 @@ pub(super) mod calendar;
 pub(super) mod comments;
 pub(super) mod data;
 mod dependencies;
+pub(super) mod documents;
 pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;

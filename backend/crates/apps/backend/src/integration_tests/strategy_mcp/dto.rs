@@ -5,6 +5,77 @@ use uuid::Uuid;
 use super::graph_dto::GraphDef;
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct SearchDocumentsParams {
+    pub query: String,
+    pub as_of: Option<DateTime<FixedOffset>>,
+    pub stock_id: Option<String>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SearchDocumentsResult {
+    pub items: Vec<SearchDocumentItemDto>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SearchDocumentItemDto {
+    pub document: DocumentDto,
+    pub version: DocumentVersionReferenceDto,
+    pub chunk: DocumentChunkDto,
+    pub mentions: Vec<DocumentMentionDto>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DocumentDto {
+    pub id: Uuid,
+    pub source: String,
+    pub source_document_id: String,
+    pub stock_id: Option<String>,
+    pub source_issuer_code: String,
+    pub title: String,
+    pub published_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DocumentVersionReferenceDto {
+    pub id: Uuid,
+    pub content_hash: String,
+    pub retrieved_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DocumentChunkDto {
+    pub id: Uuid,
+    pub sequence: i32,
+    pub start_offset: i32,
+    pub end_offset: i32,
+    pub body: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DocumentMentionDto {
+    pub stock_id: String,
+    pub start_offset: i32,
+    pub end_offset: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GetDocumentChunkParams {
+    pub id: Uuid,
+    pub as_of: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct GetDocumentChunkResult {
+    pub document: DocumentDto,
+    pub version: DocumentVersionReferenceDto,
+    pub previous_chunk: Option<DocumentChunkDto>,
+    pub chunk: DocumentChunkDto,
+    pub next_chunk: Option<DocumentChunkDto>,
+    pub mentions: Vec<DocumentMentionDto>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct QueryDataParams {
     pub instrument_ids: Vec<String>,
     pub from: NaiveDate,

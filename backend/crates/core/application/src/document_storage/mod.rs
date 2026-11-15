@@ -12,7 +12,7 @@ pub use repository::{
     DocumentStorageRepository, DocumentStorageRepositoryError, SharedDocumentStorageRepository,
 };
 pub use types::{
-    Document, DocumentChunk, DocumentChunkInput, DocumentMetadata, DocumentSnapshot,
-    DocumentVersion,
+    Document, DocumentChunk, DocumentChunkContext, DocumentChunkInput, DocumentMetadata,
+    DocumentSnapshot, DocumentVersion, DocumentVersionReference,
 };
 pub use use_cases::DocumentStorageUseCases;
