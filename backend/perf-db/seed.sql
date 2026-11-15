@@ -303,21 +303,16 @@ ANALYZE stock_group_member;
 ANALYZE indicator;
 ANALYZE indicator_observation;
 
-INSERT INTO stock (id, name, product_category)
-SELECT 'demo-code-' || lpad(number::text, 3, '0'),
-       'Synthetic organization ' || number,
-       'synthetic'
-FROM generate_series(1, 100) AS series(number)
-ON CONFLICT (id) DO NOTHING;
-
 WITH synthetic_documents AS (
     SELECT number,
            md5('synthetic-document-' || number)::uuid AS document_id,
            'DOC-' || lpad(number::text, 5, '0') AS source_document_id,
-           'demo-code-' || lpad((((number - 1) % 100) + 1)::text, 3, '0') AS stock_id,
-           (((number - 1) % 100) + 1)::text AS issuer_number,
+           synthetic_stocks.id AS stock_id,
+           synthetic_stocks.n::text AS issuer_number,
            now() - (number + 10) * INTERVAL '1 day' AS published_at
     FROM generate_series(1, 50000) AS series(number)
+    JOIN synthetic_stocks
+      ON synthetic_stocks.n = ((number - 1) % 100) + 1
 )
 INSERT INTO document (
     id,
