@@ -85,6 +85,7 @@
 | [public.document](public.document.md)                                                           | 9       | 資料源に依存しない公開文書の識別情報を保持する。                                                                                                   | BASE TABLE        |
 | [public.document_version](public.document_version.md)                                           | 6       | 公開文書の原文バージョンを保持する。                                                                                                               | BASE TABLE        |
 | [public.document_chunk](public.document_chunk.md)                                               | 6       | 原文のバージョンに属する順序付き文書片を保持する。                                                                                                 | BASE TABLE        |
+| [public.document_chunk_mention](public.document_chunk_mention.md)                               | 5       | 文書片の本文で照合された登録済み銘柄と範囲を保持する。                                                                                             | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -268,6 +269,8 @@ erDiagram
 "public.document" }o--o| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE SET NULL"
 "public.document_version" }o--|| "public.document" : "FOREIGN KEY (document_id) REFERENCES document(id) ON DELETE CASCADE"
 "public.document_chunk" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
+"public.document_chunk_mention" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
+"public.document_chunk_mention" }o--|| "public.document_chunk" : "FOREIGN KEY (chunk_id) REFERENCES document_chunk(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -1074,6 +1077,13 @@ erDiagram
   integer start_offset
   integer end_offset
   text body
+}
+"public.document_chunk_mention" {
+  uuid id
+  uuid chunk_id FK
+  text stock_id FK
+  integer start_offset
+  integer end_offset
 }
 ```
 
