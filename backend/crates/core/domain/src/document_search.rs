@@ -16,7 +16,7 @@ pub fn prepare_document_search(text: &str) -> PreparedDocumentSearch {
         .flat_map(|segment| {
             let characters = segment.chars().collect::<Vec<_>>();
             if characters.len() == 1 {
-                return vec![segment.to_owned()];
+                return Vec::new();
             }
             characters
                 .windows(2)
@@ -42,7 +42,7 @@ mod tests {
     #[rstest]
     #[case::japanese("ＡＢＣと日本語", "abcと日本語", vec!["ab", "bc", "cと", "と日", "日本", "本語"])]
     #[case::case_and_spacing("Alpha beta", "alpha beta", vec!["al", "be", "et", "ha", "lp", "ph", "ta"])]
-    #[case::one_character("語", "語", vec!["語"])]
+    #[case::one_character("語", "語", vec![])]
     #[case::punctuation_only("!?", "!?", vec![])]
     fn normalizes_text_and_creates_distinct_bigrams(
         #[case] input: &str,

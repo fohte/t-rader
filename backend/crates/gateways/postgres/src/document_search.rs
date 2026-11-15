@@ -352,6 +352,45 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn repository_searches_single_character_inside_a_multicharacter_word(db: DatabaseHandle) {
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let storage = PostgresDocumentStorageRepository::new(db.clone());
+        let repository = PostgresDocumentSearchRepository::new(db);
+        let body = "日本語の合成文書";
+        save(
+            &storage,
+            &unit_of_work,
+            metadata("DOC-A", None, timestamp()),
+            timestamp(),
+            body,
+            "hash-a",
+        )
+        .await;
+
+        let results = repository
+            .search(
+                core_domain::document_search::prepare_document_search("語"),
+                None,
+                None,
+                10,
+            )
+            .await
+            .expect("document search succeeds");
+
+        assert_eq!(
+            normalize(results),
+            vec![expected_result(
+                "DOC-A",
+                None,
+                timestamp(),
+                timestamp(),
+                body,
+                "hash-a",
+            )],
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn repository_searches_only_published_latest_versions_as_of_time(db: DatabaseHandle) {
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let storage = PostgresDocumentStorageRepository::new(db.clone());
