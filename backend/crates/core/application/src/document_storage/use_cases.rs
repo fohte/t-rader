@@ -189,7 +189,11 @@ mod tests {
         snapshot
     }
 
-    fn expected_snapshot(body: &str, retrieved_at: DateTime<FixedOffset>) -> DocumentSnapshot {
+    fn expected_snapshot(
+        body: &str,
+        content_hash: &str,
+        retrieved_at: DateTime<FixedOffset>,
+    ) -> DocumentSnapshot {
         DocumentSnapshot {
             document: Document {
                 id: Uuid::nil(),
@@ -198,7 +202,7 @@ mod tests {
             version: DocumentVersion {
                 id: Uuid::nil(),
                 document_id: Uuid::nil(),
-                content_hash: super::hash_body(body),
+                content_hash: content_hash.into(),
                 retrieved_at,
                 body: body.into(),
             },
@@ -246,8 +250,16 @@ mod tests {
                 repository.version_count().await,
             ),
             (
-                expected_snapshot(body, timestamp()),
-                expected_snapshot(body, timestamp()),
+                expected_snapshot(
+                    body,
+                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
+                    timestamp(),
+                ),
+                expected_snapshot(
+                    body,
+                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
+                    timestamp() + Duration::hours(2),
+                ),
                 1,
             ),
         );
@@ -291,7 +303,191 @@ mod tests {
             .unwrap();
         assert_eq!(
             normalize(snapshot),
-            expected_snapshot(first_body, timestamp()),
+            expected_snapshot(
+                first_body,
+                "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
+                timestamp(),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn reads_reappearing_content_at_its_latest_retrieval(
+        harness: (DocumentStorageUseCases, Arc<FakeDocumentStorageRepository>),
+    ) {
+        let (use_cases, repository) = harness;
+        let first_body = "alpha beta";
+        let changed_body = "alpha gamma";
+        use_cases
+            .save(
+                metadata(),
+                timestamp(),
+                first_body.into(),
+                vec![chunk(0, first_body, 0, 10)],
+            )
+            .await
+            .unwrap();
+        use_cases
+            .save(
+                metadata(),
+                timestamp() + Duration::hours(2),
+                changed_body.into(),
+                vec![chunk(0, changed_body, 0, 11)],
+            )
+            .await
+            .unwrap();
+        use_cases
+            .save(
+                metadata(),
+                timestamp() + Duration::hours(4),
+                first_body.into(),
+                vec![chunk(0, first_body, 0, 10)],
+            )
+            .await
+            .unwrap();
+        let before_change = use_cases
+            .get_latest_as_of(
+                "archive-example",
+                "DOC-42",
+                timestamp() + Duration::hours(1),
+            )
+            .await
+            .unwrap();
+        let after_change = use_cases
+            .get_latest_as_of(
+                "archive-example",
+                "DOC-42",
+                timestamp() + Duration::hours(3),
+            )
+            .await
+            .unwrap();
+        let after_reversion = use_cases
+            .get_latest_as_of(
+                "archive-example",
+                "DOC-42",
+                timestamp() + Duration::hours(5),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            (
+                before_change.map(normalize),
+                after_change.map(normalize),
+                after_reversion.map(normalize),
+                repository.version_count().await,
+            ),
+            (
+                Some(expected_snapshot(
+                    first_body,
+                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
+                    timestamp(),
+                )),
+                Some(expected_snapshot(
+                    changed_body,
+                    "84fabc827988d78697a3eaa84e4df59d9d63c1b26cefecc4836b34b8a73a995d",
+                    timestamp() + Duration::hours(2),
+                )),
+                Some(expected_snapshot(
+                    first_body,
+                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
+                    timestamp() + Duration::hours(4),
+                )),
+                2,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::source("source")]
+    #[case::source_document_id("source_document_id")]
+    #[case::source_issuer_code("source_issuer_code")]
+    #[case::title("title")]
+    #[tokio::test]
+    async fn rejects_blank_metadata_before_saving(
+        #[case] field: &str,
+        harness: (DocumentStorageUseCases, Arc<FakeDocumentStorageRepository>),
+    ) {
+        let (use_cases, repository) = harness;
+        let mut metadata = metadata();
+        match field {
+            "source" => metadata.source = "   ".into(),
+            "source_document_id" => metadata.source_document_id = "   ".into(),
+            "source_issuer_code" => metadata.source_issuer_code = "   ".into(),
+            "title" => metadata.title = "   ".into(),
+            _ => {}
+        }
+        let result = use_cases
+            .save(metadata, timestamp(), String::new(), Vec::new())
+            .await;
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                repository.version_count().await,
+            ),
+            (
+                Some(format!(
+                    "document metadata field '{field}' must not be empty"
+                )),
+                0,
+            ),
+        );
+    }
+
+    fn chunk_from_range(sequence: i32, start: usize, end: usize, body: &str) -> DocumentChunkInput {
+        DocumentChunkInput {
+            sequence,
+            start_offset: i32::try_from(start).expect("test offset fits in an integer"),
+            end_offset: i32::try_from(end).expect("test offset fits in an integer"),
+            body: body[start..end].into(),
+        }
+    }
+
+    #[rstest]
+    #[case::negative_sequence(
+        "negative sequence",
+        "invalid document chunk at sequence -1: sequences must be non-negative and strictly increasing"
+    )]
+    #[case::repeated_sequence(
+        "repeated sequence",
+        "invalid document chunk at sequence 0: sequences must be non-negative and strictly increasing"
+    )]
+    #[case::overlapping_offsets(
+        "overlapping offsets",
+        "invalid document chunk at sequence 1: offsets must be non-negative, ordered, and non-overlapping"
+    )]
+    #[tokio::test]
+    async fn rejects_invalid_chunk_order_and_offsets(
+        #[case] invalid_case: &str,
+        #[case] expected_error: &str,
+        harness: (DocumentStorageUseCases, Arc<FakeDocumentStorageRepository>),
+    ) {
+        let (use_cases, repository) = harness;
+        let body = "abcdef";
+        let chunks = match invalid_case {
+            "negative sequence" => vec![chunk_from_range(-1, 0, 3, body)],
+            "repeated sequence" => vec![
+                chunk_from_range(0, 0, 3, body),
+                chunk_from_range(0, 3, 6, body),
+            ],
+            "overlapping offsets" => vec![
+                chunk_from_range(0, 0, 4, body),
+                chunk_from_range(1, 3, 5, body),
+            ],
+            _ => Vec::new(),
+        };
+        let result = use_cases
+            .save(metadata(), timestamp(), body.into(), chunks)
+            .await;
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                repository.version_count().await,
+            ),
+            (Some(expected_error.into()), 0),
         );
     }
 

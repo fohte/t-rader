@@ -11,7 +11,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
-use crate::entities::{document, document_chunk, document_version};
+use crate::entities::{document, document_chunk, document_version, document_version_retrieval};
 use crate::persistence::persistence_error;
 
 #[derive(Clone)]
@@ -101,6 +101,15 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
                 )
             })?;
 
+        document_version_retrieval::Entity::insert(document_version_retrieval::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            version_id: Set(version_row.id),
+            retrieved_at: Set(retrieved_at),
+        })
+        .exec_without_returning(transaction)
+        .await
+        .map_err(repository_error)?;
+
         document_chunk::Entity::delete_many()
             .filter(document_chunk::Column::VersionId.eq(version_row.id))
             .exec(transaction)
@@ -127,9 +136,11 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
             .all(transaction)
             .await
             .map_err(repository_error)?;
+        let mut version = to_version(version_row);
+        version.retrieved_at = retrieved_at;
         Ok(DocumentSnapshot {
             document: to_document(document_row),
-            version: to_version(version_row),
+            version,
             chunks: chunk_rows.into_iter().map(to_chunk).collect(),
         })
     }
@@ -149,11 +160,19 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
         else {
             return Ok(None);
         };
-        let Some(version_row) = document_version::Entity::find()
+        let Some(retrieval_row) = document_version_retrieval::Entity::find()
+            .inner_join(document_version::Entity)
             .filter(document_version::Column::DocumentId.eq(document_row.id))
-            .filter(document_version::Column::RetrievedAt.lte(as_of))
-            .order_by_desc(document_version::Column::RetrievedAt)
-            .order_by_desc(document_version::Column::Id)
+            .filter(document_version_retrieval::Column::RetrievedAt.lte(as_of))
+            .order_by_desc(document_version_retrieval::Column::RetrievedAt)
+            .order_by_desc(document_version_retrieval::Column::VersionId)
+            .one(&self.db)
+            .await
+            .map_err(repository_error)?
+        else {
+            return Ok(None);
+        };
+        let Some(version_row) = document_version::Entity::find_by_id(retrieval_row.version_id)
             .one(&self.db)
             .await
             .map_err(repository_error)?
@@ -166,9 +185,11 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
             .all(&self.db)
             .await
             .map_err(repository_error)?;
+        let mut version = to_version(version_row);
+        version.retrieved_at = retrieval_row.retrieved_at;
         Ok(Some(DocumentSnapshot {
             document: to_document(document_row),
-            version: to_version(version_row),
+            version,
             chunks: chunk_rows.into_iter().map(to_chunk).collect(),
         }))
     }
@@ -331,7 +352,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn repository_deduplicates_content_and_reads_version_as_of(db: DatabaseHandle) {
+    async fn repository_deduplicates_unchanged_content(db: DatabaseHandle) {
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let repository = PostgresDocumentStorageRepository::new(db);
         let first_body = "alpha beta";
@@ -365,6 +386,66 @@ mod tests {
             &changed_hash,
         )
         .await;
+        let repeated_content_reuses_id = first.version.id == repeated.version.id;
+        let changed_content_has_new_id = first.version.id != changed.version.id;
+
+        assert_eq!(
+            (
+                normalize(first),
+                normalize(repeated),
+                normalize(changed),
+                repeated_content_reuses_id,
+                changed_content_has_new_id,
+            ),
+            (
+                expected_snapshot(first_body, &first_hash, timestamp()),
+                expected_snapshot(first_body, &first_hash, timestamp() + Duration::hours(2)),
+                expected_snapshot(
+                    changed_body,
+                    &changed_hash,
+                    timestamp() + Duration::hours(3)
+                ),
+                true,
+                true,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_reads_each_content_as_of_its_latest_retrieval(db: DatabaseHandle) {
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let repository = PostgresDocumentStorageRepository::new(db);
+        let first_body = "alpha beta";
+        let changed_body = "alpha gamma";
+        let first_hash = "a".repeat(64);
+        let changed_hash = "b".repeat(64);
+        let first = save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp(),
+            first_body,
+            &first_hash,
+        )
+        .await;
+        save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp() + Duration::hours(2),
+            changed_body,
+            &changed_hash,
+        )
+        .await;
+        let reverted = save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp() + Duration::hours(4),
+            first_body,
+            &first_hash,
+        )
+        .await;
         let before_change = repository
             .find_latest_as_of(
                 "archive-example",
@@ -377,38 +458,38 @@ mod tests {
             .find_latest_as_of(
                 "archive-example",
                 "DOC-42",
-                timestamp() + Duration::hours(4),
+                timestamp() + Duration::hours(3),
             )
             .await
             .expect("version lookup succeeds");
-        let repeated_content_reuses_id = first.version.id == repeated.version.id;
-        let changed_content_has_new_id = first.version.id != changed.version.id;
+        let after_reversion = repository
+            .find_latest_as_of(
+                "archive-example",
+                "DOC-42",
+                timestamp() + Duration::hours(5),
+            )
+            .await
+            .expect("version lookup succeeds");
 
         assert_eq!(
             (
-                normalize(first),
-                normalize(repeated),
-                normalize(changed),
-                repeated_content_reuses_id,
-                changed_content_has_new_id,
+                first.version.id == reverted.version.id,
                 before_change.map(normalize),
                 after_change.map(normalize),
+                after_reversion.map(normalize),
             ),
             (
-                expected_snapshot(first_body, &first_hash, timestamp()),
-                expected_snapshot(first_body, &first_hash, timestamp()),
-                expected_snapshot(
-                    changed_body,
-                    &changed_hash,
-                    timestamp() + Duration::hours(3)
-                ),
-                true,
                 true,
                 Some(expected_snapshot(first_body, &first_hash, timestamp())),
                 Some(expected_snapshot(
                     changed_body,
                     &changed_hash,
-                    timestamp() + Duration::hours(3)
+                    timestamp() + Duration::hours(2)
+                )),
+                Some(expected_snapshot(
+                    first_body,
+                    &first_hash,
+                    timestamp() + Duration::hours(4)
                 )),
             ),
         );

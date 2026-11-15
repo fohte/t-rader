@@ -21,6 +21,7 @@ pub mod dashboard;
 pub mod document;
 pub mod document_chunk;
 pub mod document_version;
+pub mod document_version_retrieval;
 pub mod earnings_schedule_ingested_date;
 pub mod event;
 pub mod event_firing;

@@ -30,6 +30,8 @@ pub enum Relation {
     Document,
     #[sea_orm(has_many = "super::document_chunk::Entity")]
     DocumentChunk,
+    #[sea_orm(has_many = "super::document_version_retrieval::Entity")]
+    DocumentVersionRetrieval,
 }
 
 impl Related<super::document::Entity> for Entity {
@@ -41,6 +43,12 @@ impl Related<super::document::Entity> for Entity {
 impl Related<super::document_chunk::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::DocumentChunk.def()
+    }
+}
+
+impl Related<super::document_version_retrieval::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::DocumentVersionRetrieval.def()
     }
 }
 
