@@ -8,7 +8,7 @@ const MAX_SEARCH_LIMIT: u32 = 100;
 
 #[derive(Debug, Error)]
 pub enum DocumentSearchUseCaseError {
-    #[error("query must contain at least one word with 2 or more characters")]
+    #[error("query must contain at least one word, with every word at least 2 characters long")]
     InvalidQuery,
     #[error("limit must be between 1 and 100")]
     InvalidLimit,
@@ -95,25 +95,25 @@ mod tests {
     #[case::empty_query(
         "",
         10,
-        Some("query must contain at least one word with 2 or more characters"),
+        Some("query must contain at least one word, with every word at least 2 characters long"),
         0
     )]
     #[case::whitespace_only(
         " \t\n",
         10,
-        Some("query must contain at least one word with 2 or more characters"),
+        Some("query must contain at least one word, with every word at least 2 characters long"),
         0
     )]
     #[case::single_character_query(
         "語",
         10,
-        Some("query must contain at least one word with 2 or more characters"),
+        Some("query must contain at least one word, with every word at least 2 characters long"),
         0
     )]
     #[case::single_character_word(
         "synthetic 語",
         10,
-        Some("query must contain at least one word with 2 or more characters"),
+        Some("query must contain at least one word, with every word at least 2 characters long"),
         0
     )]
     #[case::zero_limit("synthetic phrase", 0, Some("limit must be between 1 and 100"), 0)]
