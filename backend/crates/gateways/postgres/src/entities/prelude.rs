@@ -18,6 +18,7 @@ pub use super::custom_indicator_evaluation::Entity as CustomIndicatorEvaluation;
 pub use super::dashboard::Entity as Dashboard;
 pub use super::document::Entity as Document;
 pub use super::document_chunk::Entity as DocumentChunk;
+pub use super::document_chunk_mention::Entity as DocumentChunkMention;
 pub use super::document_version::Entity as DocumentVersion;
 pub use super::earnings_schedule_ingested_date::Entity as EarningsScheduleIngestedDate;
 pub use super::event::Entity as Event;

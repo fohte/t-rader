@@ -6,14 +6,14 @@
 
 ## Columns
 
-| Name         | Type    | Default           | Nullable | Children | Parents                                               | Comment                                        |
-| ------------ | ------- | ----------------- | -------- | -------- | ----------------------------------------------------- | ---------------------------------------------- |
-| id           | uuid    | gen_random_uuid() | false    |          |                                                       |                                                |
-| version_id   | uuid    |                   | false    |          | [public.document_version](public.document_version.md) | 文書片が参照する原文バージョン。               |
-| sequence     | integer |                   | false    |          |                                                       | バージョン内での文書片の順序。                 |
-| start_offset | integer |                   | false    |          |                                                       | 原文中の開始 byte offset。                     |
-| end_offset   | integer |                   | false    |          |                                                       | 原文中の終了 byte offset。終了位置は含まない。 |
-| body         | text    |                   | false    |          |                                                       | 原文から切り出した文書片。                     |
+| Name         | Type    | Default           | Nullable | Children                                                          | Parents                                               | Comment                                        |
+| ------------ | ------- | ----------------- | -------- | ----------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------- |
+| id           | uuid    | gen_random_uuid() | false    | [public.document_chunk_mention](public.document_chunk_mention.md) |                                                       |                                                |
+| version_id   | uuid    |                   | false    |                                                                   | [public.document_version](public.document_version.md) | 文書片が参照する原文バージョン。               |
+| sequence     | integer |                   | false    |                                                                   |                                                       | バージョン内での文書片の順序。                 |
+| start_offset | integer |                   | false    |                                                                   |                                                       | 原文中の開始 byte offset。                     |
+| end_offset   | integer |                   | false    |                                                                   |                                                       | 原文中の終了 byte offset。終了位置は含まない。 |
+| body         | text    |                   | false    |                                                                   |                                                       | 原文から切り出した文書片。                     |
 
 ## Constraints
 
@@ -43,6 +43,7 @@
 ```mermaid
 erDiagram
 
+"public.document_chunk_mention" }o--|| "public.document_chunk" : "FOREIGN KEY (chunk_id) REFERENCES document_chunk(id) ON DELETE CASCADE"
 "public.document_chunk" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
 
 "public.document_chunk" {
@@ -52,6 +53,13 @@ erDiagram
   integer start_offset
   integer end_offset
   text body
+}
+"public.document_chunk_mention" {
+  uuid id
+  uuid chunk_id FK
+  text stock_id FK
+  integer start_offset
+  integer end_offset
 }
 "public.document_version" {
   uuid id

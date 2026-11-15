@@ -20,6 +20,8 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::document_chunk_mention::Entity")]
+    DocumentChunkMention,
     #[sea_orm(
         belongs_to = "super::document_version::Entity",
         from = "Column::VersionId",
@@ -28,6 +30,12 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     DocumentVersion,
+}
+
+impl Related<super::document_chunk_mention::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::DocumentChunkMention.def()
+    }
 }
 
 impl Related<super::document_version::Entity> for Entity {
