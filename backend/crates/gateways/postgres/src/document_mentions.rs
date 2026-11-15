@@ -4,13 +4,13 @@ use core_application::document_mentions::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{LockType, OnConflict};
 use sea_orm::{
     ColumnTrait, DatabaseTransaction, EntityTrait, Iterable, QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
-use crate::entities::{document_chunk_mention, stock};
+use crate::entities::{document_chunk, document_chunk_mention, stock};
 use crate::persistence::persistence_error;
 
 #[derive(Clone, Default)]
@@ -24,6 +24,28 @@ impl PostgresDocumentMentionRepository {
 
 #[async_trait]
 impl DocumentMentionRepository for PostgresDocumentMentionRepository {
+    async fn lock_chunks_for_update(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        chunk_ids: Vec<Uuid>,
+    ) -> Result<(), DocumentMentionRepositoryError> {
+        if chunk_ids.is_empty() {
+            return Ok(());
+        }
+        let transaction = transaction_ref(transaction)?;
+        document_chunk::Entity::find()
+            .filter(document_chunk::Column::Id.is_in(chunk_ids))
+            .select_only()
+            .column(document_chunk::Column::Id)
+            .order_by_asc(document_chunk::Column::Id)
+            .lock(LockType::Update)
+            .into_tuple::<Uuid>()
+            .all(transaction)
+            .await
+            .map(|_| ())
+            .map_err(repository_error)
+    }
+
     async fn find_registered_stocks(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -225,6 +247,10 @@ mod tests {
             end_offset: 27,
         };
         let transaction = unit_of_work.begin().await.expect("transaction begins");
+        repository
+            .lock_chunks_for_update(&transaction, vec![chunk_id])
+            .await
+            .expect("chunk lock succeeds");
         let registered_stocks = repository
             .find_registered_stocks(&transaction)
             .await

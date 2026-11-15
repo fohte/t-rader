@@ -84,6 +84,12 @@ impl StockMatcher {
             if characters.is_empty() {
                 continue;
             }
+            let starts_with_ascii_alphanumeric = characters
+                .first()
+                .is_some_and(|character| character.is_ascii_alphanumeric());
+            let ends_with_ascii_alphanumeric = characters
+                .last()
+                .is_some_and(|character| character.is_ascii_alphanumeric());
             let pattern_index = matcher.patterns.len();
             let mut node_index = 0;
             for character in &characters {
@@ -102,16 +108,8 @@ impl StockMatcher {
             matcher.patterns.push(StockPattern {
                 stock_id: stock.id.clone(),
                 characters,
-                starts_with_ascii_alphanumeric: stock
-                    .name
-                    .chars()
-                    .next()
-                    .is_some_and(|character| character.is_ascii_alphanumeric()),
-                ends_with_ascii_alphanumeric: stock
-                    .name
-                    .chars()
-                    .next_back()
-                    .is_some_and(|character| character.is_ascii_alphanumeric()),
+                starts_with_ascii_alphanumeric,
+                ends_with_ascii_alphanumeric,
             });
         }
         matcher.build_failure_links();
@@ -155,6 +153,17 @@ impl StockMatcher {
         source_spans: &[SourceSpan],
         mentions: &mut Vec<DocumentMention>,
     ) -> Result<(), InvalidOffset> {
+        let candidates = self.find_candidates(chunk, normalized_body, source_spans)?;
+        mentions.extend(select_longest_non_overlapping(candidates));
+        Ok(())
+    }
+
+    fn find_candidates(
+        &self,
+        chunk: &ChunkText<'_>,
+        normalized_body: &[char],
+        source_spans: &[SourceSpan],
+    ) -> Result<Vec<MatchCandidate>, InvalidOffset> {
         let mut node_index = 0;
         let mut candidates = Vec::new();
         for (end_index, character) in normalized_body.iter().enumerate() {
@@ -199,17 +208,16 @@ impl StockMatcher {
                     continue;
                 }
                 if pattern.starts_with_ascii_alphanumeric
-                    && chunk.body[..start_offset]
-                        .chars()
-                        .next_back()
+                    && start_index
+                        .checked_sub(1)
+                        .and_then(|index| normalized_body.get(index))
                         .is_some_and(|character| character.is_ascii_alphanumeric())
                 {
                     continue;
                 }
                 if pattern.ends_with_ascii_alphanumeric
-                    && chunk.body[end_offset..]
-                        .chars()
-                        .next()
+                    && normalized_body
+                        .get(end_index + 1)
                         .is_some_and(|character| character.is_ascii_alphanumeric())
                 {
                     continue;
@@ -225,39 +233,45 @@ impl StockMatcher {
                 });
             }
         }
-        candidates.sort_unstable_by(|left, right| {
-            right
-                .pattern_length
-                .cmp(&left.pattern_length)
-                .then_with(|| left.mention.start_offset.cmp(&right.mention.start_offset))
-                .then_with(|| left.mention.end_offset.cmp(&right.mention.end_offset))
-                .then_with(|| left.mention.stock_id.cmp(&right.mention.stock_id))
-        });
-        let mut selected: BTreeMap<i32, (i32, Vec<DocumentMention>)> = BTreeMap::new();
-        for candidate in candidates {
-            let start_offset = candidate.mention.start_offset;
-            let end_offset = candidate.mention.end_offset;
-            if let Some((existing_end, mentions)) = selected.get_mut(&start_offset)
-                && *existing_end == end_offset
-            {
-                mentions.push(candidate.mention);
-                continue;
-            }
-            let overlaps_previous = selected
-                .range(..=start_offset)
-                .next_back()
-                .is_some_and(|(_, (existing_end, _))| *existing_end > start_offset);
-            let overlaps_next = selected
-                .range(start_offset..)
-                .next()
-                .is_some_and(|(existing_start, _)| *existing_start < end_offset);
-            if !overlaps_previous && !overlaps_next {
-                selected.insert(start_offset, (end_offset, vec![candidate.mention]));
-            }
-        }
-        mentions.extend(selected.into_values().flat_map(|(_, mentions)| mentions));
-        Ok(())
+        Ok(candidates)
     }
+}
+
+fn select_longest_non_overlapping(mut candidates: Vec<MatchCandidate>) -> Vec<DocumentMention> {
+    candidates.sort_unstable_by(|left, right| {
+        right
+            .pattern_length
+            .cmp(&left.pattern_length)
+            .then_with(|| left.mention.start_offset.cmp(&right.mention.start_offset))
+            .then_with(|| left.mention.end_offset.cmp(&right.mention.end_offset))
+            .then_with(|| left.mention.stock_id.cmp(&right.mention.stock_id))
+    });
+    let mut selected: BTreeMap<i32, (i32, Vec<DocumentMention>)> = BTreeMap::new();
+    for candidate in candidates {
+        let start_offset = candidate.mention.start_offset;
+        let end_offset = candidate.mention.end_offset;
+        if let Some((existing_end, mentions)) = selected.get_mut(&start_offset)
+            && *existing_end == end_offset
+        {
+            mentions.push(candidate.mention);
+            continue;
+        }
+        let overlaps_previous = selected
+            .range(..=start_offset)
+            .next_back()
+            .is_some_and(|(_, (existing_end, _))| *existing_end > start_offset);
+        let overlaps_next = selected
+            .range(start_offset..)
+            .next()
+            .is_some_and(|(existing_start, _)| *existing_start < end_offset);
+        if !overlaps_previous && !overlaps_next {
+            selected.insert(start_offset, (end_offset, vec![candidate.mention]));
+        }
+    }
+    selected
+        .into_values()
+        .flat_map(|(_, mentions)| mentions)
+        .collect()
 }
 
 fn normalize(value: &str) -> String {

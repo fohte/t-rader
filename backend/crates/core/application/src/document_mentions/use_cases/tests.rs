@@ -10,7 +10,9 @@ use rstest::{fixture, rstest};
 use uuid::Uuid;
 
 use crate::document_storage::DocumentChunk;
-use crate::unit_of_work::{FakeTransaction, FakeUnitOfWork, SharedUnitOfWork};
+use crate::unit_of_work::{
+    FakeTransaction, FakeUnitOfWork, SharedUnitOfWork, UnitOfWorkTransaction,
+};
 
 use super::super::{
     DocumentMention, DocumentMentionRepository, DocumentMentionRepositoryError, RegisteredStock,
@@ -19,7 +21,6 @@ use super::DocumentMentionUseCases;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Replacement {
-    transaction_id: Option<Uuid>,
     chunk_ids: Vec<Uuid>,
     mentions: Vec<DocumentMention>,
 }
@@ -27,7 +28,8 @@ struct Replacement {
 #[derive(Default)]
 struct RecordingRepository {
     stocks: Mutex<Vec<RegisteredStock>>,
-    stock_query_transactions: Mutex<Vec<Option<Uuid>>>,
+    repository_transaction_ids: Mutex<Vec<Option<Uuid>>>,
+    chunk_locks: Mutex<Vec<Vec<Uuid>>>,
     replacements: Mutex<Vec<Replacement>>,
 }
 
@@ -35,38 +37,53 @@ impl RecordingRepository {
     fn set_stocks(&self, stocks: Vec<RegisteredStock>) {
         *self.stocks.lock().expect("stock lock is available") = stocks;
     }
-}
 
-#[async_trait]
-impl DocumentMentionRepository for RecordingRepository {
-    async fn find_registered_stocks(
-        &self,
-        transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-    ) -> Result<Vec<RegisteredStock>, DocumentMentionRepositoryError> {
-        self.stock_query_transactions
+    fn record_transaction(&self, transaction: &UnitOfWorkTransaction) {
+        self.repository_transaction_ids
             .lock()
-            .expect("query transaction lock is available")
+            .expect("repository transaction lock is available")
             .push(
                 transaction
                     .downcast_ref::<FakeTransaction>()
                     .map(|transaction| transaction.id),
             );
+    }
+}
+
+#[async_trait]
+impl DocumentMentionRepository for RecordingRepository {
+    async fn lock_chunks_for_update(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        chunk_ids: Vec<Uuid>,
+    ) -> Result<(), DocumentMentionRepositoryError> {
+        self.record_transaction(transaction);
+        self.chunk_locks
+            .lock()
+            .expect("chunk lock record is available")
+            .push(chunk_ids);
+        Ok(())
+    }
+
+    async fn find_registered_stocks(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<RegisteredStock>, DocumentMentionRepositoryError> {
+        self.record_transaction(transaction);
         Ok(self.stocks.lock().expect("stock lock is available").clone())
     }
 
     async fn replace_mentions(
         &self,
-        transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+        transaction: &UnitOfWorkTransaction,
         chunk_ids: Vec<Uuid>,
         mentions: Vec<DocumentMention>,
     ) -> Result<(), DocumentMentionRepositoryError> {
+        self.record_transaction(transaction);
         self.replacements
             .lock()
             .expect("replacement lock is available")
             .push(Replacement {
-                transaction_id: transaction
-                    .downcast_ref::<FakeTransaction>()
-                    .map(|transaction| transaction.id),
                 chunk_ids,
                 mentions,
             });
@@ -108,24 +125,38 @@ async fn transaction_flow_matches(
     repository: &RecordingRepository,
     unit_of_work: &FakeUnitOfWork,
 ) -> bool {
-    let stock_queries = repository
-        .stock_query_transactions
+    let repository_transaction_ids = repository
+        .repository_transaction_ids
         .lock()
-        .expect("query transaction lock is available")
+        .expect("repository transaction lock is available")
         .clone();
-    let replacements = repository
+    let locked_chunk_ids = repository
+        .chunk_locks
+        .lock()
+        .expect("chunk lock record is available")
+        .clone();
+    let replaced_chunk_ids = repository
         .replacements
         .lock()
         .expect("replacement lock is available")
         .iter()
-        .map(|replacement| replacement.transaction_id)
+        .map(|replacement| replacement.chunk_ids.clone())
         .collect::<Vec<_>>();
     let begun = unit_of_work.begun.lock().await.clone();
     let committed = unit_of_work.committed.lock().await.clone();
-    stock_queries == replacements
-        && stock_queries.iter().all(Option::is_some)
+    locked_chunk_ids == replaced_chunk_ids
+        && repository_transaction_ids.len() == begun.len() * 3
         && begun == committed
-        && begun.len() == stock_queries.len()
+        && repository_transaction_ids
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .zip(&begun)
+            .all(|(operation_ids, expected_id)| {
+                operation_ids
+                    .iter()
+                    .all(|transaction_id| *transaction_id == Some(*expected_id))
+            })
 }
 
 #[rstest]
@@ -235,7 +266,10 @@ async fn record_rejects_matches_that_end_inside_a_decomposed_character(harness: 
 
 #[rstest]
 #[case::ascii_prefix_inside_word("xDemoCo", "DemoCo", None)]
+#[case::fullwidth_prefix_inside_word("ｘDemoCo", "DemoCo", None)]
 #[case::ascii_suffix_inside_word("DemoCo7", "DemoCo", None)]
+#[case::fullwidth_suffix_inside_word("DemoCo９", "DemoCo", None)]
+#[case::fullwidth_name_after_ascii_prefix("xＤｅｍｏＣｏ", "ＤｅｍｏＣｏ", None)]
 #[case::ascii_name_before_japanese("DemoCo工業", "DemoCo", Some((0, 6)))]
 #[case::japanese_name_before_japanese("デモ工業が", "デモ工業", Some((0, 12)))]
 #[tokio::test]

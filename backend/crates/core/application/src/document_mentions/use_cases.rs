@@ -43,6 +43,10 @@ impl DocumentMentionUseCases {
         }
 
         let transaction = self.unit_of_work.begin().await?;
+        let chunk_ids = chunks.iter().map(|chunk| chunk.id).collect::<Vec<_>>();
+        self.repository
+            .lock_chunks_for_update(&transaction, chunk_ids.clone())
+            .await?;
         let stocks = self.repository.find_registered_stocks(&transaction).await?;
         let chunk_texts = chunks
             .iter()
@@ -54,7 +58,6 @@ impl DocumentMentionUseCases {
             .collect::<Vec<_>>();
         let mentions = find_mentions(&chunk_texts, &stocks)
             .map_err(|InvalidOffset| DocumentMentionUseCasesError::InvalidOffset)?;
-        let chunk_ids = chunks.iter().map(|chunk| chunk.id).collect();
         self.repository
             .replace_mentions(&transaction, chunk_ids, mentions.clone())
             .await?;
