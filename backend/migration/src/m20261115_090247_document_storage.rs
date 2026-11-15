@@ -148,17 +148,6 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_document_version_document_hash")
-                    .table(DocumentVersion::Table)
-                    .col(DocumentVersion::DocumentId)
-                    .col(DocumentVersion::ContentHash)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .create_index(
-                Index::create()
                     .name("idx_document_version_document_retrieved_at")
                     .table(DocumentVersion::Table)
                     .col(DocumentVersion::DocumentId)

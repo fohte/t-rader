@@ -83,9 +83,8 @@
 | [public.us_stock_minute_bar_downsample_cursor](public.us_stock_minute_bar_downsample_cursor.md) | 2       | 米国株の 1 分足 downsample の再開位置を保持する。                                                                                                  | BASE TABLE        |
 | [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
 | [public.document](public.document.md)                                                           | 9       | 資料源に依存しない公開文書の識別情報を保持する。                                                                                                   | BASE TABLE        |
-| [public.document_version](public.document_version.md)                                           | 6       | hash で重複排除した公開文書の原文を保持する。                                                                                                      | BASE TABLE        |
+| [public.document_version](public.document_version.md)                                           | 6       | 公開文書の原文バージョンを保持する。                                                                                                               | BASE TABLE        |
 | [public.document_chunk](public.document_chunk.md)                                               | 6       | 原文のバージョンに属する順序付き文書片を保持する。                                                                                                 | BASE TABLE        |
-| [public.document_version_retrieval](public.document_version_retrieval.md)                       | 3       | 文書バージョンを取得した各時刻を保持する。                                                                                                         | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -269,7 +268,6 @@ erDiagram
 "public.document" }o--o| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE SET NULL"
 "public.document_version" }o--|| "public.document" : "FOREIGN KEY (document_id) REFERENCES document(id) ON DELETE CASCADE"
 "public.document_chunk" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
-"public.document_version_retrieval" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -1076,11 +1074,6 @@ erDiagram
   integer start_offset
   integer end_offset
   text body
-}
-"public.document_version_retrieval" {
-  uuid id
-  uuid version_id FK
-  timestamp_with_time_zone retrieved_at
 }
 ```
 

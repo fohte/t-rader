@@ -788,17 +788,12 @@ comments:
       title: '公開文書の題名。'
       published_at: '文書が公開された時刻。'
   - table: document_version
-    tableComment: 'hash で重複排除した公開文書の原文を保持する。'
+    tableComment: '公開文書の原文バージョンを保持する。'
     columnComments:
       document_id: '原文が属する文書。'
       content_hash: '原文の SHA-256 hash。'
-      retrieved_at: '文書バージョンを初回取得した時刻。'
+      retrieved_at: '原文バージョンを初めて取得した時刻。'
       body: '取得した原文。'
-  - table: document_version_retrieval
-    tableComment: '文書バージョンを取得した各時刻を保持する。'
-    columnComments:
-      version_id: '取得した原文バージョン。'
-      retrieved_at: '原文を取得した時刻。'
   - table: document_chunk
     tableComment: '原文のバージョンに属する順序付き文書片を保持する。'
     columnComments:

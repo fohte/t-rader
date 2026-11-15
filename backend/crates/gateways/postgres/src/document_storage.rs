@@ -11,7 +11,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
-use crate::entities::{document, document_chunk, document_version, document_version_retrieval};
+use crate::entities::{document, document_chunk, document_version};
 use crate::persistence::persistence_error;
 
 #[derive(Clone)]
@@ -67,55 +67,33 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
         .await
         .map_err(repository_error)?;
 
-        document_version::Entity::insert(document_version::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            document_id: Set(document_row.id),
-            content_hash: Set(content_hash.clone()),
-            retrieved_at: Set(retrieved_at),
-            body: Set(body),
-            created_at: NotSet,
-        })
-        .on_conflict(
-            OnConflict::columns([
-                document_version::Column::DocumentId,
-                document_version::Column::ContentHash,
-            ])
-            .do_nothing()
-            .to_owned(),
-        )
-        .exec_without_returning(transaction)
-        .await
-        .map_err(repository_error)?;
-
-        let version_row = document_version::Entity::find()
+        let latest_version = document_version::Entity::find()
             .filter(document_version::Column::DocumentId.eq(document_row.id))
-            .filter(document_version::Column::ContentHash.eq(content_hash))
+            .order_by_desc(document_version::Column::RetrievedAt)
+            .order_by_desc(document_version::Column::CreatedAt)
+            .order_by_desc(document_version::Column::Id)
             .one(transaction)
             .await
-            .map_err(repository_error)?
-            .ok_or_else(|| {
-                DocumentStorageRepositoryError::Persistence(
-                    core_application::persistence::PersistenceError::Database(
-                        "document version was not returned after upsert".to_owned(),
-                    ),
-                )
-            })?;
-
-        document_version_retrieval::Entity::insert(document_version_retrieval::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            version_id: Set(version_row.id),
-            retrieved_at: Set(retrieved_at),
-        })
-        .exec_without_returning(transaction)
-        .await
-        .map_err(repository_error)?;
-
-        document_chunk::Entity::delete_many()
-            .filter(document_chunk::Column::VersionId.eq(version_row.id))
-            .exec(transaction)
-            .await
             .map_err(repository_error)?;
-        if !chunks.is_empty() {
+        let (version_row, is_new_version) = match latest_version {
+            Some(version_row) if version_row.content_hash == content_hash => (version_row, false),
+            _ => {
+                let version_row = document_version::Entity::insert(document_version::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    document_id: Set(document_row.id),
+                    content_hash: Set(content_hash),
+                    retrieved_at: Set(retrieved_at),
+                    body: Set(body),
+                    created_at: NotSet,
+                })
+                .exec_with_returning(transaction)
+                .await
+                .map_err(repository_error)?;
+                (version_row, true)
+            }
+        };
+
+        if is_new_version && !chunks.is_empty() {
             document_chunk::Entity::insert_many(chunks.into_iter().map(|chunk| {
                 document_chunk::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -136,11 +114,9 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
             .all(transaction)
             .await
             .map_err(repository_error)?;
-        let mut version = to_version(version_row);
-        version.retrieved_at = retrieved_at;
         Ok(DocumentSnapshot {
             document: to_document(document_row),
-            version,
+            version: to_version(version_row),
             chunks: chunk_rows.into_iter().map(to_chunk).collect(),
         })
     }
@@ -160,19 +136,12 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
         else {
             return Ok(None);
         };
-        let Some(retrieval_row) = document_version_retrieval::Entity::find()
-            .inner_join(document_version::Entity)
+        let Some(version_row) = document_version::Entity::find()
             .filter(document_version::Column::DocumentId.eq(document_row.id))
-            .filter(document_version_retrieval::Column::RetrievedAt.lte(as_of))
-            .order_by_desc(document_version_retrieval::Column::RetrievedAt)
-            .order_by_desc(document_version_retrieval::Column::VersionId)
-            .one(&self.db)
-            .await
-            .map_err(repository_error)?
-        else {
-            return Ok(None);
-        };
-        let Some(version_row) = document_version::Entity::find_by_id(retrieval_row.version_id)
+            .filter(document_version::Column::RetrievedAt.lte(as_of))
+            .order_by_desc(document_version::Column::RetrievedAt)
+            .order_by_desc(document_version::Column::CreatedAt)
+            .order_by_desc(document_version::Column::Id)
             .one(&self.db)
             .await
             .map_err(repository_error)?
@@ -185,11 +154,9 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
             .all(&self.db)
             .await
             .map_err(repository_error)?;
-        let mut version = to_version(version_row);
-        version.retrieved_at = retrieval_row.retrieved_at;
         Ok(Some(DocumentSnapshot {
             document: to_document(document_row),
-            version,
+            version: to_version(version_row),
             chunks: chunk_rows.into_iter().map(to_chunk).collect(),
         }))
     }
@@ -276,12 +243,17 @@ mod tests {
         }
     }
 
-    fn chunk(body: &str) -> DocumentChunkInput {
+    fn chunk(
+        sequence: i32,
+        start_offset: usize,
+        end_offset: usize,
+        body: &str,
+    ) -> DocumentChunkInput {
         DocumentChunkInput {
-            sequence: 0,
-            start_offset: 0,
-            end_offset: i32::try_from(body.len()).expect("body length fits in an integer"),
-            body: body.to_owned(),
+            sequence,
+            start_offset: i32::try_from(start_offset).expect("chunk offset fits in an integer"),
+            end_offset: i32::try_from(end_offset).expect("chunk offset fits in an integer"),
+            body: body[start_offset..end_offset].to_owned(),
         }
     }
 
@@ -301,6 +273,41 @@ mod tests {
         content_hash: &str,
         retrieved_at: DateTime<FixedOffset>,
     ) -> DocumentSnapshot {
+        expected_snapshot_with_chunks(
+            body,
+            content_hash,
+            retrieved_at,
+            vec![expected_chunk(
+                0,
+                0,
+                i32::try_from(body.len()).expect("body length fits in an integer"),
+                body,
+            )],
+        )
+    }
+
+    fn expected_chunk(
+        sequence: i32,
+        start_offset: i32,
+        end_offset: i32,
+        body: &str,
+    ) -> DocumentChunk {
+        DocumentChunk {
+            id: Uuid::nil(),
+            version_id: Uuid::nil(),
+            sequence,
+            start_offset,
+            end_offset,
+            body: body.to_owned(),
+        }
+    }
+
+    fn expected_snapshot_with_chunks(
+        body: &str,
+        content_hash: &str,
+        retrieved_at: DateTime<FixedOffset>,
+        chunks: Vec<DocumentChunk>,
+    ) -> DocumentSnapshot {
         DocumentSnapshot {
             document: Document {
                 id: Uuid::nil(),
@@ -313,14 +320,7 @@ mod tests {
                 retrieved_at,
                 body: body.into(),
             },
-            chunks: vec![DocumentChunk {
-                id: Uuid::nil(),
-                version_id: Uuid::nil(),
-                sequence: 0,
-                start_offset: 0,
-                end_offset: i32::try_from(body.len()).expect("body length fits in an integer"),
-                body: body.into(),
-            }],
+            chunks,
         }
     }
 
@@ -331,6 +331,7 @@ mod tests {
         retrieved_at: DateTime<FixedOffset>,
         body: &str,
         content_hash: &str,
+        chunks: Vec<DocumentChunkInput>,
     ) -> DocumentSnapshot {
         let transaction = unit_of_work.begin().await.expect("transaction begins");
         let snapshot = repository
@@ -340,7 +341,7 @@ mod tests {
                 content_hash.to_owned(),
                 retrieved_at,
                 body.to_owned(),
-                vec![chunk(body)],
+                chunks,
             )
             .await
             .expect("document snapshot saves");
@@ -366,6 +367,7 @@ mod tests {
             timestamp(),
             first_body,
             &first_hash,
+            vec![chunk(0, 0, 5, first_body), chunk(1, 5, 10, first_body)],
         )
         .await;
         let repeated = save(
@@ -375,6 +377,7 @@ mod tests {
             timestamp() + Duration::hours(2),
             first_body,
             &first_hash,
+            vec![chunk(0, 0, 10, first_body)],
         )
         .await;
         let changed = save(
@@ -384,10 +387,21 @@ mod tests {
             timestamp() + Duration::hours(3),
             changed_body,
             &changed_hash,
+            vec![chunk(0, 0, 11, changed_body)],
         )
         .await;
         let repeated_content_reuses_id = first.version.id == repeated.version.id;
         let changed_content_has_new_id = first.version.id != changed.version.id;
+        let repeated_content_keeps_chunk_ids = first
+            .chunks
+            .iter()
+            .map(|chunk| chunk.id)
+            .collect::<Vec<_>>()
+            == repeated
+                .chunks
+                .iter()
+                .map(|chunk| chunk.id)
+                .collect::<Vec<_>>();
 
         assert_eq!(
             (
@@ -395,16 +409,34 @@ mod tests {
                 normalize(repeated),
                 normalize(changed),
                 repeated_content_reuses_id,
+                repeated_content_keeps_chunk_ids,
                 changed_content_has_new_id,
             ),
             (
-                expected_snapshot(first_body, &first_hash, timestamp()),
-                expected_snapshot(first_body, &first_hash, timestamp() + Duration::hours(2)),
+                expected_snapshot_with_chunks(
+                    first_body,
+                    &first_hash,
+                    timestamp(),
+                    vec![
+                        expected_chunk(0, 0, 5, "alpha"),
+                        expected_chunk(1, 5, 10, " beta"),
+                    ],
+                ),
+                expected_snapshot_with_chunks(
+                    first_body,
+                    &first_hash,
+                    timestamp(),
+                    vec![
+                        expected_chunk(0, 0, 5, "alpha"),
+                        expected_chunk(1, 5, 10, " beta"),
+                    ],
+                ),
                 expected_snapshot(
                     changed_body,
                     &changed_hash,
                     timestamp() + Duration::hours(3)
                 ),
+                true,
                 true,
                 true,
             ),
@@ -426,6 +458,7 @@ mod tests {
             timestamp(),
             first_body,
             &first_hash,
+            vec![chunk(0, 0, 10, first_body)],
         )
         .await;
         save(
@@ -435,6 +468,7 @@ mod tests {
             timestamp() + Duration::hours(2),
             changed_body,
             &changed_hash,
+            vec![chunk(0, 0, 11, changed_body)],
         )
         .await;
         let reverted = save(
@@ -444,6 +478,7 @@ mod tests {
             timestamp() + Duration::hours(4),
             first_body,
             &first_hash,
+            vec![chunk(0, 0, 10, first_body)],
         )
         .await;
         let before_change = repository
@@ -479,7 +514,7 @@ mod tests {
                 after_reversion.map(normalize),
             ),
             (
-                true,
+                false,
                 Some(expected_snapshot(first_body, &first_hash, timestamp())),
                 Some(expected_snapshot(
                     changed_body,

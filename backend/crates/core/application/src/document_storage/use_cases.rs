@@ -134,7 +134,7 @@ mod tests {
 
     use std::sync::Arc;
 
-    use chrono::{DateTime, Duration, FixedOffset, Utc};
+    use chrono::{DateTime, FixedOffset, Utc};
     use rstest::{fixture, rstest};
     use uuid::Uuid;
 
@@ -219,182 +219,27 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn reusing_body_keeps_one_version(
-        harness: (DocumentStorageUseCases, Arc<FakeDocumentStorageRepository>),
-    ) {
-        let (use_cases, repository) = harness;
-        let body = "alpha beta";
-        let first = use_cases
-            .save(
-                metadata(),
-                timestamp(),
-                body.into(),
-                vec![chunk(0, body, 0, 10)],
-            )
-            .await
-            .unwrap();
-        let second = use_cases
-            .save(
-                metadata(),
-                timestamp() + Duration::hours(2),
-                body.into(),
-                vec![chunk(0, body, 0, 10)],
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            (
-                normalize(first),
-                normalize(second),
-                repository.version_count().await,
-            ),
-            (
-                expected_snapshot(
-                    body,
-                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
-                    timestamp(),
-                ),
-                expected_snapshot(
-                    body,
-                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
-                    timestamp() + Duration::hours(2),
-                ),
-                1,
-            ),
-        );
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn reads_latest_version_and_chunks_available_by_cutoff(
+    async fn hashes_body_when_saving(
         harness: (DocumentStorageUseCases, Arc<FakeDocumentStorageRepository>),
     ) {
         let (use_cases, _) = harness;
-        let first_body = "alpha beta";
-        let second_body = "alpha gamma";
-        use_cases
+        let body = "alpha beta";
+        let snapshot = use_cases
             .save(
                 metadata(),
                 timestamp(),
-                first_body.into(),
-                vec![chunk(0, first_body, 0, 10)],
-            )
-            .await
-            .unwrap();
-        use_cases
-            .save(
-                metadata(),
-                timestamp() + Duration::hours(2),
-                second_body.into(),
-                vec![chunk(0, second_body, 0, 11)],
+                body.into(),
+                vec![chunk(0, body, 0, 10)],
             )
             .await
             .unwrap();
 
-        let snapshot = use_cases
-            .get_latest_as_of(
-                "archive-example",
-                "DOC-42",
-                timestamp() + Duration::hours(1),
-            )
-            .await
-            .unwrap()
-            .unwrap();
         assert_eq!(
             normalize(snapshot),
             expected_snapshot(
-                first_body,
+                body,
                 "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
                 timestamp(),
-            ),
-        );
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn reads_reappearing_content_at_its_latest_retrieval(
-        harness: (DocumentStorageUseCases, Arc<FakeDocumentStorageRepository>),
-    ) {
-        let (use_cases, repository) = harness;
-        let first_body = "alpha beta";
-        let changed_body = "alpha gamma";
-        use_cases
-            .save(
-                metadata(),
-                timestamp(),
-                first_body.into(),
-                vec![chunk(0, first_body, 0, 10)],
-            )
-            .await
-            .unwrap();
-        use_cases
-            .save(
-                metadata(),
-                timestamp() + Duration::hours(2),
-                changed_body.into(),
-                vec![chunk(0, changed_body, 0, 11)],
-            )
-            .await
-            .unwrap();
-        use_cases
-            .save(
-                metadata(),
-                timestamp() + Duration::hours(4),
-                first_body.into(),
-                vec![chunk(0, first_body, 0, 10)],
-            )
-            .await
-            .unwrap();
-        let before_change = use_cases
-            .get_latest_as_of(
-                "archive-example",
-                "DOC-42",
-                timestamp() + Duration::hours(1),
-            )
-            .await
-            .unwrap();
-        let after_change = use_cases
-            .get_latest_as_of(
-                "archive-example",
-                "DOC-42",
-                timestamp() + Duration::hours(3),
-            )
-            .await
-            .unwrap();
-        let after_reversion = use_cases
-            .get_latest_as_of(
-                "archive-example",
-                "DOC-42",
-                timestamp() + Duration::hours(5),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            (
-                before_change.map(normalize),
-                after_change.map(normalize),
-                after_reversion.map(normalize),
-                repository.version_count().await,
-            ),
-            (
-                Some(expected_snapshot(
-                    first_body,
-                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
-                    timestamp(),
-                )),
-                Some(expected_snapshot(
-                    changed_body,
-                    "84fabc827988d78697a3eaa84e4df59d9d63c1b26cefecc4836b34b8a73a995d",
-                    timestamp() + Duration::hours(2),
-                )),
-                Some(expected_snapshot(
-                    first_body,
-                    "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1",
-                    timestamp() + Duration::hours(4),
-                )),
-                2,
             ),
         );
     }

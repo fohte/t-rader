@@ -19,7 +19,6 @@ pub use super::dashboard::Entity as Dashboard;
 pub use super::document::Entity as Document;
 pub use super::document_chunk::Entity as DocumentChunk;
 pub use super::document_version::Entity as DocumentVersion;
-pub use super::document_version_retrieval::Entity as DocumentVersionRetrieval;
 pub use super::earnings_schedule_ingested_date::Entity as EarningsScheduleIngestedDate;
 pub use super::event::Entity as Event;
 pub use super::event_firing::Entity as EventFiring;

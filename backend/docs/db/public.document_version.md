@@ -2,18 +2,18 @@
 
 ## Description
 
-hash で重複排除した公開文書の原文を保持する。
+公開文書の原文バージョンを保持する。
 
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children                                                                                                                    | Parents                               | Comment                            |
-| ------------ | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------------------------- |
-| id           | uuid                     | gen_random_uuid() | false    | [public.document_chunk](public.document_chunk.md) [public.document_version_retrieval](public.document_version_retrieval.md) |                                       |                                    |
-| document_id  | uuid                     |                   | false    |                                                                                                                             | [public.document](public.document.md) | 原文が属する文書。                 |
-| content_hash | varchar(64)              |                   | false    |                                                                                                                             |                                       | 原文の SHA-256 hash。              |
-| retrieved_at | timestamp with time zone |                   | false    |                                                                                                                             |                                       | 文書バージョンを初回取得した時刻。 |
-| body         | text                     |                   | false    |                                                                                                                             |                                       | 取得した原文。                     |
-| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                             |                                       |                                    |
+| Name         | Type                     | Default           | Nullable | Children                                          | Parents                               | Comment                              |
+| ------------ | ------------------------ | ----------------- | -------- | ------------------------------------------------- | ------------------------------------- | ------------------------------------ |
+| id           | uuid                     | gen_random_uuid() | false    | [public.document_chunk](public.document_chunk.md) |                                       |                                      |
+| document_id  | uuid                     |                   | false    |                                                   | [public.document](public.document.md) | 原文が属する文書。                   |
+| content_hash | varchar(64)              |                   | false    |                                                   |                                       | 原文の SHA-256 hash。                |
+| retrieved_at | timestamp with time zone |                   | false    |                                                   |                                       | 原文バージョンを初めて取得した時刻。 |
+| body         | text                     |                   | false    |                                                   |                                       | 取得した原文。                       |
+| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                   |                                       |                                      |
 
 ## Constraints
 
@@ -33,7 +33,6 @@ hash で重複排除した公開文書の原文を保持する。
 | Name                                       | Definition                                                                                                                      |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | document_version_pkey                      | CREATE UNIQUE INDEX document_version_pkey ON public.document_version USING btree (id)                                           |
-| idx_document_version_document_hash         | CREATE UNIQUE INDEX idx_document_version_document_hash ON public.document_version USING btree (document_id, content_hash)       |
 | idx_document_version_document_retrieved_at | CREATE INDEX idx_document_version_document_retrieved_at ON public.document_version USING btree (document_id, retrieved_at DESC) |
 
 ## Relations
@@ -42,7 +41,6 @@ hash で重複排除した公開文書の原文を保持する。
 erDiagram
 
 "public.document_chunk" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
-"public.document_version_retrieval" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
 "public.document_version" }o--|| "public.document" : "FOREIGN KEY (document_id) REFERENCES document(id) ON DELETE CASCADE"
 
 "public.document_version" {
@@ -60,11 +58,6 @@ erDiagram
   integer start_offset
   integer end_offset
   text body
-}
-"public.document_version_retrieval" {
-  uuid id
-  uuid version_id FK
-  timestamp_with_time_zone retrieved_at
 }
 "public.document" {
   uuid id

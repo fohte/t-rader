@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    #[sea_orm(unique_key = "idx_document_version_document_hash")]
     pub document_id: Uuid,
-    #[sea_orm(unique_key = "idx_document_version_document_hash")]
     pub content_hash: String,
     pub retrieved_at: DateTimeWithTimeZone,
     #[sea_orm(column_type = "Text")]
@@ -30,8 +28,6 @@ pub enum Relation {
     Document,
     #[sea_orm(has_many = "super::document_chunk::Entity")]
     DocumentChunk,
-    #[sea_orm(has_many = "super::document_version_retrieval::Entity")]
-    DocumentVersionRetrieval,
 }
 
 impl Related<super::document::Entity> for Entity {
@@ -43,12 +39,6 @@ impl Related<super::document::Entity> for Entity {
 impl Related<super::document_chunk::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::DocumentChunk.def()
-    }
-}
-
-impl Related<super::document_version_retrieval::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::DocumentVersionRetrieval.def()
     }
 }
 

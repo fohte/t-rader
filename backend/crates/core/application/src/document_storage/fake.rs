@@ -14,7 +14,6 @@ use super::types::{
 #[derive(Default)]
 pub struct FakeDocumentStorageRepository {
     snapshots: Mutex<Vec<DocumentSnapshot>>,
-    retrievals: Mutex<Vec<(Uuid, DateTime<FixedOffset>)>>,
     version_count: Mutex<usize>,
 }
 
@@ -47,35 +46,43 @@ impl DocumentStorageRepository for FakeDocumentStorageRepository {
     ) -> Result<DocumentSnapshot, DocumentStorageRepositoryError> {
         self.record_transaction(transaction).await?;
         let mut snapshots = self.snapshots.lock().await;
-        let document = snapshots
+        let document_id = snapshots
             .iter()
             .find(|snapshot| {
                 snapshot.document.metadata.source == metadata.source
                     && snapshot.document.metadata.source_document_id == metadata.source_document_id
             })
-            .map(|snapshot| Document {
-                id: snapshot.document.id,
-                metadata: metadata.clone(),
-            })
-            .unwrap_or_else(|| Document {
-                id: Uuid::new_v4(),
-                metadata: metadata.clone(),
-            });
-        let existing = snapshots.iter().position(|snapshot| {
-            snapshot.document.id == document.id && snapshot.version.content_hash == content_hash
-        });
-        let mut version = existing
-            .map(|index| snapshots[index].version.clone())
-            .unwrap_or_else(|| DocumentVersion {
-                id: Uuid::new_v4(),
-                document_id: document.id,
-                content_hash,
-                retrieved_at,
-                body,
-            });
-        version.retrieved_at = retrieved_at;
+            .map(|snapshot| snapshot.document.id);
+        let document_id = document_id.unwrap_or_else(Uuid::new_v4);
+        for snapshot in snapshots
+            .iter_mut()
+            .filter(|snapshot| snapshot.document.id == document_id)
+        {
+            snapshot.document.metadata = metadata.clone();
+        }
+        let latest_index = snapshots
+            .iter()
+            .enumerate()
+            .filter(|(_, snapshot)| snapshot.document.id == document_id)
+            .max_by_key(|(index, snapshot)| (snapshot.version.retrieved_at, *index))
+            .map(|(index, _)| index);
+        if let Some(index) = latest_index
+            && snapshots[index].version.content_hash == content_hash
+        {
+            return Ok(snapshots[index].clone());
+        }
+        let version = DocumentVersion {
+            id: Uuid::new_v4(),
+            document_id,
+            content_hash,
+            retrieved_at,
+            body,
+        };
         let snapshot = DocumentSnapshot {
-            document,
+            document: Document {
+                id: document_id,
+                metadata,
+            },
             version: version.clone(),
             chunks: chunks
                 .into_iter()
@@ -89,16 +96,8 @@ impl DocumentStorageRepository for FakeDocumentStorageRepository {
                 })
                 .collect(),
         };
-        if let Some(index) = existing {
-            snapshots[index] = snapshot.clone();
-        } else {
-            snapshots.push(snapshot.clone());
-            *self.version_count.lock().await += 1;
-        }
-        self.retrievals
-            .lock()
-            .await
-            .push((version.id, retrieved_at));
+        snapshots.push(snapshot.clone());
+        *self.version_count.lock().await += 1;
         Ok(snapshot)
     }
 
@@ -109,28 +108,15 @@ impl DocumentStorageRepository for FakeDocumentStorageRepository {
         as_of: DateTime<FixedOffset>,
     ) -> Result<Option<DocumentSnapshot>, DocumentStorageRepositoryError> {
         let snapshots = self.snapshots.lock().await;
-        let retrievals = self.retrievals.lock().await;
-        let latest = retrievals
-            .iter()
-            .filter(|(version_id, retrieved_at)| {
-                *retrieved_at <= as_of
-                    && snapshots.iter().any(|snapshot| {
-                        snapshot.version.id == *version_id
-                            && snapshot.document.metadata.source == source
-                            && snapshot.document.metadata.source_document_id == source_document_id
-                    })
-            })
-            .max_by_key(|(version_id, retrieved_at)| (*retrieved_at, *version_id));
-        let Some((version_id, retrieved_at)) = latest else {
-            return Ok(None);
-        };
         Ok(snapshots
             .iter()
-            .find(|snapshot| snapshot.version.id == *version_id)
-            .cloned()
-            .map(|mut snapshot| {
-                snapshot.version.retrieved_at = *retrieved_at;
-                snapshot
-            }))
+            .enumerate()
+            .filter(|snapshot| {
+                snapshot.1.document.metadata.source == source
+                    && snapshot.1.document.metadata.source_document_id == source_document_id
+                    && snapshot.1.version.retrieved_at <= as_of
+            })
+            .max_by_key(|(index, snapshot)| (snapshot.version.retrieved_at, *index))
+            .map(|(_, snapshot)| snapshot.clone()))
     }
 }
