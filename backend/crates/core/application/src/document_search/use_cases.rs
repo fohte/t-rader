@@ -1,7 +1,20 @@
 use core_domain::document_search::prepare_document_search;
+use thiserror::Error;
 
 use super::repository::SharedDocumentSearchRepository;
 use super::types::{DocumentSearchCriteria, DocumentSearchResult};
+
+const MAX_SEARCH_LIMIT: u32 = 100;
+
+#[derive(Debug, Error)]
+pub enum DocumentSearchUseCaseError {
+    #[error("query must contain at least one word with 2 or more characters")]
+    InvalidQuery,
+    #[error("limit must be between 1 and 100")]
+    InvalidLimit,
+    #[error(transparent)]
+    Repository(#[from] super::repository::DocumentSearchRepositoryError),
+}
 
 #[derive(Clone)]
 pub struct DocumentSearchUseCases {
@@ -16,14 +29,23 @@ impl DocumentSearchUseCases {
     pub async fn search(
         &self,
         criteria: DocumentSearchCriteria,
-    ) -> Result<Vec<DocumentSearchResult>, super::repository::DocumentSearchRepositoryError> {
+    ) -> Result<Vec<DocumentSearchResult>, DocumentSearchUseCaseError> {
         let query = prepare_document_search(&criteria.query);
-        if !query.normalized_text.chars().any(char::is_alphanumeric) || criteria.limit == 0 {
-            return Ok(Vec::new());
+        if query.phrases.is_empty()
+            || query
+                .phrases
+                .iter()
+                .any(|phrase| phrase.chars().count() < 2)
+        {
+            return Err(DocumentSearchUseCaseError::InvalidQuery);
+        }
+        if criteria.limit == 0 || criteria.limit > MAX_SEARCH_LIMIT {
+            return Err(DocumentSearchUseCaseError::InvalidLimit);
         }
         self.repository
             .search(query, criteria.as_of, criteria.stock_id, criteria.limit)
             .await
+            .map_err(Into::into)
     }
 }
 
@@ -69,13 +91,44 @@ mod tests {
     }
 
     #[rstest]
-    #[case::empty("", 10)]
-    #[case::punctuation_only("!?", 10)]
-    #[case::zero_limit("synthetic", 0)]
+    #[case::valid("  Synthetic\t phrase  ", 100, None, 1)]
+    #[case::empty_query(
+        "",
+        10,
+        Some("query must contain at least one word with 2 or more characters"),
+        0
+    )]
+    #[case::whitespace_only(
+        " \t\n",
+        10,
+        Some("query must contain at least one word with 2 or more characters"),
+        0
+    )]
+    #[case::single_character_query(
+        "語",
+        10,
+        Some("query must contain at least one word with 2 or more characters"),
+        0
+    )]
+    #[case::single_character_word(
+        "synthetic 語",
+        10,
+        Some("query must contain at least one word with 2 or more characters"),
+        0
+    )]
+    #[case::zero_limit("synthetic phrase", 0, Some("limit must be between 1 and 100"), 0)]
+    #[case::limit_above_maximum(
+        "synthetic phrase",
+        101,
+        Some("limit must be between 1 and 100"),
+        0
+    )]
     #[tokio::test]
-    async fn skips_search_when_criteria_cannot_match(
+    async fn validates_search_input_before_querying(
         #[case] query: &str,
         #[case] limit: u32,
+        #[case] expected_error: Option<&str>,
+        #[case] expected_calls: usize,
         repository: Arc<CountingRepository>,
     ) {
         let use_cases = DocumentSearchUseCases::new(repository.clone());
@@ -91,7 +144,10 @@ mod tests {
 
         assert_eq!(
             (result, repository.search_calls.load(Ordering::Relaxed)),
-            (Ok(Vec::new()), 0),
+            (
+                expected_error.map_or_else(|| Ok(Vec::new()), |message| Err(message.into())),
+                expected_calls,
+            ),
         );
     }
 }

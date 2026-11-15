@@ -1,6 +1,7 @@
 use chrono::{DateTime, FixedOffset};
+use uuid::Uuid;
 
-use crate::document_storage::{Document, DocumentChunk, DocumentVersion};
+use crate::document_storage::{Document, DocumentChunk};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentSearchCriteria {
@@ -13,6 +14,13 @@ pub struct DocumentSearchCriteria {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentSearchResult {
     pub document: Document,
-    pub version: DocumentVersion,
+    pub version: DocumentSearchVersion,
     pub chunk: DocumentChunk,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentSearchVersion {
+    pub id: Uuid,
+    pub content_hash: String,
+    pub retrieved_at: DateTime<FixedOffset>,
 }

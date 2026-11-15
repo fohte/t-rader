@@ -20,10 +20,8 @@ SELECT
     document.title AS document_title,
     document.published_at AS document_published_at,
     version.id AS version_id,
-    version.document_id AS version_document_id,
     version.content_hash AS version_content_hash,
     version.retrieved_at AS version_retrieved_at,
-    version.body AS version_body,
     chunk.id AS chunk_id,
     chunk.version_id AS chunk_version_id,
     chunk.sequence AS chunk_sequence,
@@ -32,7 +30,10 @@ SELECT
     chunk.body AS chunk_body
 FROM document
 JOIN LATERAL (
-    SELECT document_version.*
+    SELECT
+        document_version.id,
+        document_version.content_hash,
+        document_version.retrieved_at
     FROM document_version
     WHERE document_version.document_id = document.id
       AND ($3::timestamptz IS NULL OR document_version.retrieved_at <= $3)
@@ -43,7 +44,11 @@ JOIN LATERAL (
 ) AS version ON TRUE
 JOIN document_chunk AS chunk ON chunk.version_id = version.id
 WHERE chunk.search_terms @> $1::text[]
-  AND strpos(chunk.search_text, $2::text) > 0
+  AND NOT EXISTS (
+      SELECT 1
+      FROM unnest($2::text[]) AS search_phrase(phrase)
+      WHERE strpos(chunk.search_text, search_phrase.phrase) = 0
+  )
   AND ($3::timestamptz IS NULL OR document.published_at <= $3)
   AND ($4::text IS NULL OR document.stock_id = $4)
 ORDER BY document.published_at DESC,
@@ -63,10 +68,8 @@ struct DocumentSearchRow {
     document_title: String,
     document_published_at: DateTime<FixedOffset>,
     version_id: Uuid,
-    version_document_id: Uuid,
     version_content_hash: String,
     version_retrieved_at: DateTime<FixedOffset>,
-    version_body: String,
     chunk_id: Uuid,
     chunk_version_id: Uuid,
     chunk_sequence: i32,
@@ -99,7 +102,7 @@ impl PostgresDocumentSearchRepository {
                 SEARCH_DOCUMENTS_SQL,
                 [
                     query.terms.into(),
-                    query.normalized_text.into(),
+                    query.phrases.into(),
                     as_of.into(),
                     stock_id.into(),
                     i64::from(limit).into(),
@@ -144,12 +147,10 @@ impl From<DocumentSearchRow> for DocumentSearchResult {
                     published_at: row.document_published_at,
                 },
             },
-            version: core_application::document_storage::DocumentVersion {
+            version: core_application::document_search::DocumentSearchVersion {
                 id: row.version_id,
-                document_id: row.version_document_id,
                 content_hash: row.version_content_hash,
                 retrieved_at: row.version_retrieved_at,
-                body: row.version_body,
             },
             chunk: core_application::document_storage::DocumentChunk {
                 id: row.chunk_id,
@@ -176,10 +177,11 @@ mod tests {
 
     use chrono::{DateTime, Duration, FixedOffset, Utc};
     use core_application::{
+        document_search::DocumentSearchVersion,
         document_search::{DocumentSearchRepository, DocumentSearchResult},
         document_storage::{
             Document, DocumentChunk, DocumentChunkInput, DocumentMetadata,
-            DocumentStorageRepository, DocumentVersion,
+            DocumentStorageRepository,
         },
         unit_of_work::UnitOfWork,
     };
@@ -249,7 +251,6 @@ mod tests {
         for result in &mut results {
             result.document.id = Uuid::nil();
             result.version.id = Uuid::nil();
-            result.version.document_id = Uuid::nil();
             result.chunk.id = Uuid::nil();
             result.chunk.version_id = Uuid::nil();
         }
@@ -269,12 +270,10 @@ mod tests {
                 id: Uuid::nil(),
                 metadata: metadata(source_document_id, stock_id, published_at),
             },
-            version: DocumentVersion {
+            version: DocumentSearchVersion {
                 id: Uuid::nil(),
-                document_id: Uuid::nil(),
                 content_hash: content_hash.into(),
                 retrieved_at,
-                body: body.into(),
             },
             chunk: DocumentChunk {
                 id: Uuid::nil(),
@@ -352,24 +351,34 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn repository_searches_single_character_inside_a_multicharacter_word(db: DatabaseHandle) {
+    async fn repository_matches_all_whitespace_separated_phrases(db: DatabaseHandle) {
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let storage = PostgresDocumentStorageRepository::new(db.clone());
         let repository = PostgresDocumentSearchRepository::new(db);
-        let body = "日本語の合成文書";
+        let matching_body = "xx合成文書\t　日本語yy";
+        let missing_phrase_body = "xx日本語だけの文書";
         save(
             &storage,
             &unit_of_work,
             metadata("DOC-A", None, timestamp()),
             timestamp(),
-            body,
-            "hash-a",
+            matching_body,
+            "hash-match",
+        )
+        .await;
+        save(
+            &storage,
+            &unit_of_work,
+            metadata("DOC-B", None, timestamp()),
+            timestamp(),
+            missing_phrase_body,
+            "hash-missing",
         )
         .await;
 
         let results = repository
             .search(
-                core_domain::document_search::prepare_document_search("語"),
+                core_domain::document_search::prepare_document_search(" 日本語 \t  合成 "),
                 None,
                 None,
                 10,
@@ -384,8 +393,8 @@ mod tests {
                 None,
                 timestamp(),
                 timestamp(),
-                body,
-                "hash-a",
+                matching_body,
+                "hash-match",
             )],
         );
     }

@@ -304,19 +304,20 @@ ANALYZE indicator;
 ANALYZE indicator_observation;
 
 INSERT INTO stock (id, name, product_category)
-VALUES ('demo-code', 'Synthetic organization', 'synthetic')
+SELECT 'demo-code-' || lpad(number::text, 3, '0'),
+       'Synthetic organization ' || number,
+       'synthetic'
+FROM generate_series(1, 100) AS series(number)
 ON CONFLICT (id) DO NOTHING;
 
 WITH synthetic_documents AS (
     SELECT number,
            md5('synthetic-document-' || number)::uuid AS document_id,
            'DOC-' || lpad(number::text, 5, '0') AS source_document_id,
-           CASE
-               WHEN number % 97 = 0
-                   THEN 'record ' || number || ' synthetic phrase sample'
-               ELSE 'record ' || number || ' general content sample'
-           END AS body
-    FROM generate_series(1, 5000) AS series(number)
+           'demo-code-' || lpad((((number - 1) % 100) + 1)::text, 3, '0') AS stock_id,
+           (((number - 1) % 100) + 1)::text AS issuer_number,
+           now() - (number + 10) * INTERVAL '1 day' AS published_at
+    FROM generate_series(1, 50000) AS series(number)
 )
 INSERT INTO document (
     id,
@@ -330,25 +331,67 @@ INSERT INTO document (
 SELECT document_id,
        'synthetic-perf',
        source_document_id,
-       'demo-code',
-       'synthetic-issuer',
+       stock_id,
+       'synthetic-issuer-' || lpad(issuer_number, 3, '0'),
        'Synthetic document ' || number,
-       now() - number * INTERVAL '1 day'
+       published_at
 FROM synthetic_documents;
 
-INSERT INTO document_version (id, document_id, content_hash, retrieved_at, body)
-SELECT md5('synthetic-version-' || document.source_document_id)::uuid,
+INSERT INTO document_version (
+    id,
+    document_id,
+    content_hash,
+    retrieved_at,
+    body
+)
+SELECT md5(
+           'synthetic-version-' || document.source_document_id || '-' || versions.version_number
+       )::uuid,
        document.id,
-       md5(document.source_document_id),
-       document.published_at,
-       CASE
-           WHEN substring(document.source_document_id FROM 5)::integer % 97 = 0
-               THEN 'record ' || substring(document.source_document_id FROM 5)::integer || ' synthetic phrase sample'
-           ELSE 'record ' || substring(document.source_document_id FROM 5)::integer || ' general content sample'
-       END
+       md5(document.source_document_id || '-' || versions.version_number),
+       document.published_at + versions.version_number * INTERVAL '1 day',
+       chunk_bodies.first_chunk_body || E'\n' || chunk_bodies.second_chunk_body
 FROM document
+CROSS JOIN generate_series(1, 3) AS versions(version_number)
+CROSS JOIN LATERAL (
+    SELECT CASE
+               WHEN versions.version_number = 3
+                    AND substring(document.source_document_id FROM 5)::integer % 5 = 1
+                   THEN 'record ' || substring(document.source_document_id FROM 5)::integer
+                        || ' synthetic phrase revision ' || versions.version_number
+               ELSE 'record ' || substring(document.source_document_id FROM 5)::integer
+                    || ' general content revision ' || versions.version_number
+           END AS first_chunk_body,
+           'additional details for record '
+               || substring(document.source_document_id FROM 5)::integer
+               || ' revision ' || versions.version_number AS second_chunk_body
+) AS chunk_bodies
 WHERE document.source = 'synthetic-perf';
 
+WITH document_chunks AS (
+    SELECT document_version.id AS version_id,
+           chunks.sequence,
+           chunks.body,
+           CASE chunks.sequence
+               WHEN 0 THEN 0
+               ELSE octet_length(split_part(document_version.body, E'\n', 1)) + 1
+           END AS start_offset
+    FROM document_version
+    JOIN document ON document.id = document_version.document_id
+    CROSS JOIN LATERAL (
+        VALUES
+            (0, split_part(document_version.body, E'\n', 1)),
+            (1, split_part(document_version.body, E'\n', 2))
+    ) AS chunks(sequence, body)
+    WHERE document.source = 'synthetic-perf'
+), normalized_chunks AS (
+    SELECT version_id,
+           sequence,
+           body,
+           start_offset,
+           btrim(regexp_replace(lower(body), '[[:space:]]+', ' ', 'g')) AS search_text
+    FROM document_chunks
+)
 INSERT INTO document_chunk (
     id,
     version_id,
@@ -359,21 +402,27 @@ INSERT INTO document_chunk (
     search_text,
     search_terms
 )
-SELECT md5('synthetic-chunk-' || document.source_document_id)::uuid,
-       document_version.id,
-       0,
-       0,
-       octet_length(document_version.body),
-       document_version.body,
-       lower(document_version.body),
-       CASE
-           WHEN document_version.body LIKE '%synthetic phrase%'
-               THEN ARRAY['as', 'et', 'he', 'hr', 'ic', 'nt', 'ph', 'ra', 'se', 'sy', 'th', 'ti', 'yn']
-           ELSE ARRAY['co', 'en', 'er', 'ge', 'ne', 'on', 'te', 'tu', 'ur', 'xt']
-       END
-FROM document
-JOIN document_version ON document_version.document_id = document.id
-WHERE document.source = 'synthetic-perf';
+SELECT md5(normalized_chunks.version_id::text || '-chunk-' || normalized_chunks.sequence)::uuid,
+       normalized_chunks.version_id,
+       normalized_chunks.sequence,
+       normalized_chunks.start_offset,
+       normalized_chunks.start_offset + octet_length(normalized_chunks.body),
+       normalized_chunks.body,
+       normalized_chunks.search_text,
+       search_terms.terms
+FROM normalized_chunks
+CROSS JOIN LATERAL (
+    SELECT coalesce(
+               array_agg(
+                   DISTINCT substring(normalized_chunks.search_text FROM positions.position FOR 2)
+                   ORDER BY substring(normalized_chunks.search_text FROM positions.position FOR 2)
+               ),
+               ARRAY[]::text[]
+           ) AS terms
+    FROM generate_series(1, char_length(normalized_chunks.search_text) - 1)
+         AS positions(position)
+    WHERE substring(normalized_chunks.search_text FROM positions.position FOR 2) NOT LIKE '% %'
+) AS search_terms;
 
 ANALYZE document;
 ANALYZE document_version;
