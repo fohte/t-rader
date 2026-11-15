@@ -44,8 +44,12 @@ mod tests {
         .expect("insert synthetic stock");
     }
 
-    async fn save_document(db: &DatabaseHandle) -> (Uuid, Uuid, Uuid, String, usize, usize) {
-        let published_at = timestamp(1);
+    async fn save_document(
+        db: &DatabaseHandle,
+        source_document_id: &str,
+        published_at: DateTime<FixedOffset>,
+        retrieved_at: DateTime<FixedOffset>,
+    ) -> (Uuid, String, usize, usize) {
         let body = "Before section Synthetic Mentioned Co after section".to_owned();
         let target = "Synthetic Mentioned Co";
         let start = body.find(target).expect("target is in body");
@@ -79,14 +83,14 @@ mod tests {
                 &transaction,
                 DocumentMetadata {
                     source: "synthetic-archive".into(),
-                    source_document_id: "DOC-TEST-1".into(),
+                    source_document_id: source_document_id.into(),
                     stock_id: Some("demo-issuer".into()),
                     source_issuer_code: "ISSUER-TEST-1".into(),
                     title: "Synthetic notice".into(),
                     published_at,
                 },
                 "a".repeat(64),
-                timestamp(2),
+                retrieved_at,
                 body.clone(),
                 chunks,
             )
@@ -96,14 +100,7 @@ mod tests {
             .commit(transaction)
             .await
             .expect("transaction commits");
-        (
-            snapshot.document.id,
-            snapshot.version.id,
-            snapshot.chunks[1].id,
-            body,
-            start,
-            end,
-        )
+        (snapshot.chunks[1].id, body, start, end)
     }
 
     fn normalize_search(output: ToolOutput<SearchDocumentsResult>) -> SearchDocumentsResult {
@@ -138,7 +135,8 @@ mod tests {
         let strategy_id = insert_strategy(&db, "synthetic").await;
         insert_stock(&db, "demo-issuer", "Synthetic Issuer").await;
         insert_stock(&db, "demo-mentioned", "Synthetic Mentioned Co").await;
-        let (document_id, version_id, chunk_id, body, start, end) = save_document(&db).await;
+        let (chunk_id, body, start, end) =
+            save_document(&db, "DOC-TEST-1", timestamp(1), timestamp(2)).await;
         document_chunk_mention::Entity::insert(document_chunk_mention::ActiveModel {
             id: Set(Uuid::new_v4()),
             chunk_id: Set(chunk_id),
@@ -162,11 +160,16 @@ mod tests {
             )
             .await
             .expect("search documents");
+        let searched_chunk_id = searched
+            .items
+            .first()
+            .map(|item| item.chunk.id)
+            .expect("search returns a matching chunk");
         let read = server
             .get_document_chunk(
                 strategy_id,
                 GetDocumentChunkParams {
-                    id: chunk_id,
+                    id: searched_chunk_id,
                     as_of: Some(timestamp(3)),
                 },
             )
@@ -177,12 +180,12 @@ mod tests {
         let chunk_end = i32::try_from(end).expect("offset fits in i32");
         assert_eq!(
             (
+                searched_chunk_id,
                 normalize_search(searched),
                 normalize_read(read),
-                document_id,
-                version_id,
             ),
             (
+                chunk_id,
                 SearchDocumentsResult {
                     items: vec![SearchDocumentItemDto {
                         document: DocumentDto {
@@ -256,8 +259,6 @@ mod tests {
                         end_offset: chunk_end,
                     }],
                 },
-                document_id,
-                version_id,
             ),
         );
     }
@@ -268,7 +269,8 @@ mod tests {
         let strategy_id = insert_strategy(&db, "synthetic").await;
         insert_stock(&db, "demo-issuer", "Synthetic Issuer").await;
         insert_stock(&db, "demo-mentioned", "Synthetic Mentioned Co").await;
-        let (_, _, chunk_id, _, _, _) = save_document(&db).await;
+        let (chunk_id, _, _, _) =
+            save_document(&db, "DOC-TEST-1", timestamp(1), timestamp(2)).await;
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let repository = PostgresDocumentStorageRepository::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("transaction begins");
@@ -299,6 +301,8 @@ mod tests {
             .commit(transaction)
             .await
             .expect("transaction commits");
+        let (future_publication_chunk_id, _, _, _) =
+            save_document(&db, "DOC-TEST-2", timestamp(4), timestamp(2)).await;
 
         let visible = server
             .get_document_chunk(
@@ -320,10 +324,28 @@ mod tests {
             )
             .await
             .map(ToolOutput::into_value);
+        let future_publication_hidden = server
+            .get_document_chunk(
+                strategy_id,
+                GetDocumentChunkParams {
+                    id: future_publication_chunk_id,
+                    as_of: Some(timestamp(3)),
+                },
+            )
+            .await
+            .map(ToolOutput::into_value);
 
         assert_eq!(
-            (visible, hidden.map_err(|error| error.code)),
-            (Ok(timestamp(2)), Err(ErrorCode::RESOURCE_NOT_FOUND)),
+            (
+                visible,
+                hidden.map_err(|error| error.code),
+                future_publication_hidden.map_err(|error| error.code),
+            ),
+            (
+                Ok(timestamp(2)),
+                Err(ErrorCode::RESOURCE_NOT_FOUND),
+                Err(ErrorCode::RESOURCE_NOT_FOUND),
+            ),
         );
     }
 

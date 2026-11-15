@@ -58,11 +58,11 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
         })
         .on_conflict(
             OnConflict::columns([document::Column::Source, document::Column::SourceDocumentId])
+                // as_of の公開可否が後続の取り込みで変わらないよう、公開時刻は初回保存後に固定する。
                 .update_columns([
                     document::Column::StockId,
                     document::Column::SourceIssuerCode,
                     document::Column::Title,
-                    document::Column::PublishedAt,
                     document::Column::UpdatedAt,
                 ])
                 .to_owned(),
@@ -677,14 +677,35 @@ mod tests {
         )
         .await;
         let later_body = "alpha delta";
+        let mut later_metadata = metadata();
+        later_metadata.published_at = timestamp() + Duration::hours(3);
         let later = save(
             &repository,
             &unit_of_work,
-            metadata(),
+            later_metadata,
             timestamp() + Duration::hours(2),
             later_body,
             &"b".repeat(64),
             vec![chunk(0, 0, 11, later_body)],
+        )
+        .await;
+        let mut future_publication_metadata = metadata();
+        future_publication_metadata.source_document_id = "DOC-FUTURE-42".into();
+        future_publication_metadata.published_at = timestamp() + Duration::hours(2);
+        let future_publication_body = "future document";
+        let future_published = save(
+            &repository,
+            &unit_of_work,
+            future_publication_metadata,
+            timestamp(),
+            future_publication_body,
+            &"c".repeat(64),
+            vec![chunk(
+                0,
+                0,
+                future_publication_body.len(),
+                future_publication_body,
+            )],
         )
         .await;
 
@@ -694,6 +715,13 @@ mod tests {
             .expect("context query succeeds");
         let hidden = repository
             .find_chunk_context(later.chunks[0].id, Some(timestamp() + Duration::hours(1)))
+            .await
+            .expect("context query succeeds");
+        let future_publication_hidden = repository
+            .find_chunk_context(
+                future_published.chunks[0].id,
+                Some(timestamp() + Duration::hours(1)),
+            )
             .await
             .expect("context query succeeds");
         let normalized = visible.map(|mut context| {
@@ -712,7 +740,7 @@ mod tests {
         expected_version.document_id = Uuid::nil();
 
         assert_eq!(
-            (normalized, hidden),
+            (normalized, hidden, future_publication_hidden),
             (
                 Some(DocumentChunkContext {
                     document: expected_document,
@@ -721,6 +749,7 @@ mod tests {
                     chunk: normalize_chunk(first.chunks[1].clone()),
                     next_chunk: Some(normalize_chunk(first.chunks[2].clone())),
                 }),
+                None,
                 None,
             ),
         );
