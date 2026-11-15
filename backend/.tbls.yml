@@ -804,3 +804,10 @@ comments:
       body: '原文から切り出した文書片。'
       search_text: '検索用に正規化した文書片本文。'
       search_terms: '検索用に文書片本文から生成した文字 n-gram。'
+  - table: document_chunk_mention
+    tableComment: '文書片の本文で照合された登録済み銘柄と範囲を保持する。'
+    columnComments:
+      chunk_id: '銘柄名が見つかった文書片。'
+      stock_id: '本文中で照合された登録済み銘柄。'
+      start_offset: '原文中の開始 byte offset。'
+      end_offset: '原文中の終了 byte offset。終了位置は含まない。'

@@ -20,6 +20,7 @@ pub mod custom_indicator_evaluation;
 pub mod dashboard;
 pub mod document;
 pub mod document_chunk;
+pub mod document_chunk_mention;
 pub mod document_version;
 pub mod earnings_schedule_ingested_date;
 pub mod event;
