@@ -5,6 +5,7 @@ use core_application::document_storage::{
     DocumentStorageRepository, DocumentStorageRepositoryError, DocumentVersion,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
+use core_domain::document_search::prepare_document_search;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -95,6 +96,7 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
 
         if is_new_version && !chunks.is_empty() {
             document_chunk::Entity::insert_many(chunks.into_iter().map(|chunk| {
+                let search = prepare_document_search(&chunk.body);
                 document_chunk::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     version_id: Set(version_row.id),
@@ -102,6 +104,8 @@ impl DocumentStorageRepository for PostgresDocumentStorageRepository {
                     start_offset: Set(chunk.start_offset),
                     end_offset: Set(chunk.end_offset),
                     body: Set(chunk.body),
+                    search_text: Set(search.normalized_text),
+                    search_terms: Set(search.terms),
                 }
             }))
             .exec_without_returning(transaction)

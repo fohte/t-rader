@@ -223,6 +223,8 @@ mod tests {
             start_offset: Set(0),
             end_offset: Set(27),
             body: Set("Synthetic Mentioned Company".into()),
+            search_text: Set(String::new()),
+            search_terms: Set(Vec::new()),
         })
         .exec_without_returning(&db)
         .await

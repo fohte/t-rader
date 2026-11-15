@@ -14,6 +14,8 @@
 | start_offset | integer |                   | false    |                                                                   |                                                       | 原文中の開始 byte offset。                     |
 | end_offset   | integer |                   | false    |                                                                   |                                                       | 原文中の終了 byte offset。終了位置は含まない。 |
 | body         | text    |                   | false    |                                                                   |                                                       | 原文から切り出した文書片。                     |
+| search_text  | text    | ''::text          | false    |                                                                   |                                                       | 検索用に正規化した文書片本文。                 |
+| search_terms | text[]  | ARRAY[]::text[]   | false    |                                                                   |                                                       | 検索用に文書片本文から生成した文字 n-gram。    |
 
 ## Constraints
 
@@ -23,6 +25,8 @@
 | document_chunk_check                 | CHECK       | CHECK ((end_offset >= start_offset))                                       |
 | document_chunk_end_offset_not_null   | n           | NOT NULL end_offset                                                        |
 | document_chunk_id_not_null           | n           | NOT NULL id                                                                |
+| document_chunk_search_terms_not_null | n           | NOT NULL search_terms                                                      |
+| document_chunk_search_text_not_null  | n           | NOT NULL search_text                                                       |
 | document_chunk_sequence_check        | CHECK       | CHECK ((sequence >= 0))                                                    |
 | document_chunk_sequence_not_null     | n           | NOT NULL sequence                                                          |
 | document_chunk_start_offset_check    | CHECK       | CHECK ((start_offset >= 0))                                                |
@@ -37,6 +41,7 @@
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | document_chunk_pkey                 | CREATE UNIQUE INDEX document_chunk_pkey ON public.document_chunk USING btree (id)                                   |
 | idx_document_chunk_version_sequence | CREATE UNIQUE INDEX idx_document_chunk_version_sequence ON public.document_chunk USING btree (version_id, sequence) |
+| idx_document_chunk_search_terms     | CREATE INDEX idx_document_chunk_search_terms ON public.document_chunk USING gin (search_terms)                      |
 
 ## Relations
 
@@ -53,6 +58,8 @@ erDiagram
   integer start_offset
   integer end_offset
   text body
+  text search_text
+  text__ search_terms
 }
 "public.document_chunk_mention" {
   uuid id

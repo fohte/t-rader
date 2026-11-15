@@ -58,6 +58,8 @@ erDiagram
   integer start_offset
   integer end_offset
   text body
+  text search_text
+  text__ search_terms
 }
 "public.stock" {
   varchar id

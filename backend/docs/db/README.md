@@ -84,7 +84,7 @@
 | [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
 | [public.document](public.document.md)                                                           | 9       | 資料源に依存しない公開文書の識別情報を保持する。                                                                                                   | BASE TABLE        |
 | [public.document_version](public.document_version.md)                                           | 6       | 公開文書の原文バージョンを保持する。                                                                                                               | BASE TABLE        |
-| [public.document_chunk](public.document_chunk.md)                                               | 6       | 原文のバージョンに属する順序付き文書片を保持する。                                                                                                 | BASE TABLE        |
+| [public.document_chunk](public.document_chunk.md)                                               | 8       | 原文のバージョンに属する順序付き文書片を保持する。                                                                                                 | BASE TABLE        |
 | [public.document_chunk_mention](public.document_chunk_mention.md)                               | 5       | 文書片の本文で照合された登録済み銘柄と範囲を保持する。                                                                                             | BASE TABLE        |
 
 ## Stored procedures and functions
@@ -1077,6 +1077,8 @@ erDiagram
   integer start_offset
   integer end_offset
   text body
+  text search_text
+  text__ search_terms
 }
 "public.document_chunk_mention" {
   uuid id

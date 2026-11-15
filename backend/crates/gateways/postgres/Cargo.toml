@@ -18,6 +18,7 @@ sea-orm = { workspace = true, features = [
     "with-chrono",
     "with-uuid",
     "with-rust_decimal",
+    "postgres-array",
     "macros",
 ] }
 serde = { workspace = true, features = ["derive"] }
