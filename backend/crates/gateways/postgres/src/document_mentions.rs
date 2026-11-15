@@ -4,7 +4,7 @@ use core_application::document_mentions::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
-use sea_orm::sea_query::{LockType, OnConflict};
+use sea_orm::sea_query::LockType;
 use sea_orm::{
     ColumnTrait, DatabaseTransaction, EntityTrait, Iterable, QueryFilter, QueryOrder, QuerySelect,
 };
@@ -99,16 +99,6 @@ impl DocumentMentionRepository for PostgresDocumentMentionRepository {
         let chunk_size = crate::repositories::max_rows_per_statement(columns_per_row);
         for chunk in active_models.chunks(chunk_size) {
             document_chunk_mention::Entity::insert_many(chunk.to_vec())
-                .on_conflict(
-                    OnConflict::columns([
-                        document_chunk_mention::Column::ChunkId,
-                        document_chunk_mention::Column::StockId,
-                        document_chunk_mention::Column::StartOffset,
-                        document_chunk_mention::Column::EndOffset,
-                    ])
-                    .do_nothing()
-                    .to_owned(),
-                )
                 .exec_without_returning(transaction)
                 .await
                 .map_err(repository_error)?;

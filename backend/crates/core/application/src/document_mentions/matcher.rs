@@ -30,7 +30,7 @@ struct StockPattern {
 
 struct MatchCandidate {
     mention: DocumentMention,
-    pattern_length: usize,
+    source_character_length: usize,
 }
 
 #[derive(Default)]
@@ -200,13 +200,6 @@ impl StockMatcher {
                     .map(|span| span.end)
                     .max()
                     .ok_or(InvalidOffset)?;
-                let ends_before_combining_source_character = chunk.body[end_offset..]
-                    .chars()
-                    .next()
-                    .is_some_and(|next| canonical_combining_class(next) != 0);
-                if ends_before_combining_source_character {
-                    continue;
-                }
                 if pattern.starts_with_ascii_alphanumeric
                     && start_index
                         .checked_sub(1)
@@ -229,7 +222,7 @@ impl StockMatcher {
                         start_offset: add_offset(chunk.start_offset, start_offset)?,
                         end_offset: add_offset(chunk.start_offset, end_offset)?,
                     },
-                    pattern_length: pattern.characters.len(),
+                    source_character_length: chunk.body[start_offset..end_offset].chars().count(),
                 });
             }
         }
@@ -240,8 +233,8 @@ impl StockMatcher {
 fn select_longest_non_overlapping(mut candidates: Vec<MatchCandidate>) -> Vec<DocumentMention> {
     candidates.sort_unstable_by(|left, right| {
         right
-            .pattern_length
-            .cmp(&left.pattern_length)
+            .source_character_length
+            .cmp(&left.source_character_length)
             .then_with(|| left.mention.start_offset.cmp(&right.mention.start_offset))
             .then_with(|| left.mention.end_offset.cmp(&right.mention.end_offset))
             .then_with(|| left.mention.stock_id.cmp(&right.mention.stock_id))

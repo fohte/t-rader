@@ -19,18 +19,40 @@ use super::super::{
 };
 use super::DocumentMentionUseCases;
 
-#[derive(Debug, PartialEq, Eq)]
-struct Replacement {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RepositoryOperation {
+    LockChunksForUpdate,
+    FindRegisteredStocks,
+    ReplaceMentions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RepositoryCall {
+    operation: RepositoryOperation,
+    transaction_id: Uuid,
     chunk_ids: Vec<Uuid>,
     mentions: Vec<DocumentMention>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ExpectedRepositoryCall {
+    operation: RepositoryOperation,
+    transaction_index: usize,
+    chunk_ids: Vec<Uuid>,
+    mentions: Vec<DocumentMention>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct RepositoryFlow {
+    calls: Vec<ExpectedRepositoryCall>,
+    begun_transactions: Vec<usize>,
+    committed_transactions: Vec<usize>,
 }
 
 #[derive(Default)]
 struct RecordingRepository {
     stocks: Mutex<Vec<RegisteredStock>>,
-    repository_transaction_ids: Mutex<Vec<Option<Uuid>>>,
-    chunk_locks: Mutex<Vec<Vec<Uuid>>>,
-    replacements: Mutex<Vec<Replacement>>,
+    calls: Mutex<Vec<RepositoryCall>>,
 }
 
 impl RecordingRepository {
@@ -38,15 +60,26 @@ impl RecordingRepository {
         *self.stocks.lock().expect("stock lock is available") = stocks;
     }
 
-    fn record_transaction(&self, transaction: &UnitOfWorkTransaction) {
-        self.repository_transaction_ids
+    fn record_call(
+        &self,
+        operation: RepositoryOperation,
+        transaction: &UnitOfWorkTransaction,
+        chunk_ids: Vec<Uuid>,
+        mentions: Vec<DocumentMention>,
+    ) {
+        let transaction_id = transaction
+            .downcast_ref::<FakeTransaction>()
+            .expect("recording repository receives the fake transaction")
+            .id;
+        self.calls
             .lock()
-            .expect("repository transaction lock is available")
-            .push(
-                transaction
-                    .downcast_ref::<FakeTransaction>()
-                    .map(|transaction| transaction.id),
-            );
+            .expect("repository call lock is available")
+            .push(RepositoryCall {
+                operation,
+                transaction_id,
+                chunk_ids,
+                mentions,
+            });
     }
 }
 
@@ -57,11 +90,12 @@ impl DocumentMentionRepository for RecordingRepository {
         transaction: &UnitOfWorkTransaction,
         chunk_ids: Vec<Uuid>,
     ) -> Result<(), DocumentMentionRepositoryError> {
-        self.record_transaction(transaction);
-        self.chunk_locks
-            .lock()
-            .expect("chunk lock record is available")
-            .push(chunk_ids);
+        self.record_call(
+            RepositoryOperation::LockChunksForUpdate,
+            transaction,
+            chunk_ids,
+            Vec::new(),
+        );
         Ok(())
     }
 
@@ -69,7 +103,12 @@ impl DocumentMentionRepository for RecordingRepository {
         &self,
         transaction: &UnitOfWorkTransaction,
     ) -> Result<Vec<RegisteredStock>, DocumentMentionRepositoryError> {
-        self.record_transaction(transaction);
+        self.record_call(
+            RepositoryOperation::FindRegisteredStocks,
+            transaction,
+            Vec::new(),
+            Vec::new(),
+        );
         Ok(self.stocks.lock().expect("stock lock is available").clone())
     }
 
@@ -79,14 +118,12 @@ impl DocumentMentionRepository for RecordingRepository {
         chunk_ids: Vec<Uuid>,
         mentions: Vec<DocumentMention>,
     ) -> Result<(), DocumentMentionRepositoryError> {
-        self.record_transaction(transaction);
-        self.replacements
-            .lock()
-            .expect("replacement lock is available")
-            .push(Replacement {
-                chunk_ids,
-                mentions,
-            });
+        self.record_call(
+            RepositoryOperation::ReplaceMentions,
+            transaction,
+            chunk_ids,
+            mentions,
+        );
         Ok(())
     }
 }
@@ -121,42 +158,44 @@ fn document_chunk(id: Uuid, start_offset: i32, body: &str) -> DocumentChunk {
     }
 }
 
-async fn transaction_flow_matches(
+async fn repository_flow(
     repository: &RecordingRepository,
     unit_of_work: &FakeUnitOfWork,
-) -> bool {
-    let repository_transaction_ids = repository
-        .repository_transaction_ids
+) -> RepositoryFlow {
+    let calls = repository
+        .calls
         .lock()
-        .expect("repository transaction lock is available")
+        .expect("repository call lock is available")
         .clone();
-    let locked_chunk_ids = repository
-        .chunk_locks
-        .lock()
-        .expect("chunk lock record is available")
-        .clone();
-    let replaced_chunk_ids = repository
-        .replacements
-        .lock()
-        .expect("replacement lock is available")
-        .iter()
-        .map(|replacement| replacement.chunk_ids.clone())
-        .collect::<Vec<_>>();
     let begun = unit_of_work.begun.lock().await.clone();
     let committed = unit_of_work.committed.lock().await.clone();
-    locked_chunk_ids == replaced_chunk_ids
-        && repository_transaction_ids.len() == begun.len() * 3
-        && begun == committed
-        && repository_transaction_ids
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .zip(&begun)
-            .all(|(operation_ids, expected_id)| {
-                operation_ids
-                    .iter()
-                    .all(|transaction_id| *transaction_id == Some(*expected_id))
+    RepositoryFlow {
+        calls: calls
+            .into_iter()
+            .map(|call| ExpectedRepositoryCall {
+                operation: call.operation,
+                transaction_index: transaction_index(call.transaction_id, &begun),
+                chunk_ids: call.chunk_ids,
+                mentions: call.mentions,
             })
+            .collect(),
+        begun_transactions: normalize_transaction_ids(&begun, &begun),
+        committed_transactions: normalize_transaction_ids(&committed, &begun),
+    }
+}
+
+fn transaction_index(transaction_id: Uuid, transactions: &[Uuid]) -> usize {
+    transactions
+        .iter()
+        .position(|started| *started == transaction_id)
+        .expect("recorded transaction was begun")
+}
+
+fn normalize_transaction_ids(transaction_ids: &[Uuid], transactions: &[Uuid]) -> Vec<usize> {
+    transaction_ids
+        .iter()
+        .map(|transaction_id| transaction_index(*transaction_id, transactions))
+        .collect()
 }
 
 #[rstest]
@@ -183,14 +222,6 @@ async fn record_matches_registered_names_and_keeps_original_utf8_offsets(harness
         .record(&[chunk])
         .await
         .expect("document mentions are recorded");
-    let replacements = harness
-        .repository
-        .replacements
-        .lock()
-        .expect("replacement lock is available")
-        .iter()
-        .map(|replacement| (replacement.chunk_ids.clone(), replacement.mentions.clone()))
-        .collect::<Vec<_>>();
 
     let expected = vec![
         DocumentMention {
@@ -215,10 +246,35 @@ async fn record_matches_registered_names_and_keeps_original_utf8_offsets(harness
     assert_eq!(
         (
             mentions,
-            replacements,
-            transaction_flow_matches(&harness.repository, &harness.unit_of_work).await,
+            repository_flow(&harness.repository, &harness.unit_of_work).await
         ),
-        (expected.clone(), vec![(vec![Uuid::nil()], expected)], true),
+        (
+            expected.clone(),
+            RepositoryFlow {
+                calls: vec![
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::LockChunksForUpdate,
+                        transaction_index: 0,
+                        chunk_ids: vec![Uuid::nil()],
+                        mentions: Vec::new(),
+                    },
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::FindRegisteredStocks,
+                        transaction_index: 0,
+                        chunk_ids: Vec::new(),
+                        mentions: Vec::new(),
+                    },
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::ReplaceMentions,
+                        transaction_index: 0,
+                        chunk_ids: vec![Uuid::nil()],
+                        mentions: expected,
+                    },
+                ],
+                begun_transactions: vec![0],
+                committed_transactions: vec![0],
+            },
+        ),
     );
 }
 
@@ -240,11 +296,7 @@ async fn record_rejects_matches_that_end_before_a_combining_mark(
         .record(&[document_chunk(Uuid::nil(), 0, body)])
         .await
         .expect("document mentions are recorded");
-    let replacement_mentions = harness.repository.replacements.lock().expect("lock")[0]
-        .mentions
-        .clone();
-
-    assert_eq!((mentions, replacement_mentions), (Vec::new(), Vec::new()));
+    assert_eq!(mentions, Vec::new());
 }
 
 #[rstest]
@@ -252,12 +304,12 @@ async fn record_rejects_matches_that_end_before_a_combining_mark(
 async fn record_rejects_matches_that_end_inside_a_decomposed_character(harness: Harness) {
     harness.repository.set_stocks(vec![RegisteredStock {
         id: "DEMO-1".into(),
-        name: "f".into(),
+        name: "デモ株式".into(),
     }]);
 
     let mentions = harness
         .use_cases
-        .record(&[document_chunk(Uuid::nil(), 0, "ﬃ")])
+        .record(&[document_chunk(Uuid::nil(), 0, "デモ㍿")])
         .await
         .expect("document mentions are recorded");
 
@@ -303,34 +355,37 @@ async fn record_applies_ascii_boundaries_without_blocking_japanese_adjacency(
 }
 
 #[rstest]
+#[case::more_characters_wins(
+    vec![
+        RegisteredStock { id: "DEMO-SHORT".into(), name: "デモ".into() },
+        RegisteredStock { id: "DEMO-LONG".into(), name: "デモ不動産".into() },
+    ],
+    "デモ不動産は",
+    vec![DocumentMention { chunk_id: Uuid::nil(), stock_id: "DEMO-LONG".into(), start_offset: 0, end_offset: 15 }],
+)]
+#[case::source_character_count_breaks_normalized_tie(
+    vec![
+        RegisteredStock { id: "DEMO-GAS".into(), name: "ガス".into() },
+        RegisteredStock { id: "DEMO-FRUIT".into(), name: "スイカ".into() },
+    ],
+    "ガスイカ",
+    vec![DocumentMention { chunk_id: Uuid::nil(), stock_id: "DEMO-FRUIT".into(), start_offset: 3, end_offset: 12 }],
+)]
 #[tokio::test]
-async fn record_keeps_only_the_longest_overlapping_name(harness: Harness) {
-    harness.repository.set_stocks(vec![
-        RegisteredStock {
-            id: "DEMO-SHORT".into(),
-            name: "デモ".into(),
-        },
-        RegisteredStock {
-            id: "DEMO-LONG".into(),
-            name: "デモ不動産".into(),
-        },
-    ]);
-
+async fn record_keeps_only_the_longest_overlapping_name(
+    harness: Harness,
+    #[case] stocks: Vec<RegisteredStock>,
+    #[case] body: &str,
+    #[case] expected: Vec<DocumentMention>,
+) {
+    harness.repository.set_stocks(stocks);
     let mentions = harness
         .use_cases
-        .record(&[document_chunk(Uuid::nil(), 0, "デモ不動産は")])
+        .record(&[document_chunk(Uuid::nil(), 0, body)])
         .await
         .expect("document mentions are recorded");
 
-    assert_eq!(
-        mentions,
-        vec![DocumentMention {
-            chunk_id: Uuid::nil(),
-            stock_id: "DEMO-LONG".into(),
-            start_offset: 0,
-            end_offset: 15,
-        }],
-    );
+    assert_eq!(mentions, expected);
 }
 
 #[rstest]
@@ -355,21 +410,11 @@ async fn record_replaces_mentions_when_registered_names_change(harness: Harness)
         .record(&[chunk])
         .await
         .expect("repeated mention recording succeeds");
-    let replacements = harness
-        .repository
-        .replacements
-        .lock()
-        .expect("replacement lock is available")
-        .iter()
-        .map(|replacement| (replacement.chunk_ids.clone(), replacement.mentions.clone()))
-        .collect::<Vec<_>>();
-
     assert_eq!(
         (
             first,
             second,
-            replacements,
-            transaction_flow_matches(&harness.repository, &harness.unit_of_work).await,
+            repository_flow(&harness.repository, &harness.unit_of_work).await,
         ),
         (
             vec![DocumentMention {
@@ -379,19 +424,53 @@ async fn record_replaces_mentions_when_registered_names_change(harness: Harness)
                 end_offset: 14,
             }],
             Vec::new(),
-            vec![
-                (
-                    vec![Uuid::nil()],
-                    vec![DocumentMention {
-                        chunk_id: Uuid::nil(),
-                        stock_id: "DEMO-1".into(),
-                        start_offset: 0,
-                        end_offset: 14,
-                    }],
-                ),
-                (vec![Uuid::nil()], Vec::new()),
-            ],
-            true,
+            RepositoryFlow {
+                calls: vec![
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::LockChunksForUpdate,
+                        transaction_index: 0,
+                        chunk_ids: vec![Uuid::nil()],
+                        mentions: Vec::new(),
+                    },
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::FindRegisteredStocks,
+                        transaction_index: 0,
+                        chunk_ids: Vec::new(),
+                        mentions: Vec::new(),
+                    },
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::ReplaceMentions,
+                        transaction_index: 0,
+                        chunk_ids: vec![Uuid::nil()],
+                        mentions: vec![DocumentMention {
+                            chunk_id: Uuid::nil(),
+                            stock_id: "DEMO-1".into(),
+                            start_offset: 0,
+                            end_offset: 14,
+                        }],
+                    },
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::LockChunksForUpdate,
+                        transaction_index: 1,
+                        chunk_ids: vec![Uuid::nil()],
+                        mentions: Vec::new(),
+                    },
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::FindRegisteredStocks,
+                        transaction_index: 1,
+                        chunk_ids: Vec::new(),
+                        mentions: Vec::new(),
+                    },
+                    ExpectedRepositoryCall {
+                        operation: RepositoryOperation::ReplaceMentions,
+                        transaction_index: 1,
+                        chunk_ids: vec![Uuid::nil()],
+                        mentions: Vec::new(),
+                    },
+                ],
+                begun_transactions: vec![0, 1],
+                committed_transactions: vec![0, 1],
+            },
         ),
     );
 }
