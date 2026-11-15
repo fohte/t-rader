@@ -16,6 +16,9 @@ pub struct Model {
     pub end_offset: i32,
     #[sea_orm(column_type = "Text")]
     pub body: String,
+    #[sea_orm(column_type = "Text")]
+    pub search_text: String,
+    pub search_terms: Vec<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

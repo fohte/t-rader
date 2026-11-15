@@ -302,3 +302,80 @@ ANALYZE stock_group;
 ANALYZE stock_group_member;
 ANALYZE indicator;
 ANALYZE indicator_observation;
+
+INSERT INTO stock (id, name, product_category)
+VALUES ('demo-code', 'Synthetic organization', 'synthetic')
+ON CONFLICT (id) DO NOTHING;
+
+WITH synthetic_documents AS (
+    SELECT number,
+           md5('synthetic-document-' || number)::uuid AS document_id,
+           'DOC-' || lpad(number::text, 5, '0') AS source_document_id,
+           CASE
+               WHEN number % 97 = 0
+                   THEN 'record ' || number || ' synthetic phrase sample'
+               ELSE 'record ' || number || ' general content sample'
+           END AS body
+    FROM generate_series(1, 5000) AS series(number)
+)
+INSERT INTO document (
+    id,
+    source,
+    source_document_id,
+    stock_id,
+    source_issuer_code,
+    title,
+    published_at
+)
+SELECT document_id,
+       'synthetic-perf',
+       source_document_id,
+       'demo-code',
+       'synthetic-issuer',
+       'Synthetic document ' || number,
+       now() - number * INTERVAL '1 day'
+FROM synthetic_documents;
+
+INSERT INTO document_version (id, document_id, content_hash, retrieved_at, body)
+SELECT md5('synthetic-version-' || document.source_document_id)::uuid,
+       document.id,
+       md5(document.source_document_id),
+       document.published_at,
+       CASE
+           WHEN substring(document.source_document_id FROM 5)::integer % 97 = 0
+               THEN 'record ' || substring(document.source_document_id FROM 5)::integer || ' synthetic phrase sample'
+           ELSE 'record ' || substring(document.source_document_id FROM 5)::integer || ' general content sample'
+       END
+FROM document
+WHERE document.source = 'synthetic-perf';
+
+INSERT INTO document_chunk (
+    id,
+    version_id,
+    sequence,
+    start_offset,
+    end_offset,
+    body,
+    search_text,
+    search_terms
+)
+SELECT md5('synthetic-chunk-' || document.source_document_id)::uuid,
+       document_version.id,
+       0,
+       0,
+       octet_length(document_version.body),
+       document_version.body,
+       lower(document_version.body),
+       CASE
+           WHEN document_version.body LIKE '%synthetic phrase%'
+               THEN ARRAY['as', 'et', 'he', 'hr', 'ic', 'nt', 'ph', 'ra', 'se', 'sy', 'th', 'ti', 'yn']
+           ELSE ARRAY['co', 'en', 'er', 'ge', 'ne', 'on', 'te', 'tu', 'ur', 'xt']
+       END
+FROM document
+JOIN document_version ON document_version.document_id = document.id
+WHERE document.source = 'synthetic-perf';
+
+ANALYZE document;
+ANALYZE document_version;
+ANALYZE document_chunk;
+ANALYZE stock;
