@@ -300,16 +300,22 @@ async fn record_rejects_matches_that_end_before_a_combining_mark(
 }
 
 #[rstest]
+#[case::match_ends_inside_decomposed_source("デモ株式", "デモ㍿")]
+#[case::match_starts_inside_decomposed_source("会社", "㍿")]
 #[tokio::test]
-async fn record_rejects_matches_that_end_inside_a_decomposed_character(harness: Harness) {
+async fn record_rejects_matches_that_start_or_end_inside_a_decomposed_character(
+    harness: Harness,
+    #[case] stock_name: &str,
+    #[case] body: &str,
+) {
     harness.repository.set_stocks(vec![RegisteredStock {
         id: "DEMO-1".into(),
-        name: "デモ株式".into(),
+        name: stock_name.into(),
     }]);
 
     let mentions = harness
         .use_cases
-        .record(&[document_chunk(Uuid::nil(), 0, "デモ㍿")])
+        .record(&[document_chunk(Uuid::nil(), 0, body)])
         .await
         .expect("document mentions are recorded");
 
