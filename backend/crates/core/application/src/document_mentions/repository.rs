@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::persistence::PersistenceError;
+use crate::unit_of_work::UnitOfWorkTransaction;
 
 use super::types::DocumentMention;
 
@@ -15,16 +16,21 @@ pub struct RegisteredStock {
 pub enum DocumentMentionRepositoryError {
     #[error(transparent)]
     Persistence(#[from] PersistenceError),
+    #[error("transaction has an unexpected type")]
+    InvalidTransaction,
 }
 
 #[async_trait]
 pub trait DocumentMentionRepository: Send + Sync {
     async fn find_registered_stocks(
         &self,
+        transaction: &UnitOfWorkTransaction,
     ) -> Result<Vec<RegisteredStock>, DocumentMentionRepositoryError>;
 
-    async fn save_mentions(
+    async fn replace_mentions(
         &self,
+        transaction: &UnitOfWorkTransaction,
+        chunk_ids: Vec<uuid::Uuid>,
         mentions: Vec<DocumentMention>,
     ) -> Result<(), DocumentMentionRepositoryError>;
 }

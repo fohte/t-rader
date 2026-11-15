@@ -7,8 +7,9 @@ use super::UseCases;
 
 impl UseCases {
     pub fn document_mentions(&self) -> DocumentMentionUseCases {
-        DocumentMentionUseCases::new(Arc::new(PostgresDocumentMentionRepository::new(
-            self.db.clone(),
-        )))
+        DocumentMentionUseCases::new(
+            self.unit_of_work.clone(),
+            Arc::new(PostgresDocumentMentionRepository::new()),
+        )
     }
 }

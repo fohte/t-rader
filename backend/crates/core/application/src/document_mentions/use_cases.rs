@@ -3,6 +3,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::document_storage::DocumentChunk;
+use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkError};
 
 use super::matcher::{ChunkText, InvalidOffset, find_mentions};
 use super::{DocumentMention, DocumentMentionRepository, DocumentMentionRepositoryError};
@@ -11,17 +12,26 @@ use super::{DocumentMention, DocumentMentionRepository, DocumentMentionRepositor
 pub enum DocumentMentionUseCasesError {
     #[error(transparent)]
     Repository(#[from] DocumentMentionRepositoryError),
+    #[error(transparent)]
+    UnitOfWork(#[from] UnitOfWorkError),
     #[error("文書片の byte offset を銘柄 mention の範囲に変換できません")]
     InvalidOffset,
 }
 
 pub struct DocumentMentionUseCases {
+    unit_of_work: SharedUnitOfWork,
     repository: Arc<dyn DocumentMentionRepository>,
 }
 
 impl DocumentMentionUseCases {
-    pub fn new(repository: Arc<dyn DocumentMentionRepository>) -> Self {
-        Self { repository }
+    pub fn new(
+        unit_of_work: SharedUnitOfWork,
+        repository: Arc<dyn DocumentMentionRepository>,
+    ) -> Self {
+        Self {
+            unit_of_work,
+            repository,
+        }
     }
 
     pub async fn record(
@@ -32,7 +42,8 @@ impl DocumentMentionUseCases {
             return Ok(Vec::new());
         }
 
-        let stocks = self.repository.find_registered_stocks().await?;
+        let transaction = self.unit_of_work.begin().await?;
+        let stocks = self.repository.find_registered_stocks(&transaction).await?;
         let chunk_texts = chunks
             .iter()
             .map(|chunk| ChunkText {
@@ -43,9 +54,11 @@ impl DocumentMentionUseCases {
             .collect::<Vec<_>>();
         let mentions = find_mentions(&chunk_texts, &stocks)
             .map_err(|InvalidOffset| DocumentMentionUseCasesError::InvalidOffset)?;
-        if !mentions.is_empty() {
-            self.repository.save_mentions(mentions.clone()).await?;
-        }
+        let chunk_ids = chunks.iter().map(|chunk| chunk.id).collect();
+        self.repository
+            .replace_mentions(&transaction, chunk_ids, mentions.clone())
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
         Ok(mentions)
     }
 }

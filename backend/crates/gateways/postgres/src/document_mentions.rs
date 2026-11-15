@@ -2,23 +2,23 @@ use async_trait::async_trait;
 use core_application::document_mentions::{
     DocumentMention, DocumentMentionRepository, DocumentMentionRepositoryError, RegisteredStock,
 };
+use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, DatabaseTransaction, EntityTrait, Iterable, QueryFilter, QueryOrder, QuerySelect,
+};
 use uuid::Uuid;
 
-use crate::DatabaseHandle;
 use crate::entities::{document_chunk_mention, stock};
 use crate::persistence::persistence_error;
 
-#[derive(Clone)]
-pub struct PostgresDocumentMentionRepository {
-    db: DatabaseHandle,
-}
+#[derive(Clone, Default)]
+pub struct PostgresDocumentMentionRepository;
 
 impl PostgresDocumentMentionRepository {
-    pub fn new(db: DatabaseHandle) -> Self {
-        Self { db }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -26,13 +26,15 @@ impl PostgresDocumentMentionRepository {
 impl DocumentMentionRepository for PostgresDocumentMentionRepository {
     async fn find_registered_stocks(
         &self,
+        transaction: &UnitOfWorkTransaction,
     ) -> Result<Vec<RegisteredStock>, DocumentMentionRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
         stock::Entity::find()
             .select_only()
             .columns([stock::Column::Id, stock::Column::Name])
             .order_by_asc(stock::Column::Id)
             .into_tuple::<(String, String)>()
-            .all(&self.db)
+            .all(transaction)
             .await
             .map(|stocks| {
                 stocks
@@ -43,37 +45,61 @@ impl DocumentMentionRepository for PostgresDocumentMentionRepository {
             .map_err(repository_error)
     }
 
-    async fn save_mentions(
+    async fn replace_mentions(
         &self,
+        transaction: &UnitOfWorkTransaction,
+        chunk_ids: Vec<Uuid>,
         mentions: Vec<DocumentMention>,
     ) -> Result<(), DocumentMentionRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        if !chunk_ids.is_empty() {
+            document_chunk_mention::Entity::delete_many()
+                .filter(document_chunk_mention::Column::ChunkId.is_in(chunk_ids))
+                .exec(transaction)
+                .await
+                .map_err(repository_error)?;
+        }
         if mentions.is_empty() {
             return Ok(());
         }
-        document_chunk_mention::Entity::insert_many(mentions.into_iter().map(|mention| {
-            document_chunk_mention::ActiveModel {
+
+        let active_models = mentions
+            .into_iter()
+            .map(|mention| document_chunk_mention::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 chunk_id: Set(mention.chunk_id),
                 stock_id: Set(mention.stock_id),
                 start_offset: Set(mention.start_offset),
                 end_offset: Set(mention.end_offset),
-            }
-        }))
-        .on_conflict(
-            OnConflict::columns([
-                document_chunk_mention::Column::ChunkId,
-                document_chunk_mention::Column::StockId,
-                document_chunk_mention::Column::StartOffset,
-                document_chunk_mention::Column::EndOffset,
-            ])
-            .do_nothing()
-            .to_owned(),
-        )
-        .exec_without_returning(&self.db)
-        .await
-        .map(|_| ())
-        .map_err(repository_error)
+            })
+            .collect::<Vec<_>>();
+        let columns_per_row = document_chunk_mention::Column::iter().count();
+        let chunk_size = crate::repositories::max_rows_per_statement(columns_per_row);
+        for chunk in active_models.chunks(chunk_size) {
+            document_chunk_mention::Entity::insert_many(chunk.to_vec())
+                .on_conflict(
+                    OnConflict::columns([
+                        document_chunk_mention::Column::ChunkId,
+                        document_chunk_mention::Column::StockId,
+                        document_chunk_mention::Column::StartOffset,
+                        document_chunk_mention::Column::EndOffset,
+                    ])
+                    .do_nothing()
+                    .to_owned(),
+                )
+                .exec_without_returning(transaction)
+                .await
+                .map_err(repository_error)?;
+        }
+        Ok(())
     }
+}
+
+fn transaction_ref(
+    transaction: &UnitOfWorkTransaction,
+) -> Result<&DatabaseTransaction, DocumentMentionRepositoryError> {
+    crate::transaction::transaction_ref(transaction)
+        .ok_or(DocumentMentionRepositoryError::InvalidTransaction)
 }
 
 fn repository_error(error: sea_orm::DbErr) -> DocumentMentionRepositoryError {
@@ -88,15 +114,18 @@ mod tests {
     )]
 
     use chrono::{DateTime, FixedOffset, Utc};
-    use core_application::document_mentions::{DocumentMention, DocumentMentionRepository};
+    use core_application::document_mentions::{
+        DocumentMention, DocumentMentionRepository, RegisteredStock,
+    };
+    use core_application::unit_of_work::UnitOfWork;
     use sea_orm::ActiveValue::Set;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
     use uuid::Uuid;
 
-    use crate::DatabaseHandle;
     use crate::entities::{
         document, document_chunk, document_chunk_mention, document_version, stock,
     };
+    use crate::{DatabaseHandle, unit_of_work::PostgresUnitOfWork};
 
     use super::PostgresDocumentMentionRepository;
 
@@ -104,8 +133,24 @@ mod tests {
         DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
     }
 
+    async fn mentions_for_chunk(db: &DatabaseHandle, chunk_id: Uuid) -> Vec<(String, i32, i32)> {
+        document_chunk_mention::Entity::find()
+            .filter(document_chunk_mention::Column::ChunkId.eq(chunk_id))
+            .order_by_asc(document_chunk_mention::Column::StartOffset)
+            .select_only()
+            .columns([
+                document_chunk_mention::Column::StockId,
+                document_chunk_mention::Column::StartOffset,
+                document_chunk_mention::Column::EndOffset,
+            ])
+            .into_tuple::<(String, i32, i32)>()
+            .all(db)
+            .await
+            .expect("mention query succeeds")
+    }
+
     #[backend_test_macros::database_test]
-    async fn repository_saves_mentions_once_separate_from_issuer_stock(db: DatabaseHandle) {
+    async fn repository_replaces_mentions_separate_from_issuer_stock(db: DatabaseHandle) {
         let issuer_id = format!("TEST-ISSUER-{}", Uuid::new_v4());
         let mentioned_id = format!("TEST-MENTIONED-{}", Uuid::new_v4());
         let document_id = Uuid::new_v4();
@@ -171,61 +216,84 @@ mod tests {
         .await
         .expect("insert test document chunk");
 
-        let repository = PostgresDocumentMentionRepository::new(db.clone());
-        let mention = DocumentMention {
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let repository = PostgresDocumentMentionRepository::new();
+        let first_mention = DocumentMention {
             chunk_id,
             stock_id: mentioned_id.clone(),
             start_offset: 0,
             end_offset: 27,
         };
-        repository
-            .save_mentions(vec![mention.clone()])
-            .await
-            .expect("first mention save succeeds");
-        repository
-            .save_mentions(vec![mention])
-            .await
-            .expect("repeated mention save succeeds");
-
+        let transaction = unit_of_work.begin().await.expect("transaction begins");
         let registered_stocks = repository
-            .find_registered_stocks()
+            .find_registered_stocks(&transaction)
             .await
             .expect("registered stocks query succeeds");
+        repository
+            .replace_mentions(&transaction, vec![chunk_id], vec![first_mention])
+            .await
+            .expect("first mention replacement succeeds");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("transaction commits");
+
+        let updated_mention = DocumentMention {
+            chunk_id,
+            stock_id: mentioned_id.clone(),
+            start_offset: 1,
+            end_offset: 27,
+        };
+        let transaction = unit_of_work.begin().await.expect("transaction begins");
+        repository
+            .replace_mentions(&transaction, vec![chunk_id], vec![updated_mention])
+            .await
+            .expect("updated mention replacement succeeds");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("transaction commits");
+        let updated_mentions = mentions_for_chunk(&db, chunk_id).await;
+
+        let transaction = unit_of_work.begin().await.expect("transaction begins");
+        repository
+            .replace_mentions(&transaction, vec![chunk_id], Vec::new())
+            .await
+            .expect("empty mention replacement succeeds");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("transaction commits");
+
         let issuer_stock_id = document::Entity::find_by_id(document_id)
             .one(&db)
             .await
             .expect("document query succeeds")
             .expect("document exists")
             .stock_id;
-        let mentions = document_chunk_mention::Entity::find()
-            .filter(document_chunk_mention::Column::ChunkId.eq(chunk_id))
-            .order_by_asc(document_chunk_mention::Column::StartOffset)
-            .select_only()
-            .columns([
-                document_chunk_mention::Column::StockId,
-                document_chunk_mention::Column::StartOffset,
-                document_chunk_mention::Column::EndOffset,
-            ])
-            .into_tuple::<(String, i32, i32)>()
-            .all(&db)
-            .await
-            .expect("mention query succeeds");
+        let mentions = mentions_for_chunk(&db, chunk_id).await;
 
         assert_eq!(
-            (registered_stocks, issuer_stock_id, mentions),
+            (
+                registered_stocks,
+                issuer_stock_id,
+                updated_mentions,
+                mentions
+            ),
             (
                 vec![
-                    core_application::document_mentions::RegisteredStock {
+                    RegisteredStock {
                         id: issuer_id.clone(),
                         name: "Synthetic Issuer".into(),
                     },
-                    core_application::document_mentions::RegisteredStock {
+                    RegisteredStock {
                         id: mentioned_id.clone(),
                         name: "Synthetic Mentioned Company".into(),
                     },
                 ],
                 Some(issuer_id),
-                vec![(mentioned_id, 0, 27)],
+                vec![(mentioned_id, 1, 27)],
+                Vec::<(String, i32, i32)>::new(),
             ),
         );
     }
