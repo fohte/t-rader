@@ -82,6 +82,9 @@
 | [public.calendar_event_macro_reference_check](public.calendar_event_macro_reference_check.md)   | 2       | 経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。                                                   | BASE TABLE        |
 | [public.us_stock_minute_bar_downsample_cursor](public.us_stock_minute_bar_downsample_cursor.md) | 2       | 米国株の 1 分足 downsample の再開位置を保持する。                                                                                                  | BASE TABLE        |
 | [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
+| [public.document](public.document.md)                                                           | 9       | 資料源に依存しない公開文書の識別情報を保持する。                                                                                                   | BASE TABLE        |
+| [public.document_version](public.document_version.md)                                           | 6       | 公開文書の取得時点ごとの原文を保持する。                                                                                                           | BASE TABLE        |
+| [public.document_chunk](public.document_chunk.md)                                               | 6       | 原文のバージョンに属する順序付き文書片を保持する。                                                                                                 | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -262,6 +265,9 @@ erDiagram
 "public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 "public.calendar_event_sec_filing_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 "public.calendar_event_macro_reference_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
+"public.document" }o--o| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE SET NULL"
+"public.document_version" }o--|| "public.document" : "FOREIGN KEY (document_id) REFERENCES document(id) ON DELETE CASCADE"
+"public.document_chunk" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -1041,6 +1047,33 @@ erDiagram
   text key
   text display_name
   text description
+}
+"public.document" {
+  uuid id
+  text source
+  text source_document_id
+  text stock_id FK
+  text source_issuer_code
+  text title
+  timestamp_with_time_zone published_at
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.document_version" {
+  uuid id
+  uuid document_id FK
+  varchar_64_ content_hash
+  timestamp_with_time_zone retrieved_at
+  text body
+  timestamp_with_time_zone created_at
+}
+"public.document_chunk" {
+  uuid id
+  uuid version_id FK
+  integer sequence
+  integer start_offset
+  integer end_offset
+  text body
 }
 ```
 

@@ -1,0 +1,416 @@
+use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset};
+use core_application::document_storage::{
+    Document, DocumentChunk, DocumentChunkInput, DocumentMetadata, DocumentSnapshot,
+    DocumentStorageRepository, DocumentStorageRepositoryError, DocumentVersion,
+};
+use core_application::unit_of_work::UnitOfWorkTransaction;
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use uuid::Uuid;
+
+use crate::DatabaseHandle;
+use crate::entities::{document, document_chunk, document_version};
+use crate::persistence::persistence_error;
+
+#[derive(Clone)]
+pub struct PostgresDocumentStorageRepository {
+    db: DatabaseHandle,
+}
+
+impl PostgresDocumentStorageRepository {
+    pub fn new(db: DatabaseHandle) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait]
+impl DocumentStorageRepository for PostgresDocumentStorageRepository {
+    async fn save(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        metadata: DocumentMetadata,
+        content_hash: String,
+        retrieved_at: DateTime<FixedOffset>,
+        body: String,
+        chunks: Vec<DocumentChunkInput>,
+    ) -> Result<DocumentSnapshot, DocumentStorageRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let document_id = Uuid::new_v4();
+        let document_row = document::Entity::insert(document::ActiveModel {
+            id: Set(document_id),
+            source: Set(metadata.source.clone()),
+            source_document_id: Set(metadata.source_document_id.clone()),
+            stock_id: metadata
+                .stock_id
+                .clone()
+                .map_or(Set(None), |id| Set(Some(id))),
+            source_issuer_code: Set(metadata.source_issuer_code.clone()),
+            title: Set(metadata.title.clone()),
+            published_at: Set(metadata.published_at),
+            created_at: NotSet,
+            updated_at: NotSet,
+        })
+        .on_conflict(
+            OnConflict::columns([document::Column::Source, document::Column::SourceDocumentId])
+                .update_columns([
+                    document::Column::StockId,
+                    document::Column::SourceIssuerCode,
+                    document::Column::Title,
+                    document::Column::PublishedAt,
+                    document::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec_with_returning(transaction)
+        .await
+        .map_err(repository_error)?;
+
+        document_version::Entity::insert(document_version::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            document_id: Set(document_row.id),
+            content_hash: Set(content_hash.clone()),
+            retrieved_at: Set(retrieved_at),
+            body: Set(body),
+            created_at: NotSet,
+        })
+        .on_conflict(
+            OnConflict::columns([
+                document_version::Column::DocumentId,
+                document_version::Column::ContentHash,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_without_returning(transaction)
+        .await
+        .map_err(repository_error)?;
+
+        let version_row = document_version::Entity::find()
+            .filter(document_version::Column::DocumentId.eq(document_row.id))
+            .filter(document_version::Column::ContentHash.eq(content_hash))
+            .one(transaction)
+            .await
+            .map_err(repository_error)?
+            .ok_or_else(|| {
+                DocumentStorageRepositoryError::Persistence(
+                    core_application::persistence::PersistenceError::Database(
+                        "document version was not returned after upsert".to_owned(),
+                    ),
+                )
+            })?;
+
+        document_chunk::Entity::delete_many()
+            .filter(document_chunk::Column::VersionId.eq(version_row.id))
+            .exec(transaction)
+            .await
+            .map_err(repository_error)?;
+        if !chunks.is_empty() {
+            document_chunk::Entity::insert_many(chunks.into_iter().map(|chunk| {
+                document_chunk::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    version_id: Set(version_row.id),
+                    sequence: Set(chunk.sequence),
+                    start_offset: Set(chunk.start_offset),
+                    end_offset: Set(chunk.end_offset),
+                    body: Set(chunk.body),
+                }
+            }))
+            .exec_without_returning(transaction)
+            .await
+            .map_err(repository_error)?;
+        }
+        let chunk_rows = document_chunk::Entity::find()
+            .filter(document_chunk::Column::VersionId.eq(version_row.id))
+            .order_by_asc(document_chunk::Column::Sequence)
+            .all(transaction)
+            .await
+            .map_err(repository_error)?;
+        Ok(DocumentSnapshot {
+            document: to_document(document_row),
+            version: to_version(version_row),
+            chunks: chunk_rows.into_iter().map(to_chunk).collect(),
+        })
+    }
+
+    async fn find_latest_as_of(
+        &self,
+        source: &str,
+        source_document_id: &str,
+        as_of: DateTime<FixedOffset>,
+    ) -> Result<Option<DocumentSnapshot>, DocumentStorageRepositoryError> {
+        let Some(document_row) = document::Entity::find()
+            .filter(document::Column::Source.eq(source))
+            .filter(document::Column::SourceDocumentId.eq(source_document_id))
+            .one(&self.db)
+            .await
+            .map_err(repository_error)?
+        else {
+            return Ok(None);
+        };
+        let Some(version_row) = document_version::Entity::find()
+            .filter(document_version::Column::DocumentId.eq(document_row.id))
+            .filter(document_version::Column::RetrievedAt.lte(as_of))
+            .order_by_desc(document_version::Column::RetrievedAt)
+            .order_by_desc(document_version::Column::Id)
+            .one(&self.db)
+            .await
+            .map_err(repository_error)?
+        else {
+            return Ok(None);
+        };
+        let chunk_rows = document_chunk::Entity::find()
+            .filter(document_chunk::Column::VersionId.eq(version_row.id))
+            .order_by_asc(document_chunk::Column::Sequence)
+            .all(&self.db)
+            .await
+            .map_err(repository_error)?;
+        Ok(Some(DocumentSnapshot {
+            document: to_document(document_row),
+            version: to_version(version_row),
+            chunks: chunk_rows.into_iter().map(to_chunk).collect(),
+        }))
+    }
+}
+
+fn to_document(row: document::Model) -> Document {
+    Document {
+        id: row.id,
+        metadata: DocumentMetadata {
+            source: row.source,
+            source_document_id: row.source_document_id,
+            stock_id: row.stock_id,
+            source_issuer_code: row.source_issuer_code,
+            title: row.title,
+            published_at: row.published_at,
+        },
+    }
+}
+
+fn to_version(row: document_version::Model) -> DocumentVersion {
+    DocumentVersion {
+        id: row.id,
+        document_id: row.document_id,
+        content_hash: row.content_hash,
+        retrieved_at: row.retrieved_at,
+        body: row.body,
+    }
+}
+
+fn to_chunk(row: document_chunk::Model) -> DocumentChunk {
+    DocumentChunk {
+        id: row.id,
+        version_id: row.version_id,
+        sequence: row.sequence,
+        start_offset: row.start_offset,
+        end_offset: row.end_offset,
+        body: row.body,
+    }
+}
+
+fn transaction_ref(
+    transaction: &UnitOfWorkTransaction,
+) -> Result<&sea_orm::DatabaseTransaction, DocumentStorageRepositoryError> {
+    transaction
+        .downcast_ref::<sea_orm::DatabaseTransaction>()
+        .ok_or(DocumentStorageRepositoryError::InvalidTransaction)
+}
+
+fn repository_error(error: sea_orm::DbErr) -> DocumentStorageRepositoryError {
+    DocumentStorageRepositoryError::Persistence(persistence_error(error))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        reason = "DB テストの準備が失敗した場合に原因を表示するため"
+    )]
+
+    use chrono::{DateTime, Duration, FixedOffset, Utc};
+    use core_application::document_storage::{
+        Document, DocumentChunk, DocumentChunkInput, DocumentMetadata, DocumentSnapshot,
+        DocumentStorageRepository, DocumentVersion,
+    };
+    use core_application::unit_of_work::UnitOfWork;
+    use uuid::Uuid;
+
+    use crate::{DatabaseHandle, unit_of_work::PostgresUnitOfWork};
+
+    use super::PostgresDocumentStorageRepository;
+
+    fn timestamp() -> DateTime<FixedOffset> {
+        DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
+    }
+
+    fn metadata() -> DocumentMetadata {
+        DocumentMetadata {
+            source: "archive-example".into(),
+            source_document_id: "DOC-42".into(),
+            stock_id: None,
+            source_issuer_code: "ISSUER-42".into(),
+            title: "Synthetic notice".into(),
+            published_at: timestamp(),
+        }
+    }
+
+    fn chunk(body: &str) -> DocumentChunkInput {
+        DocumentChunkInput {
+            sequence: 0,
+            start_offset: 0,
+            end_offset: i32::try_from(body.len()).expect("body length fits in an integer"),
+            body: body.to_owned(),
+        }
+    }
+
+    fn normalize(mut snapshot: DocumentSnapshot) -> DocumentSnapshot {
+        snapshot.document.id = Uuid::nil();
+        snapshot.version.id = Uuid::nil();
+        snapshot.version.document_id = Uuid::nil();
+        for chunk in &mut snapshot.chunks {
+            chunk.id = Uuid::nil();
+            chunk.version_id = Uuid::nil();
+        }
+        snapshot
+    }
+
+    fn expected_snapshot(
+        body: &str,
+        content_hash: &str,
+        retrieved_at: DateTime<FixedOffset>,
+    ) -> DocumentSnapshot {
+        DocumentSnapshot {
+            document: Document {
+                id: Uuid::nil(),
+                metadata: metadata(),
+            },
+            version: DocumentVersion {
+                id: Uuid::nil(),
+                document_id: Uuid::nil(),
+                content_hash: content_hash.into(),
+                retrieved_at,
+                body: body.into(),
+            },
+            chunks: vec![DocumentChunk {
+                id: Uuid::nil(),
+                version_id: Uuid::nil(),
+                sequence: 0,
+                start_offset: 0,
+                end_offset: i32::try_from(body.len()).expect("body length fits in an integer"),
+                body: body.into(),
+            }],
+        }
+    }
+
+    async fn save(
+        repository: &PostgresDocumentStorageRepository,
+        unit_of_work: &PostgresUnitOfWork,
+        metadata: DocumentMetadata,
+        retrieved_at: DateTime<FixedOffset>,
+        body: &str,
+        content_hash: &str,
+    ) -> DocumentSnapshot {
+        let transaction = unit_of_work.begin().await.expect("transaction begins");
+        let snapshot = repository
+            .save(
+                &transaction,
+                metadata,
+                content_hash.to_owned(),
+                retrieved_at,
+                body.to_owned(),
+                vec![chunk(body)],
+            )
+            .await
+            .expect("document snapshot saves");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("transaction commits");
+        snapshot
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_deduplicates_content_and_reads_version_as_of(db: DatabaseHandle) {
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let repository = PostgresDocumentStorageRepository::new(db);
+        let first_body = "alpha beta";
+        let changed_body = "alpha gamma";
+        let first_hash = "a".repeat(64);
+        let changed_hash = "b".repeat(64);
+        let first = save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp(),
+            first_body,
+            &first_hash,
+        )
+        .await;
+        let repeated = save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp() + Duration::hours(2),
+            first_body,
+            &first_hash,
+        )
+        .await;
+        let changed = save(
+            &repository,
+            &unit_of_work,
+            metadata(),
+            timestamp() + Duration::hours(3),
+            changed_body,
+            &changed_hash,
+        )
+        .await;
+        let before_change = repository
+            .find_latest_as_of(
+                "archive-example",
+                "DOC-42",
+                timestamp() + Duration::hours(1),
+            )
+            .await
+            .expect("version lookup succeeds");
+        let after_change = repository
+            .find_latest_as_of(
+                "archive-example",
+                "DOC-42",
+                timestamp() + Duration::hours(4),
+            )
+            .await
+            .expect("version lookup succeeds");
+        let repeated_content_reuses_id = first.version.id == repeated.version.id;
+        let changed_content_has_new_id = first.version.id != changed.version.id;
+
+        assert_eq!(
+            (
+                normalize(first),
+                normalize(repeated),
+                normalize(changed),
+                repeated_content_reuses_id,
+                changed_content_has_new_id,
+                before_change.map(normalize),
+                after_change.map(normalize),
+            ),
+            (
+                expected_snapshot(first_body, &first_hash, timestamp()),
+                expected_snapshot(first_body, &first_hash, timestamp()),
+                expected_snapshot(
+                    changed_body,
+                    &changed_hash,
+                    timestamp() + Duration::hours(3)
+                ),
+                true,
+                true,
+                Some(expected_snapshot(first_body, &first_hash, timestamp())),
+                Some(expected_snapshot(
+                    changed_body,
+                    &changed_hash,
+                    timestamp() + Duration::hours(3)
+                )),
+            ),
+        );
+    }
+}
