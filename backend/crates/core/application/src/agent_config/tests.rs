@@ -301,6 +301,7 @@ fn snapshot(
     agents_md: &str,
     skills: serde_json::Value,
     agent_graph: &str,
+    agent_session: &str,
 ) -> serde_json::Value {
     json!({
         "id": id,
@@ -308,7 +309,7 @@ fn snapshot(
         "agents_md": agents_md,
         "skills": skills,
         "agent_graph": agent_graph,
-        "agent_session": "",
+        "agent_session": agent_session,
     })
 }
 
@@ -342,7 +343,7 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
         .await
         .expect("create config");
     let id = created.id;
-    let initial = snapshot(id, "example-purpose", "", json!({}), "");
+    let initial = snapshot(id, "example-purpose", "", json!({}), "", "");
 
     let agents_md = indoc::indoc! {"
         First fabricated line.
@@ -353,7 +354,7 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
         .save_agents_md("example-purpose", agents_md.to_string())
         .await
         .expect("save agents_md");
-    let with_agents_md = snapshot(id, "example-purpose", agents_md, json!({}), "");
+    let with_agents_md = snapshot(id, "example-purpose", agents_md, json!({}), "", "");
 
     let first_skill_content = indoc::indoc! {"
         First skill line.
@@ -373,6 +374,7 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
         "example-purpose",
         agents_md,
         json!({ "first_skill": first_skill_content }),
+        "",
         "",
     );
 
@@ -394,6 +396,7 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
             "second_skill": "second fabricated content",
         }),
         "",
+        "",
     );
 
     fixture
@@ -406,6 +409,7 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
         "example-purpose",
         agents_md,
         json!({ "second_skill": "second fabricated content" }),
+        "",
         "",
     );
 
@@ -426,6 +430,7 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
         agents_md,
         json!({ "replacement_skill": "replacement fabricated content" }),
         "",
+        "",
     );
 
     fixture
@@ -433,7 +438,7 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
         .put_skills("example-purpose", BTreeMap::new())
         .await
         .expect("replace skills with an empty map");
-    let empty_skills = snapshot(id, "example-purpose", agents_md, json!({}), "");
+    let empty_skills = snapshot(id, "example-purpose", agents_md, json!({}), "", "");
 
     let agent_graph = indoc::indoc! {"
         timeout_minutes: 21
@@ -447,7 +452,24 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
         .save_agent_graph("example-purpose", agent_graph)
         .await
         .expect("save agent graph");
-    let with_graph = snapshot(id, "example-purpose", agents_md, json!({}), agent_graph);
+    let with_graph = snapshot(id, "example-purpose", agents_md, json!({}), agent_graph, "");
+
+    let agent_session = indoc::indoc! {"
+        model: demo-model
+        timeout_minutes: 30"};
+    fixture
+        .use_cases
+        .save_agent_session("example-purpose", agent_session)
+        .await
+        .expect("save agent_session");
+    let with_session = snapshot(
+        id,
+        "example-purpose",
+        agents_md,
+        json!({}),
+        agent_graph,
+        agent_session,
+    );
 
     fixture
         .use_cases
@@ -513,7 +535,13 @@ async fn all_changes_record_full_definition_snapshots(fixture: Fixture) {
                     Some(empty_skills),
                     Some(with_graph.clone()),
                 ),
-                expected_snapshot_record(Op::Delete, id, Some(with_graph), None),
+                expected_snapshot_record(
+                    Op::Update,
+                    id,
+                    Some(with_graph),
+                    Some(with_session.clone()),
+                ),
+                expected_snapshot_record(Op::Delete, id, Some(with_session), None),
             ],
             committed_transactions,
         ),

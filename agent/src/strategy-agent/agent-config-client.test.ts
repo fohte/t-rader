@@ -37,10 +37,37 @@ describe('createAgentConfigFetcher', () => {
         agentsMd: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
         agentGraph: 'phases: []',
+        agentSession: 'model: demo-model',
       }),
     )
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'http://backend/api/agent-configs/purpose-a/agent-config',
+    )
+  })
+
+  it('defaults session settings when an older backend omits them', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              agents_md: '',
+              skills: {},
+              agent_graph: '',
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    )
+
+    const result = await createAgentConfigFetcher('http://backend')({
+      purpose: 'purpose-a',
+    })
+
+    expect(result).toEqual(
+      ok({ agentsMd: '', skills: {}, agentGraph: '', agentSession: '' }),
     )
   })
 
@@ -141,6 +168,15 @@ describe('createAgentConfigFetcher', () => {
       body: {
         agents_md: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
+      },
+    },
+    {
+      name: 'agent_session is not a string',
+      body: {
+        agents_md: '# AGENTS',
+        skills: {},
+        agent_graph: '',
+        agent_session: 30,
       },
     },
   ])('returns an error when $name', async ({ body }) => {
