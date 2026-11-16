@@ -1,17 +1,12 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
 enum AgentConfig {
     Table,
     AgentSession,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261116_051316_add_agent_session"
-    }
 }
 
 #[async_trait::async_trait]
