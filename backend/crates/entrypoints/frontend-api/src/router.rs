@@ -87,6 +87,10 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
             agent_config::get_agent_graph,
             agent_config::put_agent_graph
         ))
+        .routes(routes!(
+            agent_config::get_agent_session,
+            agent_config::put_agent_session
+        ))
         .routes(routes!(agent_config::get_agent_config_bundle))
         .routes(routes!(
             subagent_definitions::list_subagent_definitions,

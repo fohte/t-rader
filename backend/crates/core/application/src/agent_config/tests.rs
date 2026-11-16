@@ -144,6 +144,7 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
             agents_md: String::new(),
             skills: json!({}),
             agent_graph: String::new(),
+            agent_session: String::new(),
             created_at: fixed_timestamp(),
             updated_at: fixed_timestamp(),
         };
@@ -210,6 +211,27 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
             );
         };
         current.agent_graph = agent_graph;
+        current.updated_at = updated_at;
+        Ok(current.clone())
+    }
+
+    async fn update_agent_session(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        agent_session: String,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError> {
+        let mut configs = self.configs();
+        let Some(current) = configs
+            .values_mut()
+            .find(|config| config.id == agent_config_id)
+        else {
+            return Err(
+                PersistenceError::RecordNotUpdated("agent_config disappeared".into()).into(),
+            );
+        };
+        current.agent_session = agent_session;
         current.updated_at = updated_at;
         Ok(current.clone())
     }
@@ -286,6 +308,7 @@ fn snapshot(
         "agents_md": agents_md,
         "skills": skills,
         "agent_graph": agent_graph,
+        "agent_session": "",
     })
 }
 
@@ -1029,6 +1052,7 @@ fn expected_config(
         agents_md: agents_md.to_string(),
         skills,
         agent_graph: agent_graph.to_string(),
+        agent_session: String::new(),
         created_at: fixed_timestamp(),
         updated_at: fixed_timestamp(),
     }

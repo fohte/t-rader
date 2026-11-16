@@ -42,7 +42,7 @@ pub mod trigger;
 pub mod widget;
 
 pub use agent_config::{
-    AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentsMdBody,
+    AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentSessionBody, AgentsMdBody,
     CreateAgentConfigRequest, SkillBody, SkillsBody,
 };
 pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};

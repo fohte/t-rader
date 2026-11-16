@@ -511,6 +511,148 @@
         }
       }
     },
+    "/api/agent-configs/{purpose}/agent-session": {
+      "get": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の session 実行設定 (YAML) を取得",
+        "operationId": "agent_config_get_agent_session",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の session 実行設定 (YAML) を上書き保存する",
+        "operationId": "agent_config_put_agent_session",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSessionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionBody"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "YAML または session 設定が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agent-configs/{purpose}/agents-md": {
       "get": {
         "tags": [
@@ -10190,11 +10332,15 @@
           "agents_md",
           "skills",
           "agent_graph",
+          "agent_session",
           "created_at",
           "updated_at"
         ],
         "properties": {
           "agent_graph": {
+            "type": "string"
+          },
+          "agent_session": {
             "type": "string"
           },
           "agents_md": {
@@ -10226,12 +10372,17 @@
         "required": [
           "agents_md",
           "skills",
-          "agent_graph"
+          "agent_graph",
+          "agent_session"
         ],
         "properties": {
           "agent_graph": {
             "type": "string",
             "description": "多段フェーズ実行設定 (YAML)。未設定なら空文字列。"
+          },
+          "agent_session": {
+            "type": "string",
+            "description": "Session 実行設定 (YAML)。未設定なら空文字列。"
           },
           "agents_md": {
             "type": "string"
@@ -10311,6 +10462,19 @@
             }
           }
         }
+      },
+      "AgentSessionBody": {
+        "type": "object",
+        "description": "目的ごとの session 実行設定 (YAML)。未設定の場合は `content` が空文字列。",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "AgentTool": {
         "type": "object",
@@ -16249,7 +16413,7 @@
     },
     {
       "name": "agent_config",
-      "description": "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"
+      "description": "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph / agent_session)"
     },
     {
       "name": "subagent_definitions",

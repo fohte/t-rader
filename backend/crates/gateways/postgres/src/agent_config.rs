@@ -89,6 +89,7 @@ impl AgentConfigRepository for PostgresAgentConfigRepository {
             agents_md: NotSet,
             skills: NotSet,
             agent_graph: NotSet,
+            agent_session: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         };
@@ -162,6 +163,27 @@ impl AgentConfigRepository for PostgresAgentConfigRepository {
             .map_err(repository_error)
     }
 
+    async fn update_agent_session(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        agent_session: String,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let model = agent_config::ActiveModel {
+            id: Unchanged(agent_config_id),
+            agent_session: Set(agent_session),
+            updated_at: Set(updated_at),
+            ..Default::default()
+        };
+        model
+            .update(transaction)
+            .await
+            .map(to_domain)
+            .map_err(repository_error)
+    }
+
     async fn delete(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -194,6 +216,7 @@ fn to_domain(model: agent_config::Model) -> AgentConfig {
         agents_md: model.agents_md,
         skills: model.skills,
         agent_graph: model.agent_graph,
+        agent_session: model.agent_session,
         created_at: model.created_at,
         updated_at: model.updated_at,
     }

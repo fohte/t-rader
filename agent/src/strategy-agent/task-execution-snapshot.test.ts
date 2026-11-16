@@ -57,6 +57,7 @@ describe('createTaskExecutionSnapshotFetcher', () => {
             agents_md: 'Synthetic agent rules',
             skills: { 'skill-synthetic': 'Synthetic skill' },
             agent_graph: 'phases: []',
+            agent_session: 'model: demo-model',
           },
           subagent_definitions: [subagentResponse],
         },

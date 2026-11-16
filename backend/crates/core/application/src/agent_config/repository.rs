@@ -58,6 +58,14 @@ pub trait AgentConfigRepository: Send + Sync {
         updated_at: DateTime<FixedOffset>,
     ) -> Result<AgentConfig, AgentConfigRepositoryError>;
 
+    async fn update_agent_session(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        agent_session: String,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError>;
+
     async fn delete(
         &self,
         transaction: &UnitOfWorkTransaction,
