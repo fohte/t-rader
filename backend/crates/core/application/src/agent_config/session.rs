@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
-pub const MAX_SESSION_TIMEOUT_MINUTES: u32 = 360;
+use super::graph::MAX_TIMEOUT_MINUTES;
+
 const MAX_MODEL_NAME_LENGTH: usize = 128;
 const MAX_INSTRUCTIONS_LENGTH: usize = 100_000;
 const MAX_TOOL_NAME_LENGTH: usize = 128;
@@ -99,7 +100,7 @@ fn validate(config: &AgentSessionConfig) -> Result<(), AgentSessionError> {
         });
     }
     if let Some(timeout) = config.timeout_minutes {
-        validate_range("timeout_minutes", timeout, 1, MAX_SESSION_TIMEOUT_MINUTES)?;
+        validate_range("timeout_minutes", timeout, 1, MAX_TIMEOUT_MINUTES)?;
     }
     if let Some(max_concurrent_subagents) = config.max_concurrent_subagents {
         validate_range(
@@ -121,10 +122,11 @@ fn validate(config: &AgentSessionConfig) -> Result<(), AgentSessionError> {
 
     validate_unique_tools("tools", &config.tools)?;
     validate_unique_tools("required_tools", &config.required_tools)?;
+    let declared_tools: BTreeSet<&str> = config.tools.iter().map(String::as_str).collect();
     if let Some(tool) = config
         .required_tools
         .iter()
-        .find(|required| !config.tools.iter().any(|declared| declared == *required))
+        .find(|required| !declared_tools.contains(required.as_str()))
     {
         return Err(AgentSessionError::RequiredToolNotDeclared(tool.clone()));
     }
@@ -245,6 +247,32 @@ mod tests {
             Err(AgentSessionError::RequiredToolNotDeclared(
                 "write_demo".to_string()
             )),
+        );
+    }
+
+    #[rstest]
+    #[case::tools(
+        indoc::indoc! {"
+            model: demo-model
+            tools: [read_demo, read_demo]
+        "},
+        "tools"
+    )]
+    #[case::required_tools(
+        indoc::indoc! {"
+            model: demo-model
+            tools: [read_demo]
+            required_tools: [read_demo, read_demo]
+        "},
+        "required_tools"
+    )]
+    fn rejects_duplicate_tools(#[case] yaml: &str, #[case] field: &str) {
+        assert_eq!(
+            parse_agent_session(yaml),
+            Err(AgentSessionError::DuplicateValue {
+                field: field.to_string(),
+                value: "read_demo".to_string(),
+            }),
         );
     }
 
