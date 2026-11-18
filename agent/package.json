@@ -37,7 +37,7 @@
     "pino": "10.3.1",
     "postgres": "3.4.9",
     "yaml": "2.9.0",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "drizzle-kit": "0.31.10",
