@@ -75,11 +75,7 @@ func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string
 	if err != nil {
 		return fmt.Errorf("send update agent graph request: %w", err)
 	}
-	if err := agentConfigResponseError(graphResponse.HTTPResponse, graphResponse.Body); err != nil {
-		return err
-	}
-
-	return nil
+	return agentConfigResponseError(graphResponse.HTTPResponse, graphResponse.Body)
 }
 
 func (c *Client) DeleteAgentConfig(ctx context.Context, purpose string) error {

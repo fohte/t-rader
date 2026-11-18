@@ -69,8 +69,9 @@ func (r *agentConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"agent_session": schema.StringAttribute{
 				Optional:            true,
+				Computed:            true,
 				Default:             stringdefault.StaticString(""),
-				MarkdownDescription: "backend に保存する session 設定の YAML。未指定時は空文字列になり、agent_graph はそのまま保持されます。",
+				MarkdownDescription: "purpose ごとの session 実行設定の YAML。未指定または空文字列で未設定になります。",
 			},
 		},
 	}
@@ -102,8 +103,6 @@ func (r *agentConfigResource) Create(ctx context.Context, req resource.CreateReq
 	if !ok {
 		return
 	}
-	plan.AgentSession = types.StringValue(plan.AgentSession.ValueString())
-
 	purpose := plan.Purpose.ValueString()
 	if err := client.CreateAgentConfig(ctx, purpose); err != nil {
 		resp.Diagnostics.AddError("Error creating agent config", err.Error())
@@ -175,8 +174,6 @@ func (r *agentConfigResource) Update(ctx context.Context, req resource.UpdateReq
 	if !ok {
 		return
 	}
-	plan.AgentSession = types.StringValue(plan.AgentSession.ValueString())
-
 	if err := client.UpdateAgentConfig(ctx, plan.Purpose.ValueString(), plan.AgentsMd.ValueString(), skills, plan.AgentGraph.ValueString(), plan.AgentSession.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error updating agent config", err.Error())
 		return
