@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.7...terraform-provider-v0.1.8) (2026-11-18)
+
+
+### Features
+
+* **terraform-provider:** agent_session を管理する ([#1067](https://github.com/fohte/t-rader/issues/1067)) ([cc9a3dd](https://github.com/fohte/t-rader/commit/cc9a3dd180c31f0719a090b803faf7f911987705))
+
 ## [0.1.7](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.6...terraform-provider-v0.1.7) (2026-11-01)
 
 
