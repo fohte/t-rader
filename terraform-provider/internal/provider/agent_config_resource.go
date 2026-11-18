@@ -70,7 +70,7 @@ func (r *agentConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"agent_session": schema.StringAttribute{
 				Optional:            true,
 				Default:             stringdefault.StaticString(""),
-				MarkdownDescription: "session 実行設定を表す YAML。未指定の場合は空文字列になり、従来の agent_graph が使われます。",
+				MarkdownDescription: "backend に保存する session 設定の YAML。未指定時は空文字列になり、agent_graph はそのまま保持されます。",
 			},
 		},
 	}
