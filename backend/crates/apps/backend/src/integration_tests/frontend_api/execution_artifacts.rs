@@ -10,7 +10,7 @@ mod tests {
     };
     use gateway_postgres::entities::{sea_orm_active_enums::StrategyTaskPhase, strategy_task};
     use indoc::indoc;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
@@ -35,6 +35,11 @@ mod tests {
             kind: operation
             operation: evaluate_saved_code
             code_id: synthetic-code-b
+    "};
+
+    const SESSION_AT_START: &str = indoc! {"
+        model: demo-model
+        timeout_minutes: 30
     "};
 
     fn normalize_definition_response(body: &mut Value) {
@@ -63,6 +68,7 @@ mod tests {
                         "agents_md": "",
                         "skills": {},
                         "agent_graph": GRAPH_AT_START,
+                        "agent_session": SESSION_AT_START,
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
                     },
@@ -124,11 +130,26 @@ mod tests {
             .put(&format!("/api/agent-configs/{DEFAULT_PURPOSE}/agent-graph"))
             .json(&json!({ "content": GRAPH_AT_START }))
             .await;
+        server
+            .put(&format!(
+                "/api/agent-configs/{DEFAULT_PURPOSE}/agent-session"
+            ))
+            .json(&json!({ "content": SESSION_AT_START }))
+            .await;
 
         let tasks = ["synthetic-task-a", "synthetic-task-b", "synthetic-task-c"];
         let mut created = Vec::new();
         for a2a_task_id in tasks {
             created.push(submit_task(&server, &fake, strategy_id, a2a_task_id).await);
+        }
+        let mut task_deadline_durations = Vec::new();
+        for (_, task_id) in &created {
+            let task = strategy_task::Entity::find_by_id(*task_id)
+                .one(&db)
+                .await
+                .expect("query task")
+                .expect("submitted task exists");
+            task_deadline_durations.push((task.deadline_at - task.created_at).num_seconds());
         }
         server
             .put(&format!("/api/agent-configs/{DEFAULT_PURPOSE}/agent-graph"))
@@ -180,8 +201,15 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            (submissions, reads, mismatch.status_code(), mismatch_body),
             (
+                task_deadline_durations,
+                submissions,
+                reads,
+                mismatch.status_code(),
+                mismatch_body,
+            ),
+            (
+                vec![Duration::minutes(15).num_seconds(); created.len()],
                 vec![
                     (StatusCode::ACCEPTED, created[0].1),
                     (StatusCode::ACCEPTED, created[1].1),

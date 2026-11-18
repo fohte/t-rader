@@ -6,6 +6,7 @@ export interface AgentConfig {
   readonly agentsMd: string
   readonly skills: Readonly<Record<string, string>>
   readonly agentGraph: string
+  readonly agentSession: string
 }
 
 class AgentConfigFetchError extends Error {
@@ -15,7 +16,10 @@ class AgentConfigFetchError extends Error {
   }
 }
 
-type AgentConfigResponseBody = components['schemas']['AgentConfigResponse']
+type AgentConfigResponseBody = Omit<
+  components['schemas']['AgentConfigResponse'],
+  'agent_session'
+> & { readonly agent_session?: string }
 
 const isRecordOfStrings = (value: unknown): value is Record<string, string> =>
   typeof value === 'object' &&
@@ -35,6 +39,8 @@ const isAgentConfigResponseBody = (
   return (
     typeof record['agents_md'] === 'string' &&
     typeof record['agent_graph'] === 'string' &&
+    (record['agent_session'] === undefined ||
+      typeof record['agent_session'] === 'string') &&
     isRecordOfStrings(record['skills'])
   )
 }
@@ -98,6 +104,7 @@ export const createAgentConfigFetcher = (
           agentsMd: body.agents_md,
           skills: body.skills,
           agentGraph: body.agent_graph,
+          agentSession: body.agent_session ?? '',
         })
       })
   }

@@ -18,6 +18,8 @@ pub struct Model {
     pub agent_graph: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "Text")]
+    pub agent_session: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

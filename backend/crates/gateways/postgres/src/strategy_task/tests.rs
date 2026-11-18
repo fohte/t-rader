@@ -112,6 +112,7 @@ async fn find_agent_graph_by_purpose_returns_matching_configuration(db: Database
             agents_md: NotSet,
             skills: NotSet,
             agent_graph: Set(agent_graph.to_string()),
+            agent_session: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }

@@ -57,6 +57,7 @@ describe('createTaskExecutionSnapshotFetcher', () => {
             agents_md: 'Synthetic agent rules',
             skills: { 'skill-synthetic': 'Synthetic skill' },
             agent_graph: 'phases: []',
+            agent_session: 'model: demo-model',
           },
           subagent_definitions: [subagentResponse],
         },
@@ -67,6 +68,7 @@ describe('createTaskExecutionSnapshotFetcher', () => {
           agentsMd: 'Synthetic agent rules',
           skills: { 'skill-synthetic': 'Synthetic skill' },
           agentGraph: 'phases: []',
+          agentSession: 'model: demo-model',
         },
         subagentDefinitions: new Map([
           ['helper-synthetic', subagentDefinition],
@@ -79,6 +81,32 @@ describe('createTaskExecutionSnapshotFetcher', () => {
     expect(
       await fetchSnapshotResponse({ definition: null, digest: null }),
     ).toEqual(ok(undefined))
+  })
+
+  it('defaults session settings when reading an older snapshot', async () => {
+    expect(
+      await fetchSnapshotResponse({
+        digest: 'synthetic-digest',
+        definition: {
+          agent_config: {
+            agents_md: '',
+            skills: {},
+            agent_graph: 'phases: []',
+          },
+          subagent_definitions: [],
+        },
+      }),
+    ).toEqual(
+      ok({
+        agentConfig: {
+          agentsMd: '',
+          skills: {},
+          agentGraph: 'phases: []',
+          agentSession: '',
+        },
+        subagentDefinitions: new Map(),
+      }),
+    )
   })
 
   it('rejects a snapshot with duplicate child definition keys', async () => {
@@ -130,7 +158,12 @@ describe('createTaskExecutionSnapshotFetcher', () => {
 
     expect(result).toEqual(
       ok({
-        agentConfig: { agentsMd: '', skills: {}, agentGraph: 'phases: []' },
+        agentConfig: {
+          agentsMd: '',
+          skills: {},
+          agentGraph: 'phases: []',
+          agentSession: '',
+        },
         subagentDefinitions: new Map(),
       }),
     )
@@ -158,6 +191,7 @@ describe('createSnapshotSubagentDefinitionFetcher', () => {
           agentsMd: '',
           skills: {},
           agentGraph: 'phases: []',
+          agentSession: '',
         },
         subagentDefinitions: new Map([
           ['helper-synthetic', subagentDefinition],

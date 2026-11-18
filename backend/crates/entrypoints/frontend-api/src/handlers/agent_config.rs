@@ -11,7 +11,7 @@ use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
-    AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentsMdBody,
+    AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentSessionBody, AgentsMdBody,
     CreateAgentConfigRequest, SkillBody, SkillsBody,
 };
 use core_application::agent_config::{
@@ -24,7 +24,10 @@ fn map_err(error: AgentConfigUseCaseError) -> AppError {
         AgentConfigUseCaseError::InvalidPurpose(_)
         | AgentConfigUseCaseError::InvalidSkillName(_)
         | AgentConfigUseCaseError::UnknownSubagentDefinition(_)
-        | AgentConfigUseCaseError::InvalidAgentGraph(_) => AppError::Validation(error.to_string()),
+        | AgentConfigUseCaseError::InvalidAgentGraph(_)
+        | AgentConfigUseCaseError::InvalidAgentSession(_) => {
+            AppError::Validation(error.to_string())
+        }
         AgentConfigUseCaseError::DuplicatePurpose(_) => AppError::Conflict(error.to_string()),
         AgentConfigUseCaseError::NotFound(_) | AgentConfigUseCaseError::SkillNotFound(_) => {
             AppError::NotFound(error.to_string())
@@ -133,6 +136,7 @@ pub async fn get_agent_config_bundle(
         agents_md: row.agents_md,
         skills,
         agent_graph: row.agent_graph,
+        agent_session: row.agent_session,
     }))
 }
 
@@ -372,4 +376,56 @@ pub async fn put_agent_graph(
         .await
         .map_err(map_err)?;
     Ok(Json(AgentGraphBody { content }))
+}
+
+/// 目的別 agent の session 実行設定 (YAML) を取得
+#[utoipa::path(
+    get,
+    operation_id = "agent_config_get_agent_session",
+    path = "/api/agent-configs/{purpose}/agent-session",
+    tag = "agent_config",
+    params(("purpose" = String, Path, description = "目的キー")),
+    responses(
+        (status = 200, body = AgentSessionBody),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_agent_session(
+    State(state): State<FrontendApiState>,
+    JsonPath(purpose): JsonPath<String>,
+) -> Result<Json<AgentSessionBody>, AppError> {
+    let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
+    Ok(Json(AgentSessionBody {
+        content: row.agent_session,
+    }))
+}
+
+/// 目的別 agent の session 実行設定 (YAML) を上書き保存する
+#[utoipa::path(
+    put,
+    operation_id = "agent_config_put_agent_session",
+    path = "/api/agent-configs/{purpose}/agent-session",
+    tag = "agent_config",
+    params(("purpose" = String, Path, description = "目的キー")),
+    request_body = AgentSessionBody,
+    responses(
+        (status = 200, body = AgentSessionBody),
+        (status = 400, description = "YAML または session 設定が不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
+        (status = 422, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn put_agent_session(
+    State(state): State<FrontendApiState>,
+    JsonPath(purpose): JsonPath<String>,
+    JsonBody(payload): JsonBody<AgentSessionBody>,
+) -> Result<Json<AgentSessionBody>, AppError> {
+    let content = use_cases(&state)
+        .save_agent_session(&purpose, &payload.content)
+        .await
+        .map_err(map_err)?;
+    Ok(Json(AgentSessionBody { content }))
 }

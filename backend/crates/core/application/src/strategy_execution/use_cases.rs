@@ -315,6 +315,7 @@ impl TaskStartSnapshotter for StrategyExecutionUseCases {
                 "agents_md": agent_config.agents_md,
                 "skills": agent_config.skills,
                 "agent_graph": agent_config.agent_graph,
+                "agent_session": agent_config.agent_session,
                 "created_at": agent_config.created_at,
                 "updated_at": agent_config.updated_at,
             },

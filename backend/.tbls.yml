@@ -25,6 +25,7 @@ comments:
       agents_md: 'エージェントに渡す方針・制約を記述した Markdown。'
       skills: 'エージェントが利用する skill 名と内容の対応を表す JSON。'
       agent_graph: 'エージェントの実行グラフを記述した YAML。'
+      agent_session: 'エージェント session の実行設定を記述した YAML。'
   - table: subagent_definition
     tableComment: '戦略設定から独立したサブエージェント定義を保持する。'
     columnComments:

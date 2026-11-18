@@ -13,6 +13,7 @@ use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 use super::error::{AgentConfigRepositoryError, AgentConfigUseCaseError};
 use super::graph::parse_agent_graph;
 use super::repository::SharedAgentConfigRepository;
+use super::session::parse_agent_session;
 use super::types::{AgentConfig, NewAgentConfig, skills_as_btree};
 
 #[derive(Clone)]
@@ -253,6 +254,44 @@ impl AgentConfigUseCases {
         Ok(saved.agent_graph)
     }
 
+    pub async fn save_agent_session(
+        &self,
+        purpose: &str,
+        content: &str,
+    ) -> Result<String, AgentConfigUseCaseError> {
+        parse_agent_session(content)?;
+        let transaction = self.unit_of_work.begin().await?;
+        let agent_config = self
+            .find_for_update_in_transaction(&transaction, purpose)
+            .await?;
+        let saved = self
+            .repository
+            .update_agent_session(
+                &transaction,
+                agent_config.id,
+                content.to_string(),
+                Utc::now().fixed_offset(),
+            )
+            .await
+            .map_err(|error| map_update_error(error, purpose))?;
+        self.record_snapshot(
+            &transaction,
+            saved.id,
+            Op::Update,
+            Some(&agent_config),
+            Some(&saved),
+        )
+        .await?;
+        self.unit_of_work.commit(transaction).await?;
+        tracing::info!(
+            purpose,
+            from_len = agent_config.agent_session.len(),
+            to_len = saved.agent_session.len(),
+            "updated agent_config agent_session"
+        );
+        Ok(saved.agent_session)
+    }
+
     async fn find_for_update_in_transaction(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -329,6 +368,7 @@ fn agent_config_snapshot(agent_config: &AgentConfig) -> Value {
         "agents_md": agent_config.agents_md,
         "skills": agent_config.skills,
         "agent_graph": agent_config.agent_graph,
+        "agent_session": agent_config.agent_session,
     })
 }
 

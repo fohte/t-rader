@@ -4,6 +4,7 @@ mod tests {
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use gateway_postgres::entities::{agent_config, change_history};
+    use indoc::indoc;
     use rstest::{fixture, rstest};
     use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, SqlxPostgresConnector};
     use serde_json::{Value, json};
@@ -94,6 +95,7 @@ mod tests {
             "agents_md": agents_md,
             "skills": skills,
             "agent_graph": agent_graph,
+            "agent_session": "",
         })
     }
 
@@ -145,6 +147,7 @@ mod tests {
                     "agents_md": "",
                     "skills": {},
                     "agent_graph": "",
+                    "agent_session": "",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -162,6 +165,7 @@ mod tests {
                     "agents_md": "",
                     "skills": {},
                     "agent_graph": "",
+                    "agent_session": "",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }]),
@@ -483,6 +487,7 @@ mod tests {
                     "agents_md": "",
                     "skills": { "replacement_skill": "replacement fabricated content" },
                     "agent_graph": original_agent_graph,
+                    "agent_session": "",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -497,6 +502,7 @@ mod tests {
                         "second_skill": "second fabricated content",
                     },
                     "agent_graph": original_agent_graph,
+                    "agent_session": "",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -579,6 +585,7 @@ mod tests {
                     "agents_md": "",
                     "skills": {},
                     "agent_graph": "",
+                    "agent_session": "",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -788,6 +795,7 @@ mod tests {
                     "agents_md": expected_final,
                     "skills": final_skills,
                     "agent_graph": "",
+                    "agent_session": "",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -1047,6 +1055,98 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn put_then_get_agent_session_and_bundle_round_trip(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        create_agent_config(&server, "explore").await;
+        let yaml = indoc::indoc! {"
+            timeout_minutes: 30
+            model: demo-model
+            reasoning_effort: medium
+            instructions: synthetic instructions
+            tools: [demo_read_tool, write_note]
+            web_search: cached
+            max_concurrent_subagents: 3
+            required_tools: [write_note]
+            max_total_tokens: 3000000
+            max_web_searches: 30
+            max_tool_calls: 200
+            tool_limits: { demo_read_tool: 5 }
+            tool_models: { demo_read_tool: demo-tool-model }
+            tool_reasoning_efforts: { demo_read_tool: low }
+        "};
+
+        let put = server
+            .put("/api/agent-configs/explore/agent-session")
+            .json(&json!({ "content": yaml }))
+            .await;
+        let get = server.get("/api/agent-configs/explore/agent-session").await;
+        let bundle = server.get("/api/agent-configs/explore/agent-config").await;
+        let list = server.get("/api/agent-configs").await;
+
+        assert_eq!(
+            (
+                put.status_code(),
+                put.json::<Value>(),
+                get.status_code(),
+                get.json::<Value>(),
+                bundle.status_code(),
+                bundle.json::<Value>(),
+                list.status_code(),
+                list.json::<Value>()[0]["agent_session"].clone(),
+            ),
+            (
+                StatusCode::OK,
+                json!({ "content": yaml }),
+                StatusCode::OK,
+                json!({ "content": yaml }),
+                StatusCode::OK,
+                json!({
+                    "agents_md": "",
+                    "skills": {},
+                    "agent_graph": "",
+                    "agent_session": yaml,
+                }),
+                StatusCode::OK,
+                json!(yaml),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn put_agent_session_rejects_invalid_values_without_saving(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        create_agent_config(&server, "explore").await;
+        for yaml in [
+            "model: demo-model\nphases: []",
+            indoc! {"
+                model: demo-model
+                tools: [demo_read_tool]
+                required_tools: [write_note]
+            "},
+            "model: demo-model\ntimeout_minutes: 361",
+        ] {
+            let put = server
+                .put("/api/agent-configs/explore/agent-session")
+                .json(&json!({ "content": yaml }))
+                .await;
+            let get = server.get("/api/agent-configs/explore/agent-session").await;
+
+            assert_eq!(
+                (put.status_code(), get.status_code(), get.json::<Value>()),
+                (
+                    StatusCode::BAD_REQUEST,
+                    StatusCode::OK,
+                    json!({ "content": "" }),
+                ),
+            );
+        }
+    }
+
+    #[backend_test_macros::database_test]
     async fn get_agent_config_bundle_returns_agents_md_skills_and_agent_graph(
         db: gateway_postgres::DatabaseHandle,
     ) {
@@ -1083,6 +1183,7 @@ mod tests {
                 "agents_md": agents_md,
                 "skills": { "scout": "scout body" },
                 "agent_graph": "",
+                "agent_session": "",
             })),
         );
     }

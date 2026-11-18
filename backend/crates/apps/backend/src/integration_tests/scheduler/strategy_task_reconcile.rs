@@ -233,6 +233,7 @@ mod tests {
             agents_md: NotSet,
             skills: NotSet,
             agent_graph: Set(String::new()),
+            agent_session: Set(String::new()),
             created_at: NotSet,
             updated_at: NotSet,
         }

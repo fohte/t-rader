@@ -84,6 +84,7 @@ async fn create_agent_config(server: &axum_test::TestServer, purpose: &str) {
                 "agents_md": "",
                 "skills": {},
                 "agent_graph": "",
+                "agent_session": "",
                 "created_at": "<created_at>",
                 "updated_at": "<updated_at>",
             }),
