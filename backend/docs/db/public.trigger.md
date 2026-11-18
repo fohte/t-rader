@@ -95,6 +95,7 @@ erDiagram
   text agent_graph
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text agent_session
 }
 ```
 

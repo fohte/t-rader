@@ -22,7 +22,7 @@
 | [public.rss_feed](public.rss_feed.md)                                                           | 8       | ニュース取り込み元となる RSS フィードを管理する。                                                                                                  | BASE TABLE        |
 | [public.strategy_investable_amount](public.strategy_investable_amount.md)                       | 5       | 戦略ごとに設定した投資可能額の履歴。                                                                                                               | BASE TABLE        |
 | [public.account_risk_policy](public.account_risk_policy.md)                                     | 3       | 口座全体に適用するリスク制限設定を保持する。                                                                                                       | BASE TABLE        |
-| [public.agent_config](public.agent_config.md)                                                   | 7       | purpose ごとのエージェント実行設定を保持する。                                                                                                     | BASE TABLE        |
+| [public.agent_config](public.agent_config.md)                                                   | 8       | purpose ごとのエージェント実行設定を保持する。                                                                                                     | BASE TABLE        |
 | [public.strategy_task_step](public.strategy_task_step.md)                                       | 20      | エージェントタスクを構成する実行ステップの状態と結果を記録する。                                                                                   | BASE TABLE        |
 | [public.strategy_task_step_evidence](public.strategy_task_step_evidence.md)                     | 8       | 実行ステップが取得したデータのスナップショットと時刻を記録する。                                                                                   | BASE TABLE        |
 | [public.checkpoint](public.checkpoint.md)                                                       | 8       | 戦略・処理グラフごとに外部 stream の読み進め位置を保持する。                                                                                       | BASE TABLE        |
@@ -467,6 +467,7 @@ erDiagram
   text agent_graph
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text agent_session
 }
 "public.strategy_task_step" {
   uuid execution_step_id
