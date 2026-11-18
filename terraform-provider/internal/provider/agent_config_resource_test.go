@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -60,10 +61,11 @@ func TestAgentConfigResourceCreateWritesAllSettings(t *testing.T) {
 	})
 	schemaResponse := agentConfigResourceSchema(t)
 	plan := newAgentConfigPlan(t, schemaResponse.Schema, agentConfigModel{
-		Purpose:    types.StringValue(testAgentConfigPurpose),
-		AgentsMd:   types.StringValue("synthetic instructions"),
-		Skills:     newAgentConfigSkills(t, map[string]string{"sample": "synthetic skill contents"}),
-		AgentGraph: types.StringValue(""),
+		Purpose:      types.StringValue(testAgentConfigPurpose),
+		AgentsMd:     types.StringValue("synthetic instructions"),
+		Skills:       newAgentConfigSkills(t, map[string]string{"sample": "synthetic skill contents"}),
+		AgentGraph:   types.StringValue(""),
+		AgentSession: types.StringValue("session: configured"),
 	})
 	response := resource.CreateResponse{State: tfsdk.State{Schema: schemaResponse.Schema}}
 
@@ -83,15 +85,17 @@ func TestAgentConfigResourceCreateWritesAllSettings(t *testing.T) {
 	}{
 		Requests: []agentConfigRequest{
 			{Method: http.MethodPost, Path: "/api/agent-configs", Body: `{"purpose":"synthetic-purpose"}`},
+			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agent-session", Body: `{"content":"session: configured"}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/skills", Body: `{"skills":{"sample":"synthetic skill contents"}}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agents-md", Body: `{"content":"synthetic instructions"}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agent-graph", Body: `{"content":""}`},
 		},
 		State: agentConfigModel{
-			Purpose:    types.StringValue(testAgentConfigPurpose),
-			AgentsMd:   types.StringValue("synthetic instructions"),
-			Skills:     newAgentConfigSkills(t, map[string]string{"sample": "synthetic skill contents"}),
-			AgentGraph: types.StringValue(""),
+			Purpose:      types.StringValue(testAgentConfigPurpose),
+			AgentsMd:     types.StringValue("synthetic instructions"),
+			Skills:       newAgentConfigSkills(t, map[string]string{"sample": "synthetic skill contents"}),
+			AgentGraph:   types.StringValue(""),
+			AgentSession: types.StringValue("session: configured"),
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -107,9 +111,10 @@ func TestAgentConfigResourceReadLoadsAllSettings(t *testing.T) {
 	client := newAgentConfigResourceClient(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
 		requests = append(requests, agentConfigRequest{Method: r.Method, Path: r.URL.Path, Body: string(body)})
 		writeAgentConfigJSON(t, w, http.StatusOK, map[string]any{
-			"agents_md":   "loaded instructions",
-			"skills":      map[string]string{"sample": "loaded skill contents"},
-			"agent_graph": "phases: []",
+			"agents_md":     "loaded instructions",
+			"skills":        map[string]string{"sample": "loaded skill contents"},
+			"agent_graph":   "phases: []",
+			"agent_session": "session: loaded",
 		})
 	})
 	schemaResponse := agentConfigResourceSchema(t)
@@ -137,14 +142,54 @@ func TestAgentConfigResourceReadLoadsAllSettings(t *testing.T) {
 	}{
 		Requests: []agentConfigRequest{{Method: http.MethodGet, Path: "/api/agent-configs/synthetic-purpose/agent-config"}},
 		State: agentConfigModel{
-			Purpose:    types.StringValue(testAgentConfigPurpose),
-			AgentsMd:   types.StringValue("loaded instructions"),
-			Skills:     newAgentConfigSkills(t, map[string]string{"sample": "loaded skill contents"}),
-			AgentGraph: types.StringValue("phases: []"),
+			Purpose:      types.StringValue(testAgentConfigPurpose),
+			AgentsMd:     types.StringValue("loaded instructions"),
+			Skills:       newAgentConfigSkills(t, map[string]string{"sample": "loaded skill contents"}),
+			AgentGraph:   types.StringValue("phases: []"),
+			AgentSession: types.StringValue("session: loaded"),
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("read output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestAgentConfigResourceReadKeepsUnsetAgentSessionEmpty(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newAgentConfigResourceClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		writeAgentConfigJSON(t, w, http.StatusOK, map[string]any{
+			"agents_md":     "loaded instructions",
+			"skills":        map[string]string{},
+			"agent_graph":   "phases: []",
+			"agent_session": "",
+		})
+	})
+	schemaResponse := agentConfigResourceSchema(t)
+	state := newAgentConfigState(t, schemaResponse.Schema, agentConfigModel{
+		Purpose:      types.StringValue(testAgentConfigPurpose),
+		AgentsMd:     types.StringValue("old instructions"),
+		Skills:       newAgentConfigSkills(t, map[string]string{}),
+		AgentGraph:   types.StringValue("phases: []"),
+		AgentSession: types.StringValue(""),
+	})
+	response := resource.ReadResponse{State: tfsdk.State{Raw: state.Raw, Schema: schemaResponse.Schema}}
+
+	(&agentConfigResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
+	var result agentConfigModel
+	response.Diagnostics.Append(response.State.Get(ctx, &result)...)
+
+	got := struct {
+		Session   types.String
+		HasErrors bool
+	}{result.AgentSession, response.Diagnostics.HasError()}
+	want := struct {
+		Session   types.String
+		HasErrors bool
+	}{types.StringValue(""), false}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unset session read mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -159,16 +204,18 @@ func TestAgentConfigResourceUpdateReplacesSettings(t *testing.T) {
 	})
 	schemaResponse := agentConfigResourceSchema(t)
 	state := newAgentConfigState(t, schemaResponse.Schema, agentConfigModel{
-		Purpose:    types.StringValue(testAgentConfigPurpose),
-		AgentsMd:   types.StringValue("old instructions"),
-		Skills:     newAgentConfigSkills(t, map[string]string{"old": "old skill"}),
-		AgentGraph: types.StringValue("phases: []"),
+		Purpose:      types.StringValue(testAgentConfigPurpose),
+		AgentsMd:     types.StringValue("old instructions"),
+		Skills:       newAgentConfigSkills(t, map[string]string{"old": "old skill"}),
+		AgentGraph:   types.StringValue("phases: []"),
+		AgentSession: types.StringValue("session: previous"),
 	})
 	plan := newAgentConfigPlan(t, schemaResponse.Schema, agentConfigModel{
-		Purpose:    types.StringValue(testAgentConfigPurpose),
-		AgentsMd:   types.StringValue("updated instructions"),
-		Skills:     newAgentConfigSkills(t, map[string]string{"sample": "updated skill"}),
-		AgentGraph: types.StringValue("phases: []"),
+		Purpose:      types.StringValue(testAgentConfigPurpose),
+		AgentsMd:     types.StringValue("updated instructions"),
+		Skills:       newAgentConfigSkills(t, map[string]string{"sample": "updated skill"}),
+		AgentGraph:   types.StringValue("phases: []"),
+		AgentSession: types.StringValue("session: configured"),
 	})
 	response := resource.UpdateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: schemaResponse.Schema}}
 
@@ -187,15 +234,17 @@ func TestAgentConfigResourceUpdateReplacesSettings(t *testing.T) {
 		HasErrors bool
 	}{
 		Requests: []agentConfigRequest{
+			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agent-session", Body: `{"content":"session: configured"}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/skills", Body: `{"skills":{"sample":"updated skill"}}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agents-md", Body: `{"content":"updated instructions"}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agent-graph", Body: `{"content":"phases: []"}`},
 		},
 		State: agentConfigModel{
-			Purpose:    types.StringValue(testAgentConfigPurpose),
-			AgentsMd:   types.StringValue("updated instructions"),
-			Skills:     newAgentConfigSkills(t, map[string]string{"sample": "updated skill"}),
-			AgentGraph: types.StringValue("phases: []"),
+			Purpose:      types.StringValue(testAgentConfigPurpose),
+			AgentsMd:     types.StringValue("updated instructions"),
+			Skills:       newAgentConfigSkills(t, map[string]string{"sample": "updated skill"}),
+			AgentGraph:   types.StringValue("phases: []"),
+			AgentSession: types.StringValue("session: configured"),
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -242,6 +291,7 @@ func TestAgentConfigResourceUpdateStopsAfterFailedPut(t *testing.T) {
 		Diagnostics []agentConfigDiagnostic
 	}{
 		Requests: []agentConfigRequest{
+			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agent-session", Body: `{"content":""}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/skills", Body: `{"skills":{"sample":"updated skill"}}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agents-md", Body: `{"content":"updated instructions"}`},
 		},
@@ -249,6 +299,80 @@ func TestAgentConfigResourceUpdateStopsAfterFailedPut(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("failed update output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestAgentConfigResourceUpdateReportsRejectedAgentSession(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var requests []agentConfigRequest
+	client := newAgentConfigResourceClient(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
+		requests = append(requests, agentConfigRequest{Method: r.Method, Path: r.URL.Path, Body: string(body)})
+		if r.URL.Path == "/api/agent-configs/synthetic-purpose/agent-session" {
+			http.Error(w, "synthetic session validation failure", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	schemaResponse := agentConfigResourceSchema(t)
+	state := newAgentConfigState(t, schemaResponse.Schema, agentConfigModel{
+		Purpose:      types.StringValue(testAgentConfigPurpose),
+		AgentsMd:     types.StringValue("synthetic instructions"),
+		Skills:       newAgentConfigSkills(t, map[string]string{}),
+		AgentGraph:   types.StringValue("phases: []"),
+		AgentSession: types.StringValue("session: previous"),
+	})
+	plan := newAgentConfigPlan(t, schemaResponse.Schema, agentConfigModel{
+		Purpose:      types.StringValue(testAgentConfigPurpose),
+		AgentsMd:     types.StringValue("synthetic instructions"),
+		Skills:       newAgentConfigSkills(t, map[string]string{}),
+		AgentGraph:   types.StringValue("phases: []"),
+		AgentSession: types.StringValue("session: invalid"),
+	})
+	response := resource.UpdateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: schemaResponse.Schema}}
+
+	(&agentConfigResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
+
+	got := struct {
+		Requests    []agentConfigRequest
+		Diagnostics []agentConfigDiagnostic
+	}{requests, agentConfigDiagnostics(response.Diagnostics)}
+	want := struct {
+		Requests    []agentConfigRequest
+		Diagnostics []agentConfigDiagnostic
+	}{
+		Requests: []agentConfigRequest{
+			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agent-session", Body: `{"content":"session: invalid"}`},
+		},
+		Diagnostics: []agentConfigDiagnostic{{
+			Severity: diag.SeverityError,
+			Summary:  "Error updating agent config",
+			Detail:   "backend returned HTTP 400: synthetic session validation failure",
+		}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("rejected session output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestAgentConfigResourceAgentSessionDefaultsToEmpty(t *testing.T) {
+	t.Parallel()
+
+	attribute := agentConfigResourceSchema(t).Schema.Attributes["agent_session"].(schema.StringAttribute)
+	response := defaults.StringResponse{}
+	attribute.Default.DefaultString(context.Background(), defaults.StringRequest{Path: path.Root("agent_session")}, &response)
+
+	got := struct {
+		Value       types.String
+		Diagnostics []agentConfigDiagnostic
+	}{response.PlanValue, agentConfigDiagnostics(response.Diagnostics)}
+	want := struct {
+		Value       types.String
+		Diagnostics []agentConfigDiagnostic
+	}{types.StringValue(""), nil}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("agent_session default mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -308,15 +432,17 @@ func TestAgentConfigResourceCreateRetainsPurposeWhenRollbackFails(t *testing.T) 
 	}{
 		Requests: []agentConfigRequest{
 			{Method: http.MethodPost, Path: "/api/agent-configs", Body: `{"purpose":"synthetic-purpose"}`},
+			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agent-session", Body: `{"content":""}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/skills", Body: `{"skills":{"sample":"synthetic skill contents"}}`},
 			{Method: http.MethodPut, Path: "/api/agent-configs/synthetic-purpose/agents-md", Body: `{"content":"synthetic instructions"}`},
 			{Method: http.MethodDelete, Path: "/api/agent-configs/synthetic-purpose"},
 		},
 		State: agentConfigModel{
-			Purpose:    types.StringValue(testAgentConfigPurpose),
-			AgentsMd:   types.StringNull(),
-			Skills:     types.MapNull(types.StringType),
-			AgentGraph: types.StringNull(),
+			Purpose:      types.StringValue(testAgentConfigPurpose),
+			AgentsMd:     types.StringNull(),
+			Skills:       types.MapNull(types.StringType),
+			AgentGraph:   types.StringNull(),
+			AgentSession: types.StringNull(),
 		},
 		Diagnostics: []agentConfigDiagnostic{{
 			Severity: diag.SeverityError,
