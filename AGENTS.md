@@ -35,9 +35,9 @@ DB の実行環境に収まらない利用者固有の処理には、非公開�
 
 セマンティック分類はユーザー / LLM が DB 上のタグ / frontmatter で表現する。enum / テーブル / API レスポンス型に observation や signal 等のラベルを直接定義しないこと。
 
-### 使用中の LLM モデル名をリポジトリに書かない
+### プロダクトで使用する LLM モデル名をリポジトリに書かない
 
-上記と同じ理由 (public リポジトリで個別戦略の中身を秘匿する方針) から、実際に使っている LLM モデル名もコード、テスト、fixture、ドキュメント、commit message、PR description に書かないこと。
+上記と同じ理由 (public リポジトリで個別戦略の中身を秘匿する方針) から、プロダクトで実際に使用する LLM モデル名をコード、テスト、fixture、ドキュメント、commit message、PR description に書かないこと。コーディング agent の commit に自動で付く `Co-authored-by` trailer はこの規則の対象外とし、AI 作業の attribution としてモデル名を記録する。
 
 フェーズごとのモデル割り当てと timeout は DB の `agent_config.agent_graph` (YAML) で設定する。backend (`put_agent_graph`, `backend/crates/entrypoints/frontend-api/src/handlers/agent_config.rs`) は YAML の形式と timeout_minutes の範囲 (1 から 360) を検証し、巡回全体の deadline に top-level の timeout_minutes を使う (未指定時は 15 分)。phase の timeout_minutes は backend では保存と範囲検証までを行い、実行時の打ち切りは agent 側で行う。モデル名は backend が解釈せず、agent (`createChatModel`, `agent/src/strategy-agent/strategy-agent.ts`) も設定値をそのまま渡す。コードに実モデル名を直接書かず、テストや story で名前が必要な場合も実在しない架空のモデル名を使うこと。
 
