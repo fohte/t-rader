@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"gopkg.in/yaml.v3"
@@ -29,10 +30,11 @@ type agentConfigResource struct {
 }
 
 type agentConfigModel struct {
-	Purpose    types.String `tfsdk:"purpose"`
-	AgentsMd   types.String `tfsdk:"agents_md"`
-	Skills     types.Map    `tfsdk:"skills"`
-	AgentGraph types.String `tfsdk:"agent_graph"`
+	Purpose      types.String `tfsdk:"purpose"`
+	AgentsMd     types.String `tfsdk:"agents_md"`
+	Skills       types.Map    `tfsdk:"skills"`
+	AgentGraph   types.String `tfsdk:"agent_graph"`
+	AgentSession types.String `tfsdk:"agent_session"`
 }
 
 func NewAgentConfigResource() resource.Resource {
@@ -65,6 +67,12 @@ func (r *agentConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Required:            true,
 				MarkdownDescription: "agent のフェーズ構成を表す YAML。",
 			},
+			"agent_session": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
+				MarkdownDescription: "purpose ごとの session 実行設定の YAML。未指定または空文字列で未設定になります。",
+			},
 		},
 	}
 }
@@ -95,20 +103,20 @@ func (r *agentConfigResource) Create(ctx context.Context, req resource.CreateReq
 	if !ok {
 		return
 	}
-
 	purpose := plan.Purpose.ValueString()
 	if err := client.CreateAgentConfig(ctx, purpose); err != nil {
 		resp.Diagnostics.AddError("Error creating agent config", err.Error())
 		return
 	}
-	if err := client.UpdateAgentConfig(ctx, purpose, plan.AgentsMd.ValueString(), skills, plan.AgentGraph.ValueString()); err != nil {
+	if err := client.UpdateAgentConfig(ctx, purpose, plan.AgentsMd.ValueString(), skills, plan.AgentGraph.ValueString(), plan.AgentSession.ValueString()); err != nil {
 		if cleanupErr := client.DeleteAgentConfig(ctx, purpose); cleanupErr != nil {
 			err = fmt.Errorf("%w; remove partially created agent config: %v", err, cleanupErr)
 			resp.Diagnostics.Append(resp.State.Set(ctx, agentConfigModel{
-				Purpose:    plan.Purpose,
-				AgentsMd:   types.StringNull(),
-				Skills:     types.MapNull(types.StringType),
-				AgentGraph: types.StringNull(),
+				Purpose:      plan.Purpose,
+				AgentsMd:     types.StringNull(),
+				Skills:       types.MapNull(types.StringType),
+				AgentGraph:   types.StringNull(),
+				AgentSession: types.StringNull(),
 			})...)
 		}
 		resp.Diagnostics.AddError("Error configuring created agent config", err.Error())
@@ -144,10 +152,11 @@ func (r *agentConfigResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, agentConfigModel{
-		Purpose:    state.Purpose,
-		AgentsMd:   types.StringValue(config.AgentsMd),
-		Skills:     skills,
-		AgentGraph: types.StringValue(config.AgentGraph),
+		Purpose:      state.Purpose,
+		AgentsMd:     types.StringValue(config.AgentsMd),
+		Skills:       skills,
+		AgentGraph:   types.StringValue(config.AgentGraph),
+		AgentSession: types.StringValue(config.AgentSession),
 	})...)
 }
 
@@ -165,8 +174,7 @@ func (r *agentConfigResource) Update(ctx context.Context, req resource.UpdateReq
 	if !ok {
 		return
 	}
-
-	if err := client.UpdateAgentConfig(ctx, plan.Purpose.ValueString(), plan.AgentsMd.ValueString(), skills, plan.AgentGraph.ValueString()); err != nil {
+	if err := client.UpdateAgentConfig(ctx, plan.Purpose.ValueString(), plan.AgentsMd.ValueString(), skills, plan.AgentGraph.ValueString(), plan.AgentSession.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error updating agent config", err.Error())
 		return
 	}
