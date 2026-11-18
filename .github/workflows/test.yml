@@ -116,7 +116,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -421,6 +423,10 @@ jobs:
         with:
           version: 2026.9.11
 
+      - name: Start PostgreSQL
+        if: ${{ contains(fromJSON('["backend", "agent"]'), matrix.package) }}
+        run: mise run db:up
+
       # corepack creates the pnpm executable inside mise's node install bin
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.
       - run: |
@@ -429,7 +435,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -439,7 +447,39 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
+<<<<<<< before updating
       - run: pnpm install --frozen-lockfile
+||||||| last update
+      # Install only the matrix package and its workspace dependencies, not the
+      # whole workspace, so each parallel leg skips unrelated packages' installs.
+      - run: pnpm install --filter ./${{ matrix.package }}... --frozen-lockfile
+
+      # Story tests run through @storybook/addon-vitest's browser project, which
+      # needs a devDependency on `playwright` — only spa packages declare one.
+      - name: Check if this package needs Playwright
+        id: needs-playwright
+        run: |
+          if jq -e '.devDependencies.playwright' "${{ matrix.package }}/package.json" >/dev/null 2>&1; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+=======
+      # Install only the matrix package and its workspace dependencies, not the
+      # whole workspace, so each parallel leg skips unrelated packages' installs.
+      - run: pnpm install --filter "{./${{ matrix.package }}}..." --frozen-lockfile
+
+      # Story tests run through @storybook/addon-vitest's browser project, which
+      # needs a devDependency on `playwright` — only spa packages declare one.
+      - name: Check if this package needs Playwright
+        id: needs-playwright
+        run: |
+          if jq -e '.devDependencies.playwright' "${{ matrix.package }}/package.json" >/dev/null 2>&1; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+>>>>>>> after updating
 
       - name: Get Playwright version
         id: playwright-version
@@ -479,8 +519,86 @@ jobs:
           sudo apt-get install -y fonts-noto-cjk
 
       - name: Run tests
+<<<<<<< before updating
         working-directory: frontend
         run: pnpm run test
+||||||| last update
+        working-directory: ${{ matrix.package }}
+        run: pnpm run test
+=======
+        working-directory: ${{ matrix.package }}
+        run: ${{ contains(fromJSON('["backend", "agent"]'), matrix.package) && 'mise exec -- ' || '' }}pnpm run test # Re-evaluate DB URLs after db:up assigns the host port.
+
+  detect-changes:
+    runs-on: ubuntu-slim
+    timeout-minutes: 30
+    outputs:
+      backend: ${{ steps.changes-backend.outputs.any_modified }}
+      workflow: ${{ steps.changes-workflow.outputs.any_modified }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Check for backend changes
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: changes-backend
+        with:
+          files: backend/**
+
+      - name: Check for workflow changes
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: changes-workflow
+        with:
+          files: .github/workflows/test.yml
+
+  unit-test-backend:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - run: rustup show
+
+      # Run sccache-action before mise-action so that sccache binary is
+      # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.14
+
+      - name: Start PostgreSQL
+        run: mise run db:up
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Install llvm-tools-preview
+        run: rustup component add llvm-tools-preview
+
+      - name: Run tests with coverage
+        working-directory: backend
+        run: mise exec -- cargo llvm-cov --lcov --output-path lcov.info # Re-evaluate DB URLs after db:up assigns the host port.
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: backend/lcov.info
+          flags: backend
+          fail_ci_if_error: false
+>>>>>>> after updating
 
   api-fuzzing-backend:
     needs: detect-changes
@@ -1047,6 +1165,8 @@ jobs:
       - query-perf
       - unit-test-agent
       - knip
+      - detect-changes
+      - unit-test-backend
     if: failure()
     steps:
       - run: exit 1
@@ -1070,7 +1190,9 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+        run: |
+          store_path=$(pnpm store path)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
