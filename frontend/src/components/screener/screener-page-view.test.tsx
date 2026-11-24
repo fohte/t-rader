@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -121,6 +122,15 @@ describe('ScreenerPageView', () => {
       conditionPanelVisible: true,
       validationError: null,
     })
+
+    await waitFor(() => {
+      expect(dialog?.contains(document.activeElement)).toBe(true)
+    })
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '条件 (0)' })).toHaveFocus()
+    })
   })
 
   it('keeps mobile actions outside the scroll area and passes filter edits to the agent', async () => {
@@ -173,7 +183,8 @@ describe('ScreenerPageView', () => {
       'spinbutton',
       { name: 'PER 上限' },
     )
-    fireEvent.change(perUpperBound, { target: { value: '10' } })
+    await user.clear(perUpperBound)
+    await user.type(perUpperBound, '10')
     await user.click(askAgentButton)
 
     expect(
