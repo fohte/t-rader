@@ -41,6 +41,13 @@ function readMobileActionOutput(
   return actionLayout == null ? output : { ...output, actionLayout }
 }
 
+function readDialogFocusOutput(
+  focusEnteredDialog: boolean,
+  focusReturnedToTrigger: boolean,
+) {
+  return { focusEnteredDialog, focusReturnedToTrigger }
+}
+
 const savedScreen: SavedScreen = {
   id: 'saved-screen-a',
   name: '試作条件',
@@ -96,7 +103,7 @@ describe('ScreenerPageView', () => {
     expect(onAskAgent.mock.calls).toEqual([[search]])
   })
 
-  it('opens the mobile condition dialog from its closed state', async () => {
+  it('opens and closes the mobile condition dialog while restoring focus', async () => {
     const user = userEvent.setup()
     const args = {
       search: {},
@@ -122,14 +129,29 @@ describe('ScreenerPageView', () => {
       conditionPanelVisible: true,
       validationError: null,
     })
+    let focusEnteredDialog = false
 
     await waitFor(() => {
-      expect(dialog?.contains(document.activeElement)).toBe(true)
+      focusEnteredDialog = dialog?.contains(document.activeElement) ?? false
+      if (!focusEnteredDialog) throw new Error('Dialog focus has not settled')
     })
 
     await user.keyboard('{Escape}')
+    let focusReturnedToTrigger = false
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '条件 (0)' })).toHaveFocus()
+      focusReturnedToTrigger = screen
+        .getByRole('button', { name: '条件 (0)' })
+        .matches(':focus')
+      if (!focusReturnedToTrigger) {
+        throw new Error('Dialog trigger focus has not been restored')
+      }
+    })
+
+    expect(
+      readDialogFocusOutput(focusEnteredDialog, focusReturnedToTrigger),
+    ).toEqual({
+      focusEnteredDialog: true,
+      focusReturnedToTrigger: true,
     })
   })
 
