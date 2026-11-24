@@ -123,20 +123,14 @@ describe('ScreenerPageView', () => {
       validationError: null,
     })
     await waitFor(() => {
-      // eslint-disable-next-line fohte/no-inline-object-in-expect -- waitFor の再試行ごとに focus 状態を再評価するため
-      expect({
-        focusEnteredDialog: dialog?.contains(document.activeElement) ?? false,
-      }).toEqual({ focusEnteredDialog: true })
+      expect(dialog?.contains(document.activeElement) ?? false).toEqual(true)
     })
 
     await user.keyboard('{Escape}')
     await waitFor(() => {
-      // eslint-disable-next-line fohte/no-inline-object-in-expect -- waitFor の再試行ごとに focus 状態を再評価するため
-      expect({
-        focusReturnedToTrigger: screen
-          .getByRole('button', { name: '条件 (0)' })
-          .matches(':focus'),
-      }).toEqual({ focusReturnedToTrigger: true })
+      expect(
+        screen.getByRole('button', { name: '条件 (0)' }).matches(':focus'),
+      ).toEqual(true)
     })
   })
 
