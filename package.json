@@ -20,7 +20,7 @@
     "@types/node": "24.13.4",
     "concurrently": "10.0.6",
     "eslint": "10.10.0",
-    "eslint-plugin-storybook": "10.6.0",
+    "eslint-plugin-storybook": "10.6.5",
     "eslint-plugin-tailwindcss": "4.4.0",
     "knip": "6.44.1",
     "prettier": "3.9.10",

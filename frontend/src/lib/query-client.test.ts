@@ -39,7 +39,7 @@ async function runQuery(fetcher: typeof fetch): Promise<string> {
     return fetcher(...args)
   }
   const result = await queryClientWithImmediateRetries()
-    .fetchQuery(linkedTradesQuery(countedFetcher))
+    .query(linkedTradesQuery(countedFetcher))
     .then(
       () => ({ state: 'success' as const, error: null }),
       (error: unknown) => ({
