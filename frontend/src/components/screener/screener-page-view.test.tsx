@@ -173,8 +173,7 @@ describe('ScreenerPageView', () => {
       'spinbutton',
       { name: 'PER 上限' },
     )
-    await user.clear(perUpperBound)
-    await user.type(perUpperBound, '10')
+    fireEvent.change(perUpperBound, { target: { value: '10' } })
     await user.click(askAgentButton)
 
     expect(
