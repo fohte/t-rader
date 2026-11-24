@@ -41,13 +41,6 @@ function readMobileActionOutput(
   return actionLayout == null ? output : { ...output, actionLayout }
 }
 
-function readDialogFocusOutput(
-  focusEnteredDialog: boolean,
-  focusReturnedToTrigger: boolean,
-) {
-  return { focusEnteredDialog, focusReturnedToTrigger }
-}
-
 const savedScreen: SavedScreen = {
   id: 'saved-screen-a',
   name: '試作条件',
@@ -129,29 +122,21 @@ describe('ScreenerPageView', () => {
       conditionPanelVisible: true,
       validationError: null,
     })
-    let focusEnteredDialog = false
-
     await waitFor(() => {
-      focusEnteredDialog = dialog?.contains(document.activeElement) ?? false
-      if (!focusEnteredDialog) throw new Error('Dialog focus has not settled')
+      // eslint-disable-next-line fohte/no-inline-object-in-expect -- waitFor の再試行ごとに focus 状態を再評価するため
+      expect({
+        focusEnteredDialog: dialog?.contains(document.activeElement) ?? false,
+      }).toEqual({ focusEnteredDialog: true })
     })
 
     await user.keyboard('{Escape}')
-    let focusReturnedToTrigger = false
     await waitFor(() => {
-      focusReturnedToTrigger = screen
-        .getByRole('button', { name: '条件 (0)' })
-        .matches(':focus')
-      if (!focusReturnedToTrigger) {
-        throw new Error('Dialog trigger focus has not been restored')
-      }
-    })
-
-    expect(
-      readDialogFocusOutput(focusEnteredDialog, focusReturnedToTrigger),
-    ).toEqual({
-      focusEnteredDialog: true,
-      focusReturnedToTrigger: true,
+      // eslint-disable-next-line fohte/no-inline-object-in-expect -- waitFor の再試行ごとに focus 状態を再評価するため
+      expect({
+        focusReturnedToTrigger: screen
+          .getByRole('button', { name: '条件 (0)' })
+          .matches(':focus'),
+      }).toEqual({ focusReturnedToTrigger: true })
     })
   })
 
