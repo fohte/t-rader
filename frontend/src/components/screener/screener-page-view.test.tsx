@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -38,6 +39,18 @@ function readMobileActionOutput(
     validationError,
   }
   return actionLayout == null ? output : { ...output, actionLayout }
+}
+
+function readMobileDialogFocusOutput(
+  calls: unknown[][],
+  dialog: HTMLElement | null,
+  trigger: HTMLElement | null,
+) {
+  return {
+    ...readMobileActionOutput(calls, dialog),
+    focusEnteredDialog: dialog?.contains(document.activeElement) ?? false,
+    triggerFocused: trigger?.matches(':focus') ?? false,
+  }
 }
 
 const savedScreen: SavedScreen = {
@@ -95,7 +108,7 @@ describe('ScreenerPageView', () => {
     expect(onAskAgent.mock.calls).toEqual([[search]])
   })
 
-  it('opens the mobile condition dialog from its closed state', async () => {
+  it('opens the mobile condition dialog and focuses its content', async () => {
     const user = userEvent.setup()
     const args = {
       search: {},
@@ -114,12 +127,56 @@ describe('ScreenerPageView', () => {
 
     render(<ScreenerPageView {...args} />)
     await user.click(screen.getByRole('button', { name: '条件 (0)' }))
-    const dialog = screen.queryByRole('dialog')
 
-    expect(readMobileActionOutput([], dialog)).toEqual({
-      calls: [],
-      conditionPanelVisible: true,
-      validationError: null,
+    await waitFor(() => {
+      expect(
+        readMobileDialogFocusOutput([], screen.queryByRole('dialog'), null),
+      ).toEqual({
+        calls: [],
+        conditionPanelVisible: true,
+        validationError: null,
+        focusEnteredDialog: true,
+        triggerFocused: false,
+      })
+    })
+  })
+
+  it('closes the mobile condition dialog and restores focus after Escape', async () => {
+    const user = userEvent.setup()
+    const args = {
+      search: {},
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    const trigger = screen.getByRole('button', { name: '条件 (0)' })
+    await user.click(trigger)
+    const dialog = screen.getByRole('dialog')
+    await waitFor(() => {
+      expect(dialog.contains(document.activeElement)).toEqual(true)
+    })
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(
+        readMobileDialogFocusOutput([], screen.queryByRole('dialog'), trigger),
+      ).toEqual({
+        calls: [],
+        conditionPanelVisible: false,
+        validationError: null,
+        focusEnteredDialog: false,
+        triggerFocused: true,
+      })
     })
   })
 
