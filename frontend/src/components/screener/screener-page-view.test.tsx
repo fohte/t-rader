@@ -161,11 +161,9 @@ describe('ScreenerPageView', () => {
     render(<ScreenerPageView {...args} />)
     const trigger = screen.getByRole('button', { name: '条件 (0)' })
     await user.click(trigger)
-    // Base UI は次の animation frame で initial focus を設定する。
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        resolve()
-      })
+    const dialog = screen.getByRole('dialog')
+    await waitFor(() => {
+      expect(dialog.contains(document.activeElement)).toEqual(true)
     })
 
     await user.keyboard('{Escape}')
