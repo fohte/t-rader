@@ -146,8 +146,8 @@ function StockPage() {
   const tradesQuery = $api.useQuery('get', '/api/trades', {
     params: { query: { symbol: stockId } },
   })
-  const notesQuery = $api.useQuery('get', '/api/notes', {
-    params: { query: { ref: `stock:${stockId}` } },
+  const notesQuery = $api.useQuery('get', '/api/notes/overview', {
+    params: { query: { ref: `stock:${stockId}`, view: 'all' } },
   })
   const summaryQuery = $api.useQuery('get', '/api/trades/summary')
   const groupsQuery = $api.useQuery('get', '/api/stocks/{stock_id}/groups', {

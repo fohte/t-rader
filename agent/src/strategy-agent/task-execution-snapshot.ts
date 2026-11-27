@@ -51,6 +51,8 @@ const parseTaskStartDefinition = (
     !isPlainObject(agentConfig) ||
     typeof agentConfig['agents_md'] !== 'string' ||
     typeof agentConfig['agent_graph'] !== 'string' ||
+    (agentConfig['agent_session'] !== undefined &&
+      typeof agentConfig['agent_session'] !== 'string') ||
     !isRecordOfStrings(agentConfig['skills']) ||
     !Array.isArray(subagentDefinitions)
   ) {
@@ -74,6 +76,10 @@ const parseTaskStartDefinition = (
       agentsMd: agentConfig['agents_md'],
       skills: agentConfig['skills'],
       agentGraph: agentConfig['agent_graph'],
+      agentSession:
+        typeof agentConfig['agent_session'] === 'string'
+          ? agentConfig['agent_session']
+          : '',
     },
     subagentDefinitions: definitions,
   })

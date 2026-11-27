@@ -160,6 +160,7 @@ const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
   skills: { 'ja-stock': 'skill body' },
   agentGraph: AGENT_GRAPH,
+  agentSession: 'model: demo-model',
 }
 
 interface BuildDepsOptions {

@@ -245,7 +245,7 @@ fn note_ids_matching_refs(
     query.into_query()
 }
 
-fn version_matches_references(
+pub(super) fn version_matches_references(
     version: &note_version::Model,
     references: &[(String, String)],
 ) -> Result<bool, String> {

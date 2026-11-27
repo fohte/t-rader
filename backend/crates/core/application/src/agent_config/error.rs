@@ -5,6 +5,7 @@ use crate::subagent_definition::SubagentDefinitionRepositoryError;
 use crate::unit_of_work::UnitOfWorkError;
 
 use super::graph::AgentGraphError;
+use super::session::AgentSessionError;
 const SLUG_PATTERN_DESC: &str = "^[a-z0-9][a-z0-9_-]*$";
 
 #[derive(Debug, Error)]
@@ -31,6 +32,8 @@ pub enum AgentConfigUseCaseError {
     UnknownSubagentDefinition(String),
     #[error(transparent)]
     InvalidAgentGraph(#[from] AgentGraphError),
+    #[error(transparent)]
+    InvalidAgentSession(#[from] AgentSessionError),
     #[error(transparent)]
     Repository(#[from] AgentConfigRepositoryError),
     #[error(transparent)]

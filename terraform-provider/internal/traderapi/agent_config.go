@@ -38,7 +38,17 @@ func (c *Client) GetAgentConfig(ctx context.Context, purpose string) (gen.AgentC
 	return *response.JSON200, nil
 }
 
-func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string, skills map[string]string, agentGraph string) error {
+func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string, skills map[string]string, agentGraph, agentSession string) error {
+	sessionResponse, err := c.api.AgentConfigPutAgentSessionWithResponse(ctx, purpose, gen.AgentConfigPutAgentSessionJSONRequestBody{
+		Content: agentSession,
+	})
+	if err != nil {
+		return fmt.Errorf("send update agent session request: %w", err)
+	}
+	if err := agentConfigResponseError(sessionResponse.HTTPResponse, sessionResponse.Body); err != nil {
+		return err
+	}
+
 	skillsResponse, err := c.api.AgentConfigPutSkillsWithResponse(ctx, purpose, gen.AgentConfigPutSkillsJSONRequestBody{
 		Skills: skills,
 	})

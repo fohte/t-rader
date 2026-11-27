@@ -96,6 +96,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/agent-configs/{purpose}/agent-session': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 目的別 agent の session 実行設定 (YAML) を取得 */
+    get: operations['agent_config_get_agent_session']
+    /** 目的別 agent の session 実行設定 (YAML) を上書き保存する */
+    put: operations['agent_config_put_agent_session']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/agent-configs/{purpose}/agents-md': {
     parameters: {
       query?: never
@@ -1765,6 +1783,7 @@ export interface components {
     }
     AgentConfig: {
       agent_graph: string
+      agent_session: string
       agents_md: string
       /** Format: date-time */
       created_at: string
@@ -1779,6 +1798,8 @@ export interface components {
     AgentConfigResponse: {
       /** @description 多段フェーズ実行設定 (YAML)。未設定なら空文字列。 */
       agent_graph: string
+      /** @description Session 実行設定 (YAML)。未設定なら空文字列。 */
+      agent_session: string
       agents_md: string
       skills: {
         [key: string]: string
@@ -1801,6 +1822,10 @@ export interface components {
     /** @description `GET /api/agent-models` の戻り値。LLM ゲートウェイが未設定/応答不能なら `models` は空配列。 */
     AgentModelsResponse: {
       models: components['schemas']['AgentModel'][]
+    }
+    /** @description 目的ごとの session 実行設定 (YAML)。未設定の場合は `content` が空文字列。 */
+    AgentSessionBody: {
+      content: string
     }
     /** @description 戦略 MCP の tool 1 件分。 */
     AgentTool: {
@@ -3912,6 +3937,112 @@ export interface operations {
         }
       }
       /** @description YAML が不正、またはフェーズ定義が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_get_agent_session: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentSessionBody']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_put_agent_session: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentSessionBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentSessionBody']
+        }
+      }
+      /** @description YAML または session 設定が不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -6872,6 +7003,8 @@ export interface operations {
         kind?: string
         /** @description view が選んだ代表バージョンのタグで絞り込む。 */
         tag?: string
+        /** @description 本文またはチャートで参照されている対象で絞り込む。形式は `kind:id`。 */
+        ref?: string
       }
       header?: never
       path?: never

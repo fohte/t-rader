@@ -165,6 +165,7 @@ pub struct NoteOverviewQuery {
     pub view: NoteOverviewView,
     pub kind: Option<String>,
     pub tag: Option<String>,
+    pub reference: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

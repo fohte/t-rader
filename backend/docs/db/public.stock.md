@@ -6,15 +6,15 @@
 
 ## Columns
 
-| Name             | Type                     | Default           | Nullable | Children                                                                                                                                                                                        | Parents | Comment                                    |
-| ---------------- | ------------------------ | ----------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------ |
-| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) [public.stock_group_member](public.stock_group_member.md) [public.paper_account](public.paper_account.md) [public.paper_order](public.paper_order.md) |         |                                            |
-| name             | varchar                  |                   | false    |                                                                                                                                                                                                 |         | 銘柄名。                                   |
-| market           | varchar                  |                   | true     |                                                                                                                                                                                                 |         | 日本株の市場区分名または外国株の取引所名。 |
-| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                 |         |                                            |
-| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                 |         |                                            |
-| product_category | varchar                  |                   | true     |                                                                                                                                                                                                 |         | 銘柄の商品区分コード。                     |
-| cik              | varchar                  |                   | true     |                                                                                                                                                                                                 |         | SEC が割り当てた企業識別番号。             |
+| Name             | Type                     | Default           | Nullable | Children                                                                                                                                                                                                                                                                                                | Parents | Comment                                    |
+| ---------------- | ------------------------ | ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------ |
+| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) [public.stock_group_member](public.stock_group_member.md) [public.paper_account](public.paper_account.md) [public.paper_order](public.paper_order.md) [public.document](public.document.md) [public.document_chunk_mention](public.document_chunk_mention.md) |         |                                            |
+| name             | varchar                  |                   | false    |                                                                                                                                                                                                                                                                                                         |         | 銘柄名。                                   |
+| market           | varchar                  |                   | true     |                                                                                                                                                                                                                                                                                                         |         | 日本株の市場区分名または外国株の取引所名。 |
+| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                                                                         |         |                                            |
+| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                                                                         |         |                                            |
+| product_category | varchar                  |                   | true     |                                                                                                                                                                                                                                                                                                         |         | 銘柄の商品区分コード。                     |
+| cik              | varchar                  |                   | true     |                                                                                                                                                                                                                                                                                                         |         | SEC が割り当てた企業識別番号。             |
 
 ## Constraints
 
@@ -42,6 +42,8 @@ erDiagram
 "public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 "public.paper_account" }o--o| "public.stock" : "FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)"
 "public.paper_order" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id)"
+"public.document" }o--o| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE SET NULL"
+"public.document_chunk_mention" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 
 "public.stock" {
   varchar id
@@ -88,6 +90,24 @@ erDiagram
   bigint qty
   uuid note_version_id FK
   timestamp_with_time_zone ordered_at
+}
+"public.document" {
+  uuid id
+  text source
+  text source_document_id
+  text stock_id FK
+  text source_issuer_code
+  text title
+  timestamp_with_time_zone published_at
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.document_chunk_mention" {
+  uuid id
+  uuid chunk_id FK
+  text stock_id FK
+  integer start_offset
+  integer end_offset
 }
 ```
 

@@ -35,6 +35,13 @@ pub struct AgentGraphBody {
     pub content: String,
 }
 
+/// 目的ごとの session 実行設定 (YAML)。未設定の場合は `content` が空文字列。
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSessionBody {
+    pub content: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SkillsBody {
@@ -48,6 +55,8 @@ pub struct AgentConfigResponse {
     pub skills: BTreeMap<String, String>,
     /// 多段フェーズ実行設定 (YAML)。未設定なら空文字列。
     pub agent_graph: String,
+    /// Session 実行設定 (YAML)。未設定なら空文字列。
+    pub agent_session: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -58,6 +67,7 @@ pub struct AgentConfigItemResponse {
     pub agents_md: String,
     pub skills: Json,
     pub agent_graph: String,
+    pub agent_session: String,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTime<FixedOffset>,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
@@ -72,6 +82,7 @@ impl From<AgentConfig> for AgentConfigItemResponse {
             agents_md: model.agents_md,
             skills: model.skills,
             agent_graph: model.agent_graph,
+            agent_session: model.agent_session,
             created_at: model.created_at,
             updated_at: model.updated_at,
         }

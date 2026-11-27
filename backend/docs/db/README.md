@@ -22,7 +22,7 @@
 | [public.rss_feed](public.rss_feed.md)                                                           | 8       | ニュース取り込み元となる RSS フィードを管理する。                                                                                                  | BASE TABLE        |
 | [public.strategy_investable_amount](public.strategy_investable_amount.md)                       | 5       | 戦略ごとに設定した投資可能額の履歴。                                                                                                               | BASE TABLE        |
 | [public.account_risk_policy](public.account_risk_policy.md)                                     | 3       | 口座全体に適用するリスク制限設定を保持する。                                                                                                       | BASE TABLE        |
-| [public.agent_config](public.agent_config.md)                                                   | 7       | purpose ごとのエージェント実行設定を保持する。                                                                                                     | BASE TABLE        |
+| [public.agent_config](public.agent_config.md)                                                   | 8       | purpose ごとのエージェント実行設定を保持する。                                                                                                     | BASE TABLE        |
 | [public.strategy_task_step](public.strategy_task_step.md)                                       | 20      | エージェントタスクを構成する実行ステップの状態と結果を記録する。                                                                                   | BASE TABLE        |
 | [public.strategy_task_step_evidence](public.strategy_task_step_evidence.md)                     | 8       | 実行ステップが取得したデータのスナップショットと時刻を記録する。                                                                                   | BASE TABLE        |
 | [public.checkpoint](public.checkpoint.md)                                                       | 8       | 戦略・処理グラフごとに外部 stream の読み進め位置を保持する。                                                                                       | BASE TABLE        |
@@ -82,6 +82,10 @@
 | [public.calendar_event_macro_reference_check](public.calendar_event_macro_reference_check.md)   | 2       | 経済指標と中央銀行イベントの公式資料・日程を照合した最終日時をカレンダーイベントごとに保持する。                                                   | BASE TABLE        |
 | [public.us_stock_minute_bar_downsample_cursor](public.us_stock_minute_bar_downsample_cursor.md) | 2       | 米国株の 1 分足 downsample の再開位置を保持する。                                                                                                  | BASE TABLE        |
 | [public.note_tag](public.note_tag.md)                                                           | 3       | ノートタグの登録語彙と表示情報を定義する。                                                                                                         | BASE TABLE        |
+| [public.document](public.document.md)                                                           | 9       | 資料源に依存しない公開文書の識別情報を保持する。                                                                                                   | BASE TABLE        |
+| [public.document_version](public.document_version.md)                                           | 6       | 公開文書の原文バージョンを保持する。                                                                                                               | BASE TABLE        |
+| [public.document_chunk](public.document_chunk.md)                                               | 8       | 原文のバージョンに属する順序付き文書片を保持する。                                                                                                 | BASE TABLE        |
+| [public.document_chunk_mention](public.document_chunk_mention.md)                               | 5       | 文書片の本文で照合された登録済み銘柄と範囲を保持する。                                                                                             | BASE TABLE        |
 
 ## Stored procedures and functions
 
@@ -262,6 +266,11 @@ erDiagram
 "public.calendar_event_reference" }o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 "public.calendar_event_sec_filing_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
 "public.calendar_event_macro_reference_check" |o--|| "public.calendar_event" : "FOREIGN KEY (calendar_event_id) REFERENCES calendar_event(id) ON DELETE CASCADE"
+"public.document" }o--o| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE SET NULL"
+"public.document_version" }o--|| "public.document" : "FOREIGN KEY (document_id) REFERENCES document(id) ON DELETE CASCADE"
+"public.document_chunk" }o--|| "public.document_version" : "FOREIGN KEY (version_id) REFERENCES document_version(id) ON DELETE CASCADE"
+"public.document_chunk_mention" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
+"public.document_chunk_mention" }o--|| "public.document_chunk" : "FOREIGN KEY (chunk_id) REFERENCES document_chunk(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -458,6 +467,7 @@ erDiagram
   text agent_graph
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text agent_session
 }
 "public.strategy_task_step" {
   uuid execution_step_id
@@ -1041,6 +1051,42 @@ erDiagram
   text key
   text display_name
   text description
+}
+"public.document" {
+  uuid id
+  text source
+  text source_document_id
+  text stock_id FK
+  text source_issuer_code
+  text title
+  timestamp_with_time_zone published_at
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.document_version" {
+  uuid id
+  uuid document_id FK
+  varchar_64_ content_hash
+  timestamp_with_time_zone retrieved_at
+  text body
+  timestamp_with_time_zone created_at
+}
+"public.document_chunk" {
+  uuid id
+  uuid version_id FK
+  integer sequence
+  integer start_offset
+  integer end_offset
+  text body
+  text search_text
+  text__ search_terms
+}
+"public.document_chunk_mention" {
+  uuid id
+  uuid chunk_id FK
+  text stock_id FK
+  integer start_offset
+  integer end_offset
 }
 ```
 

@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::entities::{note, note_version};
 
+use super::list::version_matches_references;
 use super::{PostgresNoteReadQuery, query_error, to_note, to_version};
 
 const LIST_NOTE_OVERVIEWS_SQL: &str = r#"
@@ -48,6 +49,17 @@ const LIST_NOTE_OVERVIEWS_SQL: &str = r#"
     WHERE ($1::text IS NULL OR note.kind = $1)
       AND ($2::text IS NULL OR representative.frontmatter_json @> jsonb_build_object('tags', jsonb_build_array($2)))
       AND ($3::text <> 'pending' OR latest_unread.id IS NOT NULL)
+      AND (
+          $4::text IS NULL
+          OR current_version.id IS NULL
+          OR EXISTS (
+              SELECT 1
+              FROM note_ref
+              WHERE note_ref.note_id = note.id
+                AND note_ref.ref_kind = $4
+                AND note_ref.ref_id = $5
+          )
+      )
     ORDER BY note.updated_at DESC, note.id
 "#;
 
@@ -73,7 +85,17 @@ pub(super) async fn list_note_overviews(
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             LIST_NOTE_OVERVIEWS_SQL,
-            [query.kind.into(), query.tag.into(), view.into()],
+            [
+                query.kind.into(),
+                query.tag.into(),
+                view.into(),
+                query
+                    .reference
+                    .as_ref()
+                    .map(|(kind, _)| kind.clone())
+                    .into(),
+                query.reference.as_ref().map(|(_, id)| id.clone()).into(),
+            ],
         ))
         .await
         .map_err(query_error)?;
@@ -118,8 +140,9 @@ pub(super) async fn list_note_overviews(
         .collect::<HashMap<_, _>>();
     let creators = super::find_initial_created_by_kind(&query_source.db, &note_ids).await?;
 
-    rows.into_iter()
-        .map(|row| {
+    let overviews = rows
+        .into_iter()
+        .map(|row| -> Result<Option<NoteOverview>, NoteReadQueryError> {
             let note_model = notes.get(&row.note_id).cloned().ok_or_else(|| {
                 NoteReadQueryError::InvalidData(format!("note {} not found", row.note_id))
             })?;
@@ -134,12 +157,38 @@ pub(super) async fn list_note_overviews(
                 .current_version_id
                 .map(|version_id| required_version(&versions, version_id))
                 .transpose()?;
+            if current.is_none()
+                && let Some(references) = query.reference.as_ref()
+            {
+                let version_model =
+                    versions
+                        .get(&row.representative_version_id)
+                        .ok_or_else(|| {
+                            NoteReadQueryError::InvalidData(format!(
+                                "note version {} not found",
+                                row.representative_version_id
+                            ))
+                        })?;
+                match version_matches_references(version_model, std::slice::from_ref(references)) {
+                    Ok(true) => {}
+                    Ok(false) => return Ok(None),
+                    Err(error) => {
+                        tracing::warn!(
+                            note_id = %row.note_id,
+                            version_id = %row.representative_version_id,
+                            %error,
+                            "skipping pending note version with unparsable references"
+                        );
+                        return Ok(None);
+                    }
+                }
+            }
             let latest_unread = row
                 .latest_unread_version_id
                 .map(|version_id| required_version(&versions, version_id))
                 .transpose()?;
 
-            Ok(NoteOverview {
+            Ok(Some(NoteOverview {
                 representative: NoteSnapshot {
                     note: to_note(note_model),
                     version: representative,
@@ -148,9 +197,10 @@ pub(super) async fn list_note_overviews(
                 current,
                 latest_unread,
                 unread_version_count: row.unread_version_count,
-            })
+            }))
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(overviews.into_iter().flatten().collect())
 }
 
 fn required_version(

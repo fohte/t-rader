@@ -99,25 +99,34 @@ type AddStrategyEarningsTargetRequest struct {
 
 // AgentConfig defines model for AgentConfig.
 type AgentConfig struct {
-	AgentGraph string             `json:"agent_graph"`
-	AgentsMd   string             `json:"agents_md"`
-	CreatedAt  time.Time          `json:"created_at"`
-	Id         openapi_types.UUID `json:"id"`
-	Purpose    string             `json:"purpose"`
-	Skills     Value              `json:"skills"`
-	UpdatedAt  time.Time          `json:"updated_at"`
+	AgentGraph   string             `json:"agent_graph"`
+	AgentSession string             `json:"agent_session"`
+	AgentsMd     string             `json:"agents_md"`
+	CreatedAt    time.Time          `json:"created_at"`
+	Id           openapi_types.UUID `json:"id"`
+	Purpose      string             `json:"purpose"`
+	Skills       Value              `json:"skills"`
+	UpdatedAt    time.Time          `json:"updated_at"`
 }
 
 // AgentConfigResponse t-rader-agent がタスク実行時に取得する agent 設定一式。
 type AgentConfigResponse struct {
 	// AgentGraph 多段フェーズ実行設定 (YAML)。未設定なら空文字列。
-	AgentGraph string            `json:"agent_graph"`
-	AgentsMd   string            `json:"agents_md"`
-	Skills     map[string]string `json:"skills"`
+	AgentGraph string `json:"agent_graph"`
+
+	// AgentSession Session 実行設定 (YAML)。未設定なら空文字列。
+	AgentSession string            `json:"agent_session"`
+	AgentsMd     string            `json:"agents_md"`
+	Skills       map[string]string `json:"skills"`
 }
 
 // AgentGraphBody 目的ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。
 type AgentGraphBody struct {
+	Content string `json:"content"`
+}
+
+// AgentSessionBody 目的ごとの session 実行設定 (YAML)。未設定の場合は `content` が空文字列。
+type AgentSessionBody struct {
 	Content string `json:"content"`
 }
 
@@ -982,6 +991,9 @@ type CreateAgentConfigJSONRequestBody = CreateAgentConfigRequest
 // AgentConfigPutAgentGraphJSONRequestBody defines body for AgentConfigPutAgentGraph for application/json ContentType.
 type AgentConfigPutAgentGraphJSONRequestBody = AgentGraphBody
 
+// AgentConfigPutAgentSessionJSONRequestBody defines body for AgentConfigPutAgentSession for application/json ContentType.
+type AgentConfigPutAgentSessionJSONRequestBody = AgentSessionBody
+
 // AgentConfigPutAgentsMdJSONRequestBody defines body for AgentConfigPutAgentsMd for application/json ContentType.
 type AgentConfigPutAgentsMdJSONRequestBody = AgentsMdBody
 
@@ -1215,6 +1227,25 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/agent-configs/{purpose}/agent-graph (the `AgentConfigPutAgentGraph` operationId).
 	AgentConfigPutAgentGraph(ctx context.Context, purpose string, body AgentConfigPutAgentGraphJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AgentConfigGetAgentSession 目的別 agent の session 実行設定 (YAML) を取得
+	//
+	// Corresponds with GET /api/agent-configs/{purpose}/agent-session (the `AgentConfigGetAgentSession` operationId).
+	AgentConfigGetAgentSession(ctx context.Context, purpose string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AgentConfigPutAgentSessionWithBody 目的別 agent の session 実行設定 (YAML) を上書き保存する
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+	AgentConfigPutAgentSessionWithBody(ctx context.Context, purpose string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AgentConfigPutAgentSession 目的別 agent の session 実行設定 (YAML) を上書き保存する
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+	AgentConfigPutAgentSession(ctx context.Context, purpose string, body AgentConfigPutAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AgentConfigGetAgentsMd 目的別 agent の AGENTS.md (方針 / 制約 markdown) を取得
 	//
@@ -2074,6 +2105,55 @@ func (c *OpenAPIClient) AgentConfigPutAgentGraphWithBody(ctx context.Context, pu
 // Corresponds with PUT /api/agent-configs/{purpose}/agent-graph (the `AgentConfigPutAgentGraph` operationId).
 func (c *OpenAPIClient) AgentConfigPutAgentGraph(ctx context.Context, purpose string, body AgentConfigPutAgentGraphJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAgentConfigPutAgentGraphRequest(c.Server, purpose, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AgentConfigGetAgentSession 目的別 agent の session 実行設定 (YAML) を取得
+//
+// Corresponds with GET /api/agent-configs/{purpose}/agent-session (the `AgentConfigGetAgentSession` operationId).
+func (c *OpenAPIClient) AgentConfigGetAgentSession(ctx context.Context, purpose string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAgentConfigGetAgentSessionRequest(c.Server, purpose)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AgentConfigPutAgentSessionWithBody 目的別 agent の session 実行設定 (YAML) を上書き保存する
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+func (c *OpenAPIClient) AgentConfigPutAgentSessionWithBody(ctx context.Context, purpose string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAgentConfigPutAgentSessionRequestWithBody(c.Server, purpose, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AgentConfigPutAgentSession 目的別 agent の session 実行設定 (YAML) を上書き保存する
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+func (c *OpenAPIClient) AgentConfigPutAgentSession(ctx context.Context, purpose string, body AgentConfigPutAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAgentConfigPutAgentSessionRequest(c.Server, purpose, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4136,6 +4216,87 @@ func NewAgentConfigPutAgentGraphRequestWithBody(server string, purpose string, c
 	}
 
 	operationPath := fmt.Sprintf("/api/agent-configs/%s/agent-graph", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAgentConfigGetAgentSessionRequest constructs an http.Request for the AgentConfigGetAgentSession method
+func NewAgentConfigGetAgentSessionRequest(server string, purpose string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "purpose", purpose, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/agent-configs/%s/agent-session", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAgentConfigPutAgentSessionRequest calls the generic AgentConfigPutAgentSession builder with application/json body
+func NewAgentConfigPutAgentSessionRequest(server string, purpose string, body AgentConfigPutAgentSessionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAgentConfigPutAgentSessionRequestWithBody(server, purpose, "application/json", bodyReader)
+}
+
+// NewAgentConfigPutAgentSessionRequestWithBody constructs an http.Request for the AgentConfigPutAgentSession method, with any body, and a specified content type
+func NewAgentConfigPutAgentSessionRequestWithBody(server string, purpose string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "purpose", purpose, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/agent-configs/%s/agent-session", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -7579,6 +7740,27 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/agent-configs/{purpose}/agent-graph (the `AgentConfigPutAgentGraph` operationId).
 	AgentConfigPutAgentGraphWithResponse(ctx context.Context, purpose string, body AgentConfigPutAgentGraphJSONRequestBody, reqEditors ...RequestEditorFn) (*AgentConfigPutAgentGraphResult, error)
 
+	// AgentConfigGetAgentSessionWithResponse 目的別 agent の session 実行設定 (YAML) を取得
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/agent-configs/{purpose}/agent-session (the `AgentConfigGetAgentSession` operationId).
+	AgentConfigGetAgentSessionWithResponse(ctx context.Context, purpose string, reqEditors ...RequestEditorFn) (*AgentConfigGetAgentSessionResult, error)
+
+	// AgentConfigPutAgentSessionWithBodyWithResponse 目的別 agent の session 実行設定 (YAML) を上書き保存する
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+	AgentConfigPutAgentSessionWithBodyWithResponse(ctx context.Context, purpose string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AgentConfigPutAgentSessionResult, error)
+
+	// AgentConfigPutAgentSessionWithResponse 目的別 agent の session 実行設定 (YAML) を上書き保存する
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+	AgentConfigPutAgentSessionWithResponse(ctx context.Context, purpose string, body AgentConfigPutAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*AgentConfigPutAgentSessionResult, error)
+
 	// AgentConfigGetAgentsMdWithResponse 目的別 agent の AGENTS.md (方針 / 制約 markdown) を取得
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -8878,6 +9060,137 @@ func (r AgentConfigPutAgentGraphResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AgentConfigPutAgentGraphResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AgentConfigGetAgentSessionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentSessionBody
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AgentConfigGetAgentSessionResult) GetJSON200() *AgentSessionBody {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AgentConfigGetAgentSessionResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r AgentConfigGetAgentSessionResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r AgentConfigGetAgentSessionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AgentConfigGetAgentSessionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AgentConfigGetAgentSessionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AgentConfigGetAgentSessionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AgentConfigPutAgentSessionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AgentSessionBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AgentConfigPutAgentSessionResult) GetJSON200() *AgentSessionBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r AgentConfigPutAgentSessionResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AgentConfigPutAgentSessionResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r AgentConfigPutAgentSessionResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r AgentConfigPutAgentSessionResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r AgentConfigPutAgentSessionResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r AgentConfigPutAgentSessionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AgentConfigPutAgentSessionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AgentConfigPutAgentSessionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AgentConfigPutAgentSessionResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14058,6 +14371,45 @@ func (c *ClientWithResponses) AgentConfigPutAgentGraphWithResponse(ctx context.C
 	return ParseAgentConfigPutAgentGraphResult(rsp)
 }
 
+// AgentConfigGetAgentSessionWithResponse 目的別 agent の session 実行設定 (YAML) を取得
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/agent-configs/{purpose}/agent-session (the `AgentConfigGetAgentSession` operationId).
+func (c *ClientWithResponses) AgentConfigGetAgentSessionWithResponse(ctx context.Context, purpose string, reqEditors ...RequestEditorFn) (*AgentConfigGetAgentSessionResult, error) {
+	rsp, err := c.AgentConfigGetAgentSession(ctx, purpose, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAgentConfigGetAgentSessionResult(rsp)
+}
+
+// AgentConfigPutAgentSessionWithBodyWithResponse 目的別 agent の session 実行設定 (YAML) を上書き保存する
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+func (c *ClientWithResponses) AgentConfigPutAgentSessionWithBodyWithResponse(ctx context.Context, purpose string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AgentConfigPutAgentSessionResult, error) {
+	rsp, err := c.AgentConfigPutAgentSessionWithBody(ctx, purpose, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAgentConfigPutAgentSessionResult(rsp)
+}
+
+// AgentConfigPutAgentSessionWithResponse 目的別 agent の session 実行設定 (YAML) を上書き保存する
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/agent-configs/{purpose}/agent-session (the `AgentConfigPutAgentSession` operationId).
+func (c *ClientWithResponses) AgentConfigPutAgentSessionWithResponse(ctx context.Context, purpose string, body AgentConfigPutAgentSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*AgentConfigPutAgentSessionResult, error) {
+	rsp, err := c.AgentConfigPutAgentSession(ctx, purpose, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAgentConfigPutAgentSessionResult(rsp)
+}
+
 // AgentConfigGetAgentsMdWithResponse 目的別 agent の AGENTS.md (方針 / 制約 markdown) を取得
 //
 // Returns a wrapper object for the known response body format(s).
@@ -15833,6 +16185,107 @@ func ParseAgentConfigPutAgentGraphResult(rsp *http.Response) (*AgentConfigPutAge
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentGraphBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAgentConfigGetAgentSessionResult parses an HTTP response from a AgentConfigGetAgentSessionWithResponse call
+func ParseAgentConfigGetAgentSessionResult(rsp *http.Response) (*AgentConfigGetAgentSessionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AgentConfigGetAgentSessionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentSessionBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAgentConfigPutAgentSessionResult parses an HTTP response from a AgentConfigPutAgentSessionWithResponse call
+func ParseAgentConfigPutAgentSessionResult(rsp *http.Response) (*AgentConfigPutAgentSessionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AgentConfigPutAgentSessionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentSessionBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

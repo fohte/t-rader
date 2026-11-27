@@ -9,6 +9,9 @@ use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
 use core_application::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
 use core_application::daily_bar_source::SharedDailyBarSource;
+use core_application::document_mentions::DocumentMentionUseCases;
+use core_application::document_search::DocumentSearchUseCases;
+use core_application::document_storage::DocumentStorageUseCases;
 use core_application::financial_summary::FinancialSummaryUseCases;
 use core_application::group_movers::GroupMoversUseCases;
 use core_application::indicator_observation::IndicatorObservationUseCases;
@@ -54,6 +57,9 @@ pub struct StrategyServerDependencies {
     pub custom_indicators: CustomIndicatorUseCases,
     pub custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
     pub daily_bar_source: Option<SharedDailyBarSource>,
+    pub document_mentions: DocumentMentionUseCases,
+    pub document_search: DocumentSearchUseCases,
+    pub document_storage: DocumentStorageUseCases,
     pub financial_summaries: FinancialSummaryUseCases,
     pub group_movers: GroupMoversUseCases,
     pub indicator_observations: IndicatorObservationUseCases,

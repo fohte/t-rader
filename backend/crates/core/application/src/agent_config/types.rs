@@ -11,6 +11,7 @@ pub struct AgentConfig {
     pub agents_md: String,
     pub skills: Value,
     pub agent_graph: String,
+    pub agent_session: String,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
 }

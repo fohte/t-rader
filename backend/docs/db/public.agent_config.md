@@ -6,29 +6,31 @@ purpose ごとのエージェント実行設定を保持する。
 
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children                                                                            | Parents | Comment                                                  |
-| ----------- | ------------------------ | ----------------- | -------- | ----------------------------------------------------------------------------------- | ------- | -------------------------------------------------------- |
-| id          | uuid                     | gen_random_uuid() | false    |                                                                                     |         |                                                          |
-| purpose     | text                     |                   | false    | [public.trigger](public.trigger.md) [public.paper_account](public.paper_account.md) |         | 設定を選択するための目的キー。                           |
-| agents_md   | text                     | ''::text          | false    |                                                                                     |         | エージェントに渡す方針・制約を記述した Markdown。        |
-| skills      | jsonb                    | '{}'::jsonb       | false    |                                                                                     |         | エージェントが利用する skill 名と内容の対応を表す JSON。 |
-| agent_graph | text                     | ''::text          | false    |                                                                                     |         | エージェントの実行グラフを記述した YAML。                |
-| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                     |         |                                                          |
-| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                     |         |                                                          |
+| Name          | Type                     | Default           | Nullable | Children                                                                            | Parents | Comment                                                  |
+| ------------- | ------------------------ | ----------------- | -------- | ----------------------------------------------------------------------------------- | ------- | -------------------------------------------------------- |
+| id            | uuid                     | gen_random_uuid() | false    |                                                                                     |         |                                                          |
+| purpose       | text                     |                   | false    | [public.trigger](public.trigger.md) [public.paper_account](public.paper_account.md) |         | 設定を選択するための目的キー。                           |
+| agents_md     | text                     | ''::text          | false    |                                                                                     |         | エージェントに渡す方針・制約を記述した Markdown。        |
+| skills        | jsonb                    | '{}'::jsonb       | false    |                                                                                     |         | エージェントが利用する skill 名と内容の対応を表す JSON。 |
+| agent_graph   | text                     | ''::text          | false    |                                                                                     |         | エージェントの実行グラフを記述した YAML。                |
+| created_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                     |         |                                                          |
+| updated_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                     |         |                                                          |
+| agent_session | text                     | ''::text          | false    |                                                                                     |         | エージェント session の実行設定を記述した YAML。         |
 
 ## Constraints
 
-| Name                              | Type        | Definition           |
-| --------------------------------- | ----------- | -------------------- |
-| agent_config_agent_graph_not_null | n           | NOT NULL agent_graph |
-| agent_config_agents_md_not_null   | n           | NOT NULL agents_md   |
-| agent_config_created_at_not_null  | n           | NOT NULL created_at  |
-| agent_config_id_not_null          | n           | NOT NULL id          |
-| agent_config_purpose_not_null     | n           | NOT NULL purpose     |
-| agent_config_skills_not_null      | n           | NOT NULL skills      |
-| agent_config_updated_at_not_null  | n           | NOT NULL updated_at  |
-| agent_config_pkey                 | PRIMARY KEY | PRIMARY KEY (id)     |
-| agent_config_purpose_key          | UNIQUE      | UNIQUE (purpose)     |
+| Name                                | Type        | Definition             |
+| ----------------------------------- | ----------- | ---------------------- |
+| agent_config_agent_graph_not_null   | n           | NOT NULL agent_graph   |
+| agent_config_agent_session_not_null | n           | NOT NULL agent_session |
+| agent_config_agents_md_not_null     | n           | NOT NULL agents_md     |
+| agent_config_created_at_not_null    | n           | NOT NULL created_at    |
+| agent_config_id_not_null            | n           | NOT NULL id            |
+| agent_config_purpose_not_null       | n           | NOT NULL purpose       |
+| agent_config_skills_not_null        | n           | NOT NULL skills        |
+| agent_config_updated_at_not_null    | n           | NOT NULL updated_at    |
+| agent_config_pkey                   | PRIMARY KEY | PRIMARY KEY (id)       |
+| agent_config_purpose_key            | UNIQUE      | UNIQUE (purpose)       |
 
 ## Indexes
 
@@ -53,6 +55,7 @@ erDiagram
   text agent_graph
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text agent_session
 }
 "public.trigger" {
   uuid trigger_id
