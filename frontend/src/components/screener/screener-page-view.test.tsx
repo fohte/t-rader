@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -95,7 +96,7 @@ describe('ScreenerPageView', () => {
     expect(onAskAgent.mock.calls).toEqual([[search]])
   })
 
-  it('opens the mobile condition dialog from its closed state', async () => {
+  it('opens and closes the mobile condition dialog while restoring focus', async () => {
     const user = userEvent.setup()
     const args = {
       search: {},
@@ -120,6 +121,16 @@ describe('ScreenerPageView', () => {
       calls: [],
       conditionPanelVisible: true,
       validationError: null,
+    })
+    await waitFor(() => {
+      expect(dialog?.contains(document.activeElement) ?? false).toEqual(true)
+    })
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: '条件 (0)' }).matches(':focus'),
+      ).toEqual(true)
     })
   })
 
