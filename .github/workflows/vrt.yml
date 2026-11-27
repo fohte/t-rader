@@ -68,7 +68,7 @@ jobs:
       # `project` must match createStorybookProject()'s `name` in
       # vitest.screenshot.config.ts, and be unique per vrt_pkgs entry.
       # vrt-capture includes it in artifact names, so duplicates collide.
-      - uses: fohte/storybook-vrt-workflows/vrt-capture@a793831ba144b09649eec6b8b8082655a84f459d # v0.2.1
+      - uses: fohte/storybook-vrt-workflows/vrt-capture@39639ff752f7fc8b2e2ae4be350e3e6c67435ba9 # v0.2.4
         with:
           project: storybook-screenshot-frontend
           shard: 1
@@ -119,7 +119,7 @@ jobs:
       # The R2 storage keys aren't scoped per project, so only one
       # vrt_pkgs entry may exist per repo.
       # Multiple packages would overwrite shared `baseline/` and `branch/` keys.
-      - uses: fohte/storybook-vrt-workflows/vrt-report@a793831ba144b09649eec6b8b8082655a84f459d # v0.2.1
+      - uses: fohte/storybook-vrt-workflows/vrt-report@39639ff752f7fc8b2e2ae4be350e3e6c67435ba9 # v0.2.4
         with:
           package-dir: frontend
           screenshots-dir: __screenshots__/desktop
