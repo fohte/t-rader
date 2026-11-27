@@ -21,6 +21,7 @@ export default defineConfig({
       '@base-ui/react/popover',
       '@base-ui/react/select',
       '@base-ui/react/tooltip',
+      '@base-ui/react > use-sync-external-store/shim',
     ],
   },
   server: {
